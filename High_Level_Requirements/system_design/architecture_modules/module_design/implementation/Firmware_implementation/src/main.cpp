@@ -16,6 +16,8 @@
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
 void bhy2_cal_hook_init();
+#include "ble/sgc_service.h"
+#include "ble/file_transfer.h"
 #include "led/led.h"
 #include "config.h"
 #include "state_machine/state_machine.h"
@@ -25,15 +27,6 @@ void bhy2_cal_hook_init();
 #include "storage/flash_ring.h"
 #include "storage/ring_buffer.h"
 #include "storage/bit_packer.h"
-
-/* ================================================================== */
-/*  BLE                                                                 */
-/* ================================================================== */
-BLEService            svc("53470000-0000-1000-8000-00805F9B34FB");
-BLEByteCharacteristic char_state("5347ABC4-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
-BLEByteCharacteristic char_battery("5347ABC5-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
-BLEByteCharacteristic char_transfer("5347ABCD-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
-BLEByteCharacteristic char_cal("5347ABCE-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
 
 /* ================================================================== */
 /*  BHY2 sensors                                                        */
@@ -156,18 +149,17 @@ void apply_state_visuals(DeviceState s)
 {
     switch (s) {
     case DeviceState::SLEEP:
-        g_led.set_pattern(LedPattern::OFF); BLE.stopAdvertise(); break;
+        g_led.set_pattern(LedPattern::OFF); break;
     case DeviceState::IDLE:
-        g_led.set_pattern(LedPattern::BLUE_SLOW_FLOW); BLE.advertise(); break;
+        g_led.set_pattern(LedPattern::BLUE_SLOW_FLOW); break;
     case DeviceState::ARMED:
         g_led.set_pattern(LedPattern::GREEN_CHASE); beep_on(); break;
     case DeviceState::LOGGING:
         g_led.set_pattern(LedPattern::RED_CHASE); beep_off(); break;
     case DeviceState::POST_RUN:
-        g_led.set_pattern(LedPattern::BLUE_SLOW_FLOW_POST); BLE.advertise(); break;
+        g_led.set_pattern(LedPattern::BLUE_SLOW_FLOW_POST); break;
     }
-    char_state.writeValue(static_cast<uint8_t>(s));
-    char_transfer.writeValue(0);  /* 0=idle */
+    sgc_ble_update_state(s);
 }
 
 /* ================================================================== */
@@ -349,12 +341,8 @@ void setup()
     Serial.print("BLE... ");
     if (!BLE.begin()) { Serial.println("FAILED"); while(1)delay(1000); }
     Serial.println("OK");
-    svc.addCharacteristic(char_state);
-    svc.addCharacteristic(char_battery);
-    svc.addCharacteristic(char_transfer);
-    svc.addCharacteristic(char_cal);
-    BLE.addService(svc);
-    BLE.setLocalName("SGC"); BLE.setAdvertisedService(svc);
+    sgc_ble_init();
+    sgc_ble_transfer_init();
 
     /* Hook BHY2 meta-events for calibration accuracy */
     bhy2_cal_hook_init();
@@ -365,7 +353,7 @@ void setup()
     apply_state_visuals(g_sm.state());
 
     int8_t batt = nicla::getBatteryVoltagePercentage();
-    char_battery.writeValue(batt >= 0 ? (uint8_t)batt : 0);
+    sgc_ble_set_battery(batt >= 0 ? (uint8_t)batt : 0);
 
     Serial.print("Runs: "); Serial.print(g_run_id);
     Serial.print(" | State: "); Serial.println(g_sm.state_name());
@@ -377,7 +365,8 @@ void setup()
 void loop()
 {
     uint32_t now = millis();
-    BHY2.update(); BLE.poll(); g_led.update(); g_sm.tick(); handle_serial();
+    BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
+    g_led.update(); g_sm.tick(); handle_serial();
 
     /* 100 Hz sensor feed */
     if (now - g_last_sensor_ms >= 10) {
@@ -434,7 +423,7 @@ void loop()
     /* Battery every 30s */
     if (now - g_last_battery_ms >= 30000) {
         int8_t batt = nicla::getBatteryVoltagePercentage();
-        if (batt >= 0) char_battery.writeValue((uint8_t)batt);
+        if (batt >= 0) sgc_ble_set_battery((uint8_t)batt);
         /* Battery low → force SLEEP if LOGGING */
         if (batt > 0 && batt < 15 && cur == DeviceState::LOGGING) {
             Serial.println("BATTERY LOW — forcing SLEEP");
@@ -450,7 +439,7 @@ void loop()
 
     /* Calibration accuracy every 2s */
     if (now - g_last_cal_ms >= 2000) {
-        char_cal.writeValue(0);  // not available on this firmware
+        sgc_ble_set_cal(0);  // not available on this firmware
         g_last_cal_ms = now;
     }
 }
