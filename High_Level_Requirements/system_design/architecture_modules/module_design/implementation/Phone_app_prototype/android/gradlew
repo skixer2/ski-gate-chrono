@@ -1,0 +1,33 @@
+#!/bin/sh
+
+# Gradle wrapper script (generated for Ski Gate Chrono)
+# Downloads Gradle 8.7 if not already cached.
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+APP_HOME="$(dirname "$SCRIPT_DIR")"
+WRAPPER_JAR="$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.jar"
+
+# Use system Java or Android Studio bundled JDK
+if [ -z "$JAVA_HOME" ]; then
+    JAVACMD="java"
+else
+    JAVACMD="$JAVA_HOME/bin/java"
+fi
+
+# Download wrapper jar if missing
+if [ ! -f "$WRAPPER_JAR" ]; then
+    echo "Downloading Gradle wrapper..."
+    GRADLE_VERSION="9.1"
+    WRAPPER_URL="https://raw.githubusercontent.com/gradle/gradle/v${GRADLE_VERSION}/gradle/wrapper/gradle-wrapper.jar"
+    if command -v curl >/dev/null 2>&1; then
+        curl -sSfL "$WRAPPER_URL" -o "$WRAPPER_JAR"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$WRAPPER_URL" -O "$WRAPPER_JAR"
+    fi
+fi
+
+exec "$JAVACMD" \
+    -Dorg.gradle.appname="gradlew" \
+    -classpath "$WRAPPER_JAR" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"

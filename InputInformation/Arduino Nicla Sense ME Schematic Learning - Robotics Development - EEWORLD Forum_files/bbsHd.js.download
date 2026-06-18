@@ -1,0 +1,22 @@
+
+// bbs导航延迟下拉
+(function ($) {
+  $(function () {
+    let hover, timer;
+    $('#nav li.nav-item').hover(function () {
+      timer = 0
+      hover = setInterval(() => {
+        timer++
+        if (timer > 2) {
+          clearInterval(hover);
+          $(this).children('.drop-box').show();
+          return;
+        }
+      }, 200)
+    }, function () {
+      timer = 0
+      clearInterval(hover);
+      $(this).children('.drop-box').hide();
+    })
+  })
+})(jQuery)

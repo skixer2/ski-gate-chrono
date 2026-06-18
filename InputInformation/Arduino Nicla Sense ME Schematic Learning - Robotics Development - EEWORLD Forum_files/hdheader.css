@@ -1,0 +1,248 @@
+#channelpubhead{
+  margin-bottom:4px
+}
+.boxline3 {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.icon-personal {
+  background: url('//dl2.eeworld.com.cn/bbs/static/my/images/icon-Mcenter.png') no-repeat;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  display: inline-block;
+  background-size: cover;
+  margin-right: 5px;
+}
+
+.icon-credit {
+  background: url('//dl2.eeworld.com.cn/bbs/static/my/images/average2-50.png') no-repeat left center;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  display: inline-block;
+  background-size: 18px;
+  margin-right: 5px;
+}
+
+.icon-message {
+  background: url('//dl2.eeworld.com.cn/bbs/static/my/images/message_group-50.png') no-repeat left center;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  display: inline-block;
+  background-size: 18px;
+  margin-right: 5px;
+}
+
+.icon-home {
+  background: url('//dl2.eeworld.com.cn/bbs/static/my/images/shouye-icon.png') no-repeat left center;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  display: inline-block;
+  background-size: 18px;
+  margin-right: 5px;
+}
+
+.icon-Settings {
+  background: url('//dl2.eeworld.com.cn/bbs/static/my/images/icon-setti.png') no-repeat;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  display: inline-block;
+  background-size: cover;
+  margin-right: 5px;
+}
+
+.icon-out {
+  background: url('//dl2.eeworld.com.cn/bbs/static/my/images/icon-out.png') no-repeat;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+  display: inline-block;
+  background-size: cover;
+  margin-right: 5px;
+}
+
+.cph_r .loginbbtn img {
+  width: 30px;
+  border-radius: 50%;
+  border: 1px solid #888;
+}
+
+.cph_r .loginbbtn {
+  background: #fff;
+}
+
+.cph_l {
+  float: left;
+  margin: 0px 0 0;
+}
+
+.newspubhead {
+  padding: 0;
+}
+
+#nav .nav-item {
+  position: relative !important;
+  display: inline;
+  float: left;
+  height: 60px;
+  line-height: 60px;
+}
+
+.cph_l span.hd {
+  color: #ddd;
+}
+
+.cph_l span {
+  font-size: 16px;
+  padding: 0 1px;
+  float: left;
+}
+
+.cph_l span.popmenu {
+  position: relative;
+  padding: 0px 6px 0 6px;
+  background: none;
+}
+
+#nav .nav-item:nth-child(2) span.popmenu {
+  padding-right: 17px;
+  background: url('//www.eeworld.com.cn/statics/img/channelicon.png') 100px -411px no-repeat;
+}
+
+#nav .nav-item:nth-child(2) span.popmenu:hover {
+  padding-right: 17px;
+  background: url('//www.eeworld.com.cn/statics/img/channelicon.png') 100px -589px no-repeat;
+}
+
+#nav .nav-item:nth-child(3) span.popmenu {
+  padding-right: 17px;
+  background: url('//www.eeworld.com.cn/statics/img/channelicon.png') 100px -411px no-repeat;
+}
+
+#nav .nav-item:nth-child(3) span.popmenu:hover {
+  padding-right: 17px;
+  background: url('//www.eeworld.com.cn/statics/img/channelicon.png') 100px -589px no-repeat;
+}
+
+#nav .nav-item:nth-child(7) span.popmenu {
+  padding-right: 17px;
+  background: url('//www.eeworld.com.cn/statics/img/channelicon.png') 98px -411px no-repeat;
+}
+
+#nav .nav-item:nth-child(7) span.popmenu:hover {
+  padding-right: 17px;
+  background: url('//www.eeworld.com.cn/statics/img/channelicon.png') 98px -589px no-repeat;
+}
+
+#nav .nav-item:nth-child(5) span.popmenu {
+  padding: 0px 7px 0 7px;
+  background:none;
+}
+
+#nav .nav-item:nth-child(5) span.popmenu:hover {
+  padding: 0px 7px 0 7px;
+  background:none;
+}
+
+.nav-item .drop-box {
+  width: 180px;
+  overflow: hidden;
+  position: absolute;
+  top: 59px;
+  left: -35px;
+  z-index: 999;
+  height: auto;
+  display: none;
+  transition: .5s;
+  -webkit-transition: .5s;
+  -moz-transition: .5s;
+  -ms-transition: .5s;
+  -o-transition: .5s;
+  padding: 0 15px;
+  background: #fff;
+  text-align: center;
+  border: 1px solid #eee;
+  min-height: 92px;
+  box-shadow: 2px 2px 3px #e6e6e6;
+}
+
+.nav-item .drop-box a {
+  display: block;
+  line-height: 30px;
+  font-size: 14px;
+  margin: 5px 0;
+}
+
+
+
+#nav .nav-item .drop-box a:hover {
+  color: #ef0012;
+}
+
+.newspubhead .boxm6 {
+  margin-top: 15px;
+}
+
+.cph_r {
+  float: right;
+  overflow: inherit;
+}
+
+.psosolog .drop-box {
+  display: none;
+  position: absolute;
+  top: 32px;
+  background-color: #fff;
+  border: 1px solid #eee;
+  width: 125px;
+  text-align: center;
+  left: -70px;
+  z-index: 99999999;
+  width: 180px;
+}
+
+#Mcenter {
+  position: relative;
+}
+
+#Mcenter:hover .drop-box {
+  display: block;
+}
+
+.psosolog .drop-box li {
+  text-align: left;
+  padding: 10px 17px 10px;
+  color: #8a8a8a;
+  position: relative;
+}
+
+.psosolog .drop-box li a {
+  color: #8a8a8a;
+}
+
+.psosolog .drop-box li:hover {
+  text-align: left;
+  padding: 10px 17px 10px;
+  color: #8a8a8a;
+  background-color: #e0e0e0;
+}
+.psosolog .drop-box li h3{
+  font-size:14px;
+  font-weight: 400;
+  text-align:center;
+}
+
+#sms_info {
+    display: block;
+    width: 5px;
+    height: 5px;
+    background: #f00;
+    position: absolute;
+    border-radius: 50%;
+    right: 20px !important;
+    top: 8px !important;
+}

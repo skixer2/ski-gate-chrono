@@ -1,0 +1,409 @@
+var ew_rp_var = false;
+if(typeof(eeworld_tj) != "undefined"){
+    ew_rp_var = true;
+}
+var eeworld_tj = new function(){
+	var LO = location,D = document,SC = screen,W = window,DT = new Date(),M=Math;DTL = D.title;
+    var __sid,L;
+    L = "https:" == D.location.protocol ? "https:": "http:";
+    var  Aa = function(){
+        this.h  =  LO.hostname;
+        this.rh = function(){
+            var d_a = this.h.split(".");
+            var rh;
+            if(d_a.length>2){
+                rh = d_a[d_a.length-2]+'.'+d_a[d_a.length-1]
+                if(rh=='com.cn'){
+                    rh =  d_a[d_a.length-3]+'.'+d_a[d_a.length-2]+'.'+d_a[d_a.length-1]
+                }
+            }else{
+                rh = this.h;
+            }
+            return  rh;
+        }
+    }
+	function gettopurl(){
+		var url = "";
+		try{
+			url = encodeURIComponent(top.document.url);
+		}catch(e){}
+		return url;
+	}
+    var aa= new Aa();
+    var Ba = function(){
+        this.width  = SC.width;
+        this.height = SC.height;
+    }
+	function getGPUName() {
+		try{
+			  const canvas = document.createElement('canvas');
+			  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+			  if (!gl) {
+				return 'WebGL not supported';
+			  }
+			  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+			  if (debugInfo) {
+				const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+				return renderer;
+			  }
+		}catch(e){
+		}
+		return 'WebGL not supported';
+	}
+	function getcpunum(){
+		var cpunum = 0;
+		if(typeof navigator.hardwareConcurrency != "undefined"){
+			cpunum = navigator.hardwareConcurrency;
+		}
+		return cpunum;
+	}
+    var Ca = function(){
+        this.agent = encodeURIComponent(W.navigator.userAgent);
+        this.refer = encodeURIComponent(D.referrer);
+        this.url = encodeURIComponent(D.URL);
+		this.ck = W.navigator.cookieEnabled;
+        this.title = D.title;
+        this.cookie = D.cookie;
+		this.snSize = screen.availWidth+'*'+screen.availHeight;
+		this.htmlSize = parseInt(D.body.clientWidth)+'*'+parseInt(D.body.clientHeight);
+		this.is_top = istop();
+		this.turl = gettopurl();
+		this.cr = cr();
+		this.gpu = encodeURIComponent(getGPUName());
+		this.cpu = getcpunum();
+    }
+    var Da = function(){
+        this.time = DT.getTime();
+    }
+    var da = new Da();
+    var ba = new Ba();
+    var ca = new Ca();
+    __sid =da.time.toString()+M.round(M.random()*256984).toString();
+    var Ea = function(){
+        this.gce = function(c_name){
+            if(D.cookie.length>0){
+                c_start = D.cookie.indexOf(c_name + "=");
+                if(c_start!=-1){
+                    c_start = c_start + c_name.length +1 ;
+                    c_end = D.cookie.indexOf(';',c_start);
+                    if(c_end==-1)c_end = D.cookie.length;
+                    return unescape(D.cookie.substring(c_start,c_end));
+                }
+            }
+            return '';
+        }
+        this.sce = function(c_name,value,exp){
+            DT.setDate(DT.getDate()+exp);
+            D.cookie = c_name+ "=" +escape(value)+((exp==null)?"":";expires="+DT.toGMTString())+";path=/;domain="+aa.rh();
+        }
+        this.cce = function(){
+            if(this.gce('__fansid')==""){
+                this.sce('__fansid',__sid,365*10);
+            }else{
+                __sid=this.gce("__fansid");
+            }
+            this.sce("__fanvt",DT.getTime());
+        }
+        this.gt = (this.gce('__fanvt'))?DT.getTime()-this.gce('__fanvt'):0;
+    }
+    this.ea = new Ea;
+	function istop(){
+		return window.frames.length != parent.frames.length;
+	}
+	function cr(){
+		if(typeof window.navigator.webdriver!=undefined&&window.navigator.webdriver==true){
+			return 1;
+		}
+		return 0;
+	}
+
+	if(istop()||document.domain.indexOf("eeworld.com")<0){
+		ew_rp_var = true;
+	}
+	function eduajax(){
+	  var ajaxData = {
+		type:arguments[0].type || "GET",
+		url:arguments[0].url || "",
+		async:arguments[0].async || "true",
+		data:arguments[0].data || null,
+		dataType:arguments[0].dataType || "text",
+		contentType:arguments[0].contentType || "application/x-www-form-urlencoded",
+		beforeSend:arguments[0].beforeSend || function(){},
+		success:arguments[0].success || function(){},
+		error:arguments[0].error || function(){}
+	  }
+	  ajaxData.beforeSend()
+	  var xhr = createxmlHttpRequest();
+	  xhr.responseType=ajaxData.dataType;
+	  xhr.open(ajaxData.type,ajaxData.url,ajaxData.async);
+	  xhr.setRequestHeader("Content-Type",ajaxData.contentType);
+	  xhr.send(convertData(ajaxData.data));
+	  xhr.onreadystatechange = function() {
+		if (xhr.readyState == 4) {
+		  if(xhr.status == 200){
+			ajaxData.success(xhr.response)
+		  }else{
+			ajaxData.error()
+		  }
+		}
+	  }
+	}
+	function createxmlHttpRequest() {
+	  if (window.ActiveXObject) {
+		return new ActiveXObject("Microsoft.XMLHTTP");
+	  } else if (window.XMLHttpRequest) {
+		return new XMLHttpRequest();
+	  }
+	}
+
+	function convertData(data){
+	  if( typeof data === 'object' ){
+		var convertResult = "" ;
+		for(var c in data){
+		  convertResult+= c + "=" + data[c] + "&";
+		}
+		convertResult=convertResult.substring(0,convertResult.length-1)
+		return convertResult;
+	  }else{
+		return data;
+	  }
+	}
+
+
+	function bin2hex(s){
+	  var i, l, o = '',n;
+	  s += '';
+	  for (i = 0, l = s.length; i < l; i++) {
+		n = s.charCodeAt(i)
+		  .toString(16);
+		o += n.length < 2 ? '0' + n : n;
+	  }
+	  return o;
+	}
+
+	function loadjs(src){
+		var h = document.createElement("script");
+		h.src = src;
+		var s = document.getElementsByTagName("head")[0];
+		s.parentNode.insertBefore(h, s);
+	}
+
+	// function createInvisibleIframe() {
+	  // const iframe = document.createElement('iframe');
+	  // iframe.style.cssText = `
+		// width: 0;
+		// height: 0;
+		// border: 0;
+		// margin: 0;
+		// padding: 0;
+		// overflow: hidden;
+		// position: absolute;
+		// left: -9999px;
+		// top: -9999px;
+	  // `;
+	  
+	  // iframe.src = 'https://www.eeworld.com.cn/demo/finger/';
+	  // iframe.title = 'Invisible Iframe';
+	  // iframe.sandbox = 'allow-scripts';
+	  // document.body.appendChild(iframe);
+	  // return iframe;
+	// }
+
+
+
+	function base64Decode(encodedStr) {
+		try {
+			return atob(encodedStr);
+		} catch (error) {
+			return '';
+		}
+	}
+
+
+
+	function simpleCanvasHash(ctx, canvas){
+		try {
+			var dataUrl = canvas.toDataURL();
+			var hash = 0;
+			for (var i = 0; i < dataUrl.length; i++) {
+				hash = ((hash << 5) - hash) + dataUrl.charCodeAt(i);
+				hash = hash & hash;
+			}
+			return hash.toString(16);
+		} catch (e) {
+			return "canvas_error:" + (Math.random() * 1e17).toString(16).slice(0, 10);
+		}
+	}
+
+
+    var ea = new Ea();
+    ea.cce();
+	var uid = ea.gce('eew_uid');
+	var fgg = base64Decode(ea.gce('ewwfg'));
+    function Fa(){
+        var a=[];
+		var pg = 0;
+		if(typeof navigator.languages!='undefined'){
+			pg = navigator.languages.length;
+		}
+		a.push('ckt='+encodeURIComponent('31373831363036333534'));
+		a.push('p='+ew_rp_var);
+		a.push('plg='+navigator.plugins.length);
+		a.push('plm='+navigator.mimeTypes.length);
+		a.push('id=285');
+         
+		a.push('s='+aa.h);
+        if((aa.h=='bbs.eeworld.com.cn'||aa.h=='m.eeworld.com.cn')&&typeof(fid)!='undefined'){
+            a.push('fid='+fid);
+        }
+        if((aa.h=='bbs.eeworld.com.cn'||aa.h=='m.eeworld.com.cn')&&typeof(tid)!='undefined'){
+            a.push('tid='+tid);
+        }
+        a.push('sid='+__sid);
+		a.push('hs='+ca.htmlSize);
+		a.push('ss='+ca.snSize);
+		a.push('ck='+ca.ck);
+        a.push('w='+ba.width);
+        a.push('h='+ba.height);
+        a.push('re='+ca.refer);
+		a.push('istop='+ca.is_top);
+		a.push('uid='+uid);
+		a.push('f='+fgg);
+		a.push('pg='+pg);
+        a.push('url='+ca.url);
+		a.push('t='+ea.gt);
+		a.push('tu='+ca.turl);
+		a.push('cr='+ca.cr);
+		a.push('at='+ca.agent);
+		a.push('gpu='+ca.gpu);
+		a.push('cpu='+ca.cpu);
+		if(aa.h=='en.eeworld.com'){
+			this.src = L+'//counter.eeworld.com.cn/tj.jsp?'+a.join('&');
+			loadjs(this.src);
+		}else{
+			this.src = L+'//counter.eeworld.com.cn/tj.gif?'+a.join('&');
+			var im = new Image();
+			im.src = this.src;
+        }
+    }
+
+
+	if(aa.h.indexOf("eeworld.com")>=0){
+		Fa();
+
+		
+
+						
+
+		
+
+		if(!ew_rp_var){
+
+			// var ua = navigator.userAgent.toLowerCase();
+			// if(ua.indexOf("bot")>=0||ua.indexOf("spider")>=0){
+				// createInvisibleIframe();
+			// }
+			 
+			 
+			 
+			         var _hmt = _hmt || [];(function() {  var hm = document.createElement("script");  hm.src = "https://hm.baidu.com/hm.js?897f07f28a0abc64303bada063d8bb06";  var s = document.getElementsByTagName("script")[0];   s.parentNode.insertBefore(hm, s);})();(function(i,s,o,g,r,a,m){i["GoogleAnalyticsObject"]=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,"script","https://www.google-analytics.com/analytics.js","ga");ga("create", "UA-8558123-16", "auto");ga("send", "pageview");
+					 (function(c,l,a,r,i,t,y){
+						 c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+						 t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+						 y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+					 })(window, document, "clarity", "script", "t7hmjcuzxi");
+			 
+
+
+
+
+
+			(function(){
+				function exe_google_c(id){var h = document.createElement("script");  h.src = "https://www.googletagmanager.com/gtag/js?id="+id;var s = document.getElementsByTagName("script")[0];s.parentNode.insertBefore(h, s);window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);} gtag('js', new Date());gtag('config',id);if(typeof(jQuery) != "undefined"){(function($){$(function(){$(".ga_click").click(function(){var v=$(this).data("msg");gtag('event', 'downclick', {'clickval':v});});});})(jQuery);}}
+				var hs = document.location.host;
+				if(hs=='www.eeworld.com.cn'){
+					exe_google_c("G-Y1LMSG3Y48");
+				}else if(hs=='news.eeworld.com.cn'){
+					exe_google_c("G-602STF4B43");
+				}else if(hs=='bbs.eeworld.com.cn'){
+					exe_google_c("G-6GM5RRQ593");
+				}else if(hs=='datasheet.eeworld.com.cn'){
+					exe_google_c("G-YCFX83S80R");
+				}else if(hs=='download.eeworld.com.cn'){
+					exe_google_c("G-2FESTG2LEM");
+				}else if(hs=='training.eeworld.com.cn'){
+					exe_google_c("G-9ELLP6L01J");
+				}else if(hs=='m.eeworld.com.cn'){
+					exe_google_c("G-L0F78GH33C");
+				}else if(hs=='home.eeworld.com.cn'){
+					exe_google_c("G-DJ79KP3B96");
+				}else if(hs=='so.eeworld.com.cn'){
+					exe_google_c("G-5N52JBNNJD");
+				}else if(hs=='en.eeworld.com.cn'){
+					exe_google_c("G-W6FXHF02T7");
+				}
+			})();
+
+
+
+			if(aa.h=='bbs.eeworld.com.cn'&&ca.url.indexOf("thread")>=0){
+				if(typeof(jQuery) != "undefined"){
+					(function($){
+						$(function(){
+							$(".message_area a,.postListItem a").click(function(){
+								var urls = $(this).attr('href');
+								var cur_url = location.href;
+								if(urls.indexOf("kkkkkkkkkkkkkk")<0){
+									$.get('https://bbs.eeworld.com.cn/adsclick',{tid:tid,url:encodeURIComponent(urls),fromurl:encodeURIComponent(cur_url)});
+								}
+							});
+						});
+					})(jQuery);
+				}
+			}
+
+			(function(){
+				var src = "https://jspassport.ssl.qhimg.com/11.0.1.js?d182b3f28525f2db83acfaaf6e696dba";
+				loadjs(src);
+			})();
+			(function(){
+				var bp = document.createElement('script');
+				bp.type = 'text/javascript';
+				bp.async = true;
+				if (location.protocol === 'https:') {
+					bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+				}else{
+					bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+				}
+				var s = document.getElementsByTagName("script")[0];
+				s.parentNode.insertBefore(bp, s);
+			})();
+		}
+
+		//sensors
+		if(typeof(sensors) != "undefined"){
+			sensors.quick('isReady', function(){
+				var w_uid = uid;
+				var anonymous_id = sensors.store.getDistinctId();
+				if(anonymous_id== '0'){
+					sensors.logout();
+				}
+				var reg_int = /^\d+$/;
+				w_uid = parseInt(w_uid);
+				if(anonymous_id== '0' || !reg_int.test(anonymous_id)){
+					 if(w_uid>0){
+						 sensors.login(w_uid);
+					 }
+				}
+			});
+		}
+
+
+
+	}
+
+
+	
+
+
+};

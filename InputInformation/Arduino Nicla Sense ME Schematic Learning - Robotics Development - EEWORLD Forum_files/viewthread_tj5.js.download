@@ -1,0 +1,1 @@
+(function(d,c){var a=d.createElement("script"),m=d.getElementsByTagName("script")[0],eewurl="//counter.eeworld.com.cn/index.php/pv/count/";a.async=1;a.src=eewurl+c;m.parentNode.insertBefore(a,m)})(document,285)

@@ -1,0 +1,77 @@
+(kicad_symbol_lib (version 20240108) (generator "openclaw")
+  ;; ===================================================================
+  ;; SK6812-MINI — 2×2mm addressable RGB LED, 4-pin
+  ;; Pinout: VDD, DOUT, DIN, GND
+  ;; Protocol: WS2812-compatible NZR single-wire
+  ;; ===================================================================
+  (symbol "SK6812-MINI"
+    (property "Reference" "D" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "SK6812-MINI" (at 0 -7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "LED_SMD:LED_SK6812-mini_PLCC4_2.0x2.0mm" (at 0 -10.16 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://cdn-shop.adafruit.com/product-files/4960/4960_SK6812-MINI.pdf"
+      (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "ki_keywords" "RGB LED addressable SK6812 WS2812" (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (symbol "SK6812-MINI_0_1"
+      (rectangle (start -5.08 5.08) (end 5.08 -5.08) (stroke (width 0.254) (type default)))
+      (pin power_in line (at -2.54 7.62 270) (length 2.54)
+        (name "VDD" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27)))))
+      (pin output line (at 7.62 0 180) (length 2.54)
+        (name "DOUT" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27)))))
+      (pin input line (at -7.62 0 0) (length 2.54)
+        (name "DIN" (effects (font (size 1.27 1.27))))
+        (number "3" (effects (font (size 1.27 1.27)))))
+      (pin power_in line (at 2.54 -7.62 90) (length 2.54)
+        (name "GND" (effects (font (size 1.27 1.27))))
+        (number "4" (effects (font (size 1.27 1.27)))))
+    )
+  )
+
+  ;; ===================================================================
+  ;; LDC1612-COIL — PCB spiral coil, 2-terminal
+  ;; Connected to LDC1612 IN0A/IN0B with parallel 33pF cap
+  ;; ===================================================================
+  (symbol "LDC1612-COIL"
+    (property "Reference" "L" (at 0 3.81 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "LDC1612_PCB_Coil" (at 0 -3.81 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "sdc_custom:LDC1612_Coil_14mm" (at 0 -7.62 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "ki_keywords" "inductor coil LDC1612 inductive pcb spiral" (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide))
+    (symbol "LDC1612-COIL_0_1"
+      (arc (start -2.54 1.27) (mid -3.81 0) (end -2.54 -1.27) (stroke (width 0.254)))
+      (arc (start -2.54 -1.27) (mid -0.635 -1.905) (end 0 -0.635) (stroke (width 0.254)))
+      (arc (start 0 -0.635) (mid 0.635 0) (end 0 0.635) (stroke (width 0.254)))
+      (arc (start 0 0.635) (mid -0.635 1.27) (end -2.54 1.27) (stroke (width 0.254)))
+      (pin passive line (at -5.08 0 0) (length 2.54)
+        (name "IN0A" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27)))))
+      (pin passive line (at 5.08 0 180) (length 2.54)
+        (name "IN0B" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27)))))
+    )
+  )
+
+  ;; ===================================================================
+  ;; PIEZO-TRANSDUCER — Surface-mount piezo element, 2-terminal
+  ;; ===================================================================
+  (symbol "PIEZO-TRANSDUCER"
+    (property "Reference" "BZ" (at 0 3.81 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "Piezo_Transducer" (at 0 -3.81 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "PIEZO-TRANSDUCER_0_1"
+      (rectangle (start -3.81 2.54) (end 3.81 -2.54) (stroke (width 0.254)))
+      (pin passive line (at -5.08 0 0) (length 2.54)
+        (name "+" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27)))))
+      (pin passive line (at 5.08 0 180) (length 2.54)
+        (name "-" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27)))))
+    )
+  )
+)

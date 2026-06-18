@@ -1,0 +1,123 @@
+(function ($) {
+  $(function () {
+    $('.t_f table').wrap('<div style="width:100%;overflow-x:auto;"></div>');
+  });
+  var s = $('#copy_url').data('url');
+  s = $('#copy_url').data('subject') + ' ' + s;
+  var clipboard = new Clipboard('#copy_url', {
+    text: function () {
+      return s;
+    }
+  });
+  clipboard.on('success', function (e) {
+    showError("Replicating Success");
+  });
+  clipboard.on('error', function (e) {
+    showError("Replicating Success");
+  });
+  
+    
+	$(".ahover2").each(function(i){
+		$(this).attr("indexa",i);
+	});
+	
+	$(".ahover").each(function(i){
+		$(this).attr("indexb",i);
+	});
+
+    $(".ahover2").mouseDelay().hover(function(){
+		var tindex = $(this).attr("indexa");
+		$(".ahover2").each(function(i){
+			if(parseInt(tindex)!=parseInt(i)){
+				$(this).find('.show-message').animate({height:"0px"}, 1000);
+			}
+		});
+		$(this).find('.show-message').animate({height:"160px"},1000);
+	},function(){
+		$(this).find('.show-message').animate({height:"0px"}, 1000);
+	});	
+	
+    $(".ahover").mouseDelay().hover(function(){
+		var tindex = $(this).attr("indexb");
+		$(".ahover").each(function(i){
+			if(parseInt(tindex)!=parseInt(i)){
+				$(this).find('.show-message').animate({height:"0px"}, 1000);
+			}
+		});
+		$(this).find('.show-message').animate({height:"160px"},1000);
+	},function(){
+		$(this).find('.show-message').animate({height:"0px"}, 1000);
+	});	
+
+  $(function () {
+
+    $('.quote .localvideo-title').remove();
+    $('.quote .localvideo-box').css({
+      'height': '30px',
+      'padding': '10px',
+      'text-align': 'left'
+    });
+    $('.quote .localvideo-box').html('此内容中含有视频，请点击上方账号返回原楼层观看');
+
+  });
+
+})(jQuery)
+
+function copy_turl(url, id) {
+  var clipboard = new Clipboard('#' + id, {
+    text: function () {
+      return url;
+    }
+  });
+  clipboard.on('success', function (e) {
+    showError("Replicating Success");
+  });
+  clipboard.on('error', function (e) {
+    showError("Replicating Success");
+  });
+}
+
+function approve(tid, pid, type = 1) {
+  (function ($, tid, pid, type) {
+    $.get('/bbs/forum.php?mod=misc&action=approve&tid=' + tid + '&pid=' + pid + '&inajax=1', function (data) {
+      var message = "";
+      switch (parseInt(data)) {
+        case 0:
+          if (type == 2) {
+            var num = $('.first-approve').data('num');
+            var znum = num + 1;
+            $('#znum').html('点赞(' + znum + ')');
+          } else if (type == 1) {
+            var zn = $('.zan_btn_bum_' + pid).data('zn');
+            zn += 1;
+            $('#zn-' + pid).html('(' + zn + ')');
+          }
+          message = "点赞成功";
+          break;
+        case -1:
+          message = "抱歉，请登录之后再进行此操作";
+          break;
+        case -2:
+          message = "抱歉，帖子不存在或不能被推送";
+          break;
+        case -3:
+          message = "抱歉，您不能给自己发表的帖子点赞";
+          break;
+        case -4:
+          message = "抱歉，您不能对匿名帖点赞";
+          break;
+        case -5:
+          message = "抱歉，您不能对屏蔽帖点赞";
+          break;
+        case -6:
+          message = "抱歉，您不能重复点赞";
+          break;
+      }
+      if (parseInt(data) == 0) {
+        showDialog(message, "right", '', '', 0);
+      } else {
+        showDialog(message, "alert", '', '', 0);
+      }
+    });
+  })(jQuery, tid, pid, type);
+}

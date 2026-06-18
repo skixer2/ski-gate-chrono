@@ -1,0 +1,33 @@
+name: sgc_phone
+description: Ski Gate Chrono — Phone Application (Android + iOS)
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_blue_plus: ^1.32.0       # BLE (cross-platform, Android + iOS)
+  sqflite: ^2.3.0                   # Local SQLite DB
+  path_provider: ^2.1.0             # File system paths
+  shared_preferences: ^2.2.0        # Settings storage
+  intl: ^0.19.0                     # Date/time formatting
+  collection: ^1.18.0               # List extensions (groupBy, etc.)
+  equatable: ^2.0.0                 # Value equality for models
+  crclib: ^3.0.0                    # CRC32 verification
+  freezed_annotation: ^2.4.0        # Immutable data classes
+  json_annotation: ^4.9.0           # JSON serialization
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.0
+  freezed: ^2.5.0
+  json_serializable: ^6.8.0
+
+flutter:
+  uses-material-design: true

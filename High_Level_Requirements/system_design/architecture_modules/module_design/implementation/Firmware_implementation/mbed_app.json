@@ -1,0 +1,10 @@
+{
+    "target_overrides": {
+        "*": {
+            "target.cordio-stack-buffer-size": 2048,
+            "target.cordio-ll-packet-len-max": 27,
+            "target.cordio-max-num-per-advertising-events": 1,
+            "target.cordio-advertising-interval-ms": 100
+        }
+    }
+}

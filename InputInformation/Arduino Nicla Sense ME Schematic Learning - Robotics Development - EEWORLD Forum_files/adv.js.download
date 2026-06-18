@@ -1,0 +1,192 @@
+
+//Createted by Jeryson Zhow
+if(typeof(BAIDU_CLB_fillSlot)=="undefined"){
+	var sc = document.createElement("script");
+	sc.src = "https://dup.baidustatic.com/js/ds.js";
+	document.head.appendChild(sc);
+}
+
+function statClickData(data){
+	var container = document.getElementById('eeworld_adv_id'+data.baidu_id);
+	var ele = container.getElementsByTagName('a');
+	if(ele.length==0){
+		return;
+	}
+	for(var i=0;i<ele.length;i++){
+		ele[i].onclick = function(){
+			var link = this.href;
+			var sc = document.createElement("script");
+			sc.src = "//www.eeworld.com.cn/advmanagez/adv/advshow?act=ck&id="+data.advid+"&baidu_id="+data.baidu_id+"&posid="+data.posid+"&url="+link;
+			document.head.appendChild(sc);
+		};
+	}
+}
+
+function statClickDataV2(data){
+	var container = document.getElementById('eeworld_adv_id'+data.baidu_id);
+	var ele = container.parentElement.getElementsByTagName('a');
+	if(ele.length==0){
+		return;
+	}
+	for(var i=0;i<ele.length;i++){
+		ele[i].onclick = function(){
+			var link = this.href;
+			var sc = document.createElement("script");
+			sc.src = "//www.eeworld.com.cn/advmanagez/adv/advshow?act=ck&id="+data.advid+"&baidu_id="+data.baidu_id+"&posid="+data.posid+"&url="+link;
+			document.head.appendChild(sc);
+		};
+	}
+}
+
+function iframe_callback(iframe_obj){
+	 console.log(iframe_obj.contentDocument.body.clientHeight);
+	 console.log(iframe_obj.contentDocument.body.clientWidth);
+}
+
+function openadv(advid){
+	document.write("<script src='//www.eeworld.com.cn/advmanagez/adv/advshow?act=js&id="+advid+"'></script>");
+}
+
+
+
+function handleJsAPIData(data) {
+	if(document.domain=='download.eeworld.com.cn'){
+		document.write(data.fmt_html+'<div id="eeworld_adv_id'+data.baidu_id+'"></div>');
+		document.addEventListener('DOMContentLoaded',function() {
+			statClickDataV2(data);
+		});
+	}else{
+		document.write('<div id="eeworld_adv_id'+data.baidu_id+'">'+data.fmt_html+'</div>');
+		document.addEventListener('DOMContentLoaded',function() {
+			statClickData(data);
+		});
+	}
+}
+
+function opennoadv(advid){
+	document.write("<script src='//www.eeworld.com.cn/advmanagez/adv/advshow?act=noadv&id="+advid+"'></script>");
+}
+
+function shownoadv(advid){
+    var doc = document;
+	var src = '//www.eeworld.com.cn/advmanagez/adv/advshow?act=noadv&id='+advid;
+	var iframe_id = 'baiduadv_'+advid;
+	var htm = '<iframe frameBorder="0" scrolling="no" id="'+iframe_id+'" width="0" height="0" advsrc='+ src +'></iframe>'
+	doc.write(htm);
+    
+	setIframe();
+	
+	function setIframe(){
+		var iframe = doc.getElementById(iframe_id);
+		var advsrc = iframe.getAttribute('advsrc');
+		!function(obj){
+			obj.style.backgroundColor = '#fff';
+			obj.src = advsrc;
+		}(iframe)
+	}
+}
+
+function shownadv(advid){
+    var doc = document;
+	var src = '//www.eeworld.com.cn/advmanagez/adv/advshow?act=noadv&id='+advid;
+	var iframe_id = 'baiduadv_'+advid;
+	var htm = '<iframe frameBorder="0" scrolling="no" id="'+iframe_id+'" width="0" height="0" advsrc='+ src +'></iframe>'
+	doc.write(htm);
+    
+	//addEvent(window,'load',bat);
+	setIframe();
+	
+    function addEvent(obj,type,callback) {
+        if (typeof doc.addEventListener === 'function') {
+            obj.addEventListener(type,callback);
+        } else {
+            obj.attachEvent('on' + type,function(){
+                callback();
+            })
+        }
+    }
+    function bat(){
+        var iframe = doc.getElementById(iframe_id);
+		var advsrc = iframe.getAttribute('advsrc');
+		!function(obj){
+			addEvent(obj,'load',function(){
+				obj.style.backgroundColor = '#fff';
+			});
+			obj.src = advsrc;
+		}(iframe)
+    }
+	function setIframe(){
+		var iframe = doc.getElementById(iframe_id);
+		var advsrc = iframe.getAttribute('advsrc');
+		!function(obj){
+			obj.style.backgroundColor = '#fff';
+			obj.src = advsrc;
+		}(iframe)
+	}
+}
+
+
+function containslinkText(element) {
+    var links = element.querySelectorAll('a');
+    return links.length > 0;
+}
+
+window.addEventListener('message',function(event){
+	var data = event.data;
+	if(!data.hasOwnProperty('act')){
+		return false;
+	}
+	if(data.act == 'setIframe'){
+		if(document.getElementById(data.iframeobj)){
+			if(parseInt(data.height)>0){
+				document.getElementById(data.iframeobj).width = data.width;
+				document.getElementById(data.iframeobj).height = data.height;	
+			}else{
+				if(!containslinkText(document.getElementById(data.iframeobj).parentElement)){
+					if(document.getElementById(data.iframeobj).parentElement.tagName != 'BODY'){
+						document.getElementById(data.iframeobj).parentElement.remove();
+					}
+				}
+			}	
+		}
+	}
+});
+
+function showadv(data){
+    var doc = document;
+	var src = '//www.eeworld.com.cn/advmanagez/adv/advshow?act=show&id='+data.baidu_id;
+	var iframe_id = 'baiduadv_'+data.baidu_id;
+	var htm = '<iframe frameBorder="0"   scrolling="no" id="'+iframe_id+'" width="0" height="0" advsrc="'+src+'"></iframe>'
+	doc.write(htm);
+    
+	//addEvent(window,'load',bat);
+	setIframe();
+	
+    function addEvent(obj,type,callback) {
+        if (typeof doc.addEventListener === 'function') {
+            obj.addEventListener(type,callback);
+        } else {
+            obj.attachEvent('on' + type,function(){
+                callback();
+            })
+        }
+    }
+    function bat(){
+        var iframe = doc.getElementById(iframe_id);
+		var advsrc = iframe.getAttribute('advsrc');
+		!function(obj){
+			addEvent(obj,'load',function(){
+				obj.style.backgroundColor = '#fff';
+			});
+			obj.src = advsrc;
+		}(iframe)
+    }
+	function setIframe(){
+		var iframe = doc.getElementById(iframe_id);
+		var advsrc = iframe.getAttribute('advsrc');
+		!function(obj){
+			obj.style.backgroundColor = '#fff';
+			obj.src = advsrc;
+		}(iframe)
+	}
+}

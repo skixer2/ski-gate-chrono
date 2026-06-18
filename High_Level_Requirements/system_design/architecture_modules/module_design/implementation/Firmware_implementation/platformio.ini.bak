@@ -1,0 +1,48 @@
+[common]
+monitor_speed = 115200
+
+build_flags_common =
+    -DSGC_VERSION="2.0"
+    -std=gnu++17
+    -Wall -Wextra -Wno-pedantic
+    -Wno-sign-conversion
+    -Wno-conversion
+    -Wno-return-type
+    -Os
+    -I include
+    -I src
+    -I src/sensors
+    -I src/storage
+    -I src/state_machine
+    -I src/ble
+    -I src/led
+    -I src/beeper
+    -I src/battery
+    -I src/sleep
+    -I src/rfid_reader
+
+build_src_filter  = +<*> -<rfid_reader/>
+
+lib_deps_common =
+    ArduinoBLE
+    Arduino_BHY2
+
+[env:nicla]
+platform          = nordicnrf52
+board             = nicla_sense_me
+framework         = arduino
+monitor_speed     = ${common.monitor_speed}
+build_flags       = ${common.build_flags_common}
+lib_deps          = ${common.lib_deps_common}
+debug_tool        = cmsis-dap
+upload_protocol   = cmsis-dap
+
+[env:custom_pcb]
+platform          = nordicnrf52
+board             = nicla_sense_me
+framework         = arduino
+monitor_speed     = ${common.monitor_speed}
+build_flags       = ${common.build_flags_common}
+lib_deps          = ${common.lib_deps_common}
+debug_tool        = jlink
+upload_protocol   = jlink

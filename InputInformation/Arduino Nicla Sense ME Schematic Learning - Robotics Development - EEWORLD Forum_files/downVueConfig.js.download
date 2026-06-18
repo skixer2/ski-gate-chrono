@@ -1,0 +1,103 @@
+new Vue({
+  el: "#scbar_form", //form对应id
+  data() {
+    return {
+      openSug: false,
+      sugData: [],
+      sugAjaxObj: null,
+      vl: '',
+      selectedSugIndex: -1,
+      totalSug: 0
+    }
+  },
+  methods: {
+    // 搜索建议
+    getSug(v) {
+      var _this = this;
+      _this.sugAjaxObj = jq.ajax({ //搜索关键词api
+        url: "http://so.eeworld.com.cn/api/suggest",
+        data: {
+          kw: v
+        },
+        success: function (res) {
+          if (res.ret == 1) {
+            if (res.data.length > 0) {
+              _this.sugData = res.data;
+              _this.totalSug = res.data.length;
+              _this.selectedSugIndex = -1;
+              jq("#sug .item").removeClass('selected');
+              _this.openSug = true;
+            } else {
+              _this.openSug = false;
+            }
+          }
+          _this.sugAjaxObj = null;
+        }
+      });
+    },
+    // 获取输入内容
+    checkSug() {
+      var _v = jq.trim(jq("#keyword").val());
+      var _this = this;
+      _this.vl = _v;
+      // 有内容就显示建议，无内容就显示推荐
+      if (_v) {
+        if (_this.sugAjaxObj && _this.sugAjaxObj.readyState != 4) {
+          _this.sugAjaxObj.abort();
+          _this.sugAjaxObj = null;
+          _this.getSug(_v);
+        } else {
+          _this.getSug(_v);
+        }
+      } else {
+        if (_this.sugAjaxObj && _this.sugAjaxObj.readyState != 4) {
+          _this.sugAjaxObj.abort();
+          _this.sugAjaxObj = null;
+        }
+        _this.openSug = false;
+      }
+    },
+
+    //下拉列表点击跳转链接
+    jumpUrl(url, word) {
+      if (url) {
+        window.open(url);
+      } else {
+        window.location.href = "http://bbs.eeworld.com.cn/search.php?mod=forum&api=yes&searchsubmit=yes&kw=" + encodeURIComponent(word);
+      }
+    },
+    //键盘选择跳转
+    selectSug(e) {
+      var _this = this;
+      if (!_this.openSug)
+        return false;
+      if (e.keyCode == 38) {
+        // up
+        _this.selectedSugIndex = _this.selectedSugIndex == -1 ? 0 : _this.selectedSugIndex;
+        _this.selectedSugIndex = (--_this.selectedSugIndex + _this.totalSug) % _this.totalSug;
+        jq("#sug .item").eq(_this.selectedSugIndex).addClass('selected').siblings().removeClass('selected');
+        jq("#keyword").val(jq("#sug .item").eq(_this.selectedSugIndex).attr('sug'));
+      }
+      if (e.keyCode == 40) {
+        // down
+        _this.selectedSugIndex = (++_this.selectedSugIndex + _this.totalSug) % _this.totalSug;
+        jq("#sug .item").eq(_this.selectedSugIndex).addClass('selected').siblings().removeClass('selected');
+        jq("#keyword").val(jq("#sug .item").eq(_this.selectedSugIndex).attr('sug'));
+      }
+    },
+    initHandler() {
+      var _this = this;
+      jq(document).on("click", function (e) {
+        if (!jq(e.target).is('.carousel-next-btn')) {
+          if (!jq("#keyword").is(e.target)) {
+            _this.openSug = false;
+          }
+        }
+      });
+    }
+  },
+  mounted() {
+    this.initHandler();
+  }
+
+});

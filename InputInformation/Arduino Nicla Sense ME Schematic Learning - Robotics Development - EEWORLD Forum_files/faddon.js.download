@@ -1,0 +1,114 @@
+(function($){
+	$(function(){
+		//板块列表下拉
+		$('#porejtc-list').mouseDelay().hover(function(){
+			$('#more_list_porejtc').slideDown();
+		},function(){
+			$('#more_list_porejtc').slideUp();
+		});
+		
+		//最新帖子
+		$('#newest_post').mouseDelay().hover(function(){
+			$('.newest_post').slideDown();
+		},function(){
+			$('.newest_post').slideUp();
+		});
+		
+		//厂商下拉
+		$('#producer_area').mouseDelay().hover(function(){
+			$('.producer_area').slideDown();
+		},function(){
+			$('.producer_area').slideUp();
+		});
+		
+		//E金币兑换
+		$('#E_exchange').mouseDelay().hover(function(){
+			$('.E_exchange').slideDown();
+		},function(){
+			$('.E_exchange').slideUp();
+		});
+		
+		/*帖子分享*/  
+		$('.jiathis_button_tools_1,.jiathis_button_tools_2,.jiathis_button_tools_3,.jiathis_button_tools_4').click(function () {
+			$.ajax({
+				type: "GET",  
+				url: "./drycargo/ajax_money.php?rand="+Math.random(),
+				data: {'tid':$_G['tid']},
+				success: function(data){
+				},
+				error:function () {
+				}   
+			});
+		});
+		
+		//var headerHeight = $("#channelhead2").offset().top;
+		/*
+		$(window).scroll(function () {     
+			if ($(this).scrollTop() > headerHeight) { 
+				$("#channelhead2").addClass('fiexd')
+			} else {         
+				$("#channelhead2").removeClass('fiexd')
+			}
+		})*/
+		
+		$('.favbtn').on('click', function() {
+			var obj = $(this);
+			$.ajax({
+				type:'POST',
+				url:obj.attr('href') + '&handlekey=favbtn&inajax=1',
+				data:{'favoritesubmit':'true', 'formhash':iformhash},
+				dataType:'xml',
+			})
+			.success(function(s) {
+				popup.open(s.lastChild.firstChild.nodeValue);
+				evalscript(s.lastChild.firstChild.nodeValue);
+			})
+			.error(function() {
+				window.location.href = obj.attr('href');
+				popup.close();
+			}); 
+			return false;
+		});
+		
+		
+
+
+		$("code").each(function(){
+			$(this).html("<ul><li>" + $(this).html().replace(/\n/g,"\n</li><li>") +"\n</li></ul>");
+		});
+		
+
+		var p_cc = 0;
+		$("pre").each(function(i){
+			if($(this).children("code").size()>0){
+				$(this).attr("id","code_"+p_cc);
+				$(this).wrap("<div class='code_div'></div>");
+				p_cc++;
+			}
+		});
+		
+		$(".code_div").each(function(i){
+			var jscode = '<div class="code_tools"><a onclick=\'copycode($("code_'+i+'"));\'>Copy</a></div>';
+			if(discuz_uid=="0"){
+				jscode = '<div class="code_tools"><a href="javascript:;" class="loginf" >Copy</a></div>';
+			}
+			$(this).prepend(jscode);
+		});
+		
+		
+		$(window).on('scroll', function() {
+			var scrollTopNum = $(document).scrollTop(),winHeight = $(window).height();
+			if (scrollTopNum*1 < winHeight*0.3) {
+				$("#TopBtn").hide();
+			} else if ($('#TopBtn').length > 0) {
+				$("#TopBtn").show();
+			}
+			console.log(scrollTopNum);
+		});
+		
+		
+
+		
+
+	});
+})(jQuery);

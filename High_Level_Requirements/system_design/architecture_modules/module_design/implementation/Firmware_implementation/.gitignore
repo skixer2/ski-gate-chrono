@@ -1,0 +1,12 @@
+.pio/
+.pioenvs/
+.piolibdeps/
+cmake-build-*/
+.vscode/
+*.pyc
+__pycache__/
+*.bin
+*.elf
+*.hex
+.DS_Store
+Thumbs.db

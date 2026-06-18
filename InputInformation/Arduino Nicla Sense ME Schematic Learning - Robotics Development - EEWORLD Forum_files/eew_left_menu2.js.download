@@ -1,0 +1,192 @@
+	var xzstr = '';
+	jq = jQuery.noConflict();
+	var setting = {
+		view: {
+			dblClickExpand: false,
+			showLine: false,
+			selectedMulti: false,
+			fontCss: getFont
+		},
+		data: {
+			key: {
+				title: "title"
+			},
+			simpleData: {
+				enable:true,
+				idKey: "id",
+				pIdKey: "pId",
+				rootPId: ""
+			}
+		},
+		callback: {
+			beforeClick: function(treeId, treeNode) {
+				var zTree = jq.fn.zTree.getZTreeObj("menu");
+				if (treeNode.isParent) {
+					zTree.expandNode(treeNode);
+					return false;
+				} else {
+					return true;
+				}
+			}
+		}
+	};
+
+	var zNodes =[
+		{id:186, pId:0, name:"Centre of Expertise",title:"Centre of Expertise", open:true, font:{'font-weight':'bold'},target:false},
+		{id:154, pId:186, name:"TI Technology Forum" ,title:"TI Technology Forum", open:false,url:"/bbs/forum-154-1.html",target:false},
+		{id:276, pId:154, name:"MSPM0 MCU",title:"MSPM0 MCU", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-276-1.html",target:false},
+		{id:145, pId:154, name:"Analogue and Mixed Signal",title:"Analogue and Mixed Signal", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-145-1.html",target:false},
+		{id:207, pId:154, name:"Wireless Connectivity",title:"Wireless Connectivity", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-207-1.html",target:false},
+		{id:128, pId:154, name:"Microcontroller  MCU",title:"Microcontroller  MCU", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-128-1.html",target:false},
+		{id:21, pId:154, name:"DSP and ARM Processors",title:"DSP and ARM Processors", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-21-1.html",target:false},
+		{id:245, pId:186, name:"ST Sensors & Low Power Wireless Technology Forum" ,title:"ST Sensors & Low Power Wireless Technology Forum", open:false,url:"/bbs/forum-245-1.html",target:false},
+		{id:263, pId:245, name:"ST MEMS Sensor Creative Design Competition",title:"ST MEMS Sensor Creative Design Competition", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-263-1.html",target:false},
+		{id:262, pId:245, name:"ST - Low Power RF",title:"ST - Low Power RF", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-262-1.html",target:false},
+		{id:261, pId:245, name:"MEMS sensors",title:"MEMS sensors", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-261-1.html",target:false},
+		{id:174, pId:186, name:"ADI Reference Circuit" ,title:"ADI Reference Circuit", open:false,url:"/bbs/forum-174-1.html",target:false},
+		{id:254, pId:186, name:"GD32 MCU" ,title:"GD32 MCU", open:false,url:"/bbs/forum-254-1.html",target:false},
+		
+
+		{id:275, pId:186, name:"DigiKey Technology Zone" ,title:"DigiKey Technology Zone", open:false,url:"/bbs/forum-275-1.html",target:false},
+		{id:273, pId:186, name:"XuanTie RISC-V Activity Zone" ,title:"XuanTie RISC-V Activity Zone", open:false,url:"/bbs/forum-273-1.html",target:false},
+		{id:277, pId:186, name:"ADI ·Excelpoint industrial technology" ,title:"ADI ·Excelpoint industrial technology", open:false,url:"/bbs/forum-277-1.html",target:false},
+		
+		{id:61, pId:0, name:"Electronic Technology Exchange",title:"Electronic Technology Exchange", open:true, font:{'font-weight':'bold'},target:false},
+		{id:15, pId:61, name:"Embedded System" ,title:"Embedded System", open:false,url:"/bbs/forum-15-1.html",target:false},
+		{id:134, pId:15, name:"ARM Technology",title:"ARM Technology", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-134-1.html",target:false},
+		{id:131, pId:15, name:"Linux and Android",title:"Linux and Android", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-131-1.html",target:false},
+		{id:132, pId:15, name:"WindowsCE",title:"WindowsCE", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-132-1.html",target:false},
+		{id:200, pId:15, name:"Real-time operating system RTOS",title:"Real-time operating system RTOS", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-267-1.html",target:false},
+		{id:173, pId:15, name:"Programming Basics",title:"Programming Basics", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-173-1.html",target:false},
+		{id:16, pId:61, name:"MCU" ,title:"MCU", open:false,url:"/bbs/forum-16-1.html",target:false},
+		{id:179, pId:16, name:"TI  MCU",title:"TI  MCU", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-179-1.html",target:false},
+		{id:126, pId:16, name:"stm32/stm8",title:"stm32/stm8", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-126-1.html",target:false},
+		{id:254, pId:16, name:"GD32 MCU",title:"GD32 MCU", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-254-1.html",target:false},
+		{id:109, pId:16, name:"NXP MCU",title:"NXP MCU", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-109-1.html",target:false},
+		{id:127, pId:16, name:"Microchip MCU",title:"Microchip MCU", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-127-1.html",target:false},
+		{id:202, pId:16, name:"Renesas Electronics MCUs",title:"Renesas Electronics MCUs", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-202-1.html",target:false},
+		{id:124, pId:16, name:"51mcu",title:"51mcu", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-124-1.html",target:false},
+		{id:265, pId:61, name:"Domestic Chip Exchange" ,title:"Domestic Chip Exchange", open:false,url:"/bbs/forum-265-1.html",target:false},
+		{id:251, pId:61, name:"Motor Drive Control（Motor Control）" ,title:"Motor Drive Control（Motor Control）", open:false,url:"/bbs/forum-251-1.html",target:false},
+		{id:12, pId:61, name:"FPGA/CPLD" ,title:"FPGA/CPLD", open:false,url:"/bbs/forum-12-1.html",target:false},
+		{id:222, pId:12, name:"Altera SoC",title:"Altera SoC", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-222-1.html",target:false},
+		{id:139, pId:12, name:"EE_FPGA  Learning Park",title:"EE_FPGA  Learning Park", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-139-1.html",target:false},
+		{id:28, pId:61, name:"Analog electronics" ,title:"Analog electronics", open:false,url:"/bbs/forum-28-1.html",target:false},
+		{id:145, pId:28, name:"TI Analogue and Mixed Signal",title:"TI Analogue and Mixed Signal", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-145-1.html",target:false},
+		{id:174, pId:28, name:"ADI Reference Circuit",title:"ADI Reference Circuit", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-174-1.html",target:false},
+		{id:25, pId:61, name:"Power technology" ,title:"Power technology", open:false,url:"/bbs/forum-25-1.html",target:false},
+		{id:268, pId:25, name:"Switching Power Supply Study Group",title:"Switching Power Supply Study Group", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-268-1.html",target:false},
+		{id:106, pId:25, name:"LED Zone",title:"LED Zone", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-106-1.html",target:false},
+		{id:145, pId:25, name:"TI Analogue and Mixed Signal",title:"TI Analogue and Mixed Signal", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-145-1.html",target:false},
+		{id:68, pId:61, name:"PCB Design" ,title:"PCB Design", open:false,url:"/bbs/forum-68-1.html",target:false},
+		{id:20, pId:61, name:"RF/Wirelessly" ,title:"RF/Wirelessly", open:false,url:"/bbs/forum-20-1.html",target:false},
+		{id:142, pId:61, name:"Sensor" ,title:"Sensor", open:false,url:"/bbs/forum-142-1.html",target:false},
+		{id:226, pId:20, name:"TI Wireless Connectivity",title:"TI Wireless Connectivity", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-226-1.html",target:false},
+		{id:148, pId:61, name:"Integrated technical exchanges" ,title:"Integrated technical exchanges", open:false,url:"/bbs/forum-148-1.html",target:false},
+		{id:14, pId:148, name:"Test/Measurement",title:"Test/Measurement", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-14-1.html",target:false},
+		{id:141, pId:148, name:"Discrete Device",title:"Discrete Device", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-141-1.html",target:false},
+		{id:258, pId:148, name:"Circuit Observation Room",title:"Circuit Observation Room", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-258-1.html",target:false},
+		{id:208, pId:61, name:"Download Centre" ,title:"Download Centre", open:false,url:"/bbs/forum-208-1.html",target:false},
+		{id:252, pId:61, name:"Training Edition" ,title:"Training Edition", open:false,url:"/bbs/forum-252-1.html",target:false},
+		{id:221, pId:252, name:"maychang Fun Electronics ",title:"maychang Fun Electronics ", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-221-1.html",target:false},
+		{id:259, pId:61, name:"Special Edition for Assessment Centres" ,title:"Special Edition for Assessment Centres", open:false,url:"/bbs/forum-259-1.html",target:false},
+		{id:65, pId:0, name:"Creativity and Practice",title:"Creativity and Practice", open:true, font:{'font-weight':'bold'},target:false},
+		{id:57, pId:65, name:"Electronics Design Contest" ,title:"Electronics Design Contest", open:false,url:"/bbs/forum-57-1.html",target:false},
+		{id:72, pId:65, name:"DIY/Open Source Hardware" ,title:"DIY/Open Source Hardware", open:false,url:"/bbs/forum-72-1.html",target:false},
+		{id:255, pId:72, name:"Toshiba Photorelays TLP3547 Review",title:"Toshiba Photorelays TLP3547 Review", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-255-1.html",target:false},
+		{id:247, pId:72, name:"MAX32630FTHR Design Competition",title:"MAX32630FTHR Design Competition", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-247-1.html",target:false},
+		{id:243, pId:72, name:"MicroPython Open Source section",title:"MicroPython Open Source section", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-243-1.html",target:false},
+		{id:257, pId:72, name:"Innovation Lab",title:"Innovation Lab", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-257-1.html",target:false},
+		{id:228, pId:72, name:"Making friends through disassembly",title:"Making friends through disassembly", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-228-1.html",target:false},
+		{id:269, pId:72, name:"onsemi and Avnet IoT Innovation Design Competition" ,title:"onsemi and Avnet IoT Innovation Design Competition", open:false,url:"/bbs/forum-269-1.html",target:false},
+		{id:117, pId:65, name:"Buy&Sell" ,title:"Buy&Sell", open:false,url:"/bbs/forum-117-1.html",target:false},
+		{id:80, pId:65, name:"Creative Market" ,title:"Creative Market", open:false,url:"/bbs/forum-80-1.html",target:false},
+		{id:62, pId:0, name:"Industry Applications",title:"Industry Applications", open:true, font:{'font-weight':'bold'},target:false},
+		{id:17, pId:62, name:"Mobile and portable" ,title:"Mobile and portable", open:false,url:"/bbs/forum-17-1.html",target:false},
+		{id:101, pId:62, name:"Medical Electronics" ,title:"Medical Electronics", open:false,url:"/bbs/forum-101-1.html",target:false},
+		{id:29, pId:62, name:"Industrial Control Electronics" ,title:"Industrial Control Electronics", open:false,url:"/bbs/forum-29-1.html",target:false},
+		{id:77, pId:62, name:"Security Electronics" ,title:"Security Electronics", open:false,url:"/bbs/forum-77-1.html",target:false},
+		{id:18, pId:62, name:"Automotive Electronics" ,title:"Automotive Electronics", open:false,url:"/bbs/forum-18-1.html",target:false},
+		{id:63, pId:0, name:"Take a break",title:"Take a break", open:true, font:{'font-weight':'bold'},target:false},
+		{id:32, pId:63, name:"Talking" ,title:"Talking", open:false,url:"/bbs/forum-32-1.html",target:false},
+		{id:198, pId:63, name:"Talking about work" ,title:"Talking about work", open:false,url:"/bbs/forum-198-1.html",target:false},
+		{id:40, pId:198, name:"Recruitment",title:"Recruitment", file:"excheck/checkbox_chkDisabled",url:"/bbs/forum-40-1.html",target:false},
+		{id:52, pId:63, name:"Suggestions & Announcements" ,title:"Suggestions & Announcements", open:false,url:"/bbs/forum-52-1.html",target:false},
+		{id:218, pId:63, name:"EEWORLD Award Zone" ,title:"EEWORLD Award Zone", open:false,url:"/bbs/forum-218-1.html",target:false},
+		{id:41, pId:63, name:"Release of Information" ,title:"Release of Information", open:false,url:"/bbs/forum-41-1.html",target:false}			  
+	];
+
+	function getFont(treeId, node) {
+		if(typeof(fid) == "undefined"){
+			return {};
+		}else{
+			if(node.id == fid){
+				xzstr = '#'+node.tId+'_span';
+				return {'font-weight': 'bold', 'color': '#e60000', background:'#eee', padding:'5px 0', 'border-radius': '4px'};
+			}else{
+				return {};
+			}			
+		}
+	}
+	
+	(function($){
+		$(function(){
+			// 菜单初始化
+			$.fn.zTree.init($("#menu"), setting, zNodes);
+			
+			// 树展开
+			var treeObj = $.fn.zTree.getZTreeObj("menu");
+			treeObj.expandAll(true);
+
+			// 搜索
+			$('#search_input').keyup(function(){
+				$.fn.zTree.init($("#menu"), setting, searchNode(zNodes, $(this).val()));
+			})
+
+			$('.toggle_side').click(function(){
+				if($(this).hasClass('hidden_side') ) {
+					do_hidden();
+					setcookie('eew_left_mn_enable',1,2592000);
+				} else {
+					do_show();
+					setcookie('eew_left_mn_enable',2,2592000);
+				}
+			});
+			
+			function searchNode(nodes, key){
+				if($.trim(key).length == 0) {
+					return nodes;
+				} else {
+					return $.grep(nodes, function(node) {
+						return node["name"].match(eval('/'+key+'/i'));
+					})
+				}
+			}
+			
+			function do_hidden(){
+				$('#eewleftmn').css('width',0);
+				$('#eewcontent').css({'width':'100%','padding-left':'0px'});
+				$('.toggle_side').removeClass('hidden_side');
+				$('.toggle_side').addClass('show_side');
+				$.get('sideclose.api.php',{isclose:1});
+			}
+
+			function do_show(){
+				if(xzstr){
+					var itop = $(xzstr).offset().top;
+					var minTop = 400;
+					if(itop > minTop){
+						var scrollTop = itop - minTop;
+						setTimeout(function(){
+							$('#eewleftmn').scrollTop(scrollTop);
+						}, 500);			
+					}			
+				}
+				$('#eewleftmn').css('width','290px');
+				$('#eewcontent').css({'width':'1210px','padding-left':'292px'});				  
+				$('.toggle_side').addClass('hidden_side');
+				$('.toggle_side').removeClass('show_side');
+				$.get('sideclose.api.php',{isclose:0});				  
+			}
+		});
+	})(jQuery);

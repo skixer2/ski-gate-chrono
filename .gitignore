@@ -1,0 +1,33 @@
+# Build artifacts
+.pio/
+.pioenvs/
+.piolibdeps/
+cmake-build-*/
+build/
+*.pyc
+__pycache__/
+*.bin
+*.elf
+*.hex
+*.o
+*.a
+
+# Phone app
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+.gradle/
+.dart_tool/
+.packages
+pubspec.lock
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated
+*.log
+*.tmp

@@ -1,0 +1,175 @@
+  (function(para) {
+    var p = para.sdk_url, n = para.name, w = window, d = document, s = 'script',x = null,y = null;
+    if(typeof(w['sensorsDataAnalytic201505']) !== 'undefined') {
+        return false;
+    }
+    w['sensorsDataAnalytic201505'] = n;
+    w[n] = w[n] || function(a) {return function() {(w[n]._q = w[n]._q || []).push([a, arguments]);}};
+    var ifs = ['track','quick','register','registerPage','registerOnce','trackSignup', 'trackAbtest', 'setProfile','setOnceProfile','appendProfile', 'incrementProfile', 'deleteProfile', 'unsetProfile', 'identify','login','logout','trackLink','clearAllRegister','getAppStatus'];
+    for (var i = 0; i < ifs.length; i++) {
+      w[n][ifs[i]] = w[n].call(null, ifs[i]);
+    }
+    if (!w[n]._t) {
+      x = d.createElement(s), y = d.getElementsByTagName(s)[0];
+      x.async = 1;
+      x.src = p;
+      x.setAttribute('charset','UTF-8');
+      w[n].para = para;
+      y.parentNode.insertBefore(x, y);  
+    }
+  })({
+    sdk_url: 'https://bbs.eeworld.com.cn/static/sensorsdata/1.14.22/sensorsdata.min.js',
+    heatmap_url: 'https://bbs.eeworld.com.cn/static/sensorsdata/1.14.22/heatmap.min.js',
+    name: 'sensors',
+    server_url: 'https://wangshizongheng.datasink.sensorsdata.cn/sa?project=production&token=e94673c91d761797',
+	heatmap: {scroll_notice_map:'not_collect',clickmap:'not_collect'},
+	show_log:false
+  });
+
+  if(typeof(jQuery) != "undefined")
+  {
+	  (function($){
+		$(function(){
+			sensors.quick('isReady', function(){
+				var anonymous_id = sensors.store.getDistinctId();
+				if(anonymous_id == '0'){
+					sensors.logout();
+					if(typeof(discuz_uid) != "undefined"){
+						discuz_uid = parseInt(discuz_uid);
+						if(discuz_uid > 0){
+							sensors.login(discuz_uid,function(){
+								//回调函数的使用需要 SDK 版本大于等于 1.14.8
+							});						
+						}
+					}
+				}else{
+					if(typeof(discuz_uid) != "undefined"){
+						discuz_uid = parseInt(discuz_uid);
+						if(discuz_uid > 0 && /-/.test(anonymous_id)){
+							sensors.login(discuz_uid,function(){
+								//回调函数的使用需要 SDK 版本大于等于 1.14.8
+							});						
+						}
+					}
+					//注册按钮
+					$('.reigster-top a, #wechat-tab-register a, #wechat-tab-register2 a').click(function(){
+						sensors.track('clickSign', {
+							platform:'web',
+							operationType:"论坛",
+							referSource:window.location.href
+						});
+					});
+					$('#Mcenter a').eq(1).click(function(){
+						sensors.track('clickSign', {
+							platform:'web',
+							operationType:"论坛",
+							referSource:window.location.href
+						});
+					});		
+					$('#toptb .y a').eq(1).click(function(){
+						sensors.track('clickSign', {
+							platform:'web',
+							operationType:"论坛",
+							referSource:window.location.href
+						});
+					});	
+					
+					//登录按钮
+					$('.login-top a, #wechat-tab-login a, #wechat-tab-login2 a').click(function(){
+						sensors.track('clickLogin', {
+							platform:'web',
+							operationType:"论坛",
+							referSource:window.location.href
+						});
+					});
+					$('#Mcenter a').eq(0).click(function(){
+						sensors.track('clickLogin', {
+							platform:'web',
+							operationType:"论坛",
+							referSource:window.location.href
+						});
+					});		
+					$('#toptb .y a').eq(0).click(function(){
+						sensors.track('clickLogin', {
+							platform:'web',
+							operationType:"论坛",
+							referSource:window.location.href
+						});
+					});	
+		
+					$('#nav .satj').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:1,
+							operationType:$(this).data('name'),
+							secondBarItem: ''
+						});
+					});	
+					
+					$('.porejtc-list .satj-s').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType: '论坛',
+							secondBarItem: '论坛首页'
+						});
+					});
+					
+					$('.porejtc-list .satj-s2 a').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType: '论坛',
+							secondBarItem: '版块列表'
+						});
+					});	
+					
+					$('.porejtc-list .satj-s3 a').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType:'论坛',
+							secondBarItem:'最新帖子'
+						});
+					});	
+					
+					$('.porejtc-list .satj-s4 a').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType:'论坛',
+							secondBarItem:'开发板测评'
+						});
+					});
+
+					$('.porejtc-list .satj-s5 a').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType:'论坛',
+							secondBarItem:'积分兑换'
+						});
+					});	
+					
+					$('.porejtc-list .satj-s6 a').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType:'论坛',
+							secondBarItem:'活动中心'
+						});
+					});	
+
+					$('.porejtc-list .satj-s7 a').click(function(){
+						sensors.track('navBarClick', {
+							currentPage:'论坛',
+							barLocation:2,
+							operationType:'论坛',
+							secondBarItem:$(this).text()
+						});
+					});					
+				}
+			});			
+		});
+	  })(jQuery);	  
+  }

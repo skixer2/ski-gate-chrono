@@ -1,0 +1,7 @@
+(function($){
+ $(".a_t td").each(function(){
+	 if($(this).height()<20){
+		$(this).css({'border':'none','padding':0});
+	 }
+ });
+})(jQuery)

@@ -1,0 +1,26 @@
+//个人信息下拉
+function userinfo_drop($)
+{
+	$('.bbs-new-userinfo-avatar').mouseover(function(){
+		$('#much-nav-box').show();	
+	});
+	$('.bbs-new-userinfo-avatar').mouseout(function(){
+		$('#much-nav-box').hide();
+	});	
+}
+
+//右侧窗口
+function rwindow($)
+{
+	$('.ma_sheo').hover(function(){
+		$('.ma_sty').show()
+	},function(){
+		$('.ma_sty').hide()
+	});
+
+	$('#TopBtn').click(function(){
+	   $('html, body').animate({scrollTop: 0}, 700)
+	})
+}
+
+rwindow(jQuery);

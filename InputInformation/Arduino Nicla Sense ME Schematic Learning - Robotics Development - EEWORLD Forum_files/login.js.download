@@ -1,0 +1,100 @@
+function front_go(){
+	location.reload();
+}
+
+
+function iframe_dialog_str(title,url){
+	var s = '';
+	s += '<div class="login_layer"></div>';
+	s += '<div class="sso_dialog">';
+	s += '<div class="sso_dialog_header">';
+	s += '<div class="hint">'+title+'</div>';
+	s += '<button class="sso_dialog_close">¡Á</button></div>';
+	s += '<div class="sso_dialog_content">';
+	s += '<iframe sandbox="allow-same-origin allow-scripts allow-top-navigation allow-forms allow-downloads" frameborder="0" name="loginIframe" scrolling="no" src="'+url+'"></iframe>';
+	s += '</div></div>';
+	return s;
+}
+
+function show_bind_dialog(){
+	(function($){
+		$('body').append(iframe_dialog_str('','//en.eeworld.com.cn/bbs/member.php?mod=register_eeworld.php&action=checkbind&from=iframe&referersss='+encodeURIComponent(document.URL)));
+		$("#loginIframe").css("min-height","480px");
+		$(document).on('click', '.sso_dialog_close', function(){
+			location.reload();
+		});
+	})(jQuery);
+}
+
+function show_login_dialog(){
+	(function($){
+		$('body').append(iframe_dialog_str('','//en.eeworld.com.cn/bbs/member.php?mod=logging&action=login&from=iframe&referer='+encodeURIComponent(document.URL)));
+		$("#loginIframe").css("min-height","480px");
+		$(document).on('click', '.sso_dialog_close', function(){
+			location.reload();
+		});
+	})(jQuery);
+}
+
+window.addEventListener('message',function(event){
+	var data = event.data;
+	if(data.hasOwnProperty('from')){
+		if(data.from == 'bbs'){
+			location.reload();
+		}
+	}
+	if(data =='bindtips'){
+		(function($){
+			$('.hint').text("");
+			$("#loginIframe").css("min-height","480px");
+			$(document).on('click', '.sso_dialog_close', function(){
+				location.reload();
+			});
+		})(jQuery);
+	}else if(data =='login'){
+		(function($){
+			$('body').append(iframe_dialog_str('You need to log in to continue operating!','//en.eeworld.com.cn/bbs/member.php?mod=logging&action=login&from=iframe&referer='+encodeURIComponent(document.URL)));
+		})(jQuery);
+	}else if(data =='bind'){
+		(function($){
+			$('body').append(iframe_dialog_str('','//en.eeworld.com.cn/bbs/member.php?mod=register_eeworld.php&action=checkbind&from=iframe&referer='+encodeURIComponent(document.URL)));
+	    })(jQuery);
+	}
+	
+});
+
+if(typeof(jQuery) != "undefined")
+{
+	(function($){
+		$(function(){
+			function closeLogin() {
+				$('.sso_dialog').remove();
+				$('.login_layer').remove();
+			}
+			$(document).on('click', '.sso_dialog_close', function(){
+				closeLogin();
+			});
+			$(document).on('click', '.loginf', function(){
+				$('body').append(iframe_dialog_str('You need to log in to continue operating!','//en.eeworld.com.cn/bbs/member.php?mod=logging&action=login&from=iframe&referer='+encodeURIComponent(document.URL)));
+				return false;
+			});
+			$(document).on('click', '.bindiframe', function(){
+				$('body').append(iframe_dialog_str('','//en.eeworld.com.cn/bbs/member.php?mod=register_eeworld.php&action=checkbind&from=iframe&referersss='+encodeURIComponent(document.URL)));
+			});
+			
+			
+			if($('.Language').size()>0){
+			  $('.Language').mouseover(function(){
+				  $(this).children().last().show()
+			  });
+			  
+			  $('.Language').mouseout(function(){
+				$(this).children().last().hide()
+			  });
+			}
+			
+			
+		});
+	})(jQuery);	
+}
+

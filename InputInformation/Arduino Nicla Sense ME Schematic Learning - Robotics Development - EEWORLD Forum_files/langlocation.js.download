@@ -1,0 +1,62 @@
+(function ($) {
+  $(function () {
+	(function(){
+		var userAgent = navigator.userAgent.toLowerCase();
+		var curl = document.URL;
+		var referrer = document.referrer;
+		function getwcookie(name){
+			var cookie_start = document.cookie.indexOf(name);
+			var cookie_end = document.cookie.indexOf(";", cookie_start);
+			return cookie_start == -1 ? '' : unescape(document.cookie.substring(cookie_start + name.length + 1, (cookie_end > cookie_start ? cookie_end : document.cookie.length)));
+		}
+		function setwcookie(cookieName, cookieValue){
+			var path = "/";
+			document.cookie = escape(cookieName) + '=' + escape(cookieValue)
+				+ (path ? '; path=' + path : '/');
+		}
+		if(curl.indexOf("en.eeworld.com.cn/")>=0){
+			if(userAgent.indexOf("spider")>=0||userAgent.indexOf("bot")>=0){
+				return;
+			}
+			if(referrer.indexOf("eeworld.com.cn/")>0&&referrer.indexOf("en.eeworld.com.cn/")<0&&(getwcookie('eewlang')=='cn'||getwcookie('eewlang')=='en')){
+				setwcookie('eewlang','en',365);
+				return;
+			}
+			if(getwcookie('eewlang')=='cn'){
+			   var cnurl = $(".Language a:eq(1)").attr('href');
+			   location.href = cnurl;
+			   return;
+			}
+			if(getwcookie('eewlang')=='cn'||getwcookie('eewlang')=='en'){
+				return;
+			}
+			var dialog_msg = '<style>.langmodal {background-color: #fff;width: 550px;height:200px;position: fixed;top: 20%;left: 0;right: 0;margin: auto;z-index: 1000000000;border-radius: 5px;-webkit-border-radius: 5px;-moz-border-radius: 5px;-ms-border-radius: 5px;-o-border-radius: 5px;}.bg-all {background-color: rgba(0, 0, 0, .3);width: 100%;height: 100%;z-index: 98;position: fixed;top: 0;}.langmodal .center-boxmen {padding: 0 20px;}.langmodal .center-boxmen p {font-size: 16px;font-weight: 600;text-align: center;margin: 20px auto;line-height:15px;}.langmodal .closelangmodal{position: absolute;right: -20px;top: -20px;background-color: #fff;width: 25px;height: 25px;border-radius: 50%;text-align: center;line-height: 25px;}</style><div class="bg-all"></div><div class="langmodal" style="">		<a href="javascript:;" class="closelangmodal">X</a>		<div class="center-boxmen">			<p>We\'ve detected you\'re visiting from China.  </p>			<p  style="text-align:left;">Select Your Location</p>			<hr/>			<p style="text-align:left;font-size:18px;"><a href="javascript:;" style="color:#e60012;text-decoration:underline;" id="senden">>>Continue in English</a></p>			<p style="text-align:left;font-size:18px;"><a href="javascript:;" style="color:#e60012;text-decoration:underline;" id="sendch">>> ÖÐÎÄ°æ±¾</a></p>		</div></div>';
+			$.get('https://en.eeworld.com.cn/rest/ipLocationApi',function(data){
+			   if(data=='yes'){
+				   if(referrer.indexOf(".baidu.")>0||referrer.indexOf(".google.")>0||referrer.indexOf(".bing.com")>0||referrer.indexOf(".so.com")>0||referrer.indexOf("sogou.com")>0){
+					   var cnurl = $(".Language a:eq(1)").attr('href');
+					   location.href = cnurl;
+					   return;
+				   }
+				   $("body").prepend(dialog_msg);
+				   $("#sendch").click(function(){
+					   $(".langmodal,.bg-all").remove();
+					   setwcookie('eewlang','cn',365);
+					   var cnurl = $(".Language a:eq(1)").attr('href');
+					   location.href = cnurl;
+				   });
+				   $("#senden").click(function(){
+					  $(".langmodal,.bg-all").remove();
+					  setwcookie('eewlang','en',365);
+				   });
+				   $(".closelangmodal").click(function(){
+					  $(".langmodal,.bg-all").remove();
+				   });
+			   }
+		   });
+		}
+	})();
+      
+
+  });
+})(jQuery);

@@ -1,0 +1,11 @@
+(function($){
+	$(function(){
+		$(".relativepostz a").each(function(){
+			$(this).attr('target','_blank');
+		});
+		$(".relativepostz a").bind('click',function(){
+			var urlstr = $(this).attr('href');
+			$.post('/huodong/hd20150722/click.php',{url:urlstr});
+		});
+	});
+})(jQuery)
