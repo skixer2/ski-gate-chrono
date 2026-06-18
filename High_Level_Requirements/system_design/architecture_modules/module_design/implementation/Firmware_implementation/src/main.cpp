@@ -4,7 +4,7 @@
  * Flash layout:
  *   Blocks 0-3:  ring buffer (1000-slot circular, 500-frame window)
  *   Block 4:     run index sector (run count, last run addr — persists reboots)
- *   Blocks 5+:   run data (header 16B + compressed frames 22B each)
+ *   Blocks 5+:   run data (header 16B + adaptive bit-packed frames, avg ~9.25B)
  */
 
 #include <ArduinoBLE.h>
@@ -266,7 +266,7 @@ void feed_sensors()
             /* Write run header */
             RunHeader hdr;
             memset(&hdr, 0, sizeof(hdr));
-            hdr.format_ver = 1;
+            hdr.format_ver = 2;  // adaptive 3-packet bit-packing (sgc_system_design §3)
             hdr.arm_side = 0;  /* TODO: detect side */
             hdr.baro_temp = (int16_t)(temperature.value() * 10.0f);
             hdr.cal_accuracy = 0;  // not available: BHI260AP doesn't report RV cal via SENSOR_STATUS

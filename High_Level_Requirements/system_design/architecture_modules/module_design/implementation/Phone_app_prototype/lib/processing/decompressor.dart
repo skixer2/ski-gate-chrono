@@ -3,12 +3,13 @@ import '../models/sensor_frame.dart';
 
 class Decompressor {
   final int formatVersion;
-  Decompressor({this.formatVersion = 1});
+  /// v1 = fixed 22B CompressedFrame (legacy), v2 = adaptive 3-packet bit-packing.
+  Decompressor({this.formatVersion = 2});
 
   List<SensorFrame> decompress(Uint8List compressed) {
     final frames = <SensorFrame>[];
     if (compressed.length < 16) return frames;
-    int offset = 16; // skip run file header
+    int offset = 16; // skip run file header (16B, format_ver at byte 0)
     double qW = 0, qX = 0, qY = 0, qZ = 0;
     double laX = 0, laY = 0, laZ = 0;
     int accMs = 0;
