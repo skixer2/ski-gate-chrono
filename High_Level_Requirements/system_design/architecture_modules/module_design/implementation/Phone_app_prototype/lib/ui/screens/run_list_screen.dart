@@ -76,6 +76,7 @@ class _RunListScreenState extends State<RunListScreen> {
 
         FlutterBluePlus.startScan(
           timeout: const Duration(seconds: 15),
+          allowDuplicates: true,  // keep reporting SGC ads
         );
 
         // Auto-stop after timeout
@@ -111,7 +112,7 @@ class _RunListScreenState extends State<RunListScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text('Scanning for SGC devices...',
+                  const Text('Scanning for BLE devices...',
                       style: TextStyle(color: Colors.grey)),
                   const Divider(),
                   Expanded(
