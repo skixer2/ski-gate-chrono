@@ -1,13 +1,9 @@
 plugins {
     id "com.android.application"
-    id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     namespace = "com.skigatechono.sgc_phone"
     compileSdk = 36
 
