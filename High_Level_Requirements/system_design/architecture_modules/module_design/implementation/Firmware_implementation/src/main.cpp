@@ -180,8 +180,20 @@ void handle_serial()
     switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
-        if (g_sm.state() == DeviceState::IDLE)
-            g_sm.force_state(DeviceState::ARMED);
+        if (g_sm.state() == DeviceState::IDLE) {
+            // Sensor-ready check: valid quaternion has magnitude ≈ 1.0.
+            // Catches dead BHI260AP without needing calibration events.
+            float qx = rotation.x(), qy = rotation.y();
+            float qz = rotation.z(), qw = rotation.w();
+            float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+            if (mag < 0.8f || mag > 1.2f) {
+                Serial.print("ARM refused: quat mag ");
+                Serial.print(mag, 2);
+                Serial.println(" — sensor not ready");
+            } else {
+                g_sm.force_state(DeviceState::ARMED);
+            }
+        }
         break;
     case 'l': g_sm.force_state(DeviceState::LOGGING); break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
@@ -202,8 +214,6 @@ void handle_serial()
         Serial.print(" R:"); Serial.print(g_ring.count()); Serial.print("/"); Serial.print(RING_SIZE);
         Serial.print(" B:"); Serial.print((int)(pressure.value()*100)); Serial.print("Pa");
         Serial.print(" Bat:"); Serial.print(nicla::getBatteryVoltagePercentage()); Serial.print("%");
-        Serial.print(" Cal:"); Serial.print(g_bhy2_accuracy[34]);
-        Serial.print("("); Serial.print(g_bhy2_accuracy[31]); Serial.print(")");
         Serial.print(" Ev:"); Serial.print(g_meta_event_count);
         Serial.print(" Qi:"); Serial.print(digitalRead(10) ? "no" : "yes");
         Serial.print(" Runs:"); Serial.println(g_run_id);
@@ -269,7 +279,7 @@ void feed_sensors()
             hdr.format_ver = 1;
             hdr.arm_side = 0;  /* TODO: detect side */
             hdr.baro_temp = (int16_t)(temperature.value() * 10.0f);
-            hdr.cal_accuracy = g_bhy2_accuracy[34];
+            hdr.cal_accuracy = 0;  // not available: BHI260AP doesn't report RV cal via SENSOR_STATUS
 
             g_flash.erase_block(g_next_run_addr);
             g_flash.write_page(g_next_run_addr, (const uint8_t*)&hdr, sizeof(hdr));
@@ -440,7 +450,7 @@ void loop()
 
     /* Calibration accuracy every 2s */
     if (now - g_last_cal_ms >= 2000) {
-        char_cal.writeValue(g_bhy2_accuracy[34]);
+        char_cal.writeValue(0);  // not available on this firmware
         g_last_cal_ms = now;
     }
 }
