@@ -1035,14 +1035,12 @@ The BHI260AP self-calibrates through the BHY2 library. Accuracy levels 0–3:
 Figure-8 calibration motion for ~10 seconds reaches accuracy ≥ 2.
 Calibration matrix stored in BHI260AP flash (U2, 2 MB).
 
-⚠️ **Accuracy access note (2026-06-18):** The BHI260AP reports calibration
-accuracy via `BHY2_META_EVENT_SENSOR_STATUS` meta-events, not in the
-quaternion data packet. The Arduino_BHY2 library's `SensorQuaternion::accuracy()`
-returns the wrong byte (sensor data at offset 8, not the accuracy enum).
-The SGC firmware works around this in `bhy2_cal_hook.cpp`: it uses
-`#define private public` to access `BoschSensortec::_bhy2`, then registers
-a FIFO parse callback for `BHY2_SYS_ID_META_EVENT` that stores the real
-0-3 accuracy in `g_bhy2_accuracy[34]` (34 = SENSOR_ID_RV).
+⚠️ **Sensor readiness (2026-06-18):** Calibration accuracy (0-3) is
+not accessible on the Nicla's BHY2 firmware — `SensorQuaternion::accuracy()`
+returns wrong data, and sensor 34 (Rotation Vector) doesn't emit
+`BHY2_META_EVENT_SENSOR_STATUS`. SGC instead validates the quaternion
+magnitude: 0.8 < |q| < 1.2 before arming. A dead sensor produces |q| ≈ 0.
+See `bhy2_cal_hook.cpp` and AD-010 for the full investigation.
 
 ### From I²C to BHY2 — Migration Notes
 

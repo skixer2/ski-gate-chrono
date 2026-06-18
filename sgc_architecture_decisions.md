@@ -255,32 +255,28 @@ ski_gate_chrono/
 
 ---
 
-## AD-010: Hook BHY2 Meta-Events for Calibration Accuracy
+## AD-010: BHI260AP Calibration Accuracy on Nicla
 
 **Date:** 2026-06-18
-**Status:** Accepted
+**Status:** Resolved — quaternion magnitude check adopted.
 
-**Decision:** Add `bhy2_cal_hook.cpp` using `#define private public` to access
-`BoschSensortec::_bhy2`, then register a FIFO parse callback for
-`BHY2_SYS_ID_META_EVENT` that captures calibration accuracy in
-`g_bhy2_accuracy[]`.
+**Problem:** The BHI260AP reports calibration accuracy (0-3) via
+`BHY2_META_EVENT_SENSOR_STATUS` meta-events. The Arduino_BHY2 library
+receives them but discards the value. `SensorQuaternion::accuracy()` returns
+scaled sensor data at byte offset 8, not accuracy.
 
-**Rationale:**
-- The BHI260AP reports calibration accuracy (0-3) via
-  `BHY2_META_EVENT_SENSOR_STATUS` meta-events, NOT in the Rotation Vector
-  data packet at byte offset 8.
-- `SensorQuaternion::accuracy()` returns `data[8:9] * scaleFactor` which
-  is raw sensor data (e.g. 785), not calibration level (0-3).
-- The library's `BoschParser::parseMetaEvent()` receives the correct value
-  but discards it (debug-print only).
-- `bhy2_register_fifo_parse_callback()` requires `bhy2_dev*` which is
-  private in `BoschSensortec`. The `#define private public` hack bypasses this.
-- First attempt (shadowing BoschParser.cpp) caused compilation errors due
-  to include path conflicts.
+**Attempts:**
+1. **Shadow BoschParser.cpp** — compilation errors (include path conflicts)
+2. **`#define private public` + callback table** — required disabling
+   `BHY2_CFG_DELEGATE_FIFO_PARSE_CB_INFO_MGMT` in platformio.ini. Callback
+   fired correctly for sensor 31 (LACC → 3) but sensor 34 (RV) never emits
+   SENSOR_STATUS on the Nicla's BHY2 firmware.
 
-**Trade-off:** The `#define private public` technique is technically undefined
-behavior in C++ (access control is not layout-affecting, but the standard doesn't
-guarantee private members are accessible this way). In practice it works on all
-major compilers (GCC, Clang, ARMCC). Acceptable for a single pointer access.
+**Resolution:** Use a **quaternion magnitude check** (0.8 < |q| < 1.2) as
+sensor-ready gate. A valid rotation quaternion always has magnitude 1.0;
+a dead/uninitialized sensor produces zeros. This is library-independent,
+works immediately, and catches the only real failure mode.
 
-**Location:** `Firmware_implementation/src/bhy2_cal_hook.cpp`
+**Infrastructure kept:** `bhy2_cal_hook.cpp` captures meta-events for
+diagnostics (`Ev:N` in `?` status). If the BHY2 firmware ever reports
+RV calibration, the arming gate is a one-line re-enable.
