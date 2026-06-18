@@ -11,6 +11,9 @@
 #include "Arduino_BHY2.h"
 #include <Nicla_System.h>
 #include <math.h>
+
+// Calibration accuracy from BHY2 meta-events (set in BoschParser.cpp)
+extern volatile uint8_t g_bhy2_accuracy[256];
 #include "led/led.h"
 #include "config.h"
 #include "state_machine/state_machine.h"
@@ -176,17 +179,11 @@ void handle_serial()
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
-            // Self-check: verify quaternion is producing valid data.
-            // BHI260AP accuracy (0-3) is only available via meta-events
-            // which the Arduino_BHY2 library doesn't expose.
-            // Valid quat magnitude = sensor is running.
-            float qx = rotation.x(), qy = rotation.y();
-            float qz = rotation.z(), qw = rotation.w();
-            float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
-            if (mag < 0.5f || mag > 2.0f) {
-                Serial.print("ARM refused: quat mag ");
-                Serial.print(mag, 2);
-                Serial.println(" — sensor not ready");
+            uint8_t cal = g_bhy2_accuracy[34];  // 34 = SENSOR_ID_RV
+            if (cal < 2) {
+                Serial.print("ARM refused: cal ");
+                Serial.print(cal);
+                Serial.println(" < 2 — move in figure-8");
             } else {
                 g_sm.force_state(DeviceState::ARMED);
             }
@@ -211,7 +208,7 @@ void handle_serial()
         Serial.print(" R:"); Serial.print(g_ring.count()); Serial.print("/"); Serial.print(RING_SIZE);
         Serial.print(" B:"); Serial.print((int)(pressure.value()*100)); Serial.print("Pa");
         Serial.print(" Bat:"); Serial.print(nicla::getBatteryVoltagePercentage()); Serial.print("%");
-        Serial.print(" Cal:"); Serial.print((int)(rotation.accuracy() * 1000));  // raw sensor info, not 0-3 acc
+        Serial.print(" Cal:"); Serial.print(g_bhy2_accuracy[34]);  // 34=SENSOR_ID_RV
         Serial.print(" Qi:"); Serial.print(digitalRead(10) ? "no" : "yes");
         Serial.print(" Runs:"); Serial.println(g_run_id);
         return;
@@ -276,7 +273,7 @@ void feed_sensors()
             hdr.format_ver = 1;
             hdr.arm_side = 0;  /* TODO: detect side */
             hdr.baro_temp = (int16_t)(temperature.value() * 10.0f);
-            hdr.cal_accuracy = 0;  // TODO: read via BHY2 meta-event, not quat pkt
+            hdr.cal_accuracy = g_bhy2_accuracy[34];
 
             g_flash.erase_block(g_next_run_addr);
             g_flash.write_page(g_next_run_addr, (const uint8_t*)&hdr, sizeof(hdr));
@@ -444,7 +441,7 @@ void loop()
 
     /* Calibration accuracy every 2s */
     if (now - g_last_cal_ms >= 2000) {
-        char_cal.writeValue((uint8_t)(rotation.accuracy() * 1000));  // raw sensor info, not 0-3 acc
+        char_cal.writeValue(g_bhy2_accuracy[34]);
         g_last_cal_ms = now;
     }
 }
