@@ -174,18 +174,8 @@ void handle_serial()
     switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
-        if (g_sm.state() == DeviceState::IDLE) {
-            // BHY2 scales accuracy by 0.000061035 Q30 factor.
-            // Raw 0-3 becomes 0.0–0.000183. Compare scaled.
-            uint8_t cal = (uint8_t)(rotation.accuracy() * 16384.0f + 0.5f);
-            if (cal < 2) {
-                Serial.print("ARM refused: cal ");
-                Serial.print(cal);
-                Serial.println(" < 2 — move in figure-8");
-            } else {
-                g_sm.force_state(DeviceState::ARMED);
-            }
-        }
+        if (g_sm.state() == DeviceState::IDLE)
+            g_sm.force_state(DeviceState::ARMED);
         break;
     case 'l': g_sm.force_state(DeviceState::LOGGING); break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
@@ -206,7 +196,7 @@ void handle_serial()
         Serial.print(" R:"); Serial.print(g_ring.count()); Serial.print("/"); Serial.print(RING_SIZE);
         Serial.print(" B:"); Serial.print((int)(pressure.value()*100)); Serial.print("Pa");
         Serial.print(" Bat:"); Serial.print(nicla::getBatteryVoltagePercentage()); Serial.print("%");
-        Serial.print(" Cal:"); Serial.print((uint8_t)(rotation.accuracy() * 16384.0f + 0.5f));
+        Serial.print(" Cal:"); Serial.print((int)(rotation.accuracy() * 1000));  // raw sensor info, not 0-3 acc
         Serial.print(" Qi:"); Serial.print(digitalRead(10) ? "no" : "yes");
         Serial.print(" Runs:"); Serial.println(g_run_id);
         return;
@@ -271,7 +261,7 @@ void feed_sensors()
             hdr.format_ver = 1;
             hdr.arm_side = 0;  /* TODO: detect side */
             hdr.baro_temp = (int16_t)(temperature.value() * 10.0f);
-            hdr.cal_accuracy = (uint8_t)(rotation.accuracy() * 16384.0f + 0.5f);
+            hdr.cal_accuracy = 0;  // TODO: read via BHY2 meta-event, not quat pkt
 
             g_flash.erase_block(g_next_run_addr);
             g_flash.write_page(g_next_run_addr, (const uint8_t*)&hdr, sizeof(hdr));
@@ -439,7 +429,7 @@ void loop()
 
     /* Calibration accuracy every 2s */
     if (now - g_last_cal_ms >= 2000) {
-        char_cal.writeValue((uint8_t)(rotation.accuracy() * 16384.0f + 0.5f));
+        char_cal.writeValue((uint8_t)(rotation.accuracy() * 1000));  // raw sensor info, not 0-3 acc
         g_last_cal_ms = now;
     }
 }
