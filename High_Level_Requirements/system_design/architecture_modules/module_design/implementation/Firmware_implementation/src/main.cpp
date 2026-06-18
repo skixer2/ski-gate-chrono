@@ -203,6 +203,7 @@ void handle_serial()
         Serial.print(" B:"); Serial.print((int)(pressure.value()*100)); Serial.print("Pa");
         Serial.print(" Bat:"); Serial.print(nicla::getBatteryVoltagePercentage()); Serial.print("%");
         Serial.print(" Cal:"); Serial.print(g_bhy2_accuracy[34]);
+        Serial.print("("); Serial.print(g_bhy2_accuracy[31]); Serial.print(")");
         Serial.print(" Ev:"); Serial.print(g_meta_event_count);
         Serial.print(" Qi:"); Serial.print(digitalRead(10) ? "no" : "yes");
         Serial.print(" Runs:"); Serial.println(g_run_id);
