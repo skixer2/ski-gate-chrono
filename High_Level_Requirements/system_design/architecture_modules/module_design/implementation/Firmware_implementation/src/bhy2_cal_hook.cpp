@@ -30,25 +30,29 @@ extern "C" {
 
 extern BoschSensortec sensortec;
 volatile uint8_t g_bhy2_accuracy[256] = {0};
+volatile uint8_t g_meta_event_count = 0;
 
 static void sgc_meta_callback(const struct bhy2_fifo_parse_data_info *info, void *ref)
 {
     (void)ref;
+    g_meta_event_count++;
     if (info->data_size < 3) return;
     uint8_t type = info->data_ptr[0];
     if (type == BHY2_META_EVENT_SENSOR_STATUS) {
         uint8_t sensor_id = info->data_ptr[1];
         uint8_t accuracy  = info->data_ptr[2];
         g_bhy2_accuracy[sensor_id] = accuracy;
+        Serial.print("[CAL] sensor ");
+        Serial.print(sensor_id);
+        Serial.print(" accuracy → ");
+        Serial.println(accuracy);
     }
 }
 
 void bhy2_cal_hook_init()
 {
-    // Register our callback BEFORE the library's handler.
-    // bhy2_register_fifo_parse_callback overwrites, so we chain:
-    // our handler stores accuracy, but we don't call the library's
-    // handler. That's OK — we don't need the library's debug prints.
+    Serial.print("[CAL] Hooking BHY2 meta-events... ");
+
     bhy2_register_fifo_parse_callback(
         BHY2_SYS_ID_META_EVENT,
         sgc_meta_callback,
@@ -60,4 +64,6 @@ void bhy2_cal_hook_init()
         sgc_meta_callback,
         nullptr,
         &sensortec._bhy2);
+
+    Serial.println("done");
 }

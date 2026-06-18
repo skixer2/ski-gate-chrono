@@ -14,6 +14,7 @@
 
 // Calibration accuracy from BHY2 meta-events (set by bhy2_cal_hook.cpp)
 extern volatile uint8_t g_bhy2_accuracy[256];
+extern volatile uint8_t g_meta_event_count;
 void bhy2_cal_hook_init();
 #include "led/led.h"
 #include "config.h"
@@ -209,7 +210,8 @@ void handle_serial()
         Serial.print(" R:"); Serial.print(g_ring.count()); Serial.print("/"); Serial.print(RING_SIZE);
         Serial.print(" B:"); Serial.print((int)(pressure.value()*100)); Serial.print("Pa");
         Serial.print(" Bat:"); Serial.print(nicla::getBatteryVoltagePercentage()); Serial.print("%");
-        Serial.print(" Cal:"); Serial.print(g_bhy2_accuracy[34]);  // 34=SENSOR_ID_RV
+        Serial.print(" Cal:"); Serial.print(g_bhy2_accuracy[34]);
+        Serial.print(" Ev:"); Serial.print(g_meta_event_count);
         Serial.print(" Qi:"); Serial.print(digitalRead(10) ? "no" : "yes");
         Serial.print(" Runs:"); Serial.println(g_run_id);
         return;
