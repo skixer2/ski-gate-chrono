@@ -53,7 +53,7 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [x] Calibration accuracy read from BHY2 rotation.accuracy(), pushed to BLE
 
 #### 7d — Integrity #### 7d — Integrity & Completeness 🔄 IN PROGRESS Completeness 🔄 IN PROGRESS (7d-1 done, 4 remaining)
-- [x] 7d-1: **Calibration accuracy gate** ✅ DONE (06-18 17:00) — real 0-3 accuracy via shadowed BoschParser meta-event hook
+- [x] 7d-1: **Calibration accuracy gate** ✅ DONE (06-18 17:10) — bhy2_cal_hook.cpp uses #define private public to access sensortec._bhy2
 - [x] 7d-1b: **Start detector baseline drift** ✅ FIXED (06-18) — detector resets at ring-full, no more delay
 - [ ] 7d-2: **BLE module refactoring** — extract `src/ble/sgc_service.cpp` + `file_transfer.cpp` from main.cpp
 - [ ] 7d-3: **BLE file transfer** — Run List characteristic (`.ABC9`), chunked download protocol, CRC32 validation

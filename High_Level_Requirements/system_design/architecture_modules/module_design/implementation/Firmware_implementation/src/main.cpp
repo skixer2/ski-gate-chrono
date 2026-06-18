@@ -12,8 +12,9 @@
 #include <Nicla_System.h>
 #include <math.h>
 
-// Calibration accuracy from BHY2 meta-events (set in BoschParser.cpp)
+// Calibration accuracy from BHY2 meta-events (set by bhy2_cal_hook.cpp)
 extern volatile uint8_t g_bhy2_accuracy[256];
+void bhy2_cal_hook_init();
 #include "led/led.h"
 #include "config.h"
 #include "state_machine/state_machine.h"
@@ -349,6 +350,9 @@ void setup()
     svc.addCharacteristic(char_cal);
     BLE.addService(svc);
     BLE.setLocalName("SGC"); BLE.setAdvertisedService(svc);
+
+    /* Hook BHY2 meta-events for calibration accuracy */
+    bhy2_cal_hook_init();
 
     /* Start in IDLE */
     g_sm.force_state(DeviceState::IDLE);
