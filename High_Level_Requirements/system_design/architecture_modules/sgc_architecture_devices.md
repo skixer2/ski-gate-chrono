@@ -1039,10 +1039,10 @@ Calibration matrix stored in BHI260AP flash (U2, 2 MB).
 accuracy via `BHY2_META_EVENT_SENSOR_STATUS` meta-events, not in the
 quaternion data packet. The Arduino_BHY2 library's `SensorQuaternion::accuracy()`
 returns the wrong byte (sensor data at offset 8, not the accuracy enum).
-The SGC firmware works around this by shadowing `BoschParser.cpp` from the
-library into `src/`, where the meta-event handler stores the real accuracy
-in `g_bhy2_accuracy[34]` (34 = SENSOR_ID_RV). See
-`Firmware_implementation/src/BoschParser.cpp` for the one-line patch.
+The SGC firmware works around this in `bhy2_cal_hook.cpp`: it uses
+`#define private public` to access `BoschSensortec::_bhy2`, then registers
+a FIFO parse callback for `BHY2_SYS_ID_META_EVENT` that stores the real
+0-3 accuracy in `g_bhy2_accuracy[34]` (34 = SENSOR_ID_RV).
 
 ### From I²C to BHY2 — Migration Notes
 

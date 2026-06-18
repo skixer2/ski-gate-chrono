@@ -255,14 +255,15 @@ ski_gate_chrono/
 
 ---
 
-## AD-010: Shadow BoschParser.cpp for Calibration Accuracy
+## AD-010: Hook BHY2 Meta-Events for Calibration Accuracy
 
 **Date:** 2026-06-18
 **Status:** Accepted
 
-**Decision:** Copy `BoschParser.cpp/.h` from the Arduino_BHY2 library into
-`Firmware_implementation/src/` and apply a one-line patch to capture BHI260AP
-calibration accuracy from BHY2 meta-events.
+**Decision:** Add `bhy2_cal_hook.cpp` using `#define private public` to access
+`BoschSensortec::_bhy2`, then register a FIFO parse callback for
+`BHY2_SYS_ID_META_EVENT` that captures calibration accuracy in
+`g_bhy2_accuracy[]`.
 
 **Rationale:**
 - The BHI260AP reports calibration accuracy (0-3) via
@@ -270,18 +271,16 @@ calibration accuracy from BHY2 meta-events.
   data packet at byte offset 8.
 - `SensorQuaternion::accuracy()` returns `data[8:9] * scaleFactor` which
   is raw sensor data (e.g. 785), not calibration level (0-3).
-- The library's `parseMetaEvent()` receives the correct value but discards
-  it (only prints when debug is enabled).
-- Accessing `bhy2_dev*` to register our own callback requires private
-  library internals.
+- The library's `BoschParser::parseMetaEvent()` receives the correct value
+  but discards it (debug-print only).
+- `bhy2_register_fifo_parse_callback()` requires `bhy2_dev*` which is
+  private in `BoschSensortec`. The `#define private public` hack bypasses this.
+- First attempt (shadowing BoschParser.cpp) caused compilation errors due
+  to include path conflicts.
 
-**Implementation:**
-- Copied `BoschParser.cpp` into `src/` (PlatformIO prefers local source).
-- Added `volatile uint8_t g_bhy2_accuracy[256]` global array.
-- In `parseMetaEvent()`, before the `if (_debug)` block:
-  `if (meta_event_type == BHY2_META_EVENT_SENSOR_STATUS) g_bhy2_accuracy[byte1] = byte2;`
-- SGC reads `g_bhy2_accuracy[34]` for sensor ID 34 (SENSOR_ID_RV).
+**Trade-off:** The `#define private public` technique is technically undefined
+behavior in C++ (access control is not layout-affecting, but the standard doesn't
+guarantee private members are accessible this way). In practice it works on all
+major compilers (GCC, Clang, ARMCC). Acceptable for a single pointer access.
 
-**Trade-off:** If Arduino_BHY2 library is updated, the shadowed file must
-be refreshed from the new version and the one-line patch re-applied.
-Acceptable — library updates are rare and the patch is trivial.
+**Location:** `Firmware_implementation/src/bhy2_cal_hook.cpp`
