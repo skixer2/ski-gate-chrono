@@ -38,21 +38,15 @@ static void sgc_meta_callback(const struct bhy2_fifo_parse_data_info *info, void
     g_meta_event_count++;
     if (info->data_size < 3) return;
     uint8_t type = info->data_ptr[0];
+    // SENSOR_STATUS: byte1=sensor_id, byte2=accuracy (0-3)
     if (type == BHY2_META_EVENT_SENSOR_STATUS) {
-        uint8_t sensor_id = info->data_ptr[1];
-        uint8_t accuracy  = info->data_ptr[2];
-        g_bhy2_accuracy[sensor_id] = accuracy;
-        Serial.print("[CAL] sensor ");
-        Serial.print(sensor_id);
-        Serial.print(" accuracy → ");
-        Serial.println(accuracy);
+        g_bhy2_accuracy[info->data_ptr[1]] = info->data_ptr[2];
     }
 }
 
 void bhy2_cal_hook_init()
 {
-    Serial.print("[CAL] Hooking BHY2 meta-events... ");
-
+    // Register our callbacks — no Serial in callback (runs in FIFO IRQ context)
     bhy2_register_fifo_parse_callback(
         BHY2_SYS_ID_META_EVENT,
         sgc_meta_callback,
@@ -65,5 +59,5 @@ void bhy2_cal_hook_init()
         nullptr,
         &sensortec._bhy2);
 
-    Serial.println("done");
+    Serial.println("[CAL] BHY2 meta-event hook installed");
 }

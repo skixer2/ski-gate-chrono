@@ -180,16 +180,8 @@ void handle_serial()
     switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
-        if (g_sm.state() == DeviceState::IDLE) {
-            uint8_t cal = g_bhy2_accuracy[34];  // 34 = SENSOR_ID_RV
-            if (cal < 2) {
-                Serial.print("ARM refused: cal ");
-                Serial.print(cal);
-                Serial.println(" < 2 — move in figure-8");
-            } else {
-                g_sm.force_state(DeviceState::ARMED);
-            }
-        }
+        if (g_sm.state() == DeviceState::IDLE)
+            g_sm.force_state(DeviceState::ARMED);
         break;
     case 'l': g_sm.force_state(DeviceState::LOGGING); break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
