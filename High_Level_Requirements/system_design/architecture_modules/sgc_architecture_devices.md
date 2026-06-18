@@ -1035,6 +1035,15 @@ The BHI260AP self-calibrates through the BHY2 library. Accuracy levels 0–3:
 Figure-8 calibration motion for ~10 seconds reaches accuracy ≥ 2.
 Calibration matrix stored in BHI260AP flash (U2, 2 MB).
 
+⚠️ **Accuracy access note (2026-06-18):** The BHI260AP reports calibration
+accuracy via `BHY2_META_EVENT_SENSOR_STATUS` meta-events, not in the
+quaternion data packet. The Arduino_BHY2 library's `SensorQuaternion::accuracy()`
+returns the wrong byte (sensor data at offset 8, not the accuracy enum).
+The SGC firmware works around this by shadowing `BoschParser.cpp` from the
+library into `src/`, where the meta-event handler stores the real accuracy
+in `g_bhy2_accuracy[34]` (34 = SENSOR_ID_RV). See
+`Firmware_implementation/src/BoschParser.cpp` for the one-line patch.
+
 ### From I²C to BHY2 — Migration Notes
 
 The v1 firmware used direct I²C reads from BHI260AP (0x28) and BMP390 (0x77).

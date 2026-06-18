@@ -252,3 +252,36 @@ ski_gate_chrono/
                     │       ├── sgc_custom.kicad_sym
                     │       └── sgc_pcb_netlist.md
                     └── Phone_app_prototype/       ← (empty, pending)
+
+---
+
+## AD-010: Shadow BoschParser.cpp for Calibration Accuracy
+
+**Date:** 2026-06-18
+**Status:** Accepted
+
+**Decision:** Copy `BoschParser.cpp/.h` from the Arduino_BHY2 library into
+`Firmware_implementation/src/` and apply a one-line patch to capture BHI260AP
+calibration accuracy from BHY2 meta-events.
+
+**Rationale:**
+- The BHI260AP reports calibration accuracy (0-3) via
+  `BHY2_META_EVENT_SENSOR_STATUS` meta-events, NOT in the Rotation Vector
+  data packet at byte offset 8.
+- `SensorQuaternion::accuracy()` returns `data[8:9] * scaleFactor` which
+  is raw sensor data (e.g. 785), not calibration level (0-3).
+- The library's `parseMetaEvent()` receives the correct value but discards
+  it (only prints when debug is enabled).
+- Accessing `bhy2_dev*` to register our own callback requires private
+  library internals.
+
+**Implementation:**
+- Copied `BoschParser.cpp` into `src/` (PlatformIO prefers local source).
+- Added `volatile uint8_t g_bhy2_accuracy[256]` global array.
+- In `parseMetaEvent()`, before the `if (_debug)` block:
+  `if (meta_event_type == BHY2_META_EVENT_SENSOR_STATUS) g_bhy2_accuracy[byte1] = byte2;`
+- SGC reads `g_bhy2_accuracy[34]` for sensor ID 34 (SENSOR_ID_RV).
+
+**Trade-off:** If Arduino_BHY2 library is updated, the shadowed file must
+be refreshed from the new version and the one-line patch re-applied.
+Acceptable — library updates are rare and the patch is trivial.

@@ -1,12 +1,22 @@
-#include "BoschParser.h"
-#include "BoschSensortec.h"
-#include "sensors/SensorID.h"
-
-Stream* BoschParser::_debug = NULL;
-
-// Global calibration accuracy array — updated on SENSOR_STATUS meta events.
-// Index = sensor_id, value = 0-3 accuracy level.
-volatile uint8_t g_bhy2_accuracy[256] = {0};
+/**
+ * @file    BoschParser.cpp
+ * @brief   SHADOWED from Arduino_BHY2 library — captures calibration accuracy.
+ *
+ * ORIGINAL: .pio/libdeps/nicla/Arduino_BHY2/src/BoschParser.cpp
+ *
+ * WHY SHADOWED: The library receives BHY2_META_EVENT_SENSOR_STATUS events
+ *   from the BHI260AP but only prints them to debug — the accuracy value
+ *   (0-3 per sensor) is discarded. We need it for the SGC arming gate (P05).
+ *
+ * CHANGE (line ~90): Added `g_bhy2_accuracy[byte1] = byte2;` outside the
+ *   `if (_debug)` block, so accuracy is ALWAYS captured regardless of debug
+ *   mode. byte1 = sensor_id, byte2 = accuracy (0=unreliable, 3=high).
+ *
+ * SGC reads via: extern volatile uint8_t g_bhy2_accuracy[256];
+ *   Index 34 = SENSOR_ID_RV (Rotation Vector).
+ *
+ * If the Arduino_BHY2 library is updated, check this file for conflicts.
+ */
 
 void BoschParser::debug(Stream &stream)
 {
