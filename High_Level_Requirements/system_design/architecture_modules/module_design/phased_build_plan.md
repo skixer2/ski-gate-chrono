@@ -53,7 +53,8 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [x] Calibration accuracy read from BHY2 rotation.accuracy(), pushed to BLE
 
 #### 7d — Integrity #### 7d — Integrity & Completeness 🔄 IN PROGRESS Completeness 🔄 IN PROGRESS (7d-1 done, 4 remaining)
-- [x] 7d-1: **Calibration gate** ✅ DONE (06-18) — refuse arming when BHI260AP accuracy < 2 — refuse arming when BHI260AP accuracy < 2 (P05)
+- [x] 7d-1: **Calibration gate** ✅ DONE (06-18 16:15) — accuracy unscaling fix
+- [x] 7d-1b: **Start detector** — only feed after ring full, fix baseline drift (06-18) — refuse arming when BHI260AP accuracy < 2 — refuse arming when BHI260AP accuracy < 2 (P05)
 - [ ] 7d-2: **BLE module refactoring** — extract `src/ble/sgc_service.cpp` + `file_transfer.cpp` from main.cpp
 - [ ] 7d-3: **BLE file transfer** — Run List characteristic (`.ABC9`), chunked download protocol, CRC32 validation
 - [ ] 7d-4: **CRC32 on run data** — append CRC32 at run close, validate on phone download
