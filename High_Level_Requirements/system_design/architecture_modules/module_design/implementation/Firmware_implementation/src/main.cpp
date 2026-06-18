@@ -246,19 +246,18 @@ void feed_sensors()
     DeviceState st = g_sm.state();
     if (st == DeviceState::SLEEP) return;
 
-    /* ARMED: write to flash ring */
+    /* ARMED: write to flash ring, detect start */
     if (st == DeviceState::ARMED) {
         if (!g_ring.is_full()) {
             g_ring.write(f);
-            if (g_ring.is_full()) {
+            if (g_ring.is_full())
                 Serial.println("Ring: 500/500 — waiting for start");
-                g_start_det.reset();  // seed baseline when ring is ready
-            }
-        } else {
-            /* Only detect start when ring is full — avoids baseline drift */
-            if (g_start_det.feed(f.baro_pa_div4))
-                g_sm.force_state(DeviceState::LOGGING);
         }
+        // Always check for start — even during ring fill.
+        // Drop mode tracks minimum pressure, so upward movement
+        // before the drop is automatically accounted for.
+        if (g_start_det.feed(f.baro_pa_div4))
+            g_sm.force_state(DeviceState::LOGGING);
         return;
     }
 
