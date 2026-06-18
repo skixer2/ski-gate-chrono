@@ -21,6 +21,7 @@ class _RunListScreenState extends State<RunListScreen> {
 
   @override
   void dispose() {
+    FlutterBluePlus.stopScan();  // clean up if tab switched mid-scan
     _ble.dispose();
     super.dispose();
   }
