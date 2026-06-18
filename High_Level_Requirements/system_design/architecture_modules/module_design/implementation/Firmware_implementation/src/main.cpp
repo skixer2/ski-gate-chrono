@@ -10,6 +10,7 @@
 #include <ArduinoBLE.h>
 #include "Arduino_BHY2.h"
 #include <Nicla_System.h>
+#include <math.h>
 #include "led/led.h"
 #include "config.h"
 #include "state_machine/state_machine.h"
@@ -174,8 +175,22 @@ void handle_serial()
     switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
-        if (g_sm.state() == DeviceState::IDLE)
-            g_sm.force_state(DeviceState::ARMED);
+        if (g_sm.state() == DeviceState::IDLE) {
+            // Self-check: verify quaternion is producing valid data.
+            // BHI260AP accuracy (0-3) is only available via meta-events
+            // which the Arduino_BHY2 library doesn't expose.
+            // Valid quat magnitude = sensor is running.
+            float qx = rotation.x(), qy = rotation.y();
+            float qz = rotation.z(), qw = rotation.w();
+            float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+            if (mag < 0.5f || mag > 2.0f) {
+                Serial.print("ARM refused: quat mag ");
+                Serial.print(mag, 2);
+                Serial.println(" — sensor not ready");
+            } else {
+                g_sm.force_state(DeviceState::ARMED);
+            }
+        }
         break;
     case 'l': g_sm.force_state(DeviceState::LOGGING); break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;

@@ -53,7 +53,7 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [x] Calibration accuracy read from BHY2 rotation.accuracy(), pushed to BLE
 
 #### 7d — Integrity #### 7d — Integrity & Completeness 🔄 IN PROGRESS Completeness 🔄 IN PROGRESS (7d-1 done, 4 remaining)
-- [ ] 7d-1: **Calibration gate** — DEFERRED: rotation.accuracy() reads wrong byte offset on BHI260AP (not 0-3). Needs BHY2 meta-event hook.
+- [x] 7d-1: **Sensor readiness gate** ✅ DONE (06-18) — quaternion magnitude check replaces broken accuracy API. Catches dead sensor, skips calibration quality (not exposed by library).
 - [x] 7d-1b: **Start detector baseline drift** ✅ FIXED (06-18) — detector resets at ring-full, no more delay
 - [ ] 7d-2: **BLE module refactoring** — extract `src/ble/sgc_service.cpp` + `file_transfer.cpp` from main.cpp
 - [ ] 7d-3: **BLE file transfer** — Run List characteristic (`.ABC9`), chunked download protocol, CRC32 validation
