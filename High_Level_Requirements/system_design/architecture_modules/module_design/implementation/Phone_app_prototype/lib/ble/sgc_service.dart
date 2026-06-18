@@ -69,7 +69,7 @@ class SGCService {
     final services = await ble.device!.discoverServices();
     for (final s in services) {
       for (final c in s.characteristics) {
-        if (c.uuid.toString() == uuid) {
+        if (c.uuid.toString().toUpperCase() == uuid.toUpperCase()) {
           final bytes = await c.read();
           return Uint8List.fromList(bytes);
         }
@@ -83,7 +83,7 @@ class SGCService {
     final services = await ble.device!.discoverServices();
     for (final s in services) {
       for (final c in s.characteristics) {
-        if (c.uuid.toString() == uuid) {
+        if (c.uuid.toString().toUpperCase() == uuid.toUpperCase()) {
           await c.write(data, withoutResponse: false);
           return;
         }
