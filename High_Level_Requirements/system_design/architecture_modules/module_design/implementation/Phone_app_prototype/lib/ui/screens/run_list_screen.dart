@@ -17,6 +17,7 @@ class _RunListScreenState extends State<RunListScreen> {
   DeviceConfig? _config;
   int _runCount = 0;
   bool _isConnecting = false;
+  bool _isScanning = false;  // guard against double-tap / rapid scan
 
   @override
   void dispose() {
@@ -25,20 +26,26 @@ class _RunListScreenState extends State<RunListScreen> {
   }
 
   void _scanDevices() async {
+    // Prevent rapid re-scans (Android rejects frequent BLE scans)
+    if (_isScanning) return;
+    _isScanning = true;
+
     // Check BLE adapter before scanning
     final permStatus = await _ble.checkPermissions();
-    if (!mounted) return;
+    if (!mounted) { _isScanning = false; return; }
 
     if (permStatus == BLEPermissionStatus.bluetoothOff) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bluetooth is off. Please turn it on.')),
       );
+      _isScanning = false;
       return;
     }
     if (permStatus == BLEPermissionStatus.error) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bluetooth not available.')),
       );
+      _isScanning = false;
       return;
     }
 
@@ -78,12 +85,18 @@ class _RunListScreenState extends State<RunListScreen> {
           timeout: const Duration(seconds: 15),
         );
 
-        // Auto-stop after timeout
-        Future.delayed(const Duration(seconds: 15), stop);
+        // Auto-stop after timeout, then allow re-scan
+        Future.delayed(const Duration(seconds: 15), () {
+          stop();
+          _isScanning = false;
+        });
 
         return PopScope(
           canPop: true,
-          onPopInvokedWithResult: (didPop, _) => stop(),
+          onPopInvokedWithResult: (didPop, _) {
+            stop();
+            _isScanning = false;
+          },
           child: DraggableScrollableSheet(
           initialChildSize: 0.45,
           minChildSize: 0.25,
