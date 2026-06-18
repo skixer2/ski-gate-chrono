@@ -25,23 +25,19 @@ class _RunListScreenState extends State<RunListScreen> {
   }
 
   void _scanDevices() async {
-    // Check BLE permissions before showing scanner
+    // Check BLE adapter before scanning
     final permStatus = await _ble.checkPermissions();
     if (!mounted) return;
 
-    if (permStatus == BLEPermissionStatus.denied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bluetooth permission required. '
-              'Grant it in Settings → Apps → Ski Gate Chrono → Permissions.'),
-          duration: Duration(seconds: 6),
-        ),
-      );
-      return;
-    }
     if (permStatus == BLEPermissionStatus.bluetoothOff) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bluetooth is off. Please turn it on.')),
+      );
+      return;
+    }
+    if (permStatus == BLEPermissionStatus.error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bluetooth not available.')),
       );
       return;
     }

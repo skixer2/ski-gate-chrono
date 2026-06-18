@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-/// BLE permissions check result.
+/// BLE adapter status check result.
 enum BLEPermissionStatus {
-  granted,
-  denied,
+  ready,
   bluetoothOff,
-  unsupported,
+  error,
 }
 
 class BLEManager {
@@ -19,22 +18,18 @@ class BLEManager {
   bool get isConnected => _connected;
   int get mtu => _mtu;
 
-  /// Check and request BLE permissions + Bluetooth status.
-  /// Returns [BLEPermissionStatus.granted] if ready to scan.
+  /// Check Bluetooth adapter status.
+  /// flutter_blue_plus v1.x handles Android permissions internally.
   Future<BLEPermissionStatus> checkPermissions() async {
-    // Check adapter availability
-    final adapter = FlutterBluePlus.adapterStateNow;
-    if (adapter == BluetoothAdapterState.unauthorized) {
-      return BLEPermissionStatus.denied;
+    try {
+      final state = await FlutterBluePlus.adapterState.first;
+      if (state == BluetoothAdapterState.off) {
+        return BLEPermissionStatus.bluetoothOff;
+      }
+      return BLEPermissionStatus.ready;
+    } catch (_) {
+      return BLEPermissionStatus.error;
     }
-    if (adapter == BluetoothAdapterState.off) {
-      return BLEPermissionStatus.bluetoothOff;
-    }
-    if (adapter == BluetoothAdapterState.unsupported) {
-      return BLEPermissionStatus.unsupported;
-    }
-    // adapterStateNow == on means permissions are granted on Android 12+
-    return BLEPermissionStatus.granted;
   }
 
   Future<List<ScanResult>> scan() async {
