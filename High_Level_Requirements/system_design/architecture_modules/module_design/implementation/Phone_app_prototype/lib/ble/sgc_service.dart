@@ -46,8 +46,7 @@ class SGCService {
 
   Future<int> getRunCount() async {
     final bytes = await _readChar(charRunCount);
-    return bytes.isNotEmpty && bytes.length >= 2
-        ? (bytes[0] | (bytes[1] << 8)) : 0;
+    return bytes.isNotEmpty ? bytes[0] : 0;
   }
 
   Future<Uint8List> downloadRun(int runId) async {
