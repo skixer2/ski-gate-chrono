@@ -78,7 +78,6 @@ static uint32_t g_frame_count = 0;
 static uint32_t g_next_run_addr = RUN_FLASH_START;
 static uint16_t g_run_id = 0;
 static bool     g_ring_drained = false;
-static RawFrame g_prev_raw;
 
 /* ================================================================== */
 /*  Timing                                                              */
@@ -276,27 +275,24 @@ void feed_sensors()
             g_flash.write_page(g_next_run_addr, (const uint8_t*)&hdr, sizeof(hdr));
             g_flash_addr = g_next_run_addr + sizeof(hdr);
             g_frame_count = 0;
-            memset(&g_prev_raw, 0, sizeof(g_prev_raw));
 
             uint16_t pre_count = g_ring.count();
             for (uint16_t i = 0; i < pre_count; i++) {
                 RawFrame rf = g_ring.read();
-                CompressedFrame cf = g_packer.encode(rf, g_prev_raw, millis());
-                g_flash.write_page(g_flash_addr, (const uint8_t*)&cf, sizeof(cf));
-                g_flash_addr += sizeof(cf); g_frame_count++;
-                g_prev_raw = rf;
+                uint8_t sz = g_packer.encode(rf, millis());
+                g_flash.write_page(g_flash_addr, g_packer.buffer(), sz);
+                g_flash_addr += sz; g_frame_count++;
             }
             g_ring_drained = true;
             Serial.print("Run #"); Serial.print(g_run_id + 1);
             Serial.print(" header + "); Serial.print(pre_count);
             Serial.println(" pre-trigger frames");
         } else {
-            CompressedFrame cf = g_packer.encode(f, g_prev_raw, millis());
+            uint8_t sz = g_packer.encode(f, millis());
             if ((g_flash_addr % g_flash.block_size()) == 0)
                 g_flash.erase_block(g_flash_addr);
-            g_flash.write_page(g_flash_addr, (const uint8_t*)&cf, sizeof(cf));
-            g_flash_addr += sizeof(cf); g_frame_count++;
-            g_prev_raw = f;
+            g_flash.write_page(g_flash_addr, g_packer.buffer(), sz);
+            g_flash_addr += sz; g_frame_count++;
         }
 
         if (g_end_det.feed(f.la_x, f.la_y, f.la_z)) {
@@ -388,7 +384,7 @@ void loop()
             RunHeader hdr;
             uint32_t hdr_addr = g_next_run_addr;
             g_flash.read_data(hdr_addr, (uint8_t*)&hdr, sizeof(hdr));
-            hdr.data_size = g_frame_count * sizeof(CompressedFrame);
+            hdr.data_size = g_flash_addr - g_next_run_addr - sizeof(hdr);
             g_flash.write_page(hdr_addr, (const uint8_t*)&hdr, sizeof(hdr));
 
             /* Advance to next run */
