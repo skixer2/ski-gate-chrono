@@ -349,6 +349,7 @@ void setup()
 
     int8_t batt = nicla::getBatteryVoltagePercentage();
     sgc_ble_set_battery(batt >= 0 ? (uint8_t)batt : 0);
+    sgc_ble_set_run_count(g_run_id);
 
     Serial.print("Runs: "); Serial.print(g_run_id);
     Serial.print(" | State: "); Serial.println(g_sm.state_name());
@@ -391,6 +392,7 @@ void loop()
             g_next_run_addr = ((g_flash_addr + 4095) / 4096) * 4096;
             g_run_id++;
             save_run_index();
+            sgc_ble_set_run_count(g_run_id);
 
             Serial.print("Run #"); Serial.print(g_run_id);
             Serial.print(" saved: "); Serial.print(g_frame_count);

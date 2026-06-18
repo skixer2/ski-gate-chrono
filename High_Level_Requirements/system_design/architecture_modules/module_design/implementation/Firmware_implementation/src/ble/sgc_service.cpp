@@ -13,6 +13,7 @@
 static BLEService svc("53470000-0000-1000-8000-00805F9B34FB");
 static BLEByteCharacteristic char_state("5347ABC4-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
 static BLEByteCharacteristic char_battery("5347ABC5-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
+static BLEUnsignedShortCharacteristic char_run_count("5347ABC6-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
 static BLEByteCharacteristic char_transfer("5347ABCD-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
 static BLEByteCharacteristic char_cal("5347ABCE-0000-1000-8000-00805F9B34FB", BLERead | BLENotify);
 
@@ -24,6 +25,7 @@ void sgc_ble_init()
 {
     svc.addCharacteristic(char_state);
     svc.addCharacteristic(char_battery);
+    svc.addCharacteristic(char_run_count);
     svc.addCharacteristic(char_transfer);
     svc.addCharacteristic(char_cal);
     BLE.addService(svc);
@@ -59,6 +61,11 @@ void sgc_ble_set_battery(uint8_t pct)
 void sgc_ble_set_cal(uint8_t cal)
 {
     char_cal.writeValue(cal);
+}
+
+void sgc_ble_set_run_count(uint16_t count)
+{
+    char_run_count.writeValue(count);
 }
 
 void sgc_ble_set_transfer(uint8_t status)
