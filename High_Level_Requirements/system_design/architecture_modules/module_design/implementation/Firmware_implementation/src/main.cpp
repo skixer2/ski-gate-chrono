@@ -186,26 +186,16 @@ void handle_serial()
     case 's': g_sm.force_state(DeviceState::SLEEP); break;
     case 'f': flash_test(); return;
     case 'z': {
-        /* Hardware Wire LDC1612 test — minimal, safe */
-        Serial.print("Wire ping 0x2B: ");
-        Wire.begin();
-        Wire.setClock(100000);
-        Wire.beginTransmission(0x2B);
-        uint8_t err = Wire.endTransmission();
-        Serial.println(err == 0 ? "ACK" : "NACK");
-        if (err == 0) {
-            /* Read DEVICE_ID */
-            Wire.beginTransmission(0x2B);
-            Wire.write(0x7F);
-            if (Wire.endTransmission(false) == 0) {
-                uint8_t n = Wire.requestFrom(0x2B, (uint8_t)2);
-                if (n >= 2) {
-                    uint16_t hi = Wire.read(); uint16_t lo = Wire.read();
-                    uint16_t dev = (hi << 8) | lo;
-                    Serial.print("DEVICE_ID: 0x"); Serial.println(dev, HEX);
-                }
-            }
-        }
+        /* LDC1612 diagnostics via driver */
+        json_begin();
+        json_kv("ev", "ldc_diag");
+        Serial.print(','); json_kv_bool("ok", g_ldc.is_connected());
+        Serial.print(','); json_kv("dev_id", (long)g_ldc.read_device_id());
+        Serial.print(','); json_kv("manuf", (long)g_ldc.read_manufacturer_id());
+        Serial.print(','); json_kv("raw", (long)g_ldc.data());
+        Serial.print(','); json_kv("status", (long)(int)g_ldc.status());
+        Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
+        json_end();
         return;
     }
     case 'y': {
