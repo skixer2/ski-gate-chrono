@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../ble/ble_manager.dart' hide ScanResult;
 import '../../ble/sgc_service.dart';
+import '../../ble/file_transfer.dart';
+import '../../processing/decompressor.dart';
 import '../../models/device_config.dart';
 
 class RunListScreen extends StatefulWidget {
@@ -18,6 +21,7 @@ class _RunListScreenState extends State<RunListScreen> {
   int _runCount = 0;
   bool _isConnecting = false;
   bool _isScanning = false;
+  bool _isDownloading = false;
 
   @override
   void dispose() {
@@ -83,11 +87,22 @@ class _RunListScreenState extends State<RunListScreen> {
       await _ble.connectToDevice(device);
       final sgc = SGCService(_ble);
 
+      // Dump discovered services so we can see what the device actually exposes
+      sgc.debugLogServices();
+
       try {
+        debugPrint('[SGC] syncing time…');
         await sgc.syncTime();
+        debugPrint('[SGC] reading config…');
         _config = await sgc.readConfig();
+        debugPrint('[SGC] config: ${_config?.deviceName} / ${_config?.armSide.label} / ${_config?.discipline.label}');
+        debugPrint('[SGC] reading run count…');
         _runCount = await sgc.getRunCount();
-      } catch (_) {}
+        debugPrint('[SGC] run count = $_runCount');
+      } catch (e, stack) {
+        debugPrint('[SGC] ERROR during setup: $e');
+        debugPrint('[SGC] stack: $stack');
+      }
 
       setState(() {
         _sgc = sgc;
@@ -122,6 +137,77 @@ class _RunListScreenState extends State<RunListScreen> {
       _config = null;
       _runCount = 0;
     });
+  }
+
+  Future<void> _downloadRuns() async {
+    if (_sgc == null || _isDownloading) return;
+    setState(() => _isDownloading = true);
+
+    try {
+      final ft = FileTransfer(_sgc!);
+
+      // Fetch run list from device
+      final runs = await ft.getRunList();
+      debugPrint('[SGC] Run list: ${runs.length} runs');
+
+      if (runs.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No runs on device')),
+          );
+        }
+        return;
+      }
+
+      // Download the latest run (last in list)
+      final latest = runs.last;
+      debugPrint('[SGC] Downloading run #${latest.id} (${latest.size} bytes, side=${latest.side})');
+
+      final result = await ft.download(latest.id);
+
+      if (result.compressedData.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Download failed — empty data')),
+          );
+        }
+        return;
+      }
+
+      // Decompress
+      final decompressor = Decompressor();
+      final decoded = decompressor.decompressFull(result.compressedData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Downloaded run #${latest.id}: '
+              '${decoded.frameCount} frames '
+              '(${decoded.totalDurationSec.toStringAsFixed(1)}s)',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      debugPrint('[SGC] Run header: fmt=${decoded.header.formatVersion} '
+          'side=${decoded.header.armSide} '
+          'cal=${decoded.header.calAccuracy} '
+          'temp=${decoded.header.baroTempC.toStringAsFixed(1)}°C');
+      debugPrint('[SGC] Frames: ${decoded.frameCount}, '
+          'duration=${decoded.totalDurationSec.toStringAsFixed(1)}s');
+    } catch (e, stack) {
+      debugPrint('[SGC] Download error: $e');
+      debugPrint('[SGC] $stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
   }
 
   @override
@@ -197,17 +283,13 @@ class _RunListScreenState extends State<RunListScreen> {
         const SizedBox(height: 16),
         Card(
           child: ListTile(
-            leading: const Icon(Icons.download),
+            leading: _isDownloading
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.download),
             title: const Text('Download Runs'),
-            subtitle: const Text('Transfer runs from device'),
+            subtitle: Text(_isDownloading ? 'Transferring…' : 'Transfer runs from device'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _runCount > 0
-                ? () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('File transfer coming soon')),
-                    );
-                  }
-                : null,
+            onTap: (_runCount > 0 && !_isDownloading) ? _downloadRuns : null,
           ),
         ),
       ],

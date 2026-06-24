@@ -207,7 +207,7 @@ SPI register access needed. Arduino alias: `SPI1` object (MOSI=p4, MISO=p5, SCK=
 
 | Parameter | Value |
 |-----------|-------|
-| Interface | I2C1 (P0.22/P0.23), address 0x2A. INTB → P0.02 |
+| Interface | I2C1 (P0.22/P0.23), address 0x2B (Seeed default; 0x2A if ADDR bridged to GND). INTB → P0.02 |
 | Channels | 2 (one per coil — dual-axis sensing) |
 | Coil | PCB trace inductor, 14 mm diameter, 2-layer spiral |
 | Target | Passive copper/iron foil disc in **opposite arm's** strap |

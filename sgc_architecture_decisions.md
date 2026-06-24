@@ -280,3 +280,24 @@ works immediately, and catches the only real failure mode.
 **Infrastructure kept:** `bhy2_cal_hook.cpp` captures meta-events for
 diagnostics (`Ev:N` in `?` status). If the BHY2 firmware ever reports
 RV calibration, the arming gate is a one-line re-enable.
+
+---
+
+## AD-009: Always-JSON Serial Output (Single Binary)
+
+**Date:** 2026-06-21  
+**Status:** Accepted  
+**Supersedes:** Phase 8 dual-path (`#ifdef TEST_MODE` / `#else`)
+
+**Decision:** JSON-lines is the only serial output format in every build.
+No `#ifdef` on output code. Test commands (`T`,`B`,`Q`,`L`,`Z`) and sensor
+injection are also always compiled in — no `-DTEST_MODE` flag exists.
+
+**Rationale:**
+- Production enclosure is IP67 sealed — USB physically inaccessible
+- Test commands are harmless without serial access; test mode starts OFF
+- Bench test = worst-case timing (115200 baud TX blocks loop); production runs *faster* (UART FIFO drains instantly with nothing connected)
+- Single code path = identical binary = what you test is what ships
+- Removing `#ifdef` eliminates the "production path is never tested" problem
+
+**Full ADR:** `unit_tests/adr_001_always_json.md`

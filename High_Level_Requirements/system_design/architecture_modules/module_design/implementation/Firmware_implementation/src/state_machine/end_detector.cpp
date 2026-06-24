@@ -3,6 +3,7 @@
  */
 
 #include "end_detector.h"
+#include "test_json.h"
 #include <Arduino.h>
 
 EndDetector::EndDetector() : m_quiet_count(0), m_detected(false) {}
@@ -16,7 +17,6 @@ bool EndDetector::feed(int16_t la_x, int16_t la_y, int16_t la_z)
         m_quiet_count++;
         if (m_quiet_count >= QUIET_FRAMES) {
             m_detected = true;
-            Serial.println("END (10s stillness)");
             return true;
         }
     } else { m_quiet_count = 0; }

@@ -1,14 +1,15 @@
 /**
  * @file    state_machine.cpp
  * @brief   SGC state machine implementation.
+ *
+ * Phase 9: Always-JSON output (ADR-001). No #ifdef on output code.
  */
 
 #include "state_machine.h"
 #include "config.h"
+#include "test_json.h"
 #include <Arduino.h>
 
-/* ------------------------------------------------------------------ */
-/*  Constructor                                                        */
 /* ------------------------------------------------------------------ */
 StateMachine::StateMachine()
     : m_state(DeviceState::SLEEP),
@@ -19,11 +20,14 @@ StateMachine::StateMachine()
 }
 
 /* ------------------------------------------------------------------ */
-/*  State names for debug                                              */
-/* ------------------------------------------------------------------ */
 const char* StateMachine::state_name() const
 {
-    switch (m_state) {
+    return state_name_for(m_state);
+}
+
+const char* StateMachine::state_name_for(DeviceState s)
+{
+    switch (s) {
     case DeviceState::SLEEP:    return "SLEEP";
     case DeviceState::IDLE:     return "IDLE";
     case DeviceState::ARMED:    return "ARMED";
@@ -34,43 +38,46 @@ const char* StateMachine::state_name() const
 }
 
 /* ------------------------------------------------------------------ */
-/*  can_arm                                                            */
-/* ------------------------------------------------------------------ */
 bool StateMachine::can_arm() const
 {
     return (m_state == DeviceState::IDLE) || m_allow_rearm;
 }
 
 /* ------------------------------------------------------------------ */
-/*  force_state — for serial-command testing                           */
-/* ------------------------------------------------------------------ */
 void StateMachine::force_state(DeviceState s)
 {
     if (s == m_state) return;
 
-    /* Validate transitions */
     switch (s) {
     case DeviceState::SLEEP:
-        /* Any state can go to SLEEP */
-        break;
     case DeviceState::IDLE:
-        /* Any state can go to IDLE (via timeout or manual) */
         break;
     case DeviceState::ARMED:
         if (!can_arm()) {
-            Serial.println("  (blocked: POST_RUN cooldown active)");
+            json_begin();
+            json_kv("ev", "arm_blocked");
+            Serial.print(','); json_kv("reason", "cooldown");
+            json_end();
             return;
         }
         break;
     case DeviceState::LOGGING:
         if (m_state != DeviceState::ARMED) {
-            Serial.println("  (blocked: must be ARMED first)");
+            json_begin();
+            json_kv("ev", "state_blocked");
+            Serial.print(','); json_kv("reason", "not_armed");
+            Serial.print(','); json_kv("current", state_name());
+            json_end();
             return;
         }
         break;
     case DeviceState::POST_RUN:
         if (m_state != DeviceState::LOGGING) {
-            Serial.println("  (blocked: must be LOGGING first)");
+            json_begin();
+            json_kv("ev", "state_blocked");
+            Serial.print(','); json_kv("reason", "not_logging");
+            Serial.print(','); json_kv("current", state_name());
+            json_end();
             return;
         }
         break;
@@ -79,8 +86,6 @@ void StateMachine::force_state(DeviceState s)
     enter_state(s);
 }
 
-/* ------------------------------------------------------------------ */
-/*  enter_state                                                        */
 /* ------------------------------------------------------------------ */
 void StateMachine::enter_state(DeviceState s)
 {
@@ -95,7 +100,6 @@ void StateMachine::enter_state(DeviceState s)
         m_allow_rearm = true;
         break;
     case DeviceState::ARMED:
-        break;
     case DeviceState::LOGGING:
         break;
     case DeviceState::POST_RUN:
@@ -106,15 +110,11 @@ void StateMachine::enter_state(DeviceState s)
 }
 
 /* ------------------------------------------------------------------ */
-/*  tick — handle timeouts                                             */
-/* ------------------------------------------------------------------ */
 void StateMachine::tick()
 {
     check_timeouts();
 }
 
-/* ------------------------------------------------------------------ */
-/*  check_timeouts                                                     */
 /* ------------------------------------------------------------------ */
 void StateMachine::check_timeouts()
 {
@@ -123,14 +123,22 @@ void StateMachine::check_timeouts()
     switch (m_state) {
     case DeviceState::IDLE:
         if (elapsed >= SLEEP_TIMEOUT_MS) {
-            Serial.println("  (timeout: IDLE → SLEEP)");
+            json_begin();
+            json_kv("ev", "timeout");
+            Serial.print(','); json_kv("from", "IDLE");
+            Serial.print(','); json_kv("to", "SLEEP");
+            json_end();
             enter_state(DeviceState::SLEEP);
         }
         break;
 
     case DeviceState::ARMED:
         if (elapsed >= ARM_TIMEOUT_MS) {
-            Serial.println("  (timeout: ARMED → IDLE)");
+            json_begin();
+            json_kv("ev", "timeout");
+            Serial.print(','); json_kv("from", "ARMED");
+            Serial.print(','); json_kv("to", "IDLE");
+            json_end();
             enter_state(DeviceState::IDLE);
         }
         break;
@@ -138,22 +146,35 @@ void StateMachine::check_timeouts()
     case DeviceState::POST_RUN:
         if (elapsed >= POST_RUN_COOLDOWN_MS && !m_cooldown_notified) {
             m_cooldown_notified = true;
-            Serial.println("  (POST_RUN cooldown complete → IDLE)");
+            json_begin();
+            json_kv("ev", "cooldown");
+            Serial.print(','); json_kv("from", "POST_RUN");
+            Serial.print(','); json_kv("to", "IDLE");
+            json_end();
             enter_state(DeviceState::IDLE);
         }
-        /* POST_RUN also has a sleep timeout like IDLE */
         if (elapsed >= SLEEP_TIMEOUT_MS) {
-            Serial.println("  (timeout: POST_RUN → SLEEP)");
+            json_begin();
+            json_kv("ev", "timeout");
+            Serial.print(','); json_kv("from", "POST_RUN");
+            Serial.print(','); json_kv("to", "SLEEP");
+            json_end();
             enter_state(DeviceState::SLEEP);
         }
         break;
 
     case DeviceState::LOGGING:
-        /* LOGGING runs until explicit stop (or battery low) */
+        if (elapsed >= MAX_LOG_DURATION_MS) {
+            json_begin();
+            json_kv("ev", "timeout");
+            Serial.print(','); json_kv("from", "LOGGING");
+            Serial.print(','); json_kv("to", "POST_RUN");
+            json_end();
+            enter_state(DeviceState::POST_RUN);
+        }
         break;
 
     case DeviceState::SLEEP:
-        /* SLEEP persists until woken */
         break;
     }
 }

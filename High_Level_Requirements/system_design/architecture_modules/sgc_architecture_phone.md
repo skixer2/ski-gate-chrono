@@ -1590,4 +1590,108 @@ bool get mapAvailable => map.gates.any((g) => g.hasGPS);
 
 ---
 
+## 17. Phone Test Strategy (v1.0)
+
+*2026-06-23 — Initial test architecture.*
+*2026-06-24 — Cross-referenced with `implementation/test/MASTER_TEST_PLAN.md` and `implementation/test/TEST_COVERAGE_MATRIX.md`.*
+
+> 📋 **See also:** [MASTER_TEST_PLAN.md](module_design/implementation/MASTER_TEST_PLAN.md) (overall SGC test strategy) · [TEST_COVERAGE_MATRIX.md](module_design/implementation/TEST_COVERAGE_MATRIX.md) (all v1 requirements → method, hardware, peripheral, status) · [Phone TEST_SPEC](module_design/unit_tests/phone/TEST_SPEC.md) (phone-specific test spec + requirement coverage)
+
+### Three-Tier Test Pyramid
+
+```
+         ┌──────────────────┐
+         │  ADB Integration │  ← Real phone + real hardware
+         │  (Python harness) │
+         ├──────────────────┤
+         │  Widget / Mock   │  ← Flutter widget_test + mock BLE
+         │  BLE Tests       │
+         ├──────────────────┤
+         │  Pure Dart Unit  │  ← flutter test, zero hardware
+         │  Tests (80%+)    │
+         └──────────────────┘
+```
+
+### Tier 1: Pure Dart Unit Tests (Implemented)
+
+**Location:** `test/processing/`, `test/models/`  
+**Runner:** `flutter test` — zero hardware, runs in CI (GitHub Actions) with no emulator.
+
+| Module | Test file | Covers |
+|---|---|---|
+| Decompressor | `test/processing/decompressor_test.dart` | Header parsing, Type 1/2/3 decoding, delta accumulation, absolute reset, pressure→altitude, edge cases |
+| ImpactDetector | `test/processing/impact_detector_test.dart` | Single impact, multi-impact (6 gates), cooldown, threshold filtering, child/adult multiplier |
+| CrossCorrelator | `test/processing/cross_correlator_test.dart` | ±150ms offset recovery, 0ms alignment, negative offset, short-run guard, reproducibility, ±3s window |
+| GateTimeEstimator | `test/processing/gate_time_estimator_test.dart` | Bronze tier (no course), Gold tier (pressure matching), impact-detected vs estimated, alternating L/R, monotonic timestamps |
+| Vec3 | `test/models/vec3_test.dart` | Addition, subtraction, scalar multiply, dot product, cross product, length, normalization |
+| Run / Models | `test/models/run_test.dart` | SensorFrame, GateTimestamp, Run, CombinedRun, MergedGate, BarometricPoint, enums |
+
+**Test data:** `test/data/synthetic_data.dart` — deterministic generators for decompressor blobs, impact frames, correlated streams, slalom runs. Companion Python script at `scripts/generate_phone_test_data.py` produces identical fixtures for cross-validation.
+
+**Running:**
+```bash
+# Via Python runner (saves structured results to files)
+python scripts/run_phone_tests.py                    # all tests
+python scripts/run_phone_tests.py --filter cross     # filter by name
+python scripts/run_phone_tests.py --regenerate       # regenerate fixtures first
+python scripts/run_phone_tests.py --latest           # show last results
+
+# Direct flutter test (console only, no file output)
+cd Phone_app_prototype
+flutter test                    # all tests
+flutter test test/processing/   # processing only
+flutter test test/models/       # models only
+```
+
+**Results output:** `test/results/YYYY-MM-DD_HHMMSS.json` + `.log` + `latest.json`.
+Structured JSON with per-suite/per-test pass/fail, duration, and error details —
+same pattern as device test reports.
+
+### Tier 2: Widget + Mock BLE Tests (Planned)
+
+- Mock `flutter_blue_plus` to simulate device discovery, connection, file transfer
+- Widget tests for gate table L/R alignment, graph rendering, banana flags
+- Run with `flutter test` — no phone needed (uses Flutter's test widget environment)
+
+### Tier 3: Python + ADB Integration Tests (Planned)
+
+**Architecture:**
+```
+Python harness (ADB) → Android Phone + SGC App → BLE → Nicla Sense ME (×2)
+```
+
+**Equivalent to firmware test harness:** Python sends ADB commands (`adb shell input tap`, `adb shell am start`, `adb logcat`) to control the phone, just like the firmware harness uses PySerial. App exposes a debug HTTP endpoint (`localhost:9876`, via `adb forward`) for structured state access — equivalent to firmware's `T`/`B`/`Q`/`L`/`Z` test commands.
+
+### Test Data Generation
+
+All test data is deterministic — same seed → same output. Regeneration script:
+
+```bash
+# Phone test data (JSON + binary fixtures)
+python scripts/generate_phone_test_data.py
+
+# Device mock replay (for sgc_mock_runner.py)
+python unit_tests/sgc_mock_runner.py --replay replay_data/sample_full_run.jsonl test_*.py
+```
+
+### CI Pipeline (Planned)
+
+```yaml
+# .github/workflows/sgc_phone_test.yml
+name: SGC Phone Tests
+on: [push, pull_request]
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.0'
+      - run: flutter test
+        working-directory: Phone_app_prototype
+```
+
+---
+
 *Next: sgc_architecture_hardware.md — PCB stackup, component placement, antenna keepout zones, enclosure mechanical details, assembly instructions.*

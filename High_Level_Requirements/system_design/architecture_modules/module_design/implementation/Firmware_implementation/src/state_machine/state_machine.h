@@ -38,6 +38,7 @@ public:
     uint32_t    state_entered_ms() const { return m_state_entered_ms; }
     bool        can_arm() const;
     const char* state_name() const;
+    static const char* state_name_for(DeviceState s);
 
 private:
     void enter_state(DeviceState s);

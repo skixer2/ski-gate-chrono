@@ -58,6 +58,4 @@ void bhy2_cal_hook_init()
         sgc_meta_callback,
         nullptr,
         &sensortec._bhy2);
-
-    Serial.println("[CAL] BHY2 meta-event hook installed");
 }

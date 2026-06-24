@@ -14,9 +14,11 @@ class BLEManager {
   BluetoothDevice? _device;
   bool _connected = false;
   int _mtu = 23;
+  List<BluetoothService>? _services;
 
   bool get isConnected => _connected;
   int get mtu => _mtu;
+  List<BluetoothService>? get services => _services;
 
   /// Check Bluetooth adapter status.
   /// flutter_blue_plus v1.x handles Android permissions internally.
@@ -50,24 +52,30 @@ class BLEManager {
     return results;
   }
 
-  Future<void> connect(String deviceId) async {
+  Future<List<BluetoothService>> connect(String deviceId) async {
     _device = BluetoothDevice(remoteId: DeviceIdentifier(deviceId));
     await _device!.connect(autoConnect: false);
     _mtu = await _device!.requestMtu(247);
+    _services = await _device!.discoverServices();
     _connected = true;
+    return _services!;
   }
 
   /// Connect directly to a device from scan results (preferred).
-  Future<void> connectToDevice(BluetoothDevice device) async {
+  /// Discovers services once and caches them for all subsequent reads/writes.
+  Future<List<BluetoothService>> connectToDevice(BluetoothDevice device) async {
     _device = device;
     await _device!.connect(autoConnect: false);
     _mtu = await _device!.requestMtu(247);
+    _services = await _device!.discoverServices();
     _connected = true;
+    return _services!;
   }
 
   Future<void> disconnect() async {
     await _device?.disconnect();
     _connected = false;
+    _services = null;
   }
 
   BluetoothDevice? get device => _device;
