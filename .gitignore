@@ -31,3 +31,12 @@ Thumbs.db
 # Generated
 *.log
 *.tmp
+
+# Flutter generated
+.flutter-plugins
+.flutter-plugins-dependencies
+android/local.properties
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
+# Test results (runtime artifacts)
+**/test/results/
