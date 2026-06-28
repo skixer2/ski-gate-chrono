@@ -33,70 +33,74 @@ Uint8List buildRunHeader({
 }
 
 /// Encode a single frame as a Type 1 (4-bit deltas, 4-byte payload).
-Uint8List encodeType1Frame(int deltaMs, int baroPaDiv4, List<int> deltas7) {
-  final buf = ByteData(10);
+/// v2.4: Header 2 bytes (was 4). Baro is last nibble of payload (Pa/2).
+/// Total: 6 bytes (was 8).
+Uint8List encodeType1Frame(int deltaMs, int baroPaDiv2, List<int> deltas7, {int baroDelta = 0}) {
+  final buf = ByteData(6);
   final pktType = 0; // Type 1
   final word0 = (pktType << 14) | (deltaMs & 0x03FF);
   buf.setUint16(0, word0, Endian.little);
-  buf.setUint16(2, baroPaDiv4 & 0xFFFF, Endian.little);
 
-  // Pack 7 × 4-bit deltas into 4 bytes (last nibble unused)
-  buf.setUint8(4, ((deltas7[0] & 0x0F) << 4) | (deltas7[1] & 0x0F));
-  buf.setUint8(5, ((deltas7[2] & 0x0F) << 4) | (deltas7[3] & 0x0F));
-  buf.setUint8(6, ((deltas7[4] & 0x0F) << 4) | (deltas7[5] & 0x0F));
-  buf.setUint8(7, ((deltas7[6] & 0x0F) << 4)); // last nibble pad
-  buf.setUint16(8, 0, Endian.little);
-  return buf.buffer.asUint8List().sublist(0, 8); // 8 bytes: 4 header + 4 payload
+  // Pack 8 × 4-bit deltas into 4 bytes (7 IMU + 1 baro)
+  buf.setUint8(2, ((deltas7[0] & 0x0F) << 4) | (deltas7[1] & 0x0F));
+  buf.setUint8(3, ((deltas7[2] & 0x0F) << 4) | (deltas7[3] & 0x0F));
+  buf.setUint8(4, ((deltas7[4] & 0x0F) << 4) | (deltas7[5] & 0x0F));
+  buf.setUint8(5, ((deltas7[6] & 0x0F) << 4) | (baroDelta & 0x0F));
+  return buf.buffer.asUint8List();
 }
 
-/// Encode a single frame as Type 2 (8-bit deltas, 7-byte payload).
-Uint8List encodeType2Frame(int deltaMs, int baroPaDiv4, List<int> deltas7) {
-  final buf = ByteData(11);
+/// Encode a single frame as Type 2 (8-bit deltas, 8-byte payload).
+/// v2.4: Header 2 bytes. 8th byte is baro_delta (int8, Pa/2 steps).
+/// Total: 10 bytes (was 11).
+Uint8List encodeType2Frame(int deltaMs, int baroPaDiv2, List<int> deltas7, {int baroDelta = 0}) {
+  final buf = ByteData(10);
   final pktType = 1;
   final word0 = (pktType << 14) | (deltaMs & 0x03FF);
   buf.setUint16(0, word0, Endian.little);
-  buf.setUint16(2, baroPaDiv4 & 0xFFFF, Endian.little);
   for (int i = 0; i < 7; i++) {
-    buf.setInt8(4 + i, deltas7[i]);
+    buf.setInt8(2 + i, deltas7[i]);
   }
-  return buf.buffer.asUint8List().sublist(0, 11); // 4 header + 7 payload
+  buf.setInt8(9, baroDelta);
+  return buf.buffer.asUint8List();
 }
 
-/// Encode a single frame as Type 3 (absolute 16-bit values, 14-byte payload).
-Uint8List encodeType3Frame(int deltaMs, int baroPaDiv4, List<int> abs7) {
+/// Encode a single frame as Type 3 (absolute values, 16-byte payload).
+/// v2.4: Header 2 bytes. Last 2 bytes are baro_pa_div2 (uint16, Pa/2).
+/// Total: 18 bytes (unchanged).
+Uint8List encodeType3Frame(int deltaMs, int baroPaDiv2, List<int> abs7) {
   final buf = ByteData(18);
-  final pktType = 2; // Type 3 = absolute (decompressor checks pktType == 2)
+  final pktType = 2;
   final word0 = (pktType << 14) | (deltaMs & 0x03FF);
   buf.setUint16(0, word0, Endian.little);
-  buf.setUint16(2, baroPaDiv4 & 0xFFFF, Endian.little);
   for (int i = 0; i < 7; i++) {
-    buf.setInt16(4 + i * 2, abs7[i], Endian.little);
+    buf.setInt16(2 + i * 2, abs7[i], Endian.little);
   }
-  return buf.buffer.asUint8List().sublist(0, 18); // 4 header + 14 payload
+  buf.setUint16(16, baroPaDiv2, Endian.little);
+  return buf.buffer.asUint8List();
 }
 
 /// Build a complete compressed run blob: header + N frames.
 Uint8List buildCompressedRun({
   required List<int> frameTypes,       // 1, 2, or 3 for each frame
   required List<int> deltaMsList,
-  required List<int> baroPaDiv4List,
+  required List<int> baroPaDiv2List,
   required List<List<int>> payloadList, // 7 values per frame
 }) {
   final header = buildRunHeader(
-    compressedSize: frameTypes.length * 11, // rough
+    compressedSize: frameTypes.length * 10, // rough (avg ~8 B/frame)
   );
   final builder = BytesBuilder();
   builder.add(header);
   for (int i = 0; i < frameTypes.length; i++) {
     switch (frameTypes[i]) {
       case 2:
-        builder.add(encodeType2Frame(deltaMsList[i], baroPaDiv4List[i], payloadList[i]));
+        builder.add(encodeType2Frame(deltaMsList[i], baroPaDiv2List[i], payloadList[i]));
         break;
       case 3:
-        builder.add(encodeType3Frame(deltaMsList[i], baroPaDiv4List[i], payloadList[i]));
+        builder.add(encodeType3Frame(deltaMsList[i], baroPaDiv2List[i], payloadList[i]));
         break;
       default:
-        builder.add(encodeType1Frame(deltaMsList[i], baroPaDiv4List[i], payloadList[i]));
+        builder.add(encodeType1Frame(deltaMsList[i], baroPaDiv2List[i], payloadList[i]));
         break;
     }
   }
@@ -111,7 +115,7 @@ Uint8List buildCompressedRun({
 Uint8List get mixedTypeRun {
   final types = [1, 1, 1, 2, 2, 2, 3, 1, 2, 1];
   final deltas = List.generate(10, (_) => 10); // 10ms each
-  final baros = List.generate(10, (_) => 25000); // ~100000 Pa / 4
+  final baros = List.generate(10, (_) => 50000); // ~100000 Pa / 2
   final payloads = <List<int>>[
     [0, 0, 0, 0, 0, 0, 0],
     [1, 0, -1, 0, 0, 0, 0],  // small drift
@@ -126,7 +130,7 @@ Uint8List get mixedTypeRun {
   ];
   return buildCompressedRun(
     frameTypes: types, deltaMsList: deltas,
-    baroPaDiv4List: baros, payloadList: payloads,
+    baroPaDiv2List: baros, payloadList: payloads,
   );
 }
 
@@ -136,11 +140,11 @@ Uint8List get steadyDescentRun {
   final types = List.filled(n, 2);
   final deltas = List.filled(n, 10);
   // 100000 Pa → 98000 Pa over 100 frames (~200 Pa drop = ~16.7m)
-  final baros = List.generate(n, (i) => 25000 - (i * 2));
+  final baros = List.generate(n, (i) => 50000 - (i));
   final payloads = List.generate(n, (_) => [0, 0, 0, 0, 0, 0, 0]);
   return buildCompressedRun(
     frameTypes: types, deltaMsList: deltas,
-    baroPaDiv4List: baros, payloadList: payloads,
+    baroPaDiv2List: baros, payloadList: payloads,
   );
 }
 

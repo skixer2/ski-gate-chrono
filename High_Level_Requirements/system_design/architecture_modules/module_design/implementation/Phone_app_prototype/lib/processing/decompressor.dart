@@ -66,6 +66,9 @@ class Decompressor {
   }
 
   /// Decompress frame data starting at offset 16 (after header).
+  /// v2.4 (Phase 11): Baro is now delta-encoded in the payload,
+  /// NOT in the header.  Header is 2 bytes (was 4).
+  /// Baro scaling: Pa/2 (was Pa/4).
   List<SensorFrame> decompress(Uint8List compressed) {
     final frames = <SensorFrame>[];
     if (compressed.length < 16) return frames;
@@ -73,17 +76,18 @@ class Decompressor {
     int offset = 16; // skip 16-byte run header
     double qW = 0, qX = 0, qY = 0, qZ = 0;
     double laX = 0, laY = 0, laZ = 0;
+    int baroPaDiv2 = 0;  // Phase 11: cumulative baro accumulator (Pa/2)
     int accMs = 0;
 
-    while (offset + 4 <= compressed.length) {
+    while (offset + 2 <= compressed.length) {
+      // Header: 2 bytes (was 4 in v2.3)
       final deltaMs = compressed[offset] | (compressed[offset + 1] << 8);
-      final baroRaw = compressed[offset + 2] | (compressed[offset + 3] << 8);
       final pktType = (deltaMs >> 14) & 0x03;
-      offset += 4;
+      offset += 2;
 
       if (pktType == 2) {
-        // Type 3: absolute 16-bit values (14 bytes)
-        if (offset + 14 > compressed.length) break;
+        // Type 3: 7×int16 IMU + 1×uint16 baro = 16 bytes
+        if (offset + 16 > compressed.length) break;
         qW = _i16(compressed, offset).toDouble();
         qX = _i16(compressed, offset + 2).toDouble();
         qY = _i16(compressed, offset + 4).toDouble();
@@ -91,10 +95,11 @@ class Decompressor {
         laX = _i16(compressed, offset + 8).toDouble();
         laY = _i16(compressed, offset + 10).toDouble();
         laZ = _i16(compressed, offset + 12).toDouble();
-        offset += 14;
+        baroPaDiv2 = _u16(compressed, offset + 14);
+        offset += 16;
       } else if (pktType == 1) {
-        // Type 2: 8-bit signed deltas (7 bytes)
-        if (offset + 7 > compressed.length) break;
+        // Type 2: 7×int8 IMU deltas + 1×int8 baro_delta = 8 bytes
+        if (offset + 8 > compressed.length) break;
         qW += compressed[offset].toSigned(8).toDouble();
         qX += compressed[offset + 1].toSigned(8).toDouble();
         qY += compressed[offset + 2].toSigned(8).toDouble();
@@ -102,9 +107,10 @@ class Decompressor {
         laX += compressed[offset + 4].toSigned(8).toDouble();
         laY += compressed[offset + 5].toSigned(8).toDouble();
         laZ += compressed[offset + 6].toSigned(8).toDouble();
-        offset += 7;
+        baroPaDiv2 += compressed[offset + 7].toSigned(8);
+        offset += 8;
       } else {
-        // Type 1: 4-bit signed deltas (4 bytes, 3.5 used)
+        // Type 1: 8×int4 (7 IMU deltas + 1 baro_delta) = 4 bytes
         if (offset + 4 > compressed.length) break;
         final b0 = compressed[offset], b1 = compressed[offset + 1];
         final b2 = compressed[offset + 2], b3 = compressed[offset + 3];
@@ -115,11 +121,12 @@ class Decompressor {
         laX += _signExt4(b2 >> 4).toDouble();
         laY += _signExt4(b2 & 0x0F).toDouble();
         laZ += _signExt4(b3 >> 4).toDouble();
+        baroPaDiv2 += _signExt4(b3 & 0x0F);
         offset += 4;
       }
 
       accMs += (deltaMs & 0x03FF);
-      final baroPa = (baroRaw & 0xFFFF) * 4.0;
+      final baroPa = baroPaDiv2 * 2.0;  // Pa/2 → Pa
 
       frames.add(SensorFrame(
         msFromStart: accMs,
@@ -153,6 +160,9 @@ class Decompressor {
 
   static int _i16(Uint8List buf, int off) =>
       (buf[off] | (buf[off + 1] << 8)).toSigned(16);
+
+  static int _u16(Uint8List buf, int off) =>
+      buf[off] | (buf[off + 1] << 8);
 
   static int _crc32(List<int> data) {
     int crc = 0xFFFFFFFF;

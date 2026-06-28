@@ -37,24 +37,24 @@ void main() {
 
   group('Decompressor.decompress — Type 1 (4-bit deltas)', () {
     test('decodes a single Type 1 frame', () {
-      // Frame: deltaMs=10, baro=25000 (100kPa/4), all-zero deltas
-      final frame1 = encodeType1Frame(10, 25000, [0, 0, 0, 0, 0, 0, 0]);
+      // Frame: deltaMs=10, baro=50000 (100kPa/2), all-zero deltas
+      final frame1 = encodeType1Frame(10, 50000, [0, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...frame1]);
 
       final frames = Decompressor().decompress(data);
       expect(frames.length, equals(1));
       expect(frames[0].msFromStart, equals(10));
-      expect(frames[0].baroPressurePa, closeTo(100000.0, 1.0));
+      expect(frames[0].baroPressurePa, closeTo(100000.0, 1.0)); // 50000*2
       expect(frames[0].qW, closeTo(0.0, 0.01));
     });
 
     test('accumulates 4-bit deltas across frames', () {
       // Frame 1: qW=+2, qX=0, qY=0, qZ=0
-      final f1 = encodeType1Frame(10, 25000, [2, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType1Frame(10, 50000, [2, 0, 0, 0, 0, 0, 0]);
       // Frame 2: qW=+1, qX=+3, qY=-2 (4-bit signed), qZ=0
-      final f2 = encodeType1Frame(10, 25000, [1, 3, -2, 0, 0, 0, 0]);
-      final f3 = encodeType1Frame(10, 25000, [0, 0, 0, 0, 0, 0, 0]);
+      final f2 = encodeType1Frame(10, 50000, [1, 3, -2, 0, 0, 0, 0]);
+      final f3 = encodeType1Frame(10, 50000, [0, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1, ...f2, ...f3]);
 
@@ -71,7 +71,7 @@ void main() {
     });
 
     test('sign-extends negative 4-bit values', () {
-      final f1 = encodeType1Frame(10, 25000, [-1, -2, -3, -4, -5, -6, -7]);
+      final f1 = encodeType1Frame(10, 50000, [-1, -2, -3, -4, -5, -6, -7]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1]);
 
@@ -88,8 +88,8 @@ void main() {
 
   group('Decompressor.decompress — Type 2 (8-bit deltas)', () {
     test('decodes Type 2 frames with larger deltas', () {
-      final f1 = encodeType2Frame(10, 25000, [50, -30, 20, -10, 5, -5, 3]);
-      final f2 = encodeType2Frame(10, 25000, [0, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType2Frame(10, 50000, [50, -30, 20, -10, 5, -5, 3]);
+      final f2 = encodeType2Frame(10, 50000, [0, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1, ...f2]);
 
@@ -110,7 +110,7 @@ void main() {
   group('Decompressor.decompress — Type 3 (16-bit absolute)', () {
     test('decodes absolute quaternion + acceleration values', () {
       final absVals = [200, 150, -100, 50, 800, -400, 600];
-      final f1 = encodeType3Frame(10, 25000, absVals);
+      final f1 = encodeType3Frame(10, 50000, absVals);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1]);
 
@@ -127,9 +127,9 @@ void main() {
 
     test('Type 3 resets accumulator (absolute, not delta)', () {
       // Type 2 frame sets qW=50
-      final f1 = encodeType2Frame(10, 25000, [50, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType2Frame(10, 50000, [50, 0, 0, 0, 0, 0, 0]);
       // Type 3 frame sets qW=100 (absolute, not 50+100)
-      final f2 = encodeType3Frame(10, 25000, [100, 0, 0, 0, 0, 0, 0]);
+      final f2 = encodeType3Frame(10, 50000, [100, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1, ...f2]);
 
@@ -163,9 +163,9 @@ void main() {
       expect(frames, isEmpty);
     });
 
-    test('barometric pressure is correctly scaled (×4)', () {
-      final f1 = encodeType1Frame(10, 25331, [0, 0, 0, 0, 0, 0, 0]);
-      // baroRaw=25331, baroPa = 25331*4 = 101324 Pa
+    test('barometric pressure is correctly scaled (×2)', () {
+      final f1 = encodeType1Frame(10, 50662, [0, 0, 0, 0, 0, 0, 0]);
+      // baroPaDiv2=50662, baroPa = 50662*2 = 101324 Pa
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1]);
 
@@ -174,7 +174,7 @@ void main() {
     });
 
     test('altitude is computed from pressure', () {
-      final f1 = encodeType1Frame(10, 25331, [0, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType1Frame(10, 50662, [0, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1]);
 
@@ -184,7 +184,7 @@ void main() {
     });
 
     test('truncated frame at end of buffer', () {
-      final f1 = encodeType3Frame(10, 25000, [100, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType3Frame(10, 50000, [100, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       // Truncate last 5 bytes of the 18-byte Type 3 frame
       final truncated = Uint8List.fromList([
