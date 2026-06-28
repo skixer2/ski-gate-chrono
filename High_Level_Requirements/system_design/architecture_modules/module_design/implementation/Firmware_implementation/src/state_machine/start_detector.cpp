@@ -1,6 +1,7 @@
 /**
  * @file    start_detector.cpp
- * @brief   Start detection (Phase 9 — always-JSON output).
+ * @brief   Start detection: cumulative vertical descent from arming P₀ > 2.5 m.
+ *          Fed at 10 Hz with pressure in Pa.
  */
 
 #include "start_detector.h"
@@ -8,60 +9,40 @@
 #include <Arduino.h>
 
 StartDetector::StartDetector()
-    : m_mode(DetectMode::Drop), m_prev_baro(0), m_base_baro(0),
-      m_descent_count(0), m_seeded(false), m_detected(false)
+    : m_p0(0), m_drop_triggered(false)
+{}
+
+void StartDetector::reset(float p0_pa)
 {
+    m_p0 = p0_pa;
+    m_drop_triggered = false;
 }
 
-void StartDetector::reset()
+bool StartDetector::feed(float pressure_pa)
 {
-    m_prev_baro = m_base_baro = 0;
-    m_descent_count = 0;
-    m_seeded = false;
-    m_detected = false;
-}
+    if (m_drop_triggered) return true;
+    if (pressure_pa <= 0 || m_p0 <= 0) return false;
 
-bool StartDetector::feed(uint16_t baro_pa_div4)
-{
-    if (m_detected) return true;
-    if (baro_pa_div4 == 0) return false;
+    /* Descent = pressure INCREASES (lower altitude = higher pressure). */
+    float drop_m = (pressure_pa - m_p0) / PA_PER_M;
 
-    if (m_mode == DetectMode::Speed) {
-        if (m_prev_baro == 0) { m_prev_baro = baro_pa_div4; return false; }
-        int16_t delta = (int16_t)(baro_pa_div4 - m_prev_baro);
-        m_prev_baro = baro_pa_div4;
-        if (delta > SPEED_DELTA) {
-            m_descent_count++;
-            if (m_descent_count >= SPEED_CONFIRM) {
-                m_detected = true;
-                json_begin();
-                json_kv("ev", "start");
-                Serial.print(','); json_kv("mode", "speed");
-                Serial.print(','); json_kv("delta", (long)delta);
-                json_end();
-                return true;
-            }
-        } else { m_descent_count = 0; }
-    } else {
-        if (!m_seeded) {
-            m_base_baro = baro_pa_div4;
-            m_seeded = true;
-            return false;
-        }
-        if ((int16_t)(baro_pa_div4 - m_base_baro) < 0) {
-            m_base_baro = baro_pa_div4;
-        }
-        int16_t drop = (int16_t)(baro_pa_div4 - m_base_baro);
-        if (drop > DROP_TOTAL) {
-            m_detected = true;
-            float drop_pa = drop * 0.25f;
-            json_begin();
-            json_kv("ev", "start");
-            Serial.print(','); json_kv("mode", "drop");
-            Serial.print(','); json_kv("pa", drop_pa, 1);
-            json_end();
-            return true;
-        }
+    /* ── Diagnostic ── */
+    json_begin();
+    json_kv("ev", "sd");
+    Serial.print(','); json_kv("p0", m_p0, 1);
+    Serial.print(','); json_kv("pa", pressure_pa, 1);
+    Serial.print(','); json_kv("drp", drop_m, 2);
+    json_end();
+
+    if (drop_m > DROP_THRESHOLD_M) {
+        m_drop_triggered = true;
+        json_begin();
+        json_kv("ev", "start");
+        Serial.print(','); json_kv("mode", "drop");
+        Serial.print(','); json_kv("m", drop_m, 1);
+        json_end();
+        return true;
     }
+
     return false;
 }

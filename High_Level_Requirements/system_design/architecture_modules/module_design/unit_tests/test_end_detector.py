@@ -46,26 +46,17 @@ SCENARIOS.append(TestScenario(
             expect_json={"st": "ARMED"}),
         TestStep("Force LOGGING", 'l', 400,
             expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
-        # Poll for log_start (flash drain complete), then drain+breathe before sending commands.
-        TestStep("Wait for log_start (flash drain done)", None, 300,
-            on_response=lambda h, _: (
-                h.wait_for_json_event("log_start", timeout_ms=15000),
-                h.drain_serial(200),
-                True
-            )),
-        # Send L and B with generous timeouts — firmware may still be busy after log_start.
         TestStep("Inject non-zero accel (simulate skiing)", 'L 500 0 0', 500,
-            expect_json={"ev": "cmd", "cmd": "L"},
-            timeout_ms=10000),
+            expect_json={"ev": "cmd", "cmd": "L"}),
         TestStep("Change pressure (descending)", 'B 100900', 300,
-            expect_json={"ev": "cmd", "cmd": "B"},
-            timeout_ms=5000),
+            expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Wait 5s", None, wait_ms=5000),
         TestStep("Should still be LOGGING", '?', 300,
             expect_json={"st": "LOGGING"}),
-        # Device may have auto-transitioned LOGGING→POST_RUN during the wait.
-        # Use poll_state to handle either case gracefully.
-        TestStep("Return to IDLE", None, 200,
-            poll_state='IDLE', timeout_ms=15000),
+        # Reset accel to 1g → end detector should complete → POST_RUN → IDLE
+        TestStep("Reset accel to 1g (stillness)", 'L 0 0 -9810', 300,
+            expect_json={"ev": "cmd", "cmd": "L"}),
+        TestStep("Wait POST_RUN + cooldown → IDLE", None, 200,
+            poll_state='IDLE', timeout_ms=30000),
     ]
 ))

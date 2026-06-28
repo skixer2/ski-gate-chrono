@@ -1,6 +1,6 @@
 """
-Unit test: Start Detector (v2 — JSON protocol)
-    U04 — 2m descent triggers LOGGING
+Unit test: Start Detector (v2.2 — drop-only)
+    U04 — 2.5m descent triggers LOGGING
     U05 — 3m cumulative descent triggers LOGGING
     U06 — No false trigger on flat pressure
 """
@@ -10,9 +10,9 @@ import time
 
 SCENARIOS = []
 
-# ── U04: Descent detection (pressure rise ≈ 2m drop) ─────────────
+# ── U04: Descent detection (pressure rise ≈ 2.5m drop) ─────────────
 SCENARIOS.append(TestScenario(
-    name="U04 — Start detection: 2m descent",
+    name="U04 — Start detection: 2.5m descent",
     setup_commands=['i', 'T'],
     teardown_commands=['i'],
     steps=[
@@ -22,13 +22,12 @@ SCENARIOS.append(TestScenario(
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 600,
             expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
-        # Poll ring_full event instead of fixed 5.6s wait.
         TestStep("Poll for ring_full event", None, 100,
             on_response=lambda h, _: wait_for_ring_full(h)),
-        # 2m descent ≈ +24 Pa: INCREASE pressure
-        TestStep("Simulate 2m descent over 1s",
+        # 2.5m descent ≈ +30 Pa (30/12 = 2.5m > 2.0m threshold)
+        TestStep("Simulate 2.5m descent over 1s",
             None, wait_ms=100,
-            on_response=lambda h, _: inject_pressure_ramp(h, 101325, 101349, 10, 100)),
+            on_response=lambda h, _: inject_pressure_ramp(h, 101325, 101355, 10, 100)),
         TestStep("Wait for LOGGING transition",
             poll_state='LOGGING', timeout_ms=5000),
     ]
@@ -46,7 +45,6 @@ SCENARIOS.append(TestScenario(
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 600,
             expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
-        # Poll ring_full event instead of fixed 5.6s wait.
         TestStep("Poll for ring_full event", None, 100,
             on_response=lambda h, _: wait_for_ring_full(h)),
         # 3m cumulative drop ≈ +36 Pa
@@ -59,13 +57,9 @@ SCENARIOS.append(TestScenario(
 ))
 
 # ── U06: No trigger on flat pressure ─────────────────────────────
-# IMPORTANT: B 101325 BEFORE arming is essential — it syncs the start
-# detector baseline with synthetic pressure.  Without this, the ~21 kPa
-# gap between room pressure (~89 kPa at 1000m altitude) and synthetic
-# (101.3 kPa) looks like a ~1800m descent → immediate false trigger.
 SCENARIOS.append(TestScenario(
     name="U06 — No false trigger on flat pressure",
-    setup_commands=['i', 'T', 'B 101325'],  # B sync in setup guards against stale synthetic P
+    setup_commands=['i', 'T', 'B 101325'],
     teardown_commands=['i'],
     steps=[
         TestStep("Enable test mode (accept either toggle direction)", 'T', 200,
@@ -74,8 +68,6 @@ SCENARIOS.append(TestScenario(
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 600,
             expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
-        # Poll the ring_full event instead of fixed-wait status check.
-        # Ring fills at 100 Hz → 500 samples takes ~5 seconds.
         TestStep("Poll for ring_full event", None, 100,
             on_response=lambda h, _: wait_for_ring_full(h)),
         TestStep("Hold flat for 10s", 'B 101325', 10000),

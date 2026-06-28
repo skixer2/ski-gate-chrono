@@ -15,6 +15,7 @@
 #include "sgc_service.h"
 #include "../state_machine/state_machine.h"
 #include "../storage/spi_flash.h"
+#include "../storage/flash_manager.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
 
@@ -198,11 +199,11 @@ void sgc_ble_set_sensor_status(uint8_t bf) {
 
 void sgc_ble_set_run_count(uint16_t count)
 {
-    extern uint32_t g_oldest_run_age;
+    extern FlashManager g_fm;
+    uint32_t age = g_fm.oldest_run_age();
     uint8_t buf[6];
     buf[0] = (uint8_t)(count & 0xFF);
     buf[1] = (uint8_t)((count >> 8) & 0xFF);
-    uint32_t age = g_oldest_run_age;
     buf[2] = (uint8_t)(age & 0xFF);
     buf[3] = (uint8_t)((age >> 8) & 0xFF);
     buf[4] = (uint8_t)((age >> 16) & 0xFF);

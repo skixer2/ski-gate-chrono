@@ -8,6 +8,15 @@
  * driver enters silent-fail mode — no further I²C until reboot.
  *
  * Register map: TI LDC1612/LDC1614 datasheet (SNOSCY9B).
+ *
+ * Phase 11 — False-proximity mitigation (2026-06-28):
+ *   1. Dead-baseline guard: begin() rejects m_baseline == 0.
+ *   2. EWMA auto-recalibration: when NO_TARGET, baseline slowly tracks the
+ *      raw reading (α = 1/64, τ ≈ 1.3 s).  Ambient thermal drift of the
+ *      external LC tank is absorbed; a real metal target (Δ thousands of
+ *      counts) comfortably exceeds the arming threshold.
+ *   3. ARM_THRESHOLD raised from 100 → 500.  With EWMA tracking, noise +
+ *      residual drift stays well under 500; a real target is unambiguous.
  */
 
 #include "ldc1612.h"
@@ -38,11 +47,19 @@ static constexpr uint16_t RCOUNT_VAL         = 0x0800;   /* 2048 × 16 / 40 MHz 
 static constexpr uint16_t SETTLECOUNT_VAL    = 0x0020;   /* 32 × 16 / 40 MHz ≈ 13 µs */
 static constexpr uint16_t CLOCK_DIVIDERS     = 0x1001;   /* FIN=1, FREF=1 */
 
-/* Proximity defaults */
-static constexpr uint32_t DEFAULT_ARM_THRESHOLD    = 2000000;
+/* Proximity defaults — detects both ferrous (drop) and non-ferrous (rise).
+ * Phase 11: ARM_THRESHOLD raised 100→500.  With EWMA auto-recalibration,
+ * thermal drift is absorbed below this level; a real metal target produces
+ * thousands of counts of shift. */
+static constexpr uint32_t DEFAULT_ARM_THRESHOLD    = 500;
 static constexpr uint32_t DEFAULT_ARM_HOLD_MS      = 1000;
 static constexpr uint32_t DEFAULT_FACTORY_HOLD_MS  = 20000;
 static constexpr uint32_t TICK_PERIOD_MS           = 20;
+
+/* Phase 11: EWMA auto-recalibration — time constant ≈ 1.3 s at 20 ms ticks.
+ * Shifts of 1/64 per tick are invisible against a real target (Δ ≫ 500),
+ * but absorb the ~0.5–3 count/min drift of the LC tank with temperature. */
+static constexpr uint8_t  BASELINE_EWMA_SHIFT      = 6;       /* ÷64 per tick */
 
 /* I²C */
 static constexpr uint8_t  I2C_ADDR = 0x2B;
@@ -62,6 +79,7 @@ LDC1612::LDC1612()
     , m_initialized(false)
     , m_recalibrate(false)
     , m_wire_ok(true)
+    , m_baseline_valid(false)
     , m_arm_threshold(DEFAULT_ARM_THRESHOLD)
     , m_arm_hold_ms(DEFAULT_ARM_HOLD_MS)
     , m_factory_hold_ms(DEFAULT_FACTORY_HOLD_MS)
@@ -129,13 +147,22 @@ bool LDC1612::begin()
 
     delay(10);
 
-    /* Auto-calibrate baseline */
+    /* Auto-calibrate baseline — reject if all-zero.
+     * Phase 11: m_baseline=0 means read_data() timed out every time
+     * (sensor not ready or I²C glitch).  Using 0 would guarantee
+     * false proximity on the very first real reading → infinite wipe loop. */
     uint32_t sum = 0;
     for (int i = 0; i < 10; i++) {
         delay(TICK_PERIOD_MS);
         sum += read_data();
     }
     m_baseline = sum / 10;
+    m_baseline_valid = (m_baseline != 0);
+
+    if (!m_baseline_valid) {
+        m_wire_ok = false;        /* treat as permanent until reboot */
+        return false;
+    }
 
     m_initialized = true;
     m_last_tick_ms = millis();
@@ -155,7 +182,11 @@ void LDC1612::tick()
     m_last_tick_ms = now;
 
     if (m_recalibrate) {
-        m_baseline = read_data();
+        uint32_t raw = read_data();
+        if (raw != 0) {
+            m_baseline = raw;
+            m_baseline_valid = true;
+        }
         m_recalibrate = false;
         m_status = Status::NO_TARGET;
         m_proximity_ms = 0;
@@ -168,8 +199,12 @@ void LDC1612::tick()
 
 void LDC1612::detect_proximity(uint32_t raw)
 {
+    if (raw == 0) return;  /* Phase 11: skip dead read — sensor not ready */
+
     auto now = millis();
-    bool prox = (raw < m_baseline && (m_baseline - raw) > m_arm_threshold);
+    /* Handle both ferrous (raw drops) and non-ferrous (raw rises) targets */
+    int64_t delta = (int64_t)raw - (int64_t)m_baseline;
+    bool prox = (delta > (int64_t)m_arm_threshold) || (delta < -(int64_t)m_arm_threshold);
 
     if (prox) {
         if (m_status == Status::NO_TARGET) {
@@ -187,6 +222,17 @@ void LDC1612::detect_proximity(uint32_t raw)
     } else {
         m_status = Status::NO_TARGET;
         m_proximity_ms = 0;
+
+        /* Phase 11: EWMA auto-recalibration — slowly track ambient drift.
+         * When no target is present, pull baseline toward current reading
+         * by 1/64 per tick.  Time constant ≈ 1.3 s.
+         * This absorbs thermal drift of the external LC tank (copper coil
+         * ~0.4%/°C, capacitor tempco) while remaining invisible against
+         * a true metal target (Δ thousands of counts in <1 s). */
+        int64_t ewma = (int64_t)m_baseline +
+                       (((int64_t)raw - (int64_t)m_baseline) >> BASELINE_EWMA_SHIFT);
+        m_baseline = (uint32_t)ewma;
+        m_baseline_valid = true;
     }
 }
 

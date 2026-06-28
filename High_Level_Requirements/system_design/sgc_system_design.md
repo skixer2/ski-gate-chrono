@@ -1,7 +1,8 @@
 # SGC — System Design (v2.1)
 
+*2026-06-27 — v2.2: Start detection simplified to drop-only (cumulative vertical descent > 2.0 m from arming P₀). Speed mode removed — BMP390 quantization noise (~0.78 Pa/LSB) caused false triggers at 1.5 m/s threshold. Drain algorithm changed to data-driven (pop N = min(2, ring.count)) instead of fixed 500-cycle — works correctly regardless of ring fill level at LOGGING start.*
 *2026-06-14 — v2.1: Battery budget cleanup — removed RFID/UWB hardware subsections (already in devices architecture §12). Power states table now v1-only with footnote for RFID. H02 confirmed met without RFID. RFIDReader interface condensed with v2-only banner.*
-*2026-06-09 — v2.0: Architecture pivot — no RFID for v1 (unpopulated footprint). Dual start detection (speed OR drop). RFID removed from power budget. See sgc_architecture_decisions.md for pivot rationale.*
+*2026-06-09 — v2.0: Architecture pivot — no RFID for v1 (unpopulated footprint). Start detection (speed OR drop). RFID removed from power budget. See sgc_architecture_decisions.md for pivot rationale.*
 *2026-06-08 — v1.9: Cross-arm proximity arming — replaced "button press" with "cross-arm proximity" in state transition table and factory reset description. LED states updated to match 5× strip sequential animation (flowing point / chase patterns).*
 
 *2026-06-06 — Coherence fixes (v1.x, partially superseded): GateTimeEstimator kinematics pipeline. F54/F55 cross-refs now marked v2 only.*
@@ -44,16 +45,15 @@
                          │  Phase 2: freshen (pop 1, push 1)  │
                          │  LED: green (F41)                   │
                          │  Beeper ON (F14)                    │
-                         │  BMP390: monitoring vertical speed  │
+                         │  BMP390: monitoring descent (drop)  │
                          │  30 s timeout → IDLE (R02)          │
                          └──────────┬──────────────────────────┘
-                                    │ Barometric descent > 1.5 m/s (F04)
+                                    │ Cumulative vertical drop > 2.0 m from P₀ (F04)
                                     ▼
                          ┌──────────────────────────────────────┐
                          │            LOGGING                  │
-                         │  push 1 live → pop 2 (or 1) → Flash│
-                         │  (same ring buffer, always)         │
-                         │  UHF RFID: ⚠️ v2 only (unpopulated) │
+                         │  Drain: pop N=min(2,ring.count)     │
+                         │  push 1 live. Data-driven.         │
                          │  LED: red (F41)                     │
                          │  LDC1612: masked (R03)              │
                          │  Beeper: OFF                        │
@@ -100,7 +100,7 @@
 | IDLE | 20 s continuous inductive hold | (factory reset) | LED flashes red 3× → clear bonding + Flash → restart (F42) |
 | IDLE | 1000 ms continuous proximity **AND** BHI260AP accuracy ≥ 2 | ARMED | Ring buffer starts, LED=green chase, beeper on (F03, F14, F51, P05). If accuracy < 2: ignore (arming refused, no LED change) |
 | IDLE | 5 min no arming, no BLE connection | SLEEP | F12 |
-| ARMED | Barometric descent > 1.5 m/s for 200 ms **OR** cumulative vertical drop > 2.0 m from arming P₀ | LOGGING | Drain begins, LED=red chase (F04 dual-mode, F05, F41). Whichever fires first |
+| ARMED | Cumulative vertical drop > 2.0 m from arming P₀ | LOGGING | Drain begins, LED=red chase (F04, F05, F41). Single-mode: drop only (speed removed v2.2 — BMP390 quantization noise caused false triggers) |
 | ARMED | 30 s no descent | IDLE | R02 |
 | LOGGING | 10 s flatline (±0.3 m/s) + IMU stillness | POST_RUN | Close file, write CRC32 (F06) |
 | POST_RUN | 2 s cooldown elapsed | IDLE | Ready for next arming |
@@ -120,32 +120,30 @@ The ring buffer operates in three phases:
 
 **Phase 2 — Freshening (after full, waiting for start):** Pop 1 oldest (discard), push 1 new. Count stays at 500. Buffer always contains the most recent 5.0 s of data. The athlete may stand at the start gate up to 30 s (R02 timeout) — the buffer keeps refreshing.
 
-**Phase 3 — Draining + logging (start confirmed):** The critical handoff from ARMED → LOGGING. **Pop first, push second** — always. Phase 3a (drain, cycles 1–500): pop 2 oldest, push 1 new. First 250 cycles flush the 500 pre-start frames; next 250 cycles flush the 250 live frames accumulated during the drain. Phase 3b (steady state, cycle 501+): pop 1 oldest, push 1 new. That's it — no mode switch, no separate buffer.
+**Phase 3 — Draining + logging (start confirmed):** The critical handoff from ARMED → LOGGING. **Pop first, push second** — always. Pop N = min(2, ring.count()): drains at 2× speed while the ring has accumulated frames, naturally drops to 1× when the ring runs near-empty (only the live frame remains). No fixed cycle counter — data-driven, works correctly regardless of ring fill level at LOGGING start.
 
 ```
-ARMED:  buffer = [h₁, h₂, h₃, ..., h₅₀₀]    (500 pre-start)
+ARMED:  buffer = [h₁, h₂, h₃, ..., h₅₀₀]    (500 pre-start, ring full)
 
 LOGGING cycle 1:  pop h₁, h₂ → Flash.  push l₁.   buffer = [h₃, h₄, ..., h₅₀₀, l₁]
 LOGGING cycle 2:  pop h₃, h₄ → Flash.  push l₂.   buffer = [h₅, ..., h₅₀₀, l₁, l₂]
 ...
 LOGGING cycle 250: pop h₄₉₉, h₅₀₀ → Flash.  push l₂₅₀.   buffer = [l₁, ..., l₂₅₀]
-LOGGING cycle 251: pop l₁, l₂ → Flash.  push l₂₅₁.         buffer = [l₃, ..., l₂₅₁]
+LOGGING cycle 251: count=251 → pop l₁, push l₂₅₁.         buffer = [l₂, ..., l₂₅₁]
 ...
-LOGGING cycle 500: pop l₄₉₇, l₄₉₈ → Flash.  push l₅₀₀.  buffer = [l₄₉₉, l₅₀₀]
-LOGGING cycle 501: pop l₄₉₉ → Flash.  push l₅₀₁.          buffer = [l₅₀₀, l₅₀₁]
-...
+LOGGING steady state: count=1 → pop lₓ, push lₓ₊₁.        buffer = [lₓ₊₁]
 ```
 
-**Key insight:** Pre-start samples sit at the bottom of the queue, so they're popped first. Live samples enter at the top and work their way down. Flash naturally gets chronological order: all h's, then all l's — with zero effort. Buffer count stays ≤ 500 at all times (pop always precedes push).
+**Key insight:** Pre-start samples sit at the bottom of the queue, so they're popped first. Live samples enter at the top and work their way down. Flash naturally gets chronological order: all h's, then all l's — with zero effort. Buffer count stays ≤ 500 at all times (pop always precedes push). The transition from 2× to 1× drain is automatic — when the ring drains below 2 frames, pop drops to 1.
 
-**Pop-2 during drain (500 cycles = 5.0 s), pop-1 after:** First 250 cycles flush the 500 pre-start frames at 2× speed. Next 250 cycles flush the 250 live frames accumulated during the drain. After 500 cycles total, the buffer is near-empty and the code switches to pop-1 (steady state). Pop-2 duration = 5.0 s from start confirmation.
+**Data-driven drain:** Pop N = min(2, ring.count()). When ring has ≥ 2 frames → pop 2 (drain at 2×). When ring has 1 frame → pop 1 (just the live frame). When ring has 0 → pop 0 (edge case, shouldn't happen with push-before-drain ordering). This handles the full-ring case identically to the old fixed 500-cycle approach, but also works correctly if LOGGING starts before the ring is full (early descent).
 
 ```
 Cycle (every 10 ms, always pop-first):
 ┌─────────────────────────────────────────────┐
 │ 1. Read 1 live sample from BHI260AP FIFO    │
 │ 2. Pop N oldest from ring buffer            │
-│    (N = 2 during drain, 1 after)            │
+│    (N = min(2, ring.count()), data-driven)  │
 │ 3. Bit-pack popped sample(s) → page buffer  │
 │ 4. If page buffer full → SPI Flash write    │
 │ 5. Push live sample to ring buffer          │
@@ -174,7 +172,7 @@ Cycle (every 10 ms, always pop-first):
 - 500 slots × 16 bytes = 8 KB (fits in nRF52832's 64 KB RAM). See sgc_architecture_devices.md §2 for RawFrame struct — the 4B encoding overhead is added at Flash-write time, not stored in RAM.
 - Single buffer serves as both pre-start cache and live FIFO
 - ARMING: samples pushed to top until `count` = 500
-- LOGGING: every cycle, pop N oldest from bottom (N=2 during drain, N=1 after) → Flash, then push 1 to top
+- LOGGING: every cycle, pop N oldest (N = min(2, ring.count())) → Flash, then push 1 to top
 - `prev_frame` (20 bytes) kept alongside for delta encoding reference
 
 ---
@@ -759,7 +757,7 @@ Flash wear is not a concern for the expected product lifetime. The circular buff
 | Risk | Impact | Mitigation |
 |---|---|---|
 | SPI Flash write latency > 10 ms → dropped samples | High | Bench-test Flash chip; if marginal, buffer 2–3 samples before SPI write burst |
-| BMP390 noise → false start detection | Medium | Low-pass filter pressure (5-sample moving average) before velocity calculation |
+| BMP390 noise → false start detection | Medium | Resolved v2.2: removed speed mode. Drop-only (2.0m cumulative) requires ~24 Pa sustained increase — well above quantization noise (±3 Pa pp) |
 | BHI260AP FIFO overflow (FIFO not read fast enough) | High | Watermark at 10 samples → flush every 100 ms. If watermark interrupt missed, BHI260AP drops oldest → flag error |
 | LDC1612 false arm from metal ski pole nearby | Low | 1000 ms hold requirement (R01) filters brief proximity; coil tuned for short-range (~3 mm) |
 | BLE throughput < 20 KB/s on older phones | Medium | 2-min run = ~108 KB → ~5.4 s at 20 KB/s, well within acceptable range |

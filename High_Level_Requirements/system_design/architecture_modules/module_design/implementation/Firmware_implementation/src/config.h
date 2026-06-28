@@ -13,10 +13,10 @@ static constexpr uint32_t ARM_TIMEOUT_MS         = 30000;   /* 30 s armed → id
 static constexpr uint32_t POST_RUN_COOLDOWN_MS   = 10000;   /* 10 s before re-arm  */
 static constexpr uint32_t MAX_LOG_DURATION_MS    = 150000;  /* 150 s log limit → POST_RUN (overridable via BLE) */
 
-/* --- Detector thresholds --- */
-static constexpr float    SPEED_THRESHOLD_MPS     = 5.0f;    /* min speed for start detect */
-static constexpr float    DROP_THRESHOLD_M        = 1.5f;    /* min baro drop for descent  */
-static constexpr uint16_t FLATLINE_SAMPLES        = 10;      /* consecutive still frames  */
+/* --- Detector thresholds (per design spec) --- */
+static constexpr float    SPEED_THRESHOLD_MPS     = 1.5f;    /* m/s for 200ms window */
+static constexpr float    DROP_THRESHOLD_M        = 2.0f;    /* meters from arming P₀ */
+static constexpr uint16_t QUIET_FRAMES            = 1000;    /* 10s at 100 Hz for end det */
 static constexpr uint32_t FACTORY_RESET_MS        = 20000;   /* proximity hold duration   */
 
 /* --- LDC1612 proximity sensor --- */

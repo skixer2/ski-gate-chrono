@@ -13,7 +13,7 @@
 static float  g_test_pressure  = 101325.0f;   // sea-level baseline
 static float  g_test_qw = 0.0f, g_test_qx = 0.0f;
 static float  g_test_qy = 0.0f, g_test_qz = 1.0f;
-static float  g_test_lax = 0.0f, g_test_lay = 0.0f, g_test_laz = 0.0f;
+static float  g_test_lax = 0.0f, g_test_lay = 0.0f, g_test_laz = -9810.0f;  /* 1g down = desk-still */
 static bool   g_test_mode = false;
 
 void test_mode_init()

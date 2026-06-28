@@ -283,7 +283,51 @@ RV calibration, the arming gate is a one-line re-enable.
 
 ---
 
-## AD-009: Always-JSON Serial Output (Single Binary)
+## AD-014: Circular Flash Storage — FlashManager Implementation
+
+**Date:** 2026-06-25
+**Status:** Accepted
+
+**Decision:** Replace the inline forward-only `g_next_run_addr` scheme with a proper
+FlashManager class implementing the circular buffer specified in
+sgc_architecture_devices.md §4. Flash layout revised to match the original design.
+
+**Rationale:**
+- `g_next_run_addr` was growing unbounded past 2 MB flash → HardFault at RAM boundary
+- Requirement F08 (auto-overwrite oldest run) was unfulfilled
+- No CRC32 per run meant no data integrity (R05)
+- Design documents specified read_head/write_head indexing with wrap-around
+
+**Implementation details:**
+- FlashManager class: `storage/flash_manager.h/.cpp` — 430+ lines
+- Flash layout: sectors 0-3 = ring buffer, 4-509 = circular run data, 510-511 = index
+- Index sector holds magic, run_count, read_head, write_head, write_counter, and 255 run entries (32B each)
+- create_run() checks overlap vs read_head, auto-deletes oldest runs when full
+- close_run() writes CRC32 trailer (magic 0xC3 0x32 + CRC32_LE) and advances write_head
+- Power-loss recovery: scans all valid RunHeaders to rebuild index on boot
+- RunHeader aligned: added frame_count (uint16), kept data_size as uint32 (Phase 7b overflow fix)
+
+**Coherence fixes applied in the same phase:**
+- C4: RunHeader field alignment (+frame_count)
+- C5: Ring buffer drain interleaving (pop-2/push-1 for 500 cycles)
+- C6/C7: StartDetector thresholds + cumulative-drop-from-P₀ algorithm
+- C8: EndDetector barometric flatline + IMU stillness
+- C9: Quaternion mapping bug (x→w, y→x, z→y, w→z → fixed)
+- C10: State machine enum values aligned to design
+- C11: StartDetector at 10 Hz via separate timer
+
+**Cordio heap fix (2026-06-25 22:00):**
+Three interacting causes prevented BLE from initializing:
+1. `CORDIO_ZERO_COPY_HCI=1` in Nicla's mbed_config.h causes `init_wsf()` to replace the system heap
+   with the Cordio buffer pool (~4.9 KB). Fix: `#ifndef` guard + `-DCORDIO_ZERO_COPY_HCI=0`.
+2. `BHY2.begin()` defaulted to `NICLA_BLE_AND_I2C`, starting its own BLE/I2C/DFU handlers
+   that consumed nearly all remaining heap. Fix: `BHY2.begin(NICLA_STANDALONE)`.
+3. BLE was initialized after BHY2, so the heap was already exhausted. Fix: BLE.begin() before BHY2.begin().
+
+Diagnosed via heap probes (malloc 64/256/4096) at each init step, revealing <256 bytes free after BHY2.
+
+⚠️ The framework patch (`~/.platformio/packages/framework-arduino-mbed/variants/NICLA/mbed_config.h`
+line 52) must be re-applied after PlatformIO package updates.
 
 **Date:** 2026-06-21  
 **Status:** Accepted  

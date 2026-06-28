@@ -15,11 +15,11 @@
 
 enum class DeviceState : uint8_t
 {
-    SLEEP    = 0,
-    IDLE     = 1,
-    ARMED    = 2,
-    LOGGING  = 3,
-    POST_RUN = 4,
+    SLEEP    = 0xFF,  /* BLE-off during sleep — not exposed via ABC4 */
+    IDLE     = 0,
+    ARMED    = 1,
+    LOGGING  = 2,
+    POST_RUN = 3,
 };
 
 class StateMachine

@@ -1,5 +1,5 @@
 # SGC Nicla Sense ME — Phased Build Plan
-## 2026-06-16 · updated 2026-06-18 18:13
+## 2026-06-16 · updated 2026-06-25 21:00
 
 Goal: incrementally validate each hardware subsystem in isolation before combining.
 Each phase: write → build → upload → power-cycle → test → confirm → NEXT.
@@ -72,12 +72,31 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [ ] 9c: Battery selection (2× 300 mAh Li-Po parallel)
 - [ ] 9d: On-slope field test
 
+### Phase 10: Circular Flash Storage ✅ DONE (06-25 21:00)
+- [x] FlashManager class — read_head/write_head, auto-overwrite (F08)
+- [x] Index sector at end of flash (sectors 510-511)
+- [x] CRC32 per run with magic bytes (R05)
+- [x] Power-loss index recovery via header scan
+- [x] RunHeader aligned: +frame_count, data_size uint32 (Phase 7b fix)
+- [x] Ring buffer drain: proper pop-2/push-1 interleaving (C5)
+- [x] StartDetector: fixed thresholds + cumulative-drop-from-P₀ algorithm (C6/C7)
+- [x] EndDetector: barometric flatline + IMU stillness dual check (C8)
+- [x] StartDetector feed rate: 10 Hz via separate timer (C11)
+- [x] State machine enum aligned to design (C10)
+- [x] Quaternion mapping fix: x→w bug corrected (C9)
+- [x] Test harness: start-detector test thresholds updated for new algorithm
+- [x] Cordio: CORDIO_ZERO_COPY_HCI=1 (default) works correctly with current firmware. Warning harmless — ignore. Do NOT patch mbed_config.h (HardFault risk).
+- [x] BHY2 heap fix: `BHY2.begin(NICLA_STANDALONE)` — skips bleHandler/eslovHandler/dfuManager, saves ~several KB heap
+- [x] Init ordering: BLE.begin() before BHY2.begin() (BLE gets thread allocation first)
+
 ---
 
 ## Version Tags
 
 | Tag | Date | Description |
 |-----|------|-------------|
+| v2.4 | 06-27 22:50 | Start detector: drop-only (speed removed — BMP390 noise). Drain: data-driven pop N=min(2,count). Threshold 2.0m |
+| v2.3 | 06-25 21:00 | FlashManager, CRC32, drain interleaving, Start/End detector fixes |
 | v0.8.1 | 06-18 18:11 | Quaternion magnitude sensor check + clean cal display |
 | v0.8.0 | 06-18 17:56 | Removed calibration arming gate; kept meta-event hook |
 | v0.7.9 | 06-18 17:50 | Disabled BHY2 delegate mode (callback table active) |

@@ -1,6 +1,7 @@
-# SGC — Architecture: Device Firmware (v1.3)
+# SGC — Architecture: Device Firmware (v1.4)
 
-*2026-06-09 — v1.3: Architecture pivot — RFID removed from active BOM. Dual start detector (speed OR drop). rfid_reader marked as v2 stub. See sgc_architecture_decisions.md for pivot rationale.*
+*2026-06-27 — v1.4: Start detection simplified to drop-only (cumulative > 2.0 m). Drain changed to data-driven (pop N = min(2, ring.count())). See sgc_system_design.md v2.2 for rationale.*
+*2026-06-09 — v1.3: Architecture pivot — RFID removed from active BOM. Start detector (speed OR drop). rfid_reader marked as v2 stub. See sgc_architecture_decisions.md for pivot rationale.*
 
 *2026-06-08 — v1.2: Renamed button-related identifiers to proximity-based: `button_held_ms` → `proximity_held_ms`, `on_button_press()` → `on_proximity_start()`, `on_button_release()` → `on_proximity_end()`. Updated comments to reflect cross-arm proximity arming.*
 
@@ -141,15 +142,16 @@ PHASE 2 — ARMED, buffer full, waiting for start confirmation:
   Count stays at 500. Buffer always contains the most recent 5.0 s.
   The athlete may stand at the start gate up to 30 s (R02 timeout).
 
-PHASE 3a — LOGGING drain (cycles 1–500, 5.0 s from start confirmation):
-  Every cycle: pop(2 oldest) → Flash. push(live_sample).
-  First 250 cycles: flush all Phase 1+2 pre-start data (500 frames).
-  Next 250 cycles: flush the 250 live frames accumulated during the drain.
-  Count: 500 → 498 → 499 → 497 → ... → ~0 after 500 cycles.
+PHASE 3a — LOGGING drain (data-driven):
+  Every cycle: N = min(2, ring.count()). Pop N oldest → Flash. Push live_sample.
+  While ring has ≥ 2 frames → drains at 2× speed.
+  When ring drops to 1 frame → drains at 1× (just the live frame).
+  Steady state: count oscillates 0–1.
+  No fixed cycle counter — transition is automatic and works regardless of
+  ring fill level at LOGGING start (full 500 or partially filled).
 
-PHASE 3b — LOGGING steady state (cycle 501+, until run ends):
-  Every cycle: pop(1 oldest) → Flash. push(live_sample).
-  Count oscillates 0–1. Frames go directly to Flash with ≤10 ms pipeline delay.
+  Example (ring full at LOGGING start):
+  Count: 500 → 498 → 499 → 497 → ... → 251 → 252 → ... → 1 → 0 → 1 → ...
 ```
 
 **Critical invariant: POP ALWAYS PRECEDES PUSH when buffer is full.**
@@ -158,10 +160,7 @@ it trusts the caller to maintain this invariant (debug assertion if push
 called when is_full()). During Phase 1 (filling), only push is called and
 count < 500, so the invariant doesn't apply.
 
-**Pop-2 duration:** 500 cycles = 5.0 s total from start confirmation. After that,
-all pre-start and drain-accumulated data is fully flushed to Flash. The buffer
-runs near-empty for the remainder of the run — each frame hits Flash within one
-cycle (10 ms), minimizing data loss risk on power failure.
+**Drain duration (ring full at start):** ~2.5 s to flush pre-start frames at 2×, then natural transition to 1×. No fixed cycle counter needed — the data-driven approach adapts automatically. Each frame hits Flash within one cycle (10 ms), minimizing data loss risk on power failure.
 
 ---
 
@@ -638,67 +637,55 @@ void StateMachine::on_proximity_end() {
 
 ---
 
-## 8. Start Detector (`start_detector.cpp`) — Dual Mode (v2)
+## 8. Start Detector (`start_detector.cpp`) — Drop-Only (v2.2)
 
-Detects run start via **two simultaneous triggers**, whichever fires first:
-- **Speed mode:** vertical descent > 1.5 m/s sustained for 200 ms
-- **Drop mode:** cumulative vertical drop > 2.0 m from arming pressure P₀
-
-P₀ is captured at arming. Both conditions monitored simultaneously — no athlete toggle needed.
+Detects run start via **cumulative vertical drop > 2.0 m from arming pressure P₀**.
+P₀ is captured at arming. Single-mode: drop only. Speed mode removed in v2.2 —
+BMP390 quantization noise (~0.78 Pa/LSB, ±3 Pa pp with BHY2 processing) caused
+false triggers at the 1.5 m/s threshold during stationary desk tests.
 
 ### Algorithm
 
 ```cpp
 class StartDetector {
-    static const int SPEED_WINDOW = 2;      // 200 ms at 10 Hz feed rate (BARO_FEED_HZ=10)
-    static const float SPEED_THRESHOLD = 1.5; // m/s
     static const float DROP_THRESHOLD = 2.0;  // meters from P₀
+    static const float PA_PER_M       = 12.0; // Pa per meter at sea level
     
     float p0;            // pressure at arming (Pa)
-    float history[SPEED_WINDOW];
-    int idx;
-    bool speed_triggered;
-    bool drop_triggered;
+    bool  drop_triggered;
     
 public:
-    void reset() {
-        idx = 0;
-        speed_triggered = false;
+    void reset(float p0_pa) {
+        p0 = p0_pa;
         drop_triggered = false;
-        memset(history, 0, sizeof(history));
     }
     
     void set_p0(float pa) { p0 = pa; }  // called at arming
     
-    void feed_pressure(float pa) {
-        float alt = pressure_to_altitude(pa);
-        float alt0 = pressure_to_altitude(p0);
-        history[idx] = alt;
-        idx = (idx + 1) % SPEED_WINDOW;
+    bool feed(float pressure_pa) {
+        if (drop_triggered) return true;
+        if (pressure_pa <= 0 || p0 <= 0) return false;  // safety: refuse uninitialized P₀
         
-        // Speed mode: slope over 200 ms window (2 samples at 10 Hz)
-        // Both samples must indicate descent > threshold
-        if (idx == 0) {
-            float oldest = history[0];  // oldest sample, written 2 cycles ago
-            float newest = history[SPEED_WINDOW - 1];  // newest sample
-            float speed = (oldest - newest) / (SPEED_WINDOW * 0.1);  // m/s, positive = descending
-            if (speed > SPEED_THRESHOLD) {
-                speed_triggered = true;
-            }
-        }
-        
-        // Drop mode: cumulative descent from arming P₀
-        float drop = alt0 - alt;  // positive = descending
-        if (drop > DROP_THRESHOLD) {
+        // Descent = pressure INCREASES (lower altitude = higher pressure)
+        float drop_m = (pressure_pa - p0) / PA_PER_M;
+        if (drop_m > DROP_THRESHOLD) {
             drop_triggered = true;
+            return true;
         }
+        return false;
     }
     
-    bool descent_detected() const { return speed_triggered || drop_triggered; }
+    bool detected() const { return drop_triggered; }
 };
 ```
 
-**Pressure-to-altitude lookup:** Pre-computed at compile time for 600–1100 hPa range at −20 to +10°C. Resolution: ~2.5 cm per LSB (Pa/4). Stored as a 2000-entry int16 table → 4 KB Flash (acceptable for nRF52832's 512 KB internal Flash).
+**Why drop-only:** A skier descending 2.0 m produces a pressure increase of ~24 Pa —
+well above the BMP390's quantization noise (±3 Pa peak-to-peak). No false triggers
+on a stationary desk. Real descent triggers reliably within 5–15 feeds (0.5–1.5 s).
+
+Fed at 10 Hz with pressure in Pa. P₀ is set at the `force_state(ARMED)` call site
+(before the first baro feed), and also guarded in `feed()` (`m_p0 <= 0` → return false)
+against any future code paths that might arm without setting P₀.
 
 ---
 
