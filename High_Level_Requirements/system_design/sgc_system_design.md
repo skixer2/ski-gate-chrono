@@ -1,5 +1,6 @@
 # SGC — System Design (v2.1)
 
+*2026-06-28 — v2.4: Phase 11 — Delta-baro encoding. Baro moved from uncompressed header into delta-encoded payload (Pa/2, 2 Pa/LSB). Header 4→2 bytes. Average 8.0 bytes/frame (was 9.55). LDC1612 EWMA auto-recalibration + dead-baseline guard + factory reset 3s confirmation.*
 *2026-06-27 — v2.2: Start detection simplified to drop-only (cumulative vertical descent > 2.0 m from arming P₀). Speed mode removed — BMP390 quantization noise (~0.78 Pa/LSB) caused false triggers at 1.5 m/s threshold. Drain algorithm changed to data-driven (pop N = min(2, ring.count)) instead of fixed 500-cycle — works correctly regardless of ring fill level at LOGGING start.*
 *2026-06-14 — v2.1: Battery budget cleanup — removed RFID/UWB hardware subsections (already in devices architecture §12). Power states table now v1-only with footnote for RFID. H02 confirmed met without RFID. RFIDReader interface condensed with v2-only banner.*
 *2026-06-09 — v2.0: Architecture pivot — no RFID for v1 (unpopulated footprint). Start detection (speed OR drop). RFID removed from power budget. See sgc_architecture_decisions.md for pivot rationale.*
@@ -199,6 +200,8 @@ Byte 12–15: Reserved (uint32, zero-filled). CRC32 of compressed data is stored
 
 Each frame stores a **time delta** from the previous frame (not an absolute timestamp). The run start time is written once in the run file header. Packet type and sequence counter are embedded in the delta field — no separate header byte.
 
+**Phase 11 (2026-06-28):** Barometric pressure moved from uncompressed header (bytes 2–3) into delta-encoded payload. Header now 2 bytes (was 4). Baro stored as Pa/2 (uint16, 2 Pa/LSB → ~17 cm altitude resolution). Delta encoding: int4 in T1, int8 in T2, uint16 full value in T3.
+
 ```
 Bytes 0–1: Time delta (uint16, milliseconds)
            Bits 15-14: Packet Type (TT): 00=Type1, 01=Type2, 10=Type3, 11=reserved
@@ -207,20 +210,14 @@ Bytes 0–1: Time delta (uint16, milliseconds)
            Typical: 10 = 10 ms (100 Hz cadence)
            If delta exceeds 1023 ms (device paused/resumed, rare):
            frame forced to Type 3 with full 16-bit delta in payload.
-
-Bytes 2–3: Barometric pressure (uint16, Pa/4) — ALWAYS uncompressed
-           → resolution ~2.5 cm altitude
-           → 4 bytes anchor total (delta + baro, header embedded in delta)
+```
 
 Barometric temperature is NOT stored per-frame. It is sampled once at run start and written to the run file header (queryable via BLE GATT). Temperature changes slowly — per-frame storage would waste ~12 KB per 2-min run for negligible value.
-
-Bytes 8+:  Payload (variable, see below)
-```
 
 ### Payload by Packet Type
 
 #### Type 1 — Coasting (4-bit deltas)
-**Condition:** All 7 axes' deltas fit in ±7 (4-bit signed, range -8..+7)
+**Condition:** All 7 IMU axes' deltas + baro delta fit in ±7 (4-bit signed, range -8..+7)
 
 | Field | Bits | Notes |
 |---|---|---|
@@ -231,11 +228,12 @@ Bytes 8+:  Payload (variable, see below)
 | la_x delta | 4 | int4 |
 | la_y delta | 4 | int4 |
 | la_z delta | 4 | int4 |
-| **Total payload** | **28 bits = 3.5 bytes** | |
-| **Frame total** | **8 bytes stored** *(7.5 useful)* | 4 (anchor) + 3.5 (padded to 4) |
+| baro delta | 4 | int4, 2 Pa/LSB steps |
+| **Total payload** | **32 bits = 4 bytes** | |
+| **Frame total** | **6 bytes** | 2 (header) + 4 |
 
 #### Type 2 — Turning/Chatter (8-bit deltas)
-**Condition:** All 7 axes' deltas fit in ±127 (int8)
+**Condition:** All 7 IMU axes' deltas + baro delta fit in ±127 (int8)
 
 | Field | Bits | Notes |
 |---|---|---|
@@ -246,8 +244,9 @@ Bytes 8+:  Payload (variable, see below)
 | la_x delta | 8 | int8 |
 | la_y delta | 8 | int8 |
 | la_z delta | 8 | int8 |
-| **Total payload** | **56 bits = 7 bytes** | |
-| **Frame total** | **11 bytes** | 4 (anchor) + 7 |
+| baro delta | 8 | int8, 2 Pa/LSB steps |
+| **Total payload** | **64 bits = 8 bytes** | |
+| **Frame total** | **10 bytes** | 2 (header) + 8 |
 
 #### Type 3 — Impact / Periodic Anchor (full 16-bit)
 **Condition:** Any delta overflows int8, or every 100th frame (forced anchor)
@@ -261,19 +260,20 @@ Bytes 8+:  Payload (variable, see below)
 | la_x | 16 | int16 |
 | la_y | 16 | int16 |
 | la_z | 16 | int16 |
-| **Total payload** | **112 bits = 14 bytes** | |
-| **Frame total** | **18 bytes** | 4 (anchor) + 14 |
+| baro_pa_div2 | 16 | uint16, Pa/2 (2 Pa/LSB) |
+| **Total payload** | **128 bits = 16 bytes** | |
+| **Frame total** | **18 bytes** | 2 (header) + 16 |
 
 ### Expected Compression
 
 | Packet type | % of frames | Bytes each | Weighted |
 |---|---|---|---|
-| Type 1 (coasting) | ~60% | 7.5 | 4.50 |
-| Type 2 (turning) | ~35% | 11.0 | 3.85 |
+| Type 1 (coasting) | ~60% | 6.0 | 3.60 |
+| Type 2 (turning) | ~35% | 10.0 | 3.50 |
 | Type 3 (impact/anchor) | ~5% | 18.0 | 0.90 |
-| **Average** | | | **9.25 bytes/frame** |
+| **Average** | | | **8.00 bytes/frame** |
 
-vs. raw 20 bytes/frame → **53.8% compression**. 2-min DH run (worst case) → ~108 KB. Typical training run (40s GS) → ~43 KB. 2 MB Flash → 19 (DH) to 46 (training) runs.
+vs. raw 20 bytes/frame → **60.0% compression**. 2-min DH run (worst case) → ~96 KB. Typical training run (40s GS) → ~38 KB. 2 MB Flash → 21 (DH) to 52 (training) runs.
 
 ### Delta Encoding Rules
 

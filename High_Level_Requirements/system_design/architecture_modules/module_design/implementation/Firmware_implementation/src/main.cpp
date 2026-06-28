@@ -250,7 +250,7 @@ void feed_sensors()
         f.la_x = (int16_t)test_get_lax();
         f.la_y = (int16_t)test_get_lay();
         f.la_z = (int16_t)test_get_laz();
-        f.baro_pa_div4 = (uint16_t)(test_get_pressure() * 25.0f);
+        f.baro_pa_div2 = (uint16_t)(test_get_pressure() * 50.0f);
     } else {
         f.q_w = (int16_t)(rotation.w() * 16384.0f);
         f.q_x = (int16_t)(rotation.x() * 16384.0f);
@@ -259,7 +259,7 @@ void feed_sensors()
         f.la_x = (int16_t)lin_acc.x();
         f.la_y = (int16_t)lin_acc.y();
         f.la_z = (int16_t)lin_acc.z();
-        f.baro_pa_div4 = (uint16_t)(pressure.value() * 25.0f);
+        f.baro_pa_div2 = (uint16_t)(pressure.value() * 50.0f);
     }
 
     DeviceState st = g_sm.state();
@@ -306,8 +306,8 @@ void feed_sensors()
 
         /* ── End detection (100 Hz: accel + baro flatline) ──
          * Phase 11 fix: use raw sensor value, NOT quantized frame data.
-         * baro_pa_div4 is uint16 with 4 Pa/LSB → ±2 Pa quantization noise
-         * → single-bit flip = 33.3 m/s "vertical speed" → flatline never holds. */
+         * baro_pa_div2 is uint16 with 2 Pa/LSB → raw sensor has ~10× better
+         * resolution for flatline detection. */
         float pa_raw = pressure.value() * 100.0f;  /* hPa → Pa, full resolution */
         if (g_end_det.feed(pa_raw, f.la_x, f.la_y, f.la_z))
             g_sm.force_state(DeviceState::POST_RUN);
@@ -326,7 +326,7 @@ void setup()
 
     /* Output always-JSON (ADR-001) */
     json_begin(); json_kv("ev", "boot");
-    Serial.print(','); json_kv("ver", "2.3");
+    Serial.print(','); json_kv("ver", "2.4");
     json_end();
 
     /* ── LED ── */
