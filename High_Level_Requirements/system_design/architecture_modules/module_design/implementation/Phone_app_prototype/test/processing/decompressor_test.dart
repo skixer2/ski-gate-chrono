@@ -36,9 +36,10 @@ void main() {
   });
 
   group('Decompressor.decompress — Type 1 (4-bit deltas)', () {
-    test('decodes a single Type 1 frame', () {
-      // Frame: deltaMs=10, baro=50000 (100kPa/2), all-zero deltas
-      final frame1 = encodeType1Frame(10, 50000, [0, 0, 0, 0, 0, 0, 0]);
+    test('decodes a single Type 3 frame', () {
+      // First frame of any run is always Type 3 (anchor, full baro)
+      // baro=50000 (100kPa/2), all-zero IMU values
+      final frame1 = encodeType3Frame(10, 50000, [0, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...frame1]);
 
@@ -164,7 +165,7 @@ void main() {
     });
 
     test('barometric pressure is correctly scaled (×2)', () {
-      final f1 = encodeType1Frame(10, 50662, [0, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType3Frame(10, 50662, [0, 0, 0, 0, 0, 0, 0]);
       // baroPaDiv2=50662, baroPa = 50662*2 = 101324 Pa
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1]);
@@ -174,7 +175,7 @@ void main() {
     });
 
     test('altitude is computed from pressure', () {
-      final f1 = encodeType1Frame(10, 50662, [0, 0, 0, 0, 0, 0, 0]);
+      final f1 = encodeType3Frame(10, 50662, [0, 0, 0, 0, 0, 0, 0]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...f1]);
 
