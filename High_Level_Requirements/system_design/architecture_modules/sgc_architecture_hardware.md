@@ -14,6 +14,37 @@
 
 ---
 
+### Terminology: ANNA-B112 Module vs Carrier PCB
+
+The **ANNA-B112** is a pre-certified module (nRF52832 + BLE antenna in a single SMD package).
+It is NOT a bare chip — it's a complete subsystem that gets soldered onto a larger PCB.
+
+That larger PCB is the **carrier PCB** (custom SGC board, 22 × 55 mm, 4-layer) which:
+- **Carries** the ANNA-B112 module as a mounted component
+- **Adds** all SGC peripherals: LDC1612 proximity, SK6812 × 5, beeper, Qi coil, MOSFET power gating, BQ25120 charger
+- **Replicates** the Nicla Sense ME wiring exactly (BHI260AP, BMP390, Flash MX25R1635F, IS31FL3194)
+- **Reserves** footprint for v2 (RFID Impinj E310 + UWB DW3000, not populated)
+
+**Analogy:** ANNA-B112 = "brain", carrier PCB = "body" providing power, sensors, and actuators.
+
+### Production Architecture (200 units/month)
+
+For the production phase, the approach shifts from a ground-up Nicla replica to a
+**modular assembly using off-the-shelf Nicla Sense ME boards**:
+
+- The production Nicla is used **as-is** (not re-laid-out) — layout files are proprietary
+  and Arduino Pro custom spins require thousands of units per batch
+- A **companion carrier PCB** sits **side-by-side** with the Nicla (NOT stacked —
+  Nicla is ~5 mm thick, stacking would exceed enclosure constraints)
+- The carrier PCB contains: LDC1612, 5V boost (SOT-23), level shifter, SK6812 × 5,
+  beeper, battery connector
+- Connection: Nicla edge pins → ribbon cable or rigid flex → carrier PCB
+- EMS partner does panelized assembly + bed-of-nails flashing via SWD
+
+**Full production strategy:** `sgc_production_strategy.md`
+
+---
+
 ## 1. Hardware Block Diagram — Nicla Sense ME Replica
 
 The custom PCB is a **strict replica** of the Arduino Nicla Sense ME.

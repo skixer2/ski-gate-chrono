@@ -1,9 +1,11 @@
 /**
  * @file    end_detector.h
- * @brief   End-of-run detection: 10s barometric flatline (±0.3 m/s)
- *          combined with IMU stillness (< 0.05g from 1g).
+ * @brief   End-of-run detection: stop logging when elevation drops
+ *          less than 2 m over the last 5 s (finished descending).
  *
- *          Per F06 and sgc_architecture_devices.md §9.
+ *          Samples pressure at 0.5 Hz → ring of 10 values = 5 s window.
+ *          Independent of FlashRing — no interference with drain logic.
+ *          Per JP feedback 2026-06-30.
  */
 
 #pragma once
@@ -17,24 +19,25 @@ public:
     void reset();
 
     /**
-     * Feed a sensor frame at 100 Hz.
-     * pressure_pa: current barometric pressure (Pa)
-     * la_x, la_y, la_z: linear acceleration (mm/s² raw)
-     * Returns true when end is detected (10s of flatline + stillness).
+     * Feed called at 100 Hz from sensor loop.
+     * Samples internally at 0.5 Hz (every ~500 ms).
+     * Returns true when end is detected.
      */
-    bool feed(float pressure_pa, int16_t la_x, int16_t la_y, int16_t la_z);
+    bool feed(float pressure_pa);
 
     bool detected() const { return m_detected; }
 
 private:
-    float    m_prev_pressure;   /* previous pressure for vertical speed */
-    uint16_t m_quiet_count;     /* consecutive quiet samples */
+    float    m_ring[10];          /* 10 pressure samples = 5 s at 0.5 Hz */
+    uint8_t  m_idx;
+    uint8_t  m_count;
+    bool     m_ring_full;
     bool     m_detected;
-    bool     m_seeded;          /* first sample received */
+    uint32_t m_last_sample_ms;
 
-    static constexpr uint16_t QUIET_FRAMES     = 1000;   /* 10 s at 100 Hz */
-    static constexpr float    FLATLINE_MPS     = 0.3f;   /* m/s vertical speed threshold */
-    static constexpr float    STILLNESS_G      = 0.05f;  /* g threshold from 1.0g */
-    static constexpr float    PA_PER_M         = 12.0f;  /* Pa per meter at sea level */
-    static constexpr float    MM_S2_PER_G      = 9806.65f; /* mm/s² per g */
+    static constexpr float    THRESHOLD_M         = 2.0f;
+    static constexpr float    PA_PER_M_SEA        = 12.0f;
+    static constexpr float    SEA_LEVEL_PA        = 101325.0f;
+    static constexpr uint32_t SAMPLE_INTERVAL_MS  = 500;
+    static constexpr uint8_t  WINDOW_SAMPLES      = 10;    /* 5 s at 0.5 Hz */
 };

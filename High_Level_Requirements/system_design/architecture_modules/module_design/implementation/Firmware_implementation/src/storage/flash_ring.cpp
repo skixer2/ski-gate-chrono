@@ -56,3 +56,12 @@ RawFrame FlashRing::read()
     m_count--;
     return f;
 }
+
+bool FlashRing::peek(RawFrame& f) const
+{
+    if (m_count == 0) return false;
+
+    uint16_t t = tail();
+    m_flash.read_data(slot_addr(t), (uint8_t*)&f, sizeof(RawFrame));
+    return true;
+}

@@ -1,16 +1,21 @@
 """
-Unit test: End Detector (v2 — JSON protocol)
-    U07 — 10s flatline → POST_RUN
-    U08 — No premature stop during movement
+Unit test: End Detector (v4 — 0.5 Hz sampling, 10-sample ring = 5 s window)
+    U07 — Flat / slow descent → POST_RUN after ring fills
+    U08 — No premature stop during active descent (or ascent)
+
+Logic: feed() is called at 100 Hz but only samples every 500 ms.
+       10-sample ring covers 5 s. On each sample, peek oldest:
+         dp = current_pa - oldest_pa.
+         If dp ≥ 0 AND dp < 24 Pa (2 m × 12 Pa/m) → end.
+       Independent of FlashRing — no drain interference.
 """
 from sgc_test_harness import TestStep, TestScenario, force_state, enable_test_mode
 
 SCENARIOS = []
 
-# ── U07: End detection (flatline) ────────────────────────────────
-# Polls for end_detected JSON event instead of fixed 12s wait.
+# ── U07: Constant pressure → dp = 0 → end after 10 samples ───────
 SCENARIOS.append(TestScenario(
-    name="U07 — End detection: 10s flatline",
+    name="U07 — End detection: flat (dp=0)",
     setup_commands=['i'],
     teardown_commands=['i'],
     steps=[
@@ -23,17 +28,16 @@ SCENARIOS.append(TestScenario(
             expect_json={"st": "ARMED"}),
         TestStep("Force LOGGING", 'l', 400,
             expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
-        # log_start processing (flash erase+write) can take >500ms —
-        # skip ? verification here; state transition already confirmed above
-        # Wait for end detector (10s stillness + poll margin)
-        TestStep("Wait for end_detected event → POST_RUN",
-            poll_state='POST_RUN', poll_interval_ms=300, timeout_ms=20000),
+        # 10 samples at 0.5 Hz = 5 s. Constant pressure → dp=0 → end.
+        TestStep("Wait for end_detected → POST_RUN",
+            poll_state='POST_RUN', poll_interval_ms=300, timeout_ms=15000),
     ]
 ))
 
-# ── U08: No premature stop during movement ───────────────────────
+# ── U08: Pressure decrease (ascent) → dp < 0 → no end ────────────
+# Then stable → dp = 0 → end → POST_RUN → IDLE.
 SCENARIOS.append(TestScenario(
-    name="U08 — No false end during movement",
+    name="U08 — No false end during ascent (dp < 0)",
     setup_commands=['i'],
     teardown_commands=['i'],
     steps=[
@@ -46,16 +50,13 @@ SCENARIOS.append(TestScenario(
             expect_json={"st": "ARMED"}),
         TestStep("Force LOGGING", 'l', 400,
             expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
-        TestStep("Inject non-zero accel (simulate skiing)", 'L 500 0 0', 500,
-            expect_json={"ev": "cmd", "cmd": "L"}),
-        TestStep("Change pressure (descending)", 'B 100900', 300,
+        # Drop pressure 100 Pa → ascent. dp < 0 → NOT triggered.
+        TestStep("Simulate pressure drop (ascent)", 'B 100900', 300,
             expect_json={"ev": "cmd", "cmd": "B"}),
-        TestStep("Wait 5s", None, wait_ms=5000),
-        TestStep("Should still be LOGGING", '?', 300,
+        TestStep("Wait 5 s (old samples being replaced)", None, wait_ms=5000),
+        TestStep("Should still be LOGGING (dp < 0)", '?', 300,
             expect_json={"st": "LOGGING"}),
-        # Reset accel to 1g → end detector should complete → POST_RUN → IDLE
-        TestStep("Reset accel to 1g (stillness)", 'L 0 0 -9810', 300,
-            expect_json={"ev": "cmd", "cmd": "L"}),
+        # After ring turnover (all 100900) → dp = 0 → end → cooldown → IDLE.
         TestStep("Wait POST_RUN + cooldown → IDLE", None, 200,
             poll_state='IDLE', timeout_ms=30000),
     ]

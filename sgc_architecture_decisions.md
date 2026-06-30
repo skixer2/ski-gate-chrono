@@ -311,7 +311,7 @@ sgc_architecture_devices.md §4. Flash layout revised to match the original desi
 - C4: RunHeader field alignment (+frame_count)
 - C5: Ring buffer drain interleaving (pop-2/push-1 for 500 cycles)
 - C6/C7: StartDetector thresholds + cumulative-drop-from-P₀ algorithm
-- C8: EndDetector barometric flatline + IMU stillness
+- C8: EndDetector v4.0 — replaced flatline+IMU with 5 s elevation delta (0.5 Hz, 10-sample ring, altitude-adaptive PA_PER_M)
 - C9: Quaternion mapping bug (x→w, y→x, z→y, w→z → fixed)
 - C10: State machine enum values aligned to design
 - C11: StartDetector at 10 Hz via separate timer

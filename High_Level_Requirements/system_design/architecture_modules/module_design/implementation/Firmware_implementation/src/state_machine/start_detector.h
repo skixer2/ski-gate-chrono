@@ -19,8 +19,11 @@ public:
 
 private:
     float m_p0;
+    float m_last_reported_pa;  /* suppress duplicate sd events */
     bool  m_drop_triggered;
 
-    static constexpr float DROP_THRESHOLD_M = 2.0f;
-    static constexpr float PA_PER_M          = 12.0f;
+    static constexpr float DROP_THRESHOLD_M      = 2.0f;
+    static constexpr float PA_PER_M_SEA          = 12.0f;  /* Pa/m at sea level */
+    static constexpr float SEA_LEVEL_PA          = 101325.0f;
+    static constexpr float SD_REPORT_DELTA_PA    = 1.0f;   /* noise gate */
 };

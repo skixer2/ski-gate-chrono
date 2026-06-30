@@ -38,7 +38,8 @@ public:
 
     void reset();                  /* erase all 4 blocks, reset pointers */
     void write(const RawFrame& f); /* write one frame at HEAD */
-    RawFrame read();               /* read oldest frame at TAIL */
+    RawFrame read();               /* read oldest frame at TAIL (consumes) */
+    bool peek(RawFrame& f) const;  /* read oldest frame at TAIL (no consume) */
 
     bool is_full()  const { return m_count >= MAX_COUNT; }
     bool is_empty() const { return m_count == 0; }

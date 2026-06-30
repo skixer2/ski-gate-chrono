@@ -10,6 +10,8 @@
 
 *2026-06-06 — Replaced MissedGateEstimator + GateClassifier with unified GateTimeEstimator: kinematics-driven pipeline (ω zeros, 0.5 Hz LPF, local-frame L/R, Case A/B time estimation).*
 
+*2026-06-30 — v4.0 end detector: replaced flatline derivative + IMU stillness with simple 5 s elevation delta (0.5 Hz, 10-sample ring, 40 B RAM). Altitude-adaptive PA_PER_M for both start and end detectors. Start detector sd diagnostics noise-gated.*
+
 *2026-06-05 — coherence check fixes: corrected stale F41→DB schema cross-refs, added LED column to battery table header, EndDetector ±0.3 m/s threshold, FlashManager CRC validation + corrupt-run handling (R05), bonding-loss risk, phone module traceability tags (F15/F27/F49/F51/F59).*
 
 ---
@@ -58,7 +60,7 @@
                          │  LED: red (F41)                     │
                          │  LDC1612: masked (R03)              │
                          │  Beeper: OFF                        │
-                         │  10 s flatline + stillness → POST    │
+                         │  5-s elevation delta → POST        │
                          └──────────┬──────────────────────────┘
                                     │ Auto-terminate (F06)
                                     ▼
@@ -103,7 +105,7 @@
 | IDLE | 5 min no arming, no BLE connection | SLEEP | F12 |
 | ARMED | Cumulative vertical drop > 2.0 m from arming P₀ | LOGGING | Drain begins, LED=red chase (F04, F05, F41). Single-mode: drop only (speed removed v2.2 — BMP390 quantization noise caused false triggers) |
 | ARMED | 30 s no descent | IDLE | R02 |
-| LOGGING | 10 s flatline (±0.3 m/s) + IMU stillness | POST_RUN | Close file, write CRC32 (F06) |
+| LOGGING | Descent < 2 m over last 5 s (0.5 Hz sampling) | POST_RUN | Close file, write CRC32 (F06). Altitude-adaptive PA_PER_M. Ignores ascent (dp < 0) |
 | POST_RUN | 2 s cooldown elapsed | IDLE | Ready for next arming |
 | POST_RUN | 5 min inactivity | SLEEP | F12 |
 | SLEEP | LDC1612 INTB (cross-arm proximity) | IDLE | Wake to IDLE (F13). RTC preserved — no time lost |
@@ -554,7 +556,7 @@ src/
 │   └── file_transfer.cpp        # Chunked file transfer with CRC
 ├── state_machine.cpp            # State transitions, timeout timers
 ├── start_detector.cpp           # Barometric descent detection
-├── end_detector.cpp             # Flatline + stillness detection
+├── end_detector.cpp             # Elevation delta: descent < 2m over 5s
 ├── beeper.cpp                   # GPIO PWM → surface transducer (IP67)
 ├── led.cpp                      # SK6812-mini strip: off=sleep, blue slow flowing=uncalibrated, blue chase=calibrated, green chase=armed, red chase=logging, yellow blink=low battery/error; factory reset = flash red 3× (F41, F42)
 ├── battery.cpp                  # VBAT monitoring, Qi charging detection, low-battery shutdown
@@ -614,11 +616,12 @@ BitPacker
 
 StartDetector
   ├── void feed_pressure(float pa) # Called every 100 ms
-  └── bool descent_detected()      # >1.5 m/s over window
+  ├── void set_p0(float pa)        # Set arming baseline
+  └── bool descent_detected()      # >2.0 m cumulative drop from P₀. Altitude-adaptive PA_PER_M. Noise-gated sd diagnostics (≥1 Pa change)
 
 EndDetector
-  ├── void feed(float pressure, Quaternion q)
-  └── bool run_ended()             # 10s flatline (±0.3 m/s) + IMU stillness (F06)
+  ├── void feed(float pressure_pa)   # Called at 100 Hz, samples internally at 0.5 Hz
+  └── bool run_ended()               # Descent < 2 m over 5 s (elevation delta, F06). Altitude-adaptive PA_PER_M. Ignores ascent.
 
 UWBBlinker  ⚠️ [NOT v1 — interface definition only, never implemented]
   ├── void init()                # Power-gate ON, SPI init, configure DW3000 TDoA mode

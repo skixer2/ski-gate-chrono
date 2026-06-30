@@ -304,12 +304,9 @@ void feed_sensors()
         /* ── Push live frame onto ring ── */
         g_ring.write(f);
 
-        /* ── End detection (100 Hz: accel + baro flatline) ──
-         * Phase 11 fix: use raw sensor value, NOT quantized frame data.
-         * baro_pa_div2 is uint16 with 2 Pa/LSB → raw sensor has ~10× better
-         * resolution for flatline detection. */
-        float pa_raw = pressure.value() * 100.0f;  /* hPa → Pa, full resolution */
-        if (g_end_det.feed(pa_raw, f.la_x, f.la_y, f.la_z))
+        /* ── End detection: sampled at 0.5 Hz, 5 s window (10 samples) ── */
+        float pa_raw = pressure.value() * 100.0f;  /* hPa → Pa */
+        if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
         return;
     }
@@ -432,6 +429,15 @@ void loop()
 
     BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
     g_led.update(); g_sm.tick(); g_ldc.tick(); handle_serial();
+
+    /* ── LDC1612 wake from SLEEP (F13) ── */
+    if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP) {
+        json_begin();
+        json_kv("ev", "wake");
+        Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
+        json_end();
+        g_sm.force_state(DeviceState::IDLE);
+    }
 
     /* ── LDC1612 proximity arming (F03) ── */
     if (g_ldc.is_armed() && g_sm.state() == DeviceState::IDLE) {

@@ -522,7 +522,7 @@ public:
     void on_proximity_start();
     void on_proximity_end();
     void on_baro_descent(float m_s);
-    void on_flatline_stillness();
+    void on_descent_slow();
     void on_ble_command(uint8_t cmd);
     void on_ble_disconnect();
     void on_battery_low();
@@ -637,26 +637,39 @@ void StateMachine::on_proximity_end() {
 
 ---
 
-## 8. Start Detector (`start_detector.cpp`) — Drop-Only (v2.2)
+## 8. Start Detector (`start_detector.cpp`) — Drop-Only with Adaptive Altitude Factor (v3.0)
 
 Detects run start via **cumulative vertical drop > 2.0 m from arming pressure P₀**.
 P₀ is captured at arming. Single-mode: drop only. Speed mode removed in v2.2 —
 BMP390 quantization noise (~0.78 Pa/LSB, ±3 Pa pp with BHY2 processing) caused
 false triggers at the 1.5 m/s threshold during stationary desk tests.
 
+**v3.0 (2026-06-30):** Altitude-adaptive pressure-to-elevation factor.
+`PA_PER_M` is not a constant — it scales with local air density:
+`pa_per_m = PA_PER_M_SEA * (P₀ / SEA_LEVEL_PA)`.
+At 1100 m (~88887 Pa): 12.0 * 0.877 = 10.53 Pa/m (vs 12.0 at sea level).
+Without this correction, measured descent is underestimated by ~13% at altitude.
+
+**v3.0 (2026-06-30):** Diagnostic `sd` events gated — only emitted when pressure
+changes ≥ 1 Pa from the last report, suppressing sensor noise duplicates.
+
 ### Algorithm
 
 ```cpp
 class StartDetector {
-    static const float DROP_THRESHOLD = 2.0;  // meters from P₀
-    static const float PA_PER_M       = 12.0; // Pa per meter at sea level
+    static const float DROP_THRESHOLD_M = 2.0f;  // meters from P₀
+    static const float PA_PER_M_SEA     = 12.0f; // Pa/m at sea level
+    static const float SEA_LEVEL_PA     = 101325.0f;
+    static const float SD_REPORT_DELTA  = 1.0f;   // noise gate (Pa)
     
-    float p0;            // pressure at arming (Pa)
+    float p0;               // pressure at arming (Pa)
+    float m_last_reported_pa; // suppress duplicate sd events
     bool  drop_triggered;
     
 public:
     void reset(float p0_pa) {
         p0 = p0_pa;
+        m_last_reported_pa = 0;
         drop_triggered = false;
     }
     
@@ -664,12 +677,28 @@ public:
     
     bool feed(float pressure_pa) {
         if (drop_triggered) return true;
-        if (pressure_pa <= 0 || p0 <= 0) return false;  // safety: refuse uninitialized P₀
+        if (pressure_pa <= 0 || p0 <= 0) return false;
         
-        // Descent = pressure INCREASES (lower altitude = higher pressure)
-        float drop_m = (pressure_pa - p0) / PA_PER_M;
-        if (drop_m > DROP_THRESHOLD) {
+        // Adaptive: scale PA_PER_M by local pressure ratio
+        float pa_per_m = PA_PER_M_SEA * (p0 / SEA_LEVEL_PA);
+        float drop_m = (pressure_pa - p0) / pa_per_m;
+        
+        // Diagnostic: only emit when pressure actually changed
+        if (fabsf(pressure_pa - m_last_reported_pa) >= SD_REPORT_DELTA) {
+            m_last_reported_pa = pressure_pa;
+            json_begin(); json_kv("ev","sd");
+            Serial.print(','); json_kv("p0",p0,1);
+            Serial.print(','); json_kv("pa",pressure_pa,1);
+            Serial.print(','); json_kv("drp",drop_m,2);
+            json_end();
+        }
+        
+        if (drop_m > DROP_THRESHOLD_M) {
             drop_triggered = true;
+            json_begin(); json_kv("ev","start");
+            Serial.print(','); json_kv("mode","drop");
+            Serial.print(','); json_kv("m",drop_m,1);
+            json_end();
             return true;
         }
         return false;
@@ -679,44 +708,102 @@ public:
 };
 ```
 
-**Why drop-only:** A skier descending 2.0 m produces a pressure increase of ~24 Pa —
-well above the BMP390's quantization noise (±3 Pa peak-to-peak). No false triggers
-on a stationary desk. Real descent triggers reliably within 5–15 feeds (0.5–1.5 s).
+**Why drop-only:** A skier descending 2.0 m produces a pressure increase of ~24 Pa
+at sea level (~21 Pa at 1100 m) — well above the BMP390's quantization noise
+(±3 Pa peak-to-peak). No false triggers on a stationary desk. Real descent triggers
+reliably within 5–15 feeds (0.5–1.5 s).
 
-Fed at 10 Hz with pressure in Pa. P₀ is set at the `force_state(ARMED)` call site
+Fed at 10 Hz with pressure in Pa. P₀ is set at the `force_state(ARMED)` call site
 (before the first baro feed), and also guarded in `feed()` (`m_p0 <= 0` → return false)
 against any future code paths that might arm without setting P₀.
 
 ---
 
-## 9. End Detector (`end_detector.cpp`)
+## 9. End Detector (`end_detector.cpp`) — Elevation Delta (v4.0)
+
+**v4.0 (2026-06-30):** Complete rewrite. Replaces the old flatline derivative
+(|vertical_speed| < 0.3 m/s + IMU stillness < 0.05 g) with a simple elevation
+delta over the last 5 s.
+
+### Design rationale
+
+- **Old approach problems:** Derivative-based flatline was noise-sensitive even
+  with EWMA filtering. The 100 Hz FlashRing peek was broken by the drain logic
+  (pop-2/push-1 left count at 498-499, never reaching is_full() again).
+- **New approach:** Samples pressure at 0.5 Hz into a 10-sample ring (5 s window).
+  Compares current pressure to oldest sample. If the elevation drop over 5 s is
+  less than 2 m → the skier is in the finish area → stop logging.
+- **Independent of FlashRing:** No interference with the drain pipeline.
+- **RAM:** 10 × float = 40 bytes (vs 4000 for the old 1000-element ring).
 
 ### Algorithm
 
 ```cpp
 class EndDetector {
-    static const int FLAT_WINDOW = 100;   // 10 s at 100 ms feed rate
-    static const float FLAT_THRESHOLD = 0.3;  // m/s
-    static const float STILL_THRESHOLD = 0.05; // g (≈ 0.5 m/s²)
-    
-    bool flatline_detected();
-    bool stillness_detected();
-    
+    static const float THRESHOLD_M        = 2.0f;   // stop if descent < 2m
+    static const float PA_PER_M_SEA       = 12.0f;  // Pa/m at sea level
+    static const float SEA_LEVEL_PA       = 101325.0f;
+    static const uint32_t SAMPLE_INTERVAL = 500;    // ms between samples
+    static const uint8_t  WINDOW_SAMPLES  = 10;     // 5s at 0.5Hz
+
+    float    m_ring[10];       // 10 pressure samples
+    uint8_t  m_idx;
+    uint8_t  m_count;
+    bool     m_ring_full;
+    bool     m_detected;
+    uint32_t m_last_sample_ms;
+
 public:
-    void feed(float pressure, const RawFrame& frame) {
-        // Pressure → altitude → vertical speed (same as start detector)
-        // IMU linear acceleration magnitude:
-        float accel_mag = sqrt(frame.la_x² + frame.la_y² + frame.la_z²) / 1000.0; // g
+    bool feed(float pressure_pa) {
+        if (m_detected) return true;
         
-        // Count consecutive samples where:
-        //   |vertical_speed| < FLAT_THRESHOLD
-        //   AND |accel_mag - 1.0| < STILL_THRESHOLD  (1g = stationary)
-        // When count ≥ FLAT_WINDOW: run_ended = true
+        // Sample at 0.5 Hz
+        if (millis() - m_last_sample_ms < SAMPLE_INTERVAL) return false;
+        m_last_sample_ms = millis();
+        
+        m_ring[m_idx] = pressure_pa;
+        if (++m_idx >= WINDOW_SAMPLES) { m_idx = 0; m_ring_full = true; }
+        if (!m_ring_full) return false;
+        
+        float oldest_pa = m_ring[m_idx];
+        float dp = pressure_pa - oldest_pa;
+        
+        // Altitude-adaptive Pa/m factor from oldest ring pressure
+        float pa_per_m = PA_PER_M_SEA * (oldest_pa / SEA_LEVEL_PA);
+        
+        // dp ≥ 0: descended or flat. dp < 0: ascended (ignore).
+        if (dp >= 0 && dp < THRESHOLD_M * pa_per_m) {
+            m_detected = true;
+            float descent_m = dp / pa_per_m;
+            json_begin(); json_kv("ev","end");
+            Serial.print(','); json_kv("reason","descent_slow");
+            Serial.print(','); json_kv("de_5s_m",descent_m);
+            json_end();
+            return true;
+        }
+        return false;
     }
-    
-    bool run_ended() const;
+
+    bool detected() const { return m_detected; }
+    void reset() { m_idx = 0; m_ring_full = false; m_detected = false; }
 };
 ```
+
+**Condition table:**
+
+| dp (Pa) | pa_per_m | Descent (m) | Verdict | Reason |
+|---|---|---|---|---|
+| ≥ 24 (sea level) / ≥ 21 (1100m) | 12.0 / 10.5 | ≥ 2.0 | Keep logging | Still racing |
+| 0 … threshold | — | 0 … 2.0 | **STOP** | Finish area / flat |
+| < 0 (negative) | — | n/a (ascent) | Keep logging | Not a finish |
+
+**Why 0.5 Hz is enough:** The end of a ski run is not a split-second event —
+the finish area is flat for several seconds. A 5 s rolling window sampled every
+0.5 s provides ample time resolution while using only 40 bytes of RAM.
+
+**Why dp < 0 is ignored:** A positive pressure delta (dp > 0) means descending
+(lower altitude = higher pressure). A negative delta means ascending —
+impossible at a race finish; likely a racer hiking back up.
 
 ---
 

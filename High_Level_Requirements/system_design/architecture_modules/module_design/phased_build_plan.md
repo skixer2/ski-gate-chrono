@@ -32,7 +32,8 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 #### 7a — Core Pipeline ✅ DONE (06-16 20:42)
 - [x] Flash ring buffer (1000-slot circular, 500-frame window)
 - [x] RawFrame 16B, CompressedFrame 22B, BitPacker delta encoding
-- [x] StartDetector (barometric drop), EndDetector (10s stillness)
+- [x] StartDetector (barometric drop, altitude-adaptive PA_PER_M, noise-gated diagnostics)
+- [x] EndDetector: 5 s elevation delta, 0.5 Hz sampling (10-sample ring, 40 B RAM). Replaced flatline+stillness derivative (v4.0)
 - [x] Run headers 16B, multi-run block-aligned flash storage
 
 #### 7b — Persistence & Integrity ✅ DONE (06-16 20:57)
@@ -80,7 +81,7 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [x] RunHeader aligned: +frame_count, data_size uint32 (Phase 7b fix)
 - [x] Ring buffer drain: proper pop-2/push-1 interleaving (C5)
 - [x] StartDetector: fixed thresholds + cumulative-drop-from-P₀ algorithm (C6/C7)
-- [x] EndDetector: barometric flatline + IMU stillness dual check (C8)
+- [x] EndDetector: v4.0 elevation delta (replaced C8 flatline+IMU stillness)
 - [x] StartDetector feed rate: 10 Hz via separate timer (C11)
 - [x] State machine enum aligned to design (C10)
 - [x] Quaternion mapping fix: x→w bug corrected (C9)
@@ -95,6 +96,7 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 
 | Tag | Date | Description |
 |-----|------|-------------|
+| v3.0 | 06-30 12:45 | End detector v4: 5s elevation delta, 0.5Hz sampling, 40B RAM ring. Altitude-adaptive PA_PER_M (start + end). Start detector noise-gated sd diagnostics. Decoupled from FlashRing (drain bug fixed) |
 | v2.4 | 06-27 22:50 | Start detector: drop-only (speed removed — BMP390 noise). Drain: data-driven pop N=min(2,count). Threshold 2.0m |
 | v2.3 | 06-25 21:00 | FlashManager, CRC32, drain interleaving, Start/End detector fixes |
 | v0.8.1 | 06-18 18:11 | Quaternion magnitude sensor check + clean cal display |
