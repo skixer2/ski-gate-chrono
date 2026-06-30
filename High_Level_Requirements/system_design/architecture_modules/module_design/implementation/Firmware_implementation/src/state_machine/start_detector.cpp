@@ -39,7 +39,7 @@ bool StartDetector::feed(float pressure_pa)
         json_end();
     }
 
-    if (drop_m > DROP_THRESHOLD_M) {
+    if (drop_m >= DROP_THRESHOLD_M) {
         m_drop_triggered = true;
         json_begin();
         json_kv("ev", "start");

@@ -53,7 +53,7 @@ SCENARIOS.append(TestScenario(
         # Drop pressure 100 Pa → ascent. dp < 0 → NOT triggered.
         TestStep("Simulate pressure drop (ascent)", 'B 100900', 300,
             expect_json={"ev": "cmd", "cmd": "B"}),
-        TestStep("Wait 5 s (old samples being replaced)", None, wait_ms=5000),
+        TestStep("Wait 3 s (ring still has old pressure → dp<0)", None, wait_ms=3000),
         TestStep("Should still be LOGGING (dp < 0)", '?', 300,
             expect_json={"st": "LOGGING"}),
         # After ring turnover (all 100900) → dp = 0 → end → cooldown → IDLE.

@@ -217,8 +217,11 @@ SCENARIOS.append(TestScenario(
         TestStep("Force LOGGING + wait log_start", 'l', 500,
             expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"},
             on_response=lambda h, _: h.wait_for_json_event("log_start", timeout_ms=10000) is not None),
-        # Verify log_start had pre > 0 — check via status (log_start consumed above)
-        TestStep("Verify LOGGING (log_start received)", '?', 300,
+        # v4 end detector fires on constant pressure. Inject active descent
+        # to prevent premature end detection (dp > 0 → keeps logging).
+        TestStep("Inject descent to prevent end detection", 'B 101400', 300,
+            expect_json={"ev": "cmd", "cmd": "B"}),
+        TestStep("Verify LOGGING (end detection blocked by descent)", '?', 300,
             expect_json={"st": "LOGGING"}),
         TestStep("Force POST_RUN + cleanup", 'p', 500),
         TestStep("Wait IDLE", poll_state='IDLE', timeout_ms=15000),

@@ -693,7 +693,7 @@ public:
             json_end();
         }
         
-        if (drop_m > DROP_THRESHOLD_M) {
+        if (drop_m >= DROP_THRESHOLD_M) {
             drop_triggered = true;
             json_begin(); json_kv("ev","start");
             Serial.print(','); json_kv("mode","drop");
