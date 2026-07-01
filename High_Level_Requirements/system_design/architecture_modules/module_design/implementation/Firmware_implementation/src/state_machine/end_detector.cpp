@@ -66,6 +66,9 @@ bool EndDetector::feed(float pressure_pa)
         json_kv("reason", "descent_slow");
         Serial.print(',');
         json_kv("de_5s_m", descent_m);
+        Serial.print(','); json_kv("pa", pressure_pa);
+        Serial.print(','); json_kv("oldest", oldest_pa);
+        Serial.print(','); json_kv("cnt", (long)m_count);
         json_end();
         return true;
     }
