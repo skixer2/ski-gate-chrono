@@ -296,9 +296,19 @@ A physical way to kill power if the device locks up (no software dependency):
 
 | Ref | Component | Package | Qty | Purpose |
 |-----|-----------|---------|-----|---------|
+| U_QI | IP6833 Qi Receiver | QFN-28 4×4mm | 1 | 5W Qi wireless power receiver (see §6.2) |
+| L_QI | Qi receiver coil 24 µH | WPC A11 48×32mm | 1 | Wound wire + ferrite shield |
+| C_AC1/2 | 22 nF, 50V, NP0/C0G | 0603 | 2 | Qi resonant capacitors |
+| C_RECT | 22 µF, 16V, X5R | 0805 | 1 | Rectifier output filter |
+| C_BOOT | 100 nF, 16V, X5R | 0603 | 1 | Bootstrap capacitor |
 | U1 | LDC1612 | WSON-12 | 1 | Inductive proximity sensor |
 | L1 | PCB trace coil | 14mm spiral | 1 | LDC1612 sensing coil |
-| U2 | 5V Boost (MCP1640 or TPS61322x) | SOT-23-5 | 1 | 5V rail for SK6812 LEDs |
+| U2 | MT3608 Boost Converter | SOT-23-6 | 1 | 5V rail for SK6812 LEDs (see §6.1) |
+| L_Boost | 4.7 µH power inductor, Isat ≥ 2A | 0805/1206 | 1 | Boost inductor |
+| C_IN | 10 µF, 10V, X5R | 0805 | 1 | Boost input decoupling |
+| C_OUT | 22 µF, 10V, X5R | 0805 | 1 | Boost output filter |
+| R_FB1 | 75 kΩ, 1% | 0603 | 1 | Boost feedback divider high-side |
+| R_FB2 | 10 kΩ, 1% | 0603 | 1 | Boost feedback divider low-side |
 | U3 | Level Shifter (74AHCT1G125) | SOT-23-5 | 1 | 3.3V→5V data line shift |
 | D1-D5 | SK6812-mini RGBW | 2×2mm | 5 | Status indicator LEDs |
 | BZ1 | Piezo beeper | SMD | 1 | Audible feedback |
@@ -307,11 +317,57 @@ A physical way to kill power if the device locks up (no software dependency):
 | R1-R4 | 2.2kΩ pull-up × 2, 10kΩ × 2 | 0603 | 4 | I²C pull-ups, misc |
 | C1-C4 | 100nF, 10µF decoupling | 0603 | 4 | Power decoupling |
 
-### 5V Boost Rationale
+### 6.1 5V Boost Rationale
 
-- **5× SK6812-mini at full white** draws ~60-80 mA per LED → **300-400 mA total peak**
-- MCP1640 / TPS61322x in SOT-23-5 provides up to 500 mA at 5V from a single LiPo cell (3.0-4.2V)
-- Tiny footprint, low cost (~$0.30-0.50), no external MOSFET needed
+**Why MCP1640/TPS61322x were rejected:**
+- MCP1640: 350 mA peak switch current is insufficient. From 3.0V Li-Po → 5V @ 300 mA:
+  I_sw_peak ≈ (5V × 0.3A) / (3.0V × 0.85 η) + 0.1A ripple ≈ 0.69 A >> 0.35 A limit.
+- TPS61322x: Fixed-output variants exist but harder to source at JLCPCB;
+  lower switch current variants less suited for 5× SK6812 at full brightness.
+
+**MT3608 selected (Aerosemi, SOT-23-6):**
+- Input: 2.0–24 V → works with depleted battery (3.0V cutoff)
+- Switch current: 4 A peak → massive headroom for 300 mA LED load
+- Fixed 1.2 MHz switching → 4.7 µH inductor (0805, ~$0.05)
+- Vout = 0.6V × (1 + 75k/10k) = 5.1 V through external feedback divider
+- EN pin → nRF52 GPIO for software power gate (shutdown ~2 µA)
+- 65 µA quiescent in PFM light-load mode, ~88% efficiency at 300 mA load
+- Temp range: −40 to +85 °C
+- LCSC #C84817, JLCPCB basic part, ~$0.08–0.15 (volume). Widely second-sourced.
+
+**5× SK6812-mini at full white:** ~60 mA per LED → 300 mA total peak at 5 V.
+Sequential animation reduces average to ~15 mA. Boost sized for full worst case.
+
+**Drop-in alternatives:**
+
+| IC | Sw. I | Vin min | Cost | Notes |
+|----|-------|---------|------|-------|
+| FP6291 | 2.5 A | 2.6 V | ~$0.10 | Higher Vin min, less depleted-battery headroom |
+| TPS61023 | 3.7 A | 0.5 V | ~$0.45 | TI quality, SOT-563 (tiny, harder to hand-solder) |
+
+### 6.2 Qi Wireless Receiver Rationale
+
+The companion carrier PCB hosts the Qi charging front-end because:
+- The off-the-shelf Nicla Sense ME does NOT have built-in Qi charging
+  (it charges via USB-C only, using its BQ25120A).
+- The battery lives on the carrier PCB; charging must happen there.
+- The Qi receiver's 5V output feeds the Nicla's VIN pin → BQ25120A IN → charges battery.
+
+**IP6833 selected (Injoinic, QFN-28):**
+- QFN-28 at 4×4mm, 0.4mm pitch — JLCPCB-assemblable (unlike BQ51013B's DSBGA)
+- WPC Qi BPP (5W) compliant, works with any Qi charging pad
+- Integrated full-bridge synchronous rectifier (no external diodes)
+- Integrated 5V LDO (up to 1.6A) — feeds BQ25120A IN at max 300mA charge rate
+- Integrated 32-bit MCU handles Qi protocol (ASK modulation, FSK demod, FOD)
+- Minimal BOM: coil, resonant caps, filter caps — ~6 passives total
+- LCSC available, ~$1-2 (volume)
+- Temp range: −40 to +85°C
+
+**Qi coil:** Würth 760308101 (24 µH, WPC A11) or equivalent wound coil with ferrite
+backing. Wound coil gives 75-80% system efficiency vs ~60% for PCB spiral.
+
+**For P0 prototype:** Use a pre-built BQ51013B module (Adafruit #1901 or generic,
+$5-15). Solder V+ and GND pads to the Nicla replica PCB's Qi input.
 
 ### Level Shifter Rationale
 
@@ -324,6 +380,7 @@ A physical way to kill power if the device locks up (no software dependency):
 
 - Nicla is powered directly from the LiPo battery via its VIN pin
 - Nicla's onboard BQ25120A handles charging via USB-C
+- Qi receiver 5V output → Nicla VIN pin → BQ25120A IN → charges battery
 - 5V boost only powers the LED strip data + power rails
 
 ---

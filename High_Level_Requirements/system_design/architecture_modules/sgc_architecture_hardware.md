@@ -354,52 +354,241 @@ UHF RFID ceramic antenna (unpopulated)
 ### Power Tree
 
 ```
-Qi Charging Pad (5W)
+Qi Charging Pad (5W, any Qi-compliant transmitter)
         │
         ▼
-   Qi Receiver Coil → Rectifier → 5V DC
-        │
+   Qi Receiver Coil (24 µH, WPC A11-type)
+        │  AC1/AC2
         ▼
-   BQ25100 Charger IC
-        │  ┌─ Charging status → P0.04 (ADC) or I²C
+   Qi Receiver IC (IP6833 or BQ51013B module)
+        │  ┌─ Sync rectifier + LDO → 5 V regulated output
+        │  └─ ASK/FSK comms to transmitter
+        ▼
+   BQ25120A Charger IC
+        │  ┌─ Charging status → BQ25120 I²C (Wire1, P0.15/P0.16)
         │  └─ Battery temp → NTC thermistor on battery lead
         ▼
    Renata ICP622540PMT
    600 mAh, 3.7V Li-Po
    Integrated NTC (3-wire: BAT+, BAT−/GND, NTC)
         │
-        ├──► 3.3V LDO (TPS7A05 or similar) → VDD_nRF (nRF52832, Flash, LED, Beeper)
+        ├──► 3.3V LDO (TPS7A05 or similar) → VDD_nRF (nRF52832, Flash, Beeper)
         │
         ├──► 1.8V LDO → VDD_Sensors (BHI260AP, BMP390, LDC1612)
+        │
+        ├──► 5V Boost (MT3608) → VDD_LED (SK6812 × 5 + level shifter)
+        │     EN pin → GPIO (P0.24 or free pin) = software power gate
         │
         ├──► MOSFET (P0.24) → VDD_RFID (⚠️ v2 only — UHF RFID unpopulated in v1)
         │
         └──► MOSFET (P0.30) → VDD_UWB (⚠️ reserved, unpopulated)
 ```
 
+**⚠️ P0 Prototype (Monolithic PCB):** The custom Nicla replica PCB used at P0 powers SK6812 LEDs
+from the 3.3V rail directly (no boost). LEDs are dim but functional for field validation.
+From P1 onward (companion carrier PCB), the 5V boost provides full brightness and reliable
+cold-weather operation. Qi receiver on P0 uses a pre-built module; P1+ integrates the IP6833 IC.
+See §7.3 (boost) and §7.4 (Qi receiver).
+
+### 5V Boost Converter — SK6812 LED Supply
+
+The SK6812-mini LEDs require ≥ 4.0V for reliable operation (5.0V nominal).
+At 3.3V they are dim, have poor colour accuracy, and may fail to latch data
+in cold temperatures. A dedicated boost converter generates the 5V LED rail
+from the Li-Po battery, independent of the LDO-regulated digital rails.
+
+**IC Selection: MT3608 (Aerosemi)**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Package | SOT-23-6 | 2.9 × 1.6 mm, tiny |
+| Input range | 2.0 – 24 V | Works down to deeply depleted Li-Po (3.0V cutoff) |
+| Output | Adjustable, set to 5.0 V | Feedback divider: R1=75k, R2=10k → 5.1 V |
+| Switch current | 4 A peak | Massive headroom for 300 mA load |
+| Switching freq | 1.2 MHz | Enables small inductor (4.7 µH, 0805) |
+| Quiescent | 65 µA (PFM mode) | Light-load efficiency for battery life |
+| Shutdown | ~2 µA via EN pin LOW | MCU-controlled power gate |
+| Efficiency | ~88% @ 3.7V→5V/300mA | Per MT3608 datasheet curves |
+| Temp range | −40 to +85 °C | Winter sports approved |
+| Cost | ~$0.08–0.15 (volume) | JLCPCB basic part (C84817), no extended fee |
+
+**External components (minimum BOM):**
+
+| Ref | Value | Package | Purpose |
+|-----|-------|---------|---------|
+| L_Boost | 4.7 µH, Isat ≥ 2 A | 0805 or 1206 | Power inductor |
+| C_IN | 10 µF, 10 V, X5R | 0805 | Input decoupling |
+| C_OUT | 22 µF, 10 V, X5R | 0805 | Output filter |
+| R_FB1 | 75 kΩ, 1% | 0603 | Feedback divider high-side |
+| R_FB2 | 10 kΩ, 1% | 0603 | Feedback divider low-side |
+| C_FF | 22 pF (optional) | 0603 | Feedforward cap across R_FB1 for stability |
+
+**Feedback calculation:** Vout = Vref × (1 + R1/R2) = 0.6 × (1 + 75k/10k) = 5.1 V
+
+**EN pin control:** The boost EN pin is driven by an nRF52832 GPIO
+(P0.24 or any free pin). Firmware holds EN LOW during SLEEP (shutdown, ~2 µA),
+HIGH during ARMED/LOGGING/POST_RUN (LED active). This eliminates the ~65 µA
+boost quiescent draw when LEDs are off.
+
+**Alternative ICs (drop-in if MT3608 out of stock):**
+
+| IC | Package | Isw | Vin min | Notes |
+|----|---------|-----|---------|-------|
+| FP6291 | SOT-23-6 | 2.5 A | 2.6 V | Higher Vin min, less headroom for depleted battery |
+| TPS61023 | SOT-563 | 3.7 A | 0.5 V | Premium TI option (~$0.45), ultra-low Vin, but tiny SOT-563 harder to hand-solder |
+
+### Qi Wireless Charging Receiver
+
+The Qi receiver harvests power from any standard Qi (WPC BPP) transmitter pad and
+delivers regulated 5 V to the BQ25120A charger input (IN pin, 3.4–6.4 V range).
+
+**Architecture:**
+
+```
+Qi Transmitter Pad (5W, any brand)
+        │  ~110–205 kHz magnetic coupling
+        ▼
+   Receiver Coil (24 µH, WPC A11 type)
+        │  AC terminals
+        ▼
+   Qi Receiver IC
+        │  ┌─ Full-bridge synchronous rectifier
+        │  ├─ 5 V LDO regulator
+        │  ├─ ASK modulation (comm back to transmitter)
+        │  └─ FSK demodulation (comm from transmitter)
+        ▼
+   5 V DC Output → BQ25120A IN pin
+```
+
+#### P0 Prototype: Pre-Built Module
+
+For the P0 prototype use a pre-built Qi receiver module. This avoids designing
+and debugging the Qi front-end during the field-validation phase.
+
+**Recommended: BQ51013B-based module**
+
+| Parameter | Value |
+|-----------|-------|
+| Source | Adafruit #1901, Protopoint, or AliExpress generic |
+| Chip | TI BQ51013B (industry standard) |
+| Output | 5.0 V ±0.2 V, 500 mA continuous |
+| Size | ~28 × 26 mm PCB + attached coil (~40 × 30 mm) |
+| Connections | V+ (5V out), GND — two solder pads |
+| Coil | Included, thin flexible PCB coil with ferrite shield |
+| Cost | $5–15 depending on source |
+
+**Connection to SGC PCB:** V+ → BQ25120A IN pin, GND → common ground.
+The module mounts inside the enclosure with the coil facing outward
+(toward the transmitter pad).
+
+**Alternative modules:**
+
+| Module | Chip | Output | Notes |
+|--------|------|--------|-------|
+| Adafruit #1901 | BQ51013B / RT1650 | 5V 500mA | Best documented, ships worldwide |
+| Protopoint Mini Qi | BQ51013A | 5V 500mA | Compact, breadboard-friendly |
+| ElectroDragon Qi | BQ51013B | 5V 1A | Larger, higher current |
+| AliExpress generic | BQ51013B (varies) | 5V 500mA–1A | Cheapest ($2–5), verify on arrival |
+
+#### P1+ Production: Integrated IP6833 (Injoinic)
+
+For the companion carrier PCB (and the monolithic Nicla replica if redesigned),
+integrate the Qi receiver chip directly onto the PCB.
+
+**IC Selection: IP6833 (Injoinic)**
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Package | QFN-28, 4 × 4 mm, 0.4 mm pitch | JLCPCB assembly compatible |
+| Standard | WPC Qi BPP (5 W) | Compatible with all Qi transmitters |
+| Output | 5.0 V, up to 1.6 A | Programmable LDO, set to 5 V |
+| Rectifier | Integrated synchronous full-bridge | 96% efficiency, no external diodes |
+| MCU | Integrated 32-bit ARM | Handles Qi protocol, ASK/FSK comms |
+| Protection | FOD, OVP, OTP, UVLO, current limit | All built-in |
+| Temp range | −40 to +85 °C | Winter sports approved |
+| Cost | ~$1–2 (volume) | LCSC, widely available |
+
+**External components (minimum BOM):**
+
+| Ref | Value | Package | Purpose |
+|-----|-------|---------|---------|
+| L_QI | 24 µH WPC A11 coil | ~48 × 32 × 1 mm | Qi receiver coil, wound wire + ferrite |
+| C_AC1 | 22 nF, 50 V, NP0/C0G | 0603 | Resonant capacitor AC1 to GND |
+| C_AC2 | 22 nF, 50 V, NP0/C0G | 0603 | Resonant capacitor AC2 to GND |
+| C_RECT | 22 µF, 16 V, X5R | 0805 | Rectifier output filter |
+| C_BOOT | 100 nF, 16 V, X5R | 0603 | Bootstrap capacitor for HS gate driver |
+| C_OUT | 10 µF, 10 V, X5R | 0805 | LDO output decoupling |
+| C_VDD | 1 µF, 10 V, X5R | 0603 | Internal VDD decoupling |
+
+**Qi coil options:**
+
+| Coil | Type | L | Size | Notes |
+|------|------|---|------|-------|
+| Würth 760308101 | Wound + ferrite | 24 µH | 48×32×1.4mm | Qi A11, $3–5, recommended |
+| Würth 7603081013 | Wound + ferrite | 10.5 µH | 30×30mm | Smaller alternative |
+| PCB spiral (custom) | 2-layer trace | ~10–15 µH | 30×30mm area | No BOM cost, lower efficiency |
+
+**Note:** Pre-made wound coils with ferrite backing deliver ~75–80% system
+efficiency vs ~60–65% for PCB spirals. For the production device targeting
+cold-weather operation, the higher efficiency of wound coils helps offset
+battery capacity losses at low temperatures.
+
+**IP6833 application schematic (simplified):**
+
+```
+    L_QI (24 µH)
+  ┌───────~~~~───────┐
+  │                  │
+  ├─ C_AC1 (22nF) ──┤ GND
+  │                  │
+AC1                  AC2     ← IP6833 pins
+  │                  │
+  └──────┬───────────┘
+         │
+    ┌────┴────┐
+    │  IP6833 │
+    │  QFN-28 │
+    │         │
+    │  RECT ──┼── C_RECT (22µF) ── GND
+    │  BOOT ──┼── C_BOOT (100nF) ─ GND
+    │  VOUT ──┼── C_OUT (10µF) ── GND
+    │         │      │
+    │  VDD  ──┼── C_VDD (1µF) ─── GND
+    │  GND  ──┼── GND plane
+    │         │      │
+    │  (other pins: NC or tied per datasheet)
+    └─────────┘      │
+                     ▼
+              5V → BQ25120A IN
+```
+
 ### Power Budget
 
 | State | Total draw | Notes |
 |-------|-----------|-------|
-| SLEEP | ~53 µA | LDC1612 10 Hz poll only |
-| IDLE | ~14 mA | BLE advertising, sensors idle |
-| ARMED | ~21 mA | 100 Hz fusion, ring buffer filling |
-| LOGGING | ~19 mA | Flash writes active, BLE off. **RFID unpopulated in v1** |
-| POST_RUN | ~14 mA | BLE advertising for transfer |
+| SLEEP | ~55 µA | LDC1612 10 Hz poll, boost shut down (EN LOW) |
+| IDLE | ~14 mA | BLE advertising, sensors idle, boost off (LEDs off) |
+| ARMED | ~26 mA | 100 Hz fusion, ring buffer filling, boost active (LEDs chasing green) |
+| LOGGING | ~24 mA | Flash writes active, BLE off, boost active (LEDs chasing red). **RFID unpopulated in v1** |
+| POST_RUN | ~17 mA | BLE advertising for transfer, boost active (LEDs chasing blue) |
 
 ### Session Budget (3h, 10 runs, v1 — no RFID)
 
 ```
-  20 min IDLE/ARMED:          ~5 mAh
-  20 min LOGGING:               ~6 mAh  (no RFID in v1)
-  20 min POST_RUN/BLE:          ~4 mAh
- 120 min IDLE between runs:     ~26 mAh
+  20 min IDLE/ARMED (avg 18 mA):          ~6 mAh
+  20 min LOGGING (24 mA):                 ~8 mAh  (no RFID in v1)
+  20 min POST_RUN/BLE (17 mA):            ~6 mAh
+ 120 min IDLE between runs (14 mA):       ~28 mAh
   ─────────────────────────────────
-  Total per session:            ~41 mAh
+  Total per session:                      ~48 mAh
 
-  600 mAh / 41 mAh = ~14.6 sessions (20°C)
-  At −10°C (25% derate):      ~11 sessions (H02 satisfied: ≥8h / ~3 sessions)
+  600 mAh / 48 mAh = ~12.5 sessions (20°C)
+  At −10°C (25% derate):      ~9 sessions (H02 satisfied: ≥8h / ~3 sessions)
 ```
+
+Note: Budget includes 5V boost active during ARMED, LOGGING, and POST_RUN states.
+Boost efficiency ~88% at 300 mA LED load; sequential animation keeps average
+LED draw ~15 mA @ 5V → ~85 mW load on battery (~23 mA @ 3.7V after efficiency).
 
 ### Battery Protection
 
@@ -516,8 +705,12 @@ Qi Charging Pad (5W)
 | BHI260AP INT | nRF52832 | P0.14 | GPIO rising edge | Managed by BHY2 |
 | LDC1612 INTB | nRF52832 | P0.02 | GPIO rising edge | Wake from SLEEP |
 | RGB LED strip | 5× SK6812-mini (custom PCB) | P0.19 | Single-wire NZR | 800 kHz |
+| Boost EN | MT3608 EN pin | P0.24* | GPIO OUT | HIGH = 5V active |
 | Beeper PWM | Piezo transducer | P0.09 | GPIO PWM | ~4 kHz |
 | Qi detect | Qi charger presence | P0.10 | GPIO IN | On-demand |
+
+*P0.24 is also used as RFID_EN in v2. For v1, it controls boost EN.
+In v2, RFID_EN takes P0.24 and boost EN must move to another free GPIO (P0.20 or P0.29 when v2 not populated).
 | RFID EN (v2) | MOSFET gate | P0.24 | GPIO OUT | HIGH = ON |
 | UWB PWR (v2) | MOSFET gate | P0.30 | GPIO OUT | HIGH = ON |
 

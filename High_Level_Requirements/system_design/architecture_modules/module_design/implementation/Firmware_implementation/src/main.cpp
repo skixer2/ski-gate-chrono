@@ -305,7 +305,9 @@ void feed_sensors()
         g_ring.write(f);
 
         /* ── End detection: sampled at 0.5 Hz, 5 s window (10 samples) ── */
-        float pa_raw = pressure.value() * 100.0f;  /* hPa → Pa */
+        float pa_raw = test_mode_active()
+            ? test_get_pressure()
+            : pressure.value() * 100.0f;  /* hPa → Pa */
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
         return;

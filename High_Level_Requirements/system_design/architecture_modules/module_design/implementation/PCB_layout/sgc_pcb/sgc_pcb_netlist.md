@@ -110,7 +110,13 @@ Custom PCB trace inductor. Connected to LDC1612 IN0A/IN0B.
 | D4 | D3 DOUT | D5 DIN |
 | D5 | D4 DOUT | NC (end of chain) |
 
-All: VDD → 3.3V | GND → GND. C19(100n→GND) per LED.
+All: VDD → 5V_BOOST | GND → GND. C19(100n→GND) per LED.
+
+**⚠️ P0 Prototype (Monolithic PCB):** SK6812 VDD = 3.3V (dim, but functional for field validation).
+From P1 onward (companion carrier PCB): VDD = 5V_BOOST via MT3608 boost converter.
+
+**Data path:** nRF52 P0.19 (3.3V NZR) → 74AHCT1G125 level shifter → SK6812 D1 DIN (5V NZR).
+Level shifter VCC = 5V_BOOST, input from 3.3V GPIO, output to SK6812 data line.
 
 ### BZ1 (Piezo Transducer, 10×10mm)
 
@@ -177,10 +183,71 @@ Nicla stock power tree — identical to Nicla Sense ME:
 - BQ25120A charger (U9) on I2C0 (P0.15/P0.16)
 - Battery: JST 3-pin connector (VBAT, NTC, GND)
 - Qi coil: 5W receiver → rectifier → 5V → BQ25120 input
-- 3.3V LDO: VDD_nRF, SGC peripherals
+- 3.3V LDO: VDD_nRF, SGC peripherals (except SK6812 LEDs)
 - 1.8V LDO: VDD_Sensors
-- LDO EN (P0.24): Tied HIGH via R19(10k→3.3V) — VDDIO_EXT always on
+- LDO EN: Tied HIGH via R19(10k→3.3V) — VDDIO_EXT always on
 - v2 MOSFET gates: P0.24 (RFID_EN), P0.30 (UWB_PWR) — GPIO output, default LOW
+
+### 5V Boost Converter (MT3608 — SGC Addition)
+
+The battery rail (VBAT, 3.0–4.2 V) is boosted to 5.1 V to power the SK6812 LED
+strip and level shifter. The boost is software-gated via EN pin for power saving.
+
+| MT3608 Pin | Net Name | Connect To |
+|-----------|----------|------------|
+| 1 (SW) | BOOST_SW | L_Boost → VBAT |
+| 2 (GND) | GND | Solid GND plane, via-stitched |
+| 3 (FB) | BOOST_FB | R_FB1 (75k) → 5V_BOOST, R_FB2 (10k) → GND |
+| 4 (EN) | BOOST_EN | nRF52 GPIO (P0.24 on v1), HIGH = active |
+| 5 (VIN) | VBAT | Battery rail, C_IN (10µF) to GND |
+| 6 (NC) | — | No connect (MT3608 pin 6 is unused) |
+
+| External | Value | Connect To |
+|----------|-------|------------|
+| L_Boost | 4.7 µH, Isat ≥ 2A | VBAT ↔ MT3608 SW (pin 1) |
+| C_IN | 10 µF, 10V, X5R | VBAT ↔ GND, < 3 mm from MT3608 VIN |
+| C_OUT | 22 µF, 10V, X5R | 5V_BOOST ↔ GND, < 3 mm from L_Boost output |
+| R_FB1 | 75 kΩ, 1% | 5V_BOOST ↔ MT3608 FB (pin 3) |
+| R_FB2 | 10 kΩ, 1% | MT3608 FB (pin 3) ↔ GND |
+
+**⚠️ GPIO conflict (v2):** In v1, P0.24 drives BOOST_EN. In v2, P0.24 is reassigned
+to RFID_EN → BOOST_EN must move to another free GPIO (recommended: P0.20 or P0.29
+when v2 peripherals not populated).
+
+### Qi Receiver (IP6833 — Production / BQ51013B Module — Prototype)
+
+The Qi receiver converts magnetic coupling from a Qi transmitter pad into
+regulated 5 V DC to feed the BQ25120A charger input.
+
+**P0 Prototype:** Pre-built BQ51013B module (Adafruit #1901 or equivalent).
+Two-wire connection: V+ (5V) → BQ25120A IN, GND → common ground.
+
+**P1+ Production:** IP6833 QFN-28, integrated on companion carrier PCB.
+
+#### IP6833 Pinout
+
+| IP6833 Pin | Net Name | Connect To |
+|-----------|----------|------------|
+| AC1 | QI_AC1 | L_QI terminal 1, C_AC1 (22 nF NP0) → GND |
+| AC2 | QI_AC2 | L_QI terminal 2, C_AC2 (22 nF NP0) → GND |
+| RECT | QI_RECT | C_RECT (22 µF) → GND |
+| BOOT | QI_BOOT | C_BOOT (100 nF) → RECT |
+| VOUT | V_QI_5V | C_OUT (10 µF) → GND, → BQ25120A IN pin |
+| VDD | QI_VDD | C_VDD (1 µF) → GND |
+| GND | GND | Solid GND plane, exposed pad soldered |
+| (other) | NC or per datasheet | Consult IP6833 datasheet for full pinout |
+
+#### External Components
+
+| Ref | Value | Package | Purpose |
+|-----|-------|---------|---------|
+| L_QI | 24 µH WPC A11 | Wound coil 48×32mm | Qi receiver coil |
+| C_AC1 | 22 nF, 50V, NP0/C0G | 0603 | AC1 resonant cap |
+| C_AC2 | 22 nF, 50V, NP0/C0G | 0603 | AC2 resonant cap |
+| C_RECT | 22 µF, 16V, X5R | 0805 | Rectifier filter |
+| C_BOOT | 100 nF, 16V, X5R | 0603 | Bootstrap cap |
+| C_OUT | 10 µF, 10V, X5R | 0805 | Output decoupling |
+| C_VDD | 1 µF, 10V, X5R | 0603 | Internal VDD |
 
 ---
 
@@ -192,6 +259,8 @@ Nicla stock power tree — identical to Nicla Sense ME:
 | U1 | LDC1612DNTR | WSON-12 | SGC addition |
 | U2 | RFID (Impinj E310) | (v2, unpopulated) | v2 only |
 | U3 | DW3000 | QFN-40 | v2 only |
+| U4 | MT3608 | SOT-23-6 | SGC addition — 5V boost for SK6812 LEDs |
+| U_QI | IP6833 (P1+) / BQ51013B module (P0) | QFN-28 / Module | SGC addition — Qi wireless receiver |
 | U5 | BHI260AP | LGA-44 | Nicla stock |
 | U7 | MX25R1635F | SOIC-8 / USON-8 | Nicla stock (2 MB Flash) |
 | U8 | IS31FL3194 | QFN-16 | Nicla stock (RGB LED driver) |
@@ -200,4 +269,6 @@ Nicla stock power tree — identical to Nicla Sense ME:
 | BZ1 | Piezo transducer | 10×10mm | SGC addition |
 | Q1, Q2 | P-MOSFET | SOT-23 | v2 power gates |
 | L1 | LDC coil | PCB trace, 14mm | SGC addition |
+| L_Boost | Power inductor 4.7 µH | 0805/1206 | SGC addition — boost inductor |
+| L_QI | Qi coil 24 µH WPC A11 | Wound coil 48×32mm | SGC addition — Qi receiver coil |
 | Y1 | 32.768 kHz crystal | 3.2×1.5mm | Nicla stock |

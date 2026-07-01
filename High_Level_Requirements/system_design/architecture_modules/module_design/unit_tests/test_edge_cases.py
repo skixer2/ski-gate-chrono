@@ -17,7 +17,7 @@ Usage:
     python sgc_test_harness.py --port COM8 test_edge_cases.py
 """
 from sgc_test_harness import (TestStep, TestScenario,
-    force_state, enable_test_mode, inject_pressure_ramp)
+    force_state, enable_test_mode, inject_pressure, inject_pressure_ramp)
 
 SCENARIOS = []
 
@@ -179,12 +179,12 @@ SCENARIOS.append(TestScenario(
 # Inject oscillating pressure that shouldn't trigger start detection.
 SCENARIOS.append(TestScenario(
     name="E09 — Start detector: pressure noise rejection",
-    setup_commands=['i', 'T', 'B 101325'],  # ensure test mode ON + baseline synced
+    setup_commands=['i', 'B 101325'],  # IDLE + baseline synced (test mode handled by enable_test_mode)
     teardown_commands=['i'],
     steps=[
         TestStep("Enable test mode", 'T', 200,
-            expect_json={"ev": "cmd", "cmd": "T"}),
-        TestStep("Sync baseline", 'B 101325', 200,
+            on_response=lambda h, _: enable_test_mode(h)),
+        TestStep("Sync baseline (ensure clean 101325)", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm", 'a', 600,
             expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
@@ -214,13 +214,11 @@ SCENARIOS.append(TestScenario(
     steps=[
         TestStep("Arm + poll ring_full", 'a', 500,
             on_response=lambda h, _: h.wait_for_json_event("ring_full", timeout_ms=12000)),
-        TestStep("Force LOGGING + wait log_start", 'l', 500,
+        TestStep("Force LOGGING + inject descent before end detection fires", 'l', 500,
             expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"},
-            on_response=lambda h, _: h.wait_for_json_event("log_start", timeout_ms=10000) is not None),
-        # v4 end detector fires on constant pressure. Inject active descent
-        # to prevent premature end detection (dp > 0 → keeps logging).
-        TestStep("Inject descent to prevent end detection", 'B 101400', 300,
-            expect_json={"ev": "cmd", "cmd": "B"}),
+            on_response=lambda h, _: inject_pressure(h, 101400)),
+        # After pressure injection, end detector reads test baro (101400).
+        # dp > 0 with large delta → end detection blocked (keeps LOGGING).
         TestStep("Verify LOGGING (end detection blocked by descent)", '?', 300,
             expect_json={"st": "LOGGING"}),
         TestStep("Force POST_RUN + cleanup", 'p', 500),
