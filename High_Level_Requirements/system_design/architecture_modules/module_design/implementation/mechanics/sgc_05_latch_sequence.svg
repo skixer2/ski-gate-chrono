@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="1000" height="580">
+<style>
+  text { font-family: Arial, sans-serif; }
+  .title { font-size: 18px; font-weight: bold; fill: #222; }
+  .subtitle { font-size: 14px; fill: #555; }
+  .label { font-size: 13px; fill: #333; }
+  .small { font-size: 11px; fill: #666; }
+  .step { font-size: 28px; font-weight: bold; fill: #fff; }
+</style>
+<rect width="100%" height="100%" fill="#fff"/>
+<defs>
+  <marker id="arr_333" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#333"/></marker>
+  <marker id="arr_27ae60" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/></marker>
+  <marker id="arr_e74c3c" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#e74c3c"/></marker>
+  <marker id="arr_2980b9" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2980b9"/></marker>
+</defs>
+<text x="500" y="35" text-anchor="middle" class="title">How the Module Locks Into the Shell</text>
+<text x="500" y="58" text-anchor="middle" class="subtitle">Mechanism: spring-loaded latch bolt in shell → clicks into detent notch in module</text>
+<circle cx="38" cy="108" r="16" fill="#2980b9"/><text x="38" y="114" text-anchor="middle" class="step">1</text>
+<text x="62" y="112" class="label" font-weight="bold">INSERT</text>
+<text x="62" y="128" class="small">Slide module into shell pocket</text>
+<rect x="40" y="150" width="200" height="55" rx="4" fill="#d6eaf8" stroke="#2980b9" stroke-width="2.5"/>
+<text x="140.0" y="140" text-anchor="middle" class="small" fill="#2980b9">SHELL (cross-section)</text>
+<rect x="52" y="162" width="176" height="31" rx="3" fill="#fff" stroke="#aaa" stroke-width="1" stroke-dasharray="6,3"/>
+<text x="140.0" y="181.5" text-anchor="middle" class="small" fill="#999">pocket</text>
+<rect x="168" y="127" width="6" height="18" rx="2" fill="#f39c12" stroke="#e67e22" stroke-width="1.5"/>
+<line x1="168" y1="129" x2="174" y2="131" stroke="#e67e22" stroke-width="1"/>
+<line x1="168" y1="133" x2="174" y2="135" stroke="#e67e22" stroke-width="1"/>
+<line x1="168" y1="137" x2="174" y2="139" stroke="#e67e22" stroke-width="1"/>
+<line x1="168" y1="141" x2="174" y2="143" stroke="#e67e22" stroke-width="1"/>
+<text x="182" y="139" class="small" fill="#e67e22">Spring</text>
+<rect x="167" y="145" width="8" height="8" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="1.5"/>
+<text x="182" y="153" class="small" fill="#27ae60">Bolt</text>
+<rect x="270" y="164" width="100" height="27" rx="3" fill="#c8e8ff" fill-opacity="0.7" stroke="#4a90d9" stroke-width="2"/>
+<text x="320.0" y="181.5" text-anchor="middle" class="small" fill="#4a90d9">MODULE</text>
+<rect x="290" y="161" width="10" height="6" rx="1" fill="#fff" stroke="#e74c3c" stroke-width="1.5"/>
+<text x="295" y="158" text-anchor="middle" class="small" fill="#e74c3c">Detent</text>
+<line x1="380" y1="177.5" x2="380.0" y2="177.5" stroke="#2980b9" stroke-width="2" marker-end="url(#arr_2980b9)"/>
+<circle cx="38" cy="348" r="16" fill="#27ae60"/><text x="38" y="354" text-anchor="middle" class="step">2</text>
+<text x="62" y="352" class="label" font-weight="bold">CLICK — LOCKED</text>
+<text x="62" y="368" class="small">Module fully inserted, latch bolt engages detent</text>
+<rect x="40" y="390" width="200" height="55" rx="4" fill="#d6eaf8" stroke="#27ae60" stroke-width="2.5"/>
+<text x="140.0" y="380" text-anchor="middle" class="small" fill="#27ae60">SHELL</text>
+<rect x="52" y="402" width="176" height="31" rx="3" fill="#c8e8ff" fill-opacity="0.8" stroke="#4a90d9" stroke-width="2"/>
+<text x="140.0" y="421.5" text-anchor="middle" class="small" fill="#4a90d9">MODULE (seated)</text>
+<rect x="168" y="377" width="6" height="8" rx="2" fill="#f39c12" stroke="#e67e22" stroke-width="1.5"/>
+<rect x="167" y="385" width="8" height="14" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="2"/>
+<rect x="167" y="399" width="8" height="4" rx="1" fill="#27ae60"/>
+<text x="190" y="395" class="small" font-weight="bold" fill="#27ae60">→ CLICK! ←</text>
+<text x="190" y="409" class="small" fill="#555">O-ring compressed</text>
+<text x="190" y="423" class="small" fill="#555">Module cannot fall out</text>
+<circle cx="538" cy="108" r="16" fill="#e74c3c"/><text x="538" y="114" text-anchor="middle" class="step">3</text>
+<text x="562" y="112" class="label" font-weight="bold">PRESS</text>
+<text x="562" y="128" class="small">Press release button on shell</text>
+<rect x="540" y="150" width="200" height="55" rx="4" fill="#d6eaf8" stroke="#e74c3c" stroke-width="2.5"/>
+<text x="640.0" y="140" text-anchor="middle" class="small" fill="#e74c3c">SHELL</text>
+<rect x="552" y="162" width="176" height="31" rx="3" fill="#c8e8ff" fill-opacity="0.6" stroke="#4a90d9" stroke-width="2"/>
+<text x="640.0" y="181.5" text-anchor="middle" class="small" fill="#4a90d9">MODULE</text>
+<rect x="664" y="155" width="14" height="6" rx="2" fill="#c0392b" stroke="#a93226" stroke-width="1.5"/>
+<text x="671" y="148" text-anchor="middle" class="small" fill="#e74c3c">PRESS ▼</text>
+<rect x="667" y="132" width="8" height="8" rx="1" fill="#2ecc71" fill-opacity="0.5" stroke="#aaa" stroke-width="1.5"/>
+<line x1="671" y1="140" x2="671" y2="155" stroke="#888" stroke-width="1" stroke-dasharray="3,2"/>
+<text x="684" y="138" class="small" fill="#888">Bolt retracts</text>
+<circle cx="538" cy="348" r="16" fill="#e74c3c"/><text x="538" y="354" text-anchor="middle" class="step">4</text>
+<text x="562" y="352" class="label" font-weight="bold">REMOVE</text>
+<text x="562" y="368" class="small">Slide module out, swap shell</text>
+<rect x="540" y="390" width="200" height="55" rx="4" fill="#fdebd0" stroke="#e67e22" stroke-width="2.5"/>
+<text x="640.0" y="380" text-anchor="middle" class="small" fill="#e67e22">SHELL (empty pocket)</text>
+<rect x="552" y="402" width="176" height="31" rx="3" fill="#fff" stroke="#999" stroke-width="1" stroke-dasharray="6,3"/>
+<rect x="770" y="404" width="100" height="27" rx="3" fill="#c8e8ff" fill-opacity="0.7" stroke="#4a90d9" stroke-width="2"/>
+<text x="820.0" y="421.5" text-anchor="middle" class="small" fill="#4a90d9">MODULE</text>
+<text x="820.0" y="435.5" text-anchor="middle" class="small" fill="#4a90d9">(remove for charging)</text>
+<line x1="740" y1="417.5" x2="760.0" y2="417.5" stroke="#e74c3c" stroke-width="2" marker-end="url(#arr_e74c3c)"/>
+<rect x="20" y="510" width="960" height="55" rx="6" fill="#f0f8ff" stroke="#b0d0f0" stroke-width="1"/>
+<text x="500" y="532" text-anchor="middle" class="label">🔧  Works exactly like a cordless drill battery: slide in on rails → spring latch clicks → press button to release</text>
+<text x="500" y="552" text-anchor="middle" class="small">The SHELL has the latch built in (permanent). The MODULE has the detent notch (passive). Replaceable shells come with fresh O-rings pre-seated.</text>
+</svg>

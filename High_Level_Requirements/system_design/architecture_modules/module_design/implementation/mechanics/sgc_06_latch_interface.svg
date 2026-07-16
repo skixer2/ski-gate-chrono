@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+<style>
+  text { font-family: Arial, sans-serif; }
+  .title { font-size: 18px; font-weight: bold; fill: #222; }
+  .subtitle { font-size: 14px; fill: #555; }
+  .label { font-size: 13px; fill: #333; }
+  .small { font-size: 11px; fill: #666; }
+  .step { font-size: 28px; font-weight: bold; fill: #fff; }
+</style>
+<rect width="100%" height="100%" fill="#fff"/>
+<defs>
+  <marker id="arr_333" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#333"/></marker>
+  <marker id="arr_27ae60" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/></marker>
+  <marker id="arr_e74c3c" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#e74c3c"/></marker>
+  <marker id="arr_2980b9" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#2980b9"/></marker>
+</defs>
+<text x="400" y="35" text-anchor="middle" class="title">Latch-Detent Interface — Close-Up Cross-Section</text>
+<text x="400" y="58" text-anchor="middle" class="subtitle">What happens at the point where the shell latch meets the module detent</text>
+<text x="250" y="90" text-anchor="middle" class="label" font-weight="bold" fill="#27ae60">LOCKED (module seated)</text>
+<rect x="150" y="200" width="200" height="50" rx="3" fill="#d6eaf8" stroke="#2980b9" stroke-width="2"/>
+<text x="250" y="220" text-anchor="middle" class="small" fill="#2980b9">SHELL WALL</text>
+<rect x="247" y="215" width="6" height="12" rx="2" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+<line x1="247" y1="217" x2="253" y2="219" stroke="#e67e22" stroke-width="1.5"/>
+<line x1="247" y1="221" x2="253" y2="223" stroke="#e67e22" stroke-width="1.5"/>
+<line x1="247" y1="225" x2="253" y2="227" stroke="#e67e22" stroke-width="1.5"/>
+<text x="262" y="222" class="small" fill="#e67e22">Spring</text>
+<rect x="245.0" y="227" width="10" height="22" rx="2" fill="#2ecc71" stroke="#27ae60" stroke-width="2"/>
+<text x="262" y="250" class="small" fill="#27ae60">Latch bolt</text>
+<rect x="245.0" y="249" width="10" height="5" rx="1" fill="#27ae60"/>
+<rect x="170" y="275" width="160" height="30" rx="3" fill="#c8e8ff" fill-opacity="0.7" stroke="#4a90d9" stroke-width="2"/>
+<text x="250" y="292" text-anchor="middle" class="small" fill="#4a90d9">MODULE HOUSING (transparent PC)</text>
+<rect x="244.0" y="275" width="12" height="6" rx="2" fill="#fff" stroke="#e74c3c" stroke-width="2"/>
+<text x="270" y="280" class="small" fill="#e74c3c">Detent notch</text>
+<rect x="245.0" y="275" width="10" height="5" rx="1" fill="#27ae60"/>
+<text x="210" y="265" class="small" fill="#27ae60">Bolt tip</text>
+<text x="210" y="277" class="small" fill="#27ae60">in detent</text>
+<text x="250" y="320" text-anchor="middle" class="small" fill="#555">Module held in place by bolt → O-ring compressed → IP67 seal</text>
+<text x="600" y="90" text-anchor="middle" class="label" font-weight="bold" fill="#e74c3c">RELEASED (button pressed)</text>
+<rect x="500" y="200" width="200" height="50" rx="3" fill="#d6eaf8" stroke="#2980b9" stroke-width="2"/>
+<text x="600" y="220" text-anchor="middle" class="small" fill="#2980b9">SHELL WALL</text>
+<rect x="597" y="210" width="6" height="6" rx="2" fill="#f39c12" stroke="#e67e22" stroke-width="2"/>
+<text x="612" y="215" class="small" fill="#e67e22">Spring<br/>(compressed)</text>
+<rect x="590" y="198" width="20" height="6" rx="3" fill="#e74c3c" stroke="#c0392b" stroke-width="2"/>
+<text x="600" y="195" text-anchor="middle" class="small" fill="#e74c3c">BUTTON (pressed)</text>
+<rect x="595.0" y="220" width="10" height="10" rx="2" fill="#2ecc71" fill-opacity="0.4" stroke="#aaa" stroke-width="2" stroke-dasharray="4,2"/>
+<text x="612" y="227" class="small" fill="#888">Bolt retracted</text>
+<line x1="600" y1="230" x2="600" y2="204" stroke="#888" stroke-width="2" stroke-dasharray="4,3"/>
+<text x="630" y="208" class="small" fill="#888">Linkage</text>
+<rect x="520" y="275" width="160" height="30" rx="3" fill="#c8e8ff" fill-opacity="0.4" stroke="#ccc" stroke-width="2" stroke-dasharray="6,3"/>
+<text x="600" y="292" text-anchor="middle" class="small" fill="#999">MODULE (free to slide out)</text>
+<rect x="594.0" y="275" width="12" height="6" rx="2" fill="#fff" stroke="#ccc" stroke-width="1.5"/>
+<text x="600" y="320" text-anchor="middle" class="small" fill="#555">Bolt cleared from detent → module slides out freely → swap shell → re-insert</text>
+<rect x="20" y="420" width="760" height="65" rx="6" fill="#fafafa" stroke="#ddd" stroke-width="1"/>
+<text x="400" y="442" text-anchor="middle" class="label">🏗️  Shell parts (permanent): spring + latch bolt + release button + linkage — molded into shell wall</text>
+<text x="400" y="464" text-anchor="middle" class="small">Module (passive): detent notch + O-ring groove — single-piece clear PC injection molded clamshell. No moving parts.</text>
+<text x="400" y="480" text-anchor="middle" class="small">All complexity is in the SHELL (cheap consumable). The MODULE (expensive electronics) is mechanically simple.</text>
+</svg>

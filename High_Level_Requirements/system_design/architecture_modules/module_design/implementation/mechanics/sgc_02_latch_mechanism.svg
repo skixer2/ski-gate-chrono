@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 580" width="780" height="580">
+<style>
+  text { font-family: monospace; }
+  .title { font-size: 14px; font-weight: bold; }
+  .label { font-size: 10px; }
+  .dim { font-size: 9px; fill: #666; }
+  .note { font-size: 9px; fill: #888; font-style: italic; }
+</style>
+<rect width="100%" height="100%" fill="#fafafa"/>
+<text x="390" y="25" text-anchor="middle" class="title">Module-Shell Latch Mechanism — Detail</text>
+<text x="200" y="55" text-anchor="middle" class="title" fill="#4a90d9">LOCKED (module seated)</text>
+<rect x="30" y="70" width="20" height="350" fill="#d0dbe8" stroke="#4a90d9" stroke-width="2"/>
+<text x="40" y="65" text-anchor="middle" class="label" fill="#4a90d9">SHELL</text>
+<rect x="50" y="120" width="250" height="40" rx="3" fill="#c8e8ff" fill-opacity="0.6" stroke="#4a90d9" stroke-width="1.5"/>
+<text x="175" y="145" text-anchor="middle" class="label" fill="#4a90d9">MODULE HOUSING (transparent PC)</text>
+<circle cx="50" cy="140" r="4" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+<circle cx="60" cy="140" r="4" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+<text x="60" y="132" class="dim" fill="#c0392b">O-ring</text>
+<rect x="47" y="210" width="6" height="25" fill="#f39c12" stroke="#e67e22" stroke-width="1"/>
+<line x1="47" y1="213" x2="53" y2="215" stroke="#e67e22" stroke-width="1"/>
+<line x1="47" y1="218" x2="53" y2="220" stroke="#e67e22" stroke-width="1"/>
+<line x1="47" y1="223" x2="53" y2="225" stroke="#e67e22" stroke-width="1"/>
+<line x1="47" y1="228" x2="53" y2="230" stroke="#e67e22" stroke-width="1"/>
+<line x1="47" y1="233" x2="53" y2="235" stroke="#e67e22" stroke-width="1"/>
+<text x="25" y="225" text-anchor="end" class="dim" fill="#e67e22">Spring</text>
+<rect x="48" y="235" width="4" height="15" fill="#2ecc71" stroke="#27ae60" stroke-width="1"/>
+<polygon points="45,250 55,250 55,258 45,258" fill="#2ecc71" stroke="#27ae60" stroke-width="1"/>
+<text x="25" y="256" text-anchor="end" class="dim" fill="#27ae60">Latch bolt</text>
+<rect x="44" y="252" width="4" height="4" rx="1" fill="#fff" stroke="#c0392b" stroke-width="1"/>
+<text x="62" y="256" class="dim" fill="#c0392b">Detent</text>
+<rect x="55" y="260" width="18" height="8" rx="2" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+<text x="64" y="266" text-anchor="middle" class="dim" fill="#fff">PUSH</text>
+<text x="80" y="266" class="label" fill="#c0392b">Release button</text>
+<line x1="64" y1="268" x2="50" y2="235" stroke="#c0392b" stroke-width="1" stroke-dasharray="3,2"/>
+<rect x="50" y="85" width="240" height="5" fill="#bdc3c7" stroke="#95a5a6" stroke-width="0.5"/>
+<text x="280" y="89" class="dim" fill="#7f8c8d">Upper rail</text>
+<rect x="50" y="160" width="240" height="5" fill="#bdc3c7" stroke="#95a5a6" stroke-width="0.5"/>
+<text x="280" y="164" class="dim" fill="#7f8c8d">Lower rail</text>
+<rect x="60" y="110" width="10" height="5" rx="1" fill="#9b59b6" stroke="#8e44ad" stroke-width="0.5"/>
+<text x="80" y="114" class="dim" fill="#8e44ad">Alignment key (prevents upside-down insertion)</text>
+<rect x="280" y="132" width="12" height="4" fill="#f1c40f" stroke="#f39c12" stroke-width="0.5"/>
+<text x="298" y="136" class="dim" fill="#f39c12">Witness mark (align = locked)</text>
+<rect x="250" y="128" width="10" height="8" rx="1" fill="#555" stroke="#333" stroke-width="1"/>
+<text x="260" y="124" text-anchor="middle" class="dim" fill="#333">USB-C</text>
+<line x1="320" y1="140" x2="380" y2="140" stroke="#06c" stroke-width="2" marker-end="url(#arrowBlue)"/>
+<text x="350" y="133" text-anchor="middle" class="label" fill="#06c">INSERT →</text>
+<text x="560" y="55" text-anchor="middle" class="title" fill="#e74c3c">UNLOCKED (button pressed)</text>
+<rect x="390" y="70" width="20" height="350" fill="#d0dbe8" stroke="#4a90d9" stroke-width="2"/>
+<text x="400" y="65" text-anchor="middle" class="label" fill="#4a90d9">SHELL</text>
+<rect x="410" y="120" width="250" height="40" rx="3" fill="#c8e8ff" fill-opacity="0.3" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="5,3"/>
+<circle cx="410" cy="140" r="5" fill="#e74c3c" fill-opacity="0.6" stroke="#c0392b" stroke-width="1" stroke-dasharray="2,2"/>
+<rect x="407" y="210" width="6" height="15" fill="#f39c12" fill-opacity="0.6" stroke="#e67e22" stroke-width="1"/>
+<line x1="407" y1="212" x2="413" y2="214" stroke="#e67e22" stroke-width="1"/>
+<line x1="407" y1="218" x2="413" y2="220" stroke="#e67e22" stroke-width="1"/>
+<rect x="415" y="265" width="18" height="5" rx="2" fill="#c0392b" stroke="#a93226" stroke-width="1"/>
+<text x="424" y="269" text-anchor="middle" class="dim" fill="#fff">▼</text>
+<line x1="450" y1="140" x2="480" y2="140" stroke="#e74c3c" stroke-width="2" marker-end="url(#arrowRed)"/>
+<text x="465" y="133" text-anchor="middle" class="label" fill="#e74c3c">← SLIDE OUT</text>
+<text x="390" y="380" text-anchor="middle" class="title">Alignment Key — Anti-Upside-Down Feature</text>
+<rect x="140" y="400" width="80" height="50" rx="3" fill="#c8e8ff" fill-opacity="0.5" stroke="#4a90d9" stroke-width="1.5"/>
+<text x="180" y="395" text-anchor="middle" class="label" fill="#4a90d9">Module (end view)</text>
+<rect x="155" y="397" width="14" height="4" rx="1" fill="#9b59b6"/>
+<text x="200" y="401" class="dim" fill="#8e44ad">Tab (only fits one way)</text>
+<rect x="490" y="400" width="85" height="52" rx="3" fill="none" stroke="#4a90d9" stroke-width="1.5"/>
+<text x="532" y="395" text-anchor="middle" class="label" fill="#4a90d9">Shell pocket (section)</text>
+<rect x="505" y="397" width="15" height="4.5" rx="1" fill="#f8f0ff" stroke="#9b59b6" stroke-width="0.5"/>
+<text x="540" y="401" class="dim" fill="#8e44ad">Slot</text>
+<text x="360" y="455" text-anchor="middle" class="note" fill="#888">Tab is off-center — module cannot be inserted upside-down</text>
+<text x="390" y="495" text-anchor="middle" class="title">O-Ring Seal — Cross Section</text>
+<rect x="240" y="510" width="60" height="8" fill="#c8e8ff" opacity="0.4" stroke="#4a90d9" stroke-width="0.5"/>
+<text x="270" y="507" text-anchor="middle" class="dim" fill="#4a90d9">Module wall</text>
+<circle cx="255" cy="520" r="6" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>
+<text x="255" y="517" text-anchor="middle" class="dim" fill="#fff">O</text>
+<rect x="240" y="535" width="60" height="6" fill="#d0dbe8" stroke="#4a90d9" stroke-width="0.5"/>
+<text x="270" y="548" text-anchor="middle" class="dim" fill="#4a90d9">Shell pocket wall</text>
+<text x="305" y="516" class="dim" fill="#c0392b">Silicone O-ring</text>
+<text x="305" y="528" class="dim" fill="#c0392b">compressed ~20%</text>
+<text x="305" y="540" class="dim" fill="#888">→ IP67 when seated</text>
+<line x1="255" y1="512" x2="255" y2="507" stroke="#e74c3c" stroke-width="1" marker-end="url(#arrowRed)"/>
+<line x1="255" y1="528" x2="255" y2="535" stroke="#e74c3c" stroke-width="1" marker-end="url(#arrowRed)"/>
+<text x="560" y="515" class="note" fill="#2ecc71">💡 Every replacement shell</text>
+<text x="560" y="530" class="note" fill="#2ecc71">comes with a fresh O-ring</text>
+<text x="560" y="545" class="note" fill="#2ecc71">pre-seated in the shell pocket.</text>
+<text x="560" y="560" class="note" fill="#2ecc71">No aging seal problem.</text>
+  <defs>
+    <marker id="arrowRed" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#e74c3c"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#06c"/>
+    </marker>
+  </defs>
+</svg>

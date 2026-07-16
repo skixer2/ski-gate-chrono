@@ -7,12 +7,17 @@
 #include "spi_flash.h"
 #include <Arduino.h>
 #include <BlockDevice.h>
+#include "SPIFBlockDevice.h"
 
 SPIFlash::SPIFlash() : m_bd(nullptr), m_ok(false) {}
 
 bool SPIFlash::begin()
 {
-    m_bd = mbed::BlockDevice::get_default_instance();
+    /* V2.29: Create explicit SPIFBlockDevice for MX25R1635F (SPI0:
+     * p4 MOSI, p5 MISO, p3 SCK, p26 CS_FLASH). get_default_instance()
+     * returns internal nRF flash (512KB) — writes beyond 512KB silently
+     * truncate/overflow, corrupting the LittleFS superblock. */
+    m_bd = new SPIFBlockDevice(p4, p5, p3, p26);
     if (!m_bd) return false;
     if (static_cast<mbed::BlockDevice*>(m_bd)->init() != 0) return false;
     m_ok = true;

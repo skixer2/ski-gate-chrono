@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600">
+<style>
+  text { font-family: monospace; }
+  .title { font-size: 14px; font-weight: bold; }
+  .label { font-size: 10px; }
+  .dim { font-size: 9px; fill: #666; }
+  .note { font-size: 9px; fill: #888; font-style: italic; }
+</style>
+<rect width="100%" height="100%" fill="#fafafa"/>
+<text x="400" y="25" text-anchor="middle" class="title">SGC Forearm Guard — Exploded Assembly View</text>
+<ellipse cx="400" cy="520" rx="130" ry="40" fill="#ffe0d0" stroke="#cba" stroke-width="1"/>
+<text x="400" y="540" text-anchor="middle" class="label" fill="#987">Athlete forearm</text>
+<rect x="180" y="440" width="440" height="45" rx="8" fill="#fdebd0" stroke="#e67e22" stroke-width="2"/>
+<text x="400" y="458" text-anchor="middle" class="label" fill="#e67e22">EVA PADDING 5-8mm (attached to shell, replaced as one piece)</text>
+<text x="400" y="472" text-anchor="middle" class="dim" fill="#e67e22">Closed-cell EVA — impact absorption + comfort</text>
+<rect x="475" y="440" width="90" height="45" rx="3" fill="#fafafa" stroke="#999" stroke-width="0.5" stroke-dasharray="4,2"/>
+<text x="520" y="458" text-anchor="middle" class="dim" fill="#999">Module<br/>cutout</text>
+<rect x="160" y="340" width="480" height="60" rx="12" fill="#d6eaf8" stroke="#4a90d9" stroke-width="2.5"/>
+<text x="400" y="358" text-anchor="middle" class="label" fill="#4a90d9">PC SHELL 2mm — TRANSLUCENT</text>
+<text x="400" y="374" text-anchor="middle" class="dim" fill="#4a90d9">Gate Glide™ spray applied to outer surface. LED light visible through.</text>
+<text x="400" y="388" text-anchor="middle" class="dim" fill="#4a90d9">User-replaceable consumable. €15 retail. Slides out from wrist end.</text>
+<rect x="460" y="340" width="100" height="60" rx="4" fill="#fafafa" stroke="#2980b9" stroke-width="1.5"/>
+<text x="510" y="365" text-anchor="middle" class="dim" fill="#2980b9">Module</text>
+<text x="510" y="378" text-anchor="middle" class="dim" fill="#2980b9">pocket</text>
+<rect x="462" y="342" width="96" height="5" fill="#bdc3c7"/>
+<rect x="462" y="393" width="96" height="5" fill="#bdc3c7"/>
+<rect x="455" y="200" width="110" height="80" rx="5" fill="#c8e8ff" fill-opacity="0.7" stroke="#4a90d9" stroke-width="2"/>
+<rect x="462" y="235" width="96" height="30" rx="2" fill="#2d5016" stroke="#1a3a0a" stroke-width="1"/>
+<text x="510" y="245" text-anchor="middle" class="dim" fill="#fff">PCB (ANNA-B112, BHI260AP,</text>
+<text x="510" y="255" text-anchor="middle" class="dim" fill="#fff">BMP390, BQ25120A, LDC1612)</text>
+<rect x="475" y="215" width="40" height="18" rx="3" fill="#f0c040" stroke="#c09020" stroke-width="0.5"/>
+<text x="495" y="227" text-anchor="middle" class="dim" fill="#a07010">LiPo</text>
+<text x="495" y="238" text-anchor="middle" class="dim" fill="#a07010">300-500mAh</text>
+<rect x="470" y="268" width="6" height="4" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="0.3"/>
+<rect x="479" y="268" width="6" height="4" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="0.3"/>
+<rect x="488" y="268" width="6" height="4" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="0.3"/>
+<rect x="497" y="268" width="6" height="4" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="0.3"/>
+<rect x="506" y="268" width="6" height="4" rx="1" fill="#2ecc71" stroke="#27ae60" stroke-width="0.3"/>
+<text x="495" y="278" text-anchor="middle" class="dim" fill="#0a0">SK6812 ×5 (visible through transparent housing + translucent shell)</text>
+<rect x="455" y="200" width="110" height="80" rx="5" fill="none" stroke="#e74c3c" stroke-width="3"/>
+<text x="570" y="215" class="dim" fill="#e74c3c">O-ring (continuous perimeter)</text>
+<rect x="542" y="230" width="15" height="12" rx="2" fill="#555" stroke="#333" stroke-width="0.5"/>
+<text x="578" y="238" class="dim" fill="#555">USB-C</text>
+<text x="578" y="250" class="dim" fill="#555">(accessible when</text>
+<text x="578" y="262" class="dim" fill="#555">module removed)</text>
+<circle cx="465" cy="225" r="8" fill="#ffcccc" stroke="#e74c3c" stroke-width="0.5"/>
+<text x="465" y="228" text-anchor="middle" class="dim" fill="#c0392b">Piezo</text>
+<line x1="510" y1="280" x2="510" y2="340" stroke="#888" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+<line x1="350" y1="400" x2="350" y2="440" stroke="#888" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+<line x1="300" y1="485" x2="300" y2="520" stroke="#888" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowGray)"/>
+<text x="400" y="580" text-anchor="middle" class="note" fill="#666">Assemble: ① Slide module into shell pocket (click = locked) → ② Secure shell+module to forearm with straps → ③ Press release button to swap shell</text>
+<text x="710" y="240" class="label" fill="#4a90d9">④ ELECTRONICS<br/>MODULE</text>
+<text x="710" y="370" class="label" fill="#4a90d9">③ PC SHELL</text>
+<text x="710" y="462" class="label" fill="#e67e22">② EVA PADDING</text>
+<text x="710" y="535" class="label" fill="#987">① FOREARM</text>
+<defs>
+    <marker id="arrowGray" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+      <path d="M0,0 L6,2.5 L0,5 Z" fill="#888"/>
+    </marker>
+    </defs>
+</svg>

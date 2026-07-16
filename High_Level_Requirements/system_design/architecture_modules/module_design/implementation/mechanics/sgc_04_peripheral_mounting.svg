@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 480" width="700" height="480">
+<style>
+  text { font-family: monospace; }
+  .title { font-size: 14px; font-weight: bold; }
+  .label { font-size: 10px; }
+  .dim { font-size: 9px; fill: #666; }
+  .note { font-size: 9px; fill: #888; font-style: italic; }
+</style>
+<rect width="100%" height="100%" fill="#fafafa"/>
+<text x="350" y="25" text-anchor="middle" class="title">Peripheral Electronics Mounting — Top-Down View (Right Arm)</text>
+<ellipse cx="350" cy="200" rx="180" ry="70" fill="#ffe0d0" stroke="#cba" stroke-width="1"/>
+<text x="350" y="205" text-anchor="middle" class="label" fill="#987">FOREARM</text>
+<ellipse cx="350" cy="200" rx="185" ry="75" fill="none" stroke="#4a90d9" stroke-width="2.5" stroke-dasharray="8,4"/>
+<text x="545" y="170" class="label" fill="#4a90d9">Shell extent</text>
+<text x="185" y="300" class="label" fill="#d00">← LAT (outside)</text>
+<text x="515" y="300" class="label" fill="#06c">MED (inside) →</text>
+<text x="340" y="140" class="label" fill="#06c">↑ ANT (front / LEDs face here)</text>
+<text x="340" y="300" class="label" fill="#888">↓ POST (back / arm)</text>
+<ellipse cx="350" cy="60" rx="35" ry="25" fill="#ffe0d0" stroke="#cba" stroke-width="1"/>
+<text x="350" y="48" text-anchor="middle" class="dim" fill="#987">Wrist</text>
+<ellipse cx="350" cy="380" rx="45" ry="30" fill="#ffe0d0" stroke="#cba" stroke-width="1"/>
+<text x="350" y="420" text-anchor="middle" class="dim" fill="#987">Elbow</text>
+<rect x="310" y="155" width="80" height="110" rx="6" fill="#c8e8ff" fill-opacity="0.6" stroke="#4a90d9" stroke-width="2"/>
+<text x="350" y="175" text-anchor="middle" class="label" fill="#4a90d9">ELECTRONICS</text>
+<text x="350" y="190" text-anchor="middle" class="label" fill="#4a90d9">MODULE</text>
+<text x="350" y="205" text-anchor="middle" class="dim" fill="#4a90d9">35×80mm</text>
+<circle cx="312" cy="165" r="3" fill="#2ecc71" stroke="#27ae60" stroke-width="0.5"/>
+<circle cx="312" cy="183" r="3" fill="#2ecc71" stroke="#27ae60" stroke-width="0.5"/>
+<circle cx="312" cy="201" r="3" fill="#2ecc71" stroke="#27ae60" stroke-width="0.5"/>
+<circle cx="312" cy="219" r="3" fill="#2ecc71" stroke="#27ae60" stroke-width="0.5"/>
+<circle cx="312" cy="237" r="3" fill="#2ecc71" stroke="#27ae60" stroke-width="0.5"/>
+<text x="295" y="240" class="dim" fill="#0a0">SK6812</text>
+<text x="295" y="252" class="dim" fill="#0a0">×5 LEDs</text>
+<text x="295" y="264" class="dim" fill="#0a0">face ANT</text>
+<ellipse cx="200" cy="200" rx="25" ry="50" fill="#ffcccc" fill-opacity="0.4" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="4,2"/>
+<text x="170" y="180" class="label" fill="#e74c3c">GATE</text>
+<text x="170" y="194" class="label" fill="#e74c3c">IMPACT</text>
+<text x="170" y="208" class="label" fill="#e74c3c">ZONE</text>
+<text x="170" y="222" class="dim" fill="#e74c3c">(most hits here)</text>
+<line x1="225" y1="200" x2="310" y2="185" stroke="#2ecc71" stroke-width="2" marker-end="url(#arrowGreen)"/>
+<text x="250" y="188" text-anchor="middle" class="dim" fill="#2ecc71">~50mm offset</text>
+<text x="250" y="200" text-anchor="middle" class="dim" fill="#2ecc71">= shock reduction</text>
+<text x="200" y="250" text-anchor="middle" class="dim" fill="#e67e22">EVA padding absorbs</text>
+<text x="200" y="262" text-anchor="middle" class="dim" fill="#e67e22">impact before shell</text>
+<rect x="140" y="138" width="420" height="8" rx="3" fill="#999" opacity="0.3"/>
+<text x="550" y="144" class="dim" fill="#666">Upper strap</text>
+<rect x="140" y="273" width="420" height="8" rx="3" fill="#999" opacity="0.3"/>
+<text x="550" y="279" class="dim" fill="#666">Lower strap</text>
+<path d="M 312 210 L 260 130 L 260 290 Z" fill="#2ecc71" fill-opacity="0.05" stroke="#2ecc71" stroke-width="0.5" stroke-dasharray="3,2"/>
+<text x="240" y="120" class="dim" fill="#27ae60">LED visibility cone</text>
+<text x="240" y="132" class="dim" fill="#27ae60">(visible to athlete + finish camera)</text>
+<rect x="338" y="265" width="24" height="8" rx="2" fill="#555"/>
+<text x="350" y="285" text-anchor="middle" class="dim" fill="#555">USB-C (wrist end)</text>
+  <defs>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2ecc71"/>
+    </marker>
+  </defs>
+</svg>

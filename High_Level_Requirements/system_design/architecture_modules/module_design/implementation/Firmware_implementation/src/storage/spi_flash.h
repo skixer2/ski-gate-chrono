@@ -37,6 +37,9 @@ public:
     /* Self-test in sector 0 */
     bool self_test();
 
+    /* V2.29: expose BD for LittleFS to share */
+    void* get_bd() const { return m_bd; }
+
 private:
     void* m_bd;    /* mbed::BlockDevice* */
     bool  m_ok;
