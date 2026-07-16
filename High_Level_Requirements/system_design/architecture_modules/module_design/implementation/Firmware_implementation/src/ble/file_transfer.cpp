@@ -1,11 +1,10 @@
 /**
  * @file    file_transfer.cpp
- * @brief   BLE file transfer — Phase 10 (FlashManager API).
+ * @brief   BLE file transfer — LittleFSStorage API.
  */
 
 #include "file_transfer.h"
-#include "../storage/spi_flash.h"
-#include "../storage/flash_manager.h"
+#include "../storage/littlefs_storage.h"
 #include "../test_json.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
@@ -16,15 +15,15 @@ extern "C" {
     BLEUnsignedIntCharacteristic*   sgc_ble_ft_crc_char();
 }
 
-extern FlashManager g_fm;
+extern LittleFSStorage g_fs;
 
 enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_DONE = 2, FT_ERROR = 3 };
 
-static uint8_t   g_ft_state = FT_IDLE;
-static uint32_t  g_ft_offset = 0;
-static uint32_t  g_ft_size   = 0;
-static uint32_t  g_ft_run_start = 0;
-static uint32_t  g_ft_crc    = 0;
+static uint8_t   g_ft_state   = FT_IDLE;
+static uint32_t  g_ft_offset  = 0;
+static uint32_t  g_ft_size    = 0;
+static uint16_t  g_ft_run_id  = 0;
+static uint32_t  g_ft_crc     = 0;
 
 void sgc_ble_transfer_init() {}
 void sgc_ble_transfer_poll()
@@ -44,18 +43,24 @@ void sgc_ble_transfer_poll()
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
-        sgc_ble_ft_crc_char()->writeValue(g_ft_crc);
+        uint32_t final_crc = LittleFSStorage::crc32_finalize(g_ft_crc);
+        sgc_ble_ft_crc_char()->writeValue(final_crc);
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_DONE);
         json_begin();
         json_kv("ev", "ft_done");
-        Serial.print(','); json_kv("crc", (long)g_ft_crc);
+        Serial.print(','); json_kv("crc", (long)final_crc);
         json_end();
         return;
     }
 
-    g_fm.read_data(g_ft_run_start + g_ft_offset, buf, send_len);
+    if (!g_fs.read_run_data(g_ft_run_id, g_ft_offset, buf, send_len)) {
+        g_ft_state = FT_ERROR;
+        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        return;
+    }
+
     for (size_t i = 0; i < send_len; i++)
-        g_ft_crc = FlashManager::crc32_update(g_ft_crc, buf[i]);
+        g_ft_crc = LittleFSStorage::crc32_update(g_ft_crc, buf[i]);
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
     g_ft_offset += send_len;
 }
@@ -67,10 +72,9 @@ void sgc_ble_ft_on_request(uint16_t run_id)
     Serial.print(','); json_kv("run", (long)run_id);
     json_end();
 
-    /* Look up the run by ID in FlashManager's entry table */
     const RunEntry* entry = nullptr;
-    for (uint16_t i = 0; i < g_fm.run_count(); i++) {
-        const RunEntry* e = g_fm.get_entry(i);
+    for (uint16_t i = 0; i < g_fs.run_count(); i++) {
+        const RunEntry* e = g_fs.get_entry(i);
         if (e && e->run_id == run_id) {
             entry = e;
             break;
@@ -86,23 +90,27 @@ void sgc_ble_ft_on_request(uint16_t run_id)
         return;
     }
 
-    /* Read the RunHeader to get actual data_size */
     RunHeader hdr;
-    if (!g_fm.read_run_header(entry->page_start, hdr) ||
-        hdr.format_ver < 1 || hdr.format_ver > 3) {
+    memset(&hdr, 0xFF, sizeof(hdr));
+    bool read_ok = g_fs.read_run_header(run_id, hdr);
+    if (!read_ok || hdr.format_ver < 1 || hdr.format_ver > 3) {
         json_begin();
         json_kv("ev", "ft_error");
         Serial.print(','); json_kv("reason", "bad_header");
+        Serial.print(','); json_kv("run", (long)run_id);
+        Serial.print(','); json_kv_bool("read_ok", read_ok);
+        Serial.print(','); json_kv("format_ver", (long)hdr.format_ver);
+        Serial.print(','); json_kv("data_size", (long)hdr.data_size);
         json_end();
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
         return;
     }
 
-    g_ft_run_start = entry->page_start;
-    g_ft_size = sizeof(RunHeader) + hdr.data_size + CRC32_TRAILER_SIZE;
+    g_ft_run_id = run_id;
+    g_ft_size   = sizeof(RunHeader) + hdr.data_size + CRC32_TRAILER_SIZE;
     g_ft_offset = 0;
-    g_ft_crc = 0xFFFFFFFF;
-    g_ft_state = FT_STREAMING;
+    g_ft_crc    = 0xFFFFFFFF;
+    g_ft_state  = FT_STREAMING;
     sgc_ble_ft_status_char()->writeValue((uint8_t)FT_STREAMING);
 
     json_begin();
@@ -112,10 +120,8 @@ void sgc_ble_ft_on_request(uint16_t run_id)
     json_end();
 }
 
-/* ── Run list (uses FlashManager) ─────────────────────────────── */
-
 const char* sgc_ble_build_run_list()
 {
     static char json_buf[512];
-    return g_fm.build_run_list(json_buf, sizeof(json_buf));
+    return g_fs.build_run_list(json_buf, sizeof(json_buf));
 }

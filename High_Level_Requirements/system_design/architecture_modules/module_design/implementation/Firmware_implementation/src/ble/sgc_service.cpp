@@ -15,7 +15,7 @@
 #include "sgc_service.h"
 #include "../state_machine/state_machine.h"
 #include "../storage/spi_flash.h"
-#include "../storage/flash_manager.h"
+#include "../storage/littlefs_storage.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
 
@@ -37,7 +37,7 @@ static BLEByteCharacteristic    char_battery   (SGC_UUID("ABC5"), BLERead | BLEN
 /* ── Run info ─────────────────────────────────────────────────── */
 static BLEByteCharacteristic    char_flash_used(SGC_UUID("ABC7"), BLERead | BLENotify);
 static BLECharacteristic        char_run_info (SGC_UUID("ABC8"), BLERead | BLENotify, 6);  // heap (tiny)
-static BLECharacteristic        char_run_list (SGC_UUID("ABC9"), BLERead, 100);            // heap (JSON)
+static BLECharacteristic        char_run_list (SGC_UUID("ABC9"), BLERead, 512);            // heap (JSON)
 
 /* ── File transfer ────────────────────────────────────────────── */
 static BLEUnsignedShortCharacteristic char_ft_req (SGC_UUID("ABCA"), BLEWrite);
@@ -199,8 +199,8 @@ void sgc_ble_set_sensor_status(uint8_t bf) {
 
 void sgc_ble_set_run_count(uint16_t count)
 {
-    extern FlashManager g_fm;
-    uint32_t age = g_fm.oldest_run_age();
+    extern LittleFSStorage g_fs;
+    uint32_t age = g_fs.oldest_run_age();
     uint8_t buf[6];
     buf[0] = (uint8_t)(count & 0xFF);
     buf[1] = (uint8_t)((count >> 8) & 0xFF);

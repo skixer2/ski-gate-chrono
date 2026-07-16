@@ -1,13 +1,12 @@
 /**
- * Phase 10: Circular flash storage — FlashManager replaces inline g_next_run_addr.
+ * Phase 12: LittleFS storage — LittleFSStorage replaces FlashManager.
  *
  * JSON-lines is the only serial output format (ADR-001, AD-009).
  * Test commands always compiled in, test mode starts OFF.
  *
  * Flash layout:
  *   Sectors 0-3:    Flash ring buffer (flash_ring.cpp)
- *   Sectors 4-509:  Run data (circular, managed by FlashManager)
- *   Sectors 510-511: Index sector
+ *   Sectors 4-511:  LittleFS run storage (littlefs_storage.cpp)
  */
 
 #include <ArduinoBLE.h>
@@ -30,7 +29,7 @@ void bhy2_cal_hook_init();
 #include "state_machine/end_detector.h"
 #include "storage/spi_flash.h"
 #include "storage/flash_ring.h"
-#include "storage/flash_manager.h"
+#include "storage/littlefs_storage.h"
 #include "storage/ring_buffer.h"
 #include "storage/bit_packer.h"
 
@@ -46,16 +45,15 @@ LDC1612        g_ldc;
 StateMachine   g_sm;
 SPIFlash       g_flash;
 FlashRing      g_ring(g_flash);
-FlashManager   g_fm(g_flash);
+LittleFSStorage g_fs;
 BitPacker      g_packer;
 StartDetector  g_start_det;
 EndDetector    g_end_det;
 
 /* ================================================================== */
 /* ── Run state during LOGGING ─────────────────────────────────── */
-static uint32_t g_run_start_addr = 0;   /* address of RunHeader */
-static uint32_t g_flash_addr     = 0;   /* next frame write address */
 static uint32_t g_frame_count    = 0;   /* frames written this run */
+static bool     g_run_created    = false;
 
 /* ── Page buffer for compressed frames ────────────────────────── */
 static constexpr size_t PAGE_BUF_SIZE = 256;
@@ -64,7 +62,7 @@ static size_t   g_page_cursor = 0;
 
 /* ================================================================== */
 static uint32_t g_last_sensor_ms  = 0;
-static uint32_t g_last_baro_ms   = 0;   /* 10 Hz start detector feed */
+static uint32_t g_last_baro_ms   = 0;
 static uint32_t g_last_battery_ms = 0;
 static uint32_t g_last_qi_ms      = 0;
 static uint32_t g_last_cal_ms     = 0;
@@ -87,8 +85,7 @@ void beep_off() { analogWrite(1, 0); }
 void flush_page_buffer()
 {
     if (g_page_cursor == 0) return;
-    g_fm.write_data(g_flash_addr, g_page_buf, g_page_cursor);
-    g_flash_addr += g_page_cursor;
+    g_fs.append_data(g_page_buf, g_page_cursor);
     g_page_cursor = 0;
 }
 
@@ -133,14 +130,20 @@ void handle_serial()
                 json_end();
             } else {
                 float pa = test_mode_active()
-                    ? test_get_pressure()
+                    ? test_get_pressure() * 100.0f
                     : pressure.value() * 100.0f;
-                g_start_det.reset(pa);  /* P₀ NOW — synthetic in test mode */
+                if (test_mode_active() && pa > 80000.0f) { /* use test pressure */ }
+                else if (pa > 80000.0f) { /* use sensor pressure */ }
+                else { pa = 101325.0f; }
+                g_start_det.reset(pa);
                 g_sm.force_state(DeviceState::ARMED);
             }
         }
         break;
-    case 'l': g_sm.force_state(DeviceState::LOGGING); break;
+    case 'l':
+        g_end_det.reset();
+        g_sm.force_state(DeviceState::LOGGING);
+        break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
     case 's': g_sm.force_state(DeviceState::SLEEP); break;
     case 'f': flash_test(); return;
@@ -185,9 +188,20 @@ void handle_serial()
         Serial.println("Stopped.");
         return;
     }
+    case '!':
+        json_begin(); json_kv("ev", "reboot"); json_end();
+        delay(100);
+        NVIC_SystemReset();
+        return;
+    case 'V':
+        json_begin();
+        json_kv("ev", "version");
+        Serial.print(','); json_kv("ver", FW_VERSION);
+        json_end();
+        return;
     case 'R':
         json_begin(); json_kv("ev", "factory_reset"); json_end();
-        g_fm.erase_all();
+        g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
         NVIC_SystemReset();
         return;
@@ -202,11 +216,13 @@ void handle_serial()
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
         Serial.print(','); json_kv_bool("qi", !digitalRead(10));
-        Serial.print(','); json_kv("runs", (long)g_fm.run_count());
+        Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+        Serial.print(','); json_kv("total_runs", (long)g_fs.total_run_count());
+        Serial.print(','); json_kv("oldest_age", (long)g_fs.oldest_run_age());
         Serial.print(','); json_kv_bool("ldc", g_ldc.is_connected());
         Serial.print(','); json_kv("ldc_raw", (long)g_ldc.data());
-        Serial.print(','); json_kv("wh", (long)g_fm.write_head());
-        Serial.print(','); json_kv("rh", (long)g_fm.read_head());
+        Serial.print(','); json_kv("flash_pct", (long)g_fs.flash_used_pct());
+        Serial.print(','); json_kv("ver", FW_VERSION);
         json_end();
         return;
     }
@@ -216,25 +232,17 @@ void handle_serial()
 /* ================================================================== */
 void flash_test()
 {
-    /* Use the last run data sector (509) for self-test — avoids ring buffer and index */
-    static constexpr uint32_t TEST_ADDR = 509 * FLASH_SECTOR_SIZE;
-
-    uint8_t wr[256]; for (int i=0;i<256;i++) wr[i]=(uint8_t)(i*3+7);
-    g_flash.erase_block(TEST_ADDR);
-    g_flash.write_page(TEST_ADDR,wr,256);
-    uint8_t rd[256]; g_flash.read_data(TEST_ADDR,rd,256);
+    static constexpr uint32_t TEST_ADDR = 0;
+    if (!g_flash.erase_block(TEST_ADDR)) { json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false); json_end(); return; }
+    uint8_t wr[256]; for(int i=0;i<256;i++) wr[i]=(uint8_t)(i*3+7);
+    if (!g_flash.write_page(TEST_ADDR,wr,256)) { json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false); json_end(); return; }
+    uint8_t rd[256];
+    if (!g_flash.read_data(TEST_ADDR,rd,256)) { json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false); json_end(); return; }
     for (int i=0;i<256;i++) if (rd[i]!=wr[i]) {
-        json_begin();
-        json_kv("ev", "flash");
-        Serial.print(','); json_kv_bool("ok", false);
-        Serial.print(','); json_kv("err_at", (long)i);
-        json_end();
-        return;
+        json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false);
+        json_kv("err_at",(long)i); json_end(); return;
     }
-    json_begin();
-    json_kv("ev", "flash");
-    Serial.print(','); json_kv_bool("ok", true);
-    json_end();
+    json_begin(); json_kv("ev","flash"); json_kv_bool("ok",true); json_end();
 }
 
 /* ================================================================== */
@@ -275,15 +283,13 @@ void feed_sensors()
                 json_end();
             }
         } else {
-            /* Buffer full: discard oldest, keep freshest 500 frames */
-            g_ring.read();  /* discard */
+            g_ring.read();
             g_ring.write(f);
         }
         return;
     }
 
     if (st == DeviceState::LOGGING) {
-        /* ── Drain: pop 2 when ring has data, pop 1 when near-empty ── */
         uint8_t count = g_ring.count();
         uint8_t pop_n = count >= 2 ? 2 : count;
 
@@ -301,19 +307,15 @@ void feed_sensors()
             g_frame_count++;
         }
 
-        /* ── Push live frame onto ring ── */
         g_ring.write(f);
 
-        /* ── End detection: sampled at 0.5 Hz, 5 s window (10 samples) ── */
         float pa_raw = test_mode_active()
             ? test_get_pressure()
-            : pressure.value() * 100.0f;  /* hPa → Pa */
+            : pressure.value() * 100.0f;
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
         return;
     }
-
-    /* IDLE / POST_RUN: just push to ring if armed-override? No, ring is only for LOGGING/ARMED */
 }
 
 /* ================================================================== */
@@ -323,15 +325,14 @@ void setup()
     Serial.begin(115200);
     delay(300);
 
-    /* Output always-JSON (ADR-001) */
     json_begin(); json_kv("ev", "boot");
-    Serial.print(','); json_kv("ver", "2.4");
+    Serial.print(','); json_kv("ver", FW_VERSION);
     json_end();
 
     /* ── LED ── */
     g_led.begin();
 
-    /* ── SPI Flash (MX25R1635F on SPI1) ── */
+    /* ── SPI Flash (MX25R1635F on SPI0, CS_FLASH=p26) ── */
     json_begin();
     json_kv("ev", "init");
     Serial.print(','); json_kv("sub", "flash");
@@ -356,27 +357,7 @@ void setup()
     json_end();
     g_ldc.enable_interrupt();
 
-    /* ── FlashManager (index + run storage) ── */
-    json_begin();
-    json_kv("ev", "init");
-    Serial.print(','); json_kv("sub", "index");
-    bool idx_ok = g_fm.begin();
-    Serial.print(','); json_kv_bool("ok", idx_ok);
-    Serial.print(','); json_kv("recovered", !idx_ok ? "true" : "false"); // placeholder
-    json_end();
-
-    json_begin();
-    json_kv("ev", "index");
-    Serial.print(','); json_kv("runs", (long)g_fm.run_count());
-    Serial.print(','); json_kv("total", (long)g_fm.total_run_count());
-    Serial.print(','); json_kv("wh", (long)g_fm.write_head());
-    Serial.print(','); json_kv("rh", (long)g_fm.read_head());
-    json_end();
-
-    /* ── BLE first — needs heap for thread before BHY2 exhausts it ──
-     * CRITICAL: Requires CORDIO_ZERO_COPY_HCI=0 (platformio.ini + mbed_config.h patch)
-     * AND BHY2.begin(NICLA_STANDALONE) (avoids ~3KB heap consumed by bleHandler/eslovHandler/dfuManager).
-     * See TOOLS.md, MEMORY.md, AD-014. */
+    /* ── BLE first — needs heap for thread before BHY2 exhausts it ── */
     json_begin();
     json_kv("ev", "init");
     Serial.print(','); json_kv("sub", "ble");
@@ -386,6 +367,14 @@ void setup()
     if (!ble_ok) { while(1) delay(1000); }
     sgc_ble_init();
     sgc_ble_transfer_init();
+
+    /* ── LittleFS (after BD init, before BHY2 for heap) ── */
+    json_begin();
+    json_kv("ev", "init");
+    Serial.print(','); json_kv("sub", "littlefs");
+    bool fs_ok = g_fs.begin();
+    Serial.print(','); json_kv_bool("ok", fs_ok);
+    json_end();
 
     /* ── BHY2 init (standalone — only sensor hub, no BLE/I2C/DFU handlers) ── */
     json_begin();
@@ -408,13 +397,13 @@ void setup()
 
     int8_t batt = nicla::getBatteryVoltagePercentage();
     sgc_ble_set_battery(batt >= 0 ? (uint8_t)batt : 0);
-    sgc_ble_set_run_count(g_fm.total_run_count());
-    sgc_ble_set_flash_used(g_fm.flash_used_pct());
+    sgc_ble_set_run_count(g_fs.run_count());
+    sgc_ble_set_flash_used(g_fs.flash_used_pct());
 
     json_begin();
     json_kv("ev", "ready");
     Serial.print(','); json_kv("st", g_sm.state_name());
-    Serial.print(','); json_kv("runs", (long)g_fm.run_count());
+    Serial.print(','); json_kv("runs", (long)g_fs.run_count());
     json_end();
 }
 
@@ -423,7 +412,6 @@ void loop()
 {
     uint32_t now = millis();
 
-    /* Phase 11: factory reset confirmation state (must be function-scope static) */
     static bool     g_factory_confirming    = false;
     static uint32_t g_factory_confirm_start = 0;
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
@@ -451,16 +439,11 @@ void loop()
             float pa = test_mode_active()
                 ? test_get_pressure()
                 : pressure.value() * 100.0f;
-            g_start_det.reset(pa);  /* P₀ NOW — before any feed */
+            g_start_det.reset(pa);
             g_sm.force_state(DeviceState::ARMED);
         }
     }
-    /* ── Factory reset with confirmation (F42, Phase 11 fix) ──
-     * Phase 11: false proximity from LC-tank thermal drift can trigger
-     * FACTORY_HOLD with nothing near the sensor.  Require a 3-second
-     * confirmation window with LED warning before erasing flash.
-     * If proximity breaks at any point during confirmation, cancel.
-     * A real human holding metal will keep the signal solid. */
+    /* ── Factory reset with confirmation ── */
     if (g_ldc.is_factory_hold() && g_sm.state() == DeviceState::IDLE) {
         if (!g_factory_confirming) {
             g_factory_confirming    = true;
@@ -471,7 +454,6 @@ void loop()
             json_end();
         }
 
-        /* Flash red LED during confirmation, check proximity holds */
         uint32_t elapsed = now - g_factory_confirm_start;
         if (elapsed < FACTORY_CONFIRM_MS) {
             if (!g_ldc.is_proximity()) {
@@ -487,20 +469,18 @@ void loop()
             return;
         }
 
-        /* Confirmation passed — execute reset */
         nicla::leds.setColor(0, 0, 0);
         g_factory_confirming = false;
         json_begin();
         json_kv("ev", "factory_reset");
         Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
         json_end();
-        g_fm.erase_all();
+        g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
         NVIC_SystemReset();
         return;
     }
 
-    /* Reset confirmation if proximity clears (cancels pending factory reset) */
     if (!g_ldc.is_proximity() && g_factory_confirming) {
         g_factory_confirming = false;
         nicla::leds.setColor(0, 0, 0);
@@ -511,7 +491,7 @@ void loop()
         g_last_sensor_ms = now;
     }
 
-    /* ── Start detector feed at 10 Hz (C11 fix) ── */
+    /* ── Start detector feed at 10 Hz ── */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
         float pa = test_mode_active()
             ? test_get_pressure()
@@ -526,43 +506,44 @@ void loop()
         json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
         if (cur == DeviceState::ARMED) {
             g_ring.reset(); g_packer.reset();
-            /* g_start_det P₀ already set at the force_state(ARMED) call site */
             g_page_cursor = 0;
+            g_run_created = false;
         }
         if (cur == DeviceState::LOGGING) {
             g_end_det.reset();
 
-            /* Create run via FlashManager */
             int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
-            uint8_t cal = 0; /* Will use g_bhy2_accuracy when available */
+            uint8_t cal = 0;
 
-            g_run_start_addr = g_fm.write_head(); /* current write_head is the run address */
-            g_flash_addr = g_fm.create_run(0, baro_temp, cal); /* arm_side=0 for now */
+            g_run_created = g_fs.create_run(0, baro_temp, cal);
             g_frame_count = 0;
 
             json_begin();
             json_kv("ev", "run_created");
-            Serial.print(','); json_kv("addr", (long)g_run_start_addr);
-            Serial.print(','); json_kv("data", (long)g_flash_addr);
+            Serial.print(','); json_kv_bool("ok", g_run_created);
+            Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
             json_end();
         }
         if (cur == DeviceState::POST_RUN) {
-            /* Flush remaining page buffer */
             flush_page_buffer();
 
-            /* Compute compressed size */
-            uint32_t compressed_size = g_flash_addr - g_run_start_addr - sizeof(RunHeader);
+            uint16_t run_id = g_fs.close_run(g_frame_count);
 
-            uint16_t run_id = g_fm.close_run(g_run_start_addr, compressed_size, g_frame_count);
-
-            sgc_ble_set_run_count(g_fm.total_run_count());
-            sgc_ble_set_flash_used(g_fm.flash_used_pct());
+            sgc_ble_set_run_count(g_fs.run_count());
+            sgc_ble_set_flash_used(g_fs.flash_used_pct());
 
             json_begin();
             json_kv("ev", "run_saved");
             Serial.print(','); json_kv("id", (long)run_id);
             Serial.print(','); json_kv("fr", (long)g_frame_count);
-            Serial.print(','); json_kv("sz", (long)compressed_size);
+            Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
+            long diag = run_id != 0xFFFF ? 0
+                      : (!g_run_created ? 1 : 2);
+            Serial.print(','); json_kv("wh", diag);
+            Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+            Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
+            Serial.print(','); json_kv("ec", (long)g_fs.run_count());
+            Serial.print(','); json_kv("tc", (long)g_fs.total_run_count());
             json_end();
         }
         apply_state_visuals(cur);
