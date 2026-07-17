@@ -118,50 +118,49 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* During stream mode, read binary frames to (a) prevent binary
-       bytes from matching command chars (e.g. 'R'=0x52 → SREQ),
-       (b) feed g_test_pressure from stream for start detection,
-       (c) detect sentinel (frame_num=0xFFFFFFFF) → exit.
-       Frame: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B.
-       Float data can contain false 0xAA,0x55 syncs — reject by
-       validating frame_num is monotonically increasing. */
+    /* During stream mode, bulk-read and parse binary frames.
+       One-byte-per-call is too slow at 3,800 B/s — process all
+       available bytes to keep up with the stream and catch the
+       sentinel before the test harness times out. */
     if (g_stream_active) {
         static uint8_t buf[38];
+        /* Process the byte already read, then drain the rest */
+        for (;;) {
+            if (g_stream_pos == 0) {
+                if (c != 0xAA) goto next_byte;
+                buf[0] = c; g_stream_pos = 1;
+            } else if (g_stream_pos == 1) {
+                if (c == 0xAA) { buf[0] = c; goto next_byte; }
+                if (c != 0x55) { g_stream_pos = 0; goto next_byte; }
+                buf[1] = c; g_stream_pos = 2;
+            } else {
+                buf[g_stream_pos++] = c;
+                if (g_stream_pos >= 38) {
+                    g_stream_pos = 0;
+                    uint32_t fn;
+                    memcpy(&fn, buf + 2, 4);
 
-        if (g_stream_pos == 0) {
-            if (c != 0xAA) return;
-            buf[0] = c; g_stream_pos = 1;
-        } else if (g_stream_pos == 1) {
-            if (c == 0xAA) { buf[0] = c; return; }  /* re-sync */
-            if (c != 0x55) { g_stream_pos = 0; return; }
-            buf[1] = c; g_stream_pos = 2;
-        } else {
-            buf[g_stream_pos++] = c;
-            if (g_stream_pos >= 38) {
-                g_stream_pos = 0;
-                uint32_t fn;
-                memcpy(&fn, buf + 2, 4);
-
-                if (fn == 0xFFFFFFFF) {
-                    g_stream_active = false;
-                    json_begin(); json_kv("ev", "stream_end");
-                    Serial.print(','); json_kv("frames", (long)g_stream_frames);
-                    json_end();
-                    g_stream_frames = 0;
-                } else if (fn >= g_stream_last_fn
-                        && fn - g_stream_last_fn < 100000) {
-                    /* Valid frame: monotonic, no huge gap */
-                    float pr;
-                    memcpy(&pr, buf + 34, 4);
-                    test_set_pressure(pr);
-                    g_stream_last_fn = fn;
-                    g_stream_frames++;
+                    if (fn == 0xFFFFFFFF) {
+                        g_stream_active = false;
+                        json_begin(); json_kv("ev", "stream_end");
+                        Serial.print(','); json_kv("frames", (long)g_stream_frames);
+                        json_end();
+                        g_stream_frames = 0;
+                        return;
+                    } else if (fn >= g_stream_last_fn
+                            && fn - g_stream_last_fn < 100000) {
+                        float pr;
+                        memcpy(&pr, buf + 34, 4);
+                        test_set_pressure(pr);
+                        g_stream_last_fn = fn;
+                        g_stream_frames++;
+                    }
                 }
-                /* else: false sync (float data matched 0xAA,0x55) →
-                   silently discard, continue search */
             }
+        next_byte:
+            if (!Serial.available()) return;
+            c = Serial.read();
         }
-        return;
     }
 
     if (test_mode_handle_serial(c)) return;
