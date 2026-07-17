@@ -381,6 +381,18 @@ void LittleFSStorage::unmount() {
     }
 }
 
+void LittleFSStorage::metadata_sync() {
+    /* Opening root dir for reading triggers a metadata commit
+       in littlefs, flushing pending superblock/directory changes.
+       lfs_unmount() alone does NOT commit metadata. */
+    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    if (fs) {
+        Dir dir;
+        dir.open(fs, "/");
+        dir.close();
+    }
+}
+
 void LittleFSStorage::erase_all() {
     if (m_file_open && m_file) {
         static_cast<File*>(m_file)->close();

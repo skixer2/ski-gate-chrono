@@ -235,9 +235,14 @@ void handle_serial()
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(200);
+        /* MX25R1635F sector erase takes up to 400ms.  If NVIC_SystemReset
+           fires mid-erase, the superblock sector is corrupted → mount
+           fails → auto-reformat → data loss.  600ms delay lets any
+           in-flight erase complete. */
         if (g_fs.run_count() > 0) {
-            g_fs.unmount();  /* flush LittleFS metadata to flash */
-            delay(100);       /* let SPI flash writes complete */
+            g_fs.metadata_sync();  /* force superblock commit (silent) */
+            g_fs.unmount();
+            delay(600);
         }
         NVIC_SystemReset();
         return;
@@ -251,8 +256,9 @@ void handle_serial()
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
+        g_fs.metadata_sync();  /* force superblock commit (silent) */
         g_fs.unmount();
-        delay(50);
+        delay(600);          /* let SPI erase complete */
         NVIC_SystemReset();
         return;
     case '?': {

@@ -143,6 +143,9 @@ public:
     /** V2.63: Flush FS metadata for clean reboot. */
     void unmount();
 
+    /** V2.69: Force superblock/directory metadata commit (silent). */
+    void metadata_sync();
+
     /** V2.21: List all files in the LittleFS root dir via Serial (debug). */
     void list_files() const;
 
