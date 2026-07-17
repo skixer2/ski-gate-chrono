@@ -135,13 +135,6 @@ bool test_mode_handle_serial(char c)
         Serial.print(','); json_kv_bool("strm", true);
         json_end();
         return true;
-    case 'e':
-        g_stream_active = false;
-        json_begin(); json_kv("ev", "cmd");
-        Serial.print(','); json_kv("cmd", "e");
-        Serial.print(','); json_kv_bool("strm", false);
-        json_end();
-        return true;
     }
     return false;
 }

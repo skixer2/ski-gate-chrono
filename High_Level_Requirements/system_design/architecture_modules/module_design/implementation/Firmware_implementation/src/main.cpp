@@ -119,6 +119,16 @@ void handle_serial()
     /* Stream mode: read 18-byte RawFrame frames (2B sync + 16B payload).
        Identical format to real peripheral — feed_sensors copies directly. */
     if (g_stream_active) {
+        /* 'e' exits stream mode — must be handled BEFORE parser
+           because the parser consumes ALL bytes via for(;;). */
+        if (c == 'e') {
+            g_stream_active = false;
+            json_begin(); json_kv("ev", "cmd");
+            Serial.print(','); json_kv("cmd", "e");
+            Serial.print(','); json_kv_bool("strm", false);
+            json_end();
+            return;
+        }
         static uint8_t  sbuf[18];
         static uint8_t  spos = 0;
         for (;;) {
