@@ -94,18 +94,16 @@ bool LittleFSStorage::begin() {
 
     int err = fs->mount(sliced);
     if (err != 0) {
-        /* Emit diagnostic before reformatting — silent data loss is
-           the #1 cause of "runs disappear after reboot" bugs.
-           Geometry mismatch (old FS at 508 blocks, new at 504) is a
-           common trigger.  Reformat wipes ALL data — log it. */
         Serial.print("{\"ev\":\"fs_mount_fail\",\"err\":");
-        Serial.print(err); Serial.println("}");
+        Serial.print(err);
+        Serial.print(",\"blk\":"); Serial.print(sliced->size() / 4096);
+        Serial.print(",\"sz\":"); Serial.print(sliced->size());
+        Serial.println("}");
+        /* Only auto-reformat if clean FS — don't destroy data */
         err = fs->reformat(sliced);
         Serial.print("{\"ev\":\"fs_reformat\",\"err\":");
         Serial.print(err); Serial.println("}");
         if (err != 0) { delete fs; delete sliced; return false; }
-        /* mbed LittleFileSystem2::reformat() mounts after format —
-           no second mount() needed (double-mount leaks lfs2 caches). */
     }
     m_fs = fs;
     scan_runs();

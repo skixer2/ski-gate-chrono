@@ -234,9 +234,11 @@ void handle_serial()
     }
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
-        delay(200);  /* let any pending serial output drain */
-        g_fs.unmount();  /* flush LittleFS metadata to flash */
-        delay(50);
+        delay(200);
+        if (g_fs.run_count() > 0) {
+            g_fs.unmount();  /* flush LittleFS metadata to flash */
+            delay(100);       /* let SPI flash writes complete */
+        }
         NVIC_SystemReset();
         return;
     case 'V':
