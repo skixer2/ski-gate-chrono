@@ -472,45 +472,16 @@ void loop()
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
     static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
 
-    /* ── Stream mode: call handle_serial() in a tight burst.
-       Each Serial.available() returns just 1-2 bytes (bytes arrive
-       one-at-a-time at 115200 baud).  20× per iteration keeps
-       throughput at ~6,000 B/s — enough for 3,800 B/s stream.
-       Keep essential ops: g_sm.tick() for ARM timeout, start
-       detector 10Hz feed, state-change events, sensor feed. ── */
+    /* ── Stream mode: burst-process bytes, then continue with normal loop.
+       The normal loop handles LOGGING entry (create_run), ring drain,
+       flash writes, and POST_RUN (close_run). ── */
     if (g_stream_active) {
         for (int i = 0; i < 20; i++) handle_serial();
-        g_sm.tick();
-
-        /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
-        if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-            float pa = test_mode_active()
-                ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
-                : pressure.value() * 100.0f;                     /* hPa→Pa */
-            if (g_start_det.feed(pa))
-                g_sm.force_state(DeviceState::LOGGING);
-            g_last_baro_ms = now;
-        }
-
-        DeviceState cur = g_sm.state();
-        if (cur != g_prev_state) {
-            json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
-            if (cur == DeviceState::ARMED) {
-                g_last_baro_ms = now;
-            }
-            apply_state_visuals(cur);
-            g_prev_state = cur;
-        }
-
-        if (now - g_last_sensor_ms >= 10) {
-            feed_sensors();
-            g_last_sensor_ms = now;
-        }
-        return;
     }
 
     BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
-    g_led.update(); g_sm.tick(); g_ldc.tick(); handle_serial();
+    g_led.update(); g_sm.tick(); g_ldc.tick();
+    if (!g_stream_active) handle_serial();  /* normal command parsing */
 
     /* ── LDC1612 wake from SLEEP (F13) ── */
     if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP) {
