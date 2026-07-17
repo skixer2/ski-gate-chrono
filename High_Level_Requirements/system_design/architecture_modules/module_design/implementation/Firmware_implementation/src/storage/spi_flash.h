@@ -1,7 +1,7 @@
 /**
  * @file    spi_flash.h
  * @brief   MX25R1635F SPI NOR flash via SPIFBlockDevice.
- *          V2.29+: Uses explicit SPIFBlockDevice(p4,p5,p3,p26) on SPI0
+ *          V2.29+: Uses explicit SPIFBlockDevice(p4,p5,p3,p26) on SPI1
  *          for the external 2MB flash.  mbed::BlockDevice::get_default_instance()
  *          returns internal nRF512 flash (512KB) — insufficient for run storage.
  */

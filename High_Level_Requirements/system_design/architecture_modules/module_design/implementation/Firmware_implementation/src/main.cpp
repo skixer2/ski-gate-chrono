@@ -146,7 +146,7 @@ void handle_serial()
         break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
     case 's': g_sm.force_state(DeviceState::SLEEP); break;
-    case 'f': flash_test(); return;
+    case 'f': if (g_sm.state() != DeviceState::ARMED && g_sm.state() != DeviceState::LOGGING) flash_test(); return;
     case 'z': {
         json_begin();
         json_kv("ev", "ldc_diag");
