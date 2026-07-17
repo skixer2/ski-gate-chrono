@@ -240,9 +240,8 @@ void handle_serial()
            fails → auto-reformat → data loss.  600ms delay lets any
            in-flight erase complete. */
         if (g_fs.run_count() > 0) {
-            g_fs.metadata_sync();  /* force superblock commit (silent) */
             g_fs.unmount();
-            delay(600);
+            delay(800);
         }
         NVIC_SystemReset();
         return;
@@ -256,9 +255,8 @@ void handle_serial()
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
-        g_fs.metadata_sync();  /* force superblock commit (silent) */
         g_fs.unmount();
-        delay(600);          /* let SPI erase complete */
+        delay(800);
         NVIC_SystemReset();
         return;
     case '?': {
