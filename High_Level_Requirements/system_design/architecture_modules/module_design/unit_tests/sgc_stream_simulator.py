@@ -857,7 +857,7 @@ class SGCDevice:
             print("     ✗ Start detection never fired.")
             threshold_pa = DROP_THRESHOLD_M * PA_PER_M_HPA * self.init_pressure / SEA_LEVEL_HPA
             print(f"       Baro ramp ΔP must exceed {threshold_pa:.0f} Pa "
-                  f"(2.0m drop at P₀={self.init_pressure:.0f} Pa)")
+                  f"(2.0m drop at P₀={self.init_pressure:.0f} hPa)")
 
         return None
 
