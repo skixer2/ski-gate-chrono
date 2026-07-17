@@ -140,6 +140,9 @@ public:
     /** Format the filesystem — deletes ALL runs. */
     void erase_all();
 
+    /** V2.63: Flush FS metadata for clean reboot. */
+    void unmount();
+
     /** V2.21: List all files in the LittleFS root dir via Serial (debug). */
     void list_files() const;
 

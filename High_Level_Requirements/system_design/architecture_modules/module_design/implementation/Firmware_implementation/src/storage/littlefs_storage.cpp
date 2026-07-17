@@ -359,6 +359,18 @@ void LittleFSStorage::delete_oldest_run() {
 }
 
 /* ── Factory reset ──────────────────────────────────────────── */
+void LittleFSStorage::unmount() {
+    if (m_file_open && m_file) {
+        static_cast<File*>(m_file)->close();
+        delete static_cast<File*>(m_file);
+        m_file = nullptr; m_file_open = false;
+    }
+    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    if (fs) {
+        fs->unmount();
+    }
+}
+
 void LittleFSStorage::erase_all() {
     if (m_file_open && m_file) {
         static_cast<File*>(m_file)->close();

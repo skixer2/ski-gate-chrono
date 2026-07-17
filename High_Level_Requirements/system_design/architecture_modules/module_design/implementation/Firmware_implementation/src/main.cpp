@@ -233,7 +233,9 @@ void handle_serial()
     }
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
-        delay(100);
+        delay(200);  /* let any pending serial output drain */
+        g_fs.unmount();  /* flush LittleFS metadata to flash */
+        delay(50);
         NVIC_SystemReset();
         return;
     case 'V':
@@ -246,6 +248,8 @@ void handle_serial()
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
+        g_fs.unmount();
+        delay(50);
         NVIC_SystemReset();
         return;
     case '?': {
