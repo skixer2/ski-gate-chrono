@@ -94,16 +94,16 @@ bool LittleFSStorage::begin() {
 
     int err = fs->mount(sliced);
     if (err != 0) {
+        /* Log superblock contents for debugging -22 */
         Serial.print("{\"ev\":\"fs_mount_fail\",\"err\":");
         Serial.print(err);
         Serial.print(",\"blk\":"); Serial.print(sliced->size() / 4096);
         Serial.print(",\"sz\":"); Serial.print(sliced->size());
+        Serial.print(",\"es\":"); Serial.print(sliced->get_erase_size());
         Serial.println("}");
-        /* Only auto-reformat if clean FS — don't destroy data */
-        err = fs->reformat(sliced);
-        Serial.print("{\"ev\":\"fs_reformat\",\"err\":");
-        Serial.print(err); Serial.println("}");
-        if (err != 0) { delete fs; delete sliced; return false; }
+        /* No auto-reformat — halt. Let user send 'R' manually. */
+        delete fs; delete sliced;
+        return false;
     }
     m_fs = fs;
     scan_runs();
