@@ -116,42 +116,44 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* Stream mode: one byte per call to keep the main loop running.
-       Each call returns immediately — g_sm.tick(), sensors, and the
-       start detector (10Hz, ARMED state) continue unimpeded. */
+    /* Stream mode: process all available bytes in a burst, then yield
+       to main loop.  One-byte-per-call is too slow at 500 B/s vs the
+       3,800 B/s stream rate — the parser falls hours behind. */
     if (g_stream_active) {
-        static uint8_t  sbuf[38];  /* 2 sync + 4 frame_num + 32 payload */
+        static uint8_t  sbuf[38];
         static uint8_t  spos = 0;
-
-        if (spos == 0) {
-            if (c == 0xAA) spos = 1;
-        } else if (spos == 1) {
-            if (c == 0xAA) { /* re-sync, pos stays 1 */ }
-            else if (c == 0x55) { sbuf[0]=0xAA; sbuf[1]=0x55; spos=2; }
-            else spos = 0;
-        } else {
-            sbuf[spos++] = c;
-            if (spos >= 38) {
-                spos = 0;
-                /* sbuf[2..5] = frame_num (u32 LE) */
-                uint32_t fn;
-                memcpy(&fn, sbuf + 2, 4);
-                if (fn == 0xFFFFFFFF) {
-                    g_stream_active = false;
-                    json_begin(); json_kv("ev", "stream_end");
-                    Serial.print(','); json_kv("frames", (long)g_stream_frames);
-                    json_end();
-                    g_stream_frames = 0;
-                } else {
-                    /* sbuf[34..37] = pressure_hpa (8th float, LE) */
-                    float pr;
-                    memcpy(&pr, sbuf + 34, 4);
-                    test_set_pressure(pr);
-                    g_stream_frames++;
+        /* Process the already-read byte + any available */
+        for (;;) {
+            if (spos == 0) {
+                if (c == 0xAA) spos = 1;
+            } else if (spos == 1) {
+                if (c == 0xAA) { /* re-sync, pos stays 1 */ }
+                else if (c == 0x55) { sbuf[0]=0xAA; sbuf[1]=0x55; spos=2; }
+                else spos = 0;
+            } else {
+                sbuf[spos++] = c;
+                if (spos >= 38) {
+                    spos = 0;
+                    uint32_t fn;
+                    memcpy(&fn, sbuf + 2, 4);
+                    if (fn == 0xFFFFFFFF) {
+                        g_stream_active = false;
+                        json_begin(); json_kv("ev", "stream_end");
+                        Serial.print(','); json_kv("frames", (long)g_stream_frames);
+                        json_end();
+                        g_stream_frames = 0;
+                        return;
+                    } else {
+                        float pr;
+                        memcpy(&pr, sbuf + 34, 4);
+                        test_set_pressure(pr);
+                        g_stream_frames++;
+                    }
                 }
             }
+            if (!Serial.available()) return;
+            c = Serial.read();
         }
-        return;
     }
 
     if (test_mode_handle_serial(c)) return;
