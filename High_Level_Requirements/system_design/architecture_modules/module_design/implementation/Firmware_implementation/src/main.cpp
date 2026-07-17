@@ -134,6 +134,18 @@ void handle_serial()
                     spos = 0;
                     RawFrame rf;
                     memcpy(&rf, sbuf + 2, sizeof(RawFrame));
+                    /* All-zeros = sentinel (quat magnitude 0 is physically
+                       impossible).  Emit stream_end for the test harness. */
+                    if (rf.q_w == 0 && rf.q_x == 0 && rf.q_y == 0 && rf.q_z == 0
+                     && rf.la_x == 0 && rf.la_y == 0 && rf.la_z == 0
+                     && rf.baro_pa_div2 == 0) {
+                        g_stream_active = false;
+                        json_begin(); json_kv("ev", "stream_end");
+                        Serial.print(','); json_kv("frames", (long)g_stream_frames);
+                        json_end();
+                        g_stream_frames = 0;
+                        return;
+                    }
                     test_set_frame(rf);
                     g_stream_frames++;
                 }
