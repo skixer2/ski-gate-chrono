@@ -477,6 +477,7 @@ void loop()
        (close_run). ── */
     if (g_stream_active) {
         for (int i = 0; i < 40; i++) handle_serial();
+        g_led.update();
         g_sm.tick();
 
         if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
