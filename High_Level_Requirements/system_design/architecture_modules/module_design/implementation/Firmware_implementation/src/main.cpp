@@ -130,9 +130,15 @@ void handle_serial()
                 Serial.print(','); json_kv("mag", mag);
                 json_end();
             } else {
+                /* ── Pressure units ────────────────────────────────────────
+                   Bosch BHY2 pressure.value() returns hPa.
+                   g_start_det / g_end_det use Pa internally.
+                   Multiply by 100.0 to convert hPa→Pa.
+                   test_get_pressure() also returns hPa (same unit).
+                   ─────────────────────────────────────────────────────── */
                 float pa = test_mode_active()
-                    ? test_get_pressure() * 100.0f
-                    : pressure.value() * 100.0f;
+                    ? test_get_pressure() * 100.0f   /* hPa→Pa */
+                    : pressure.value() * 100.0f;     /* hPa→Pa */
                 if (test_mode_active() && pa > 80000.0f) { /* use test pressure */ }
                 else if (pa > 80000.0f) { /* use sensor pressure */ }
                 else { pa = 101325.0f; }
@@ -213,7 +219,7 @@ void handle_serial()
         Serial.print(','); json_kv("st", g_sm.state_name());
         Serial.print(','); json_kv("r", (long)g_ring.count());
         Serial.print(','); json_kv("rm", (long)RING_SIZE);
-        Serial.print(','); json_kv("p", (long)(pressure.value() * 100));
+        Serial.print(','); json_kv("p", (long)(pressure.value() * 100));   /* hPa→Pa for display */
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
         Serial.print(','); json_kv_bool("qi", !digitalRead(10));
@@ -251,6 +257,12 @@ void feed_sensors()
 {
     RawFrame f;
 
+    /* ── Pressure units ────────────────────────────────────────────
+       Bosch BHY2 pressure.value() returns hPa.
+       baro_pa_div2 = Pa/2 = hPa*100/2 = hPa*50.
+       test_get_pressure() also returns hPa → same conversion.
+       ─────────────────────────────────────────────────────────── */
+
     if (test_mode_active()) {
         f.q_w = (int16_t)(test_get_quat_w() * 16384.0f);
         f.q_x = (int16_t)(test_get_quat_x() * 16384.0f);
@@ -259,7 +271,7 @@ void feed_sensors()
         f.la_x = (int16_t)test_get_lax();
         f.la_y = (int16_t)test_get_lay();
         f.la_z = (int16_t)test_get_laz();
-        f.baro_pa_div2 = (uint16_t)(test_get_pressure() * 50.0f);
+        f.baro_pa_div2 = (uint16_t)(test_get_pressure() * 50.0f);   /* hPa→Pa/2 */
     } else {
         f.q_w = (int16_t)(rotation.w() * 16384.0f);
         f.q_x = (int16_t)(rotation.x() * 16384.0f);
@@ -268,7 +280,7 @@ void feed_sensors()
         f.la_x = (int16_t)lin_acc.x();
         f.la_y = (int16_t)lin_acc.y();
         f.la_z = (int16_t)lin_acc.z();
-        f.baro_pa_div2 = (uint16_t)(pressure.value() * 50.0f);
+        f.baro_pa_div2 = (uint16_t)(pressure.value() * 50.0f);     /* hPa→Pa/2 */
     }
 
     DeviceState st = g_sm.state();
@@ -310,9 +322,10 @@ void feed_sensors()
 
         g_ring.write(f);
 
+        /* ── End detector (LOGGING→POST_RUN) — Pa ── */
         float pa_raw = test_mode_active()
             ? test_get_pressure() * 100.0f   /* hPa→Pa */
-            : pressure.value() * 100.0f;
+            : pressure.value() * 100.0f;     /* hPa→Pa */
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
         return;
@@ -451,9 +464,10 @@ void loop()
             json_kv("ev", "prox_arm");
             Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
             json_end();
+            /* ── Pressure units: hPa→Pa (×100.0f) — see block comment at line ~140 ── */
             float pa = test_mode_active()
-                ? test_get_pressure()
-                : pressure.value() * 100.0f;
+                ? test_get_pressure() * 100.0f   /* hPa→Pa, match pressure.value() units */
+                : pressure.value() * 100.0f;     /* hPa→Pa, Bosch BHY2 native unit */
             g_start_det.reset(pa);
             g_sm.force_state(DeviceState::ARMED);
         }
@@ -506,11 +520,11 @@ void loop()
         g_last_sensor_ms = now;
     }
 
-    /* ── Start detector feed at 10 Hz ── */
+    /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
         float pa = test_mode_active()
-            ? test_get_pressure() * 100.0f   /* hPa→Pa, match pressure.value() units */
-            : pressure.value() * 100.0f;
+            ? test_get_pressure() * 100.0f   /* hPa→Pa */
+            : pressure.value() * 100.0f;     /* hPa→Pa */
         if (g_start_det.feed(pa))
             g_sm.force_state(DeviceState::LOGGING);
         g_last_baro_ms = now;
