@@ -89,6 +89,10 @@ bool LittleFSStorage::begin() {
     if (err != 0) {
         err = fs->reformat(sliced);
         if (err != 0) { delete sliced; delete fs; return false; }
+        /* mbed LittleFileSystem2::reformat() does NOT auto-mount.
+           Must mount after reformat, same pattern as erase_all(). */
+        err = fs->mount(sliced);
+        if (err != 0) { delete sliced; delete fs; return false; }
     }
     m_fs = fs;
     scan_runs();
