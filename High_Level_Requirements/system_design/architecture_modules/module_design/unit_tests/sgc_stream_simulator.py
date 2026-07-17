@@ -207,17 +207,18 @@ def generate_gs_run(duration_s: float = 50.0,
     num_frames = int(duration_s * FRAME_RATE_HZ)
     frames: List[GSFrame] = []
 
-    # Phase boundaries
-    push_start = 2.0
-    descent_start = 3.0          # baro starts rising
-    finish_start = 45.0
+    # Phase boundaries — proportional to duration (designed for 50s, scaled)
+    scale = duration_s / 50.0
+    push_start    = 2.0 * scale
+    descent_start = 3.0 * scale
+    finish_start  = max(descent_start + 1.0, duration_s - 5.0 * scale)  # at least 1s descent, last 10% flat
 
     total_descent = start_altitude_m - finish_altitude_m
-    descent_duration = finish_start - descent_start
+    descent_duration = max(0.1, finish_start - descent_start)
 
     # Gate timing: evenly spaced with deterministic jitter
-    first_gate_t = 3.5
-    last_gate_t = 44.5
+    first_gate_t = (descent_start + 0.5 * scale)
+    last_gate_t  = max(first_gate_t + 0.5, finish_start - 0.5 * scale)
     gate_times = []
     for i in range(gate_count):
         t_gate = first_gate_t + (last_gate_t - first_gate_t) * i / max(gate_count - 1, 1)
@@ -226,9 +227,9 @@ def generate_gs_run(duration_s: float = 50.0,
             t_gate += jitter / 1000.0  # ±0.2s jitter
         gate_times.append(t_gate)
 
-    # Pole push times
-    push_times = [push_start + 0.0, push_start + 0.2,
-                  push_start + 0.4, push_start + 0.6]
+    # Pole push times (scaled)
+    push_times = [push_start + 0.0, push_start + 0.2 * scale,
+                  push_start + 0.4 * scale, push_start + 0.6 * scale]
 
     for i in range(num_frames):
         t = i * FRAME_PERIOD_S
@@ -256,7 +257,7 @@ def generate_gs_run(duration_s: float = 50.0,
         else:
             speed_factor = 0.0
             if descent_start <= t < finish_start:
-                speed_factor = min(1.0, (t - descent_start) / 3.0)
+                speed_factor = min(1.0, (t - descent_start) / (3.0 * scale))
 
             pitch = 0.174 - 0.05 * speed_factor
             roll = math.sin(t * 2.5) * 0.05 * speed_factor
