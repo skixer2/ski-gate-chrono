@@ -71,6 +71,7 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
 uint8_t g_stream_pos = 0;      /* frame parser state (external for test_mode) */
+uint32_t g_stream_frames = 0;   /* frames received in stream mode */
 
 /* ================================================================== */
 void flash_test();
@@ -116,29 +117,41 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* During stream mode, read binary frames to detect sentinel.
-       All other bytes are discarded — prevents binary data from
-       matching command characters (e.g. 'R'=0x52 → SREQ).
-       Frame: SYNC(0xAA,0x55) + frame_num(u32 LE) + 8×f32 payload = 38B.
-       Sentinel: frame_num = 0xFFFFFFFF. */
+    /* During stream mode, read binary frames to (a) prevent binary
+       bytes from matching command chars (e.g. 'R'=0x52 → SREQ),
+       (b) feed g_test_pressure from stream for start detection,
+       (c) detect sentinel (frame_num=0xFFFFFFFF) → exit.
+       Frame: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B. */
     if (g_stream_active) {
         static uint8_t buf[38];
 
-        if (g_stream_pos == 0 && c != 0xAA) return;
-        if (g_stream_pos == 1 && c != 0x55) { g_stream_pos = 0; return; }
-
-        buf[g_stream_pos++] = c;
-        if (g_stream_pos >= 38) {
-            g_stream_pos = 0;
-            /* bytes 2-5 = frame_num (little-endian uint32) */
-            uint32_t fn = (uint32_t)buf[2] | ((uint32_t)buf[3] << 8)
-                        | ((uint32_t)buf[4] << 16) | ((uint32_t)buf[5] << 24);
-            if (fn == 0xFFFFFFFF) {
-                g_stream_active = false;
-                json_begin();
-                json_kv("ev", "stream_end");
-                Serial.print(','); json_kv("frames", 0L);
-                json_end();
+        if (g_stream_pos == 0) {
+            if (c != 0xAA) return;        /* skip until sync byte1 */
+            buf[0] = c; g_stream_pos = 1;
+        } else if (g_stream_pos == 1) {
+            if (c == 0xAA) { buf[0] = c; return; }  /* re-sync */
+            if (c != 0x55) { g_stream_pos = 0; return; }
+            buf[1] = c; g_stream_pos = 2;
+        } else {
+            buf[g_stream_pos++] = c;
+            if (g_stream_pos >= 38) {
+                g_stream_pos = 0;
+                /* bytes 2-5 = frame_num (little-endian u32) */
+                uint32_t fn;
+                memcpy(&fn, buf + 2, 4);
+                if (fn == 0xFFFFFFFF) {
+                    g_stream_active = false;
+                    json_begin(); json_kv("ev", "stream_end");
+                    Serial.print(','); json_kv("frames", (long)g_stream_frames);
+                    json_end();
+                    g_stream_frames = 0;
+                } else {
+                    /* bytes 34-37 = pressure_hpa (8th float, LE) */
+                    float pr;
+                    memcpy(&pr, buf + 34, 4);
+                    test_set_pressure(pr);
+                    g_stream_frames++;
+                }
             }
         }
         return;

@@ -22,6 +22,7 @@ void test_mode_init();
 bool test_mode_active();
 
 float test_get_pressure();
+void  test_set_pressure(float pa_hpa);  /* from stream frame parser */
 float test_get_quat_w();
 float test_get_quat_x();
 float test_get_quat_y();
