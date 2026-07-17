@@ -10,6 +10,7 @@
  */
 
 #include <ArduinoBLE.h>
+#include "nrf_power.h"
 #include "Arduino_BHY2.h"
 #include <Nicla_System.h>
 #include <math.h>
@@ -310,7 +311,7 @@ void feed_sensors()
         g_ring.write(f);
 
         float pa_raw = test_mode_active()
-            ? test_get_pressure()
+            ? test_get_pressure() * 100.0f   /* hPa→Pa */
             : pressure.value() * 100.0f;
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
@@ -325,9 +326,13 @@ void setup()
     Serial.begin(115200);
 
     /* ── Version FIRST — no delay, no preamble ── */
+    uint32_t rr = NRF_POWER->RESETREAS;
+    NRF_POWER->RESETREAS = 0xFFFFFFFF;  /* clear for next boot */
     Serial.print("{\"ev\":\"boot\",\"ver\":\"");
     Serial.print(FW_VERSION);
-    Serial.println("\"}");
+    Serial.print("\",\"rr\":");
+    Serial.print(rr);
+    Serial.println("}");
     Serial.flush();
     delay(50);
 
@@ -504,7 +509,7 @@ void loop()
     /* ── Start detector feed at 10 Hz ── */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
         float pa = test_mode_active()
-            ? test_get_pressure()
+            ? test_get_pressure() * 100.0f   /* hPa→Pa, match pressure.value() units */
             : pressure.value() * 100.0f;
         if (g_start_det.feed(pa))
             g_sm.force_state(DeviceState::LOGGING);
