@@ -509,6 +509,14 @@ void loop()
                 json_end();
             }
             if (cur == DeviceState::POST_RUN) {
+                /* Natural end-detector transition = stream complete */
+                if (g_stream_active) {
+                    g_stream_active = false;
+                    json_begin(); json_kv("ev", "stream_end");
+                    Serial.print(','); json_kv("frames", (long)g_stream_frames);
+                    json_end();
+                    g_stream_frames = 0;
+                }
                 flush_page_buffer();
                 uint16_t run_id = g_fs.close_run(g_frame_count);
                 sgc_ble_set_run_count(g_fs.run_count());
