@@ -145,6 +145,12 @@ void handle_serial()
                         Serial.print(','); json_kv("frames", (long)g_stream_frames);
                         json_end();
                         g_stream_frames = 0;
+                        /* End-of-stream: force POST_RUN to trigger close_run.
+                           The end detector expects a pressure flatline which
+                           the stream's linear ramp never produces. */
+                        if (g_sm.state() == DeviceState::LOGGING) {
+                            g_sm.force_state(DeviceState::POST_RUN);
+                        }
                         return;
                     }
                     test_set_frame(rf);
