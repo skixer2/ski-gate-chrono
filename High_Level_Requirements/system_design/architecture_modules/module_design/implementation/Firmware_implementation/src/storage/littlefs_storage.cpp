@@ -395,7 +395,16 @@ void LittleFSStorage::erase_all() {
         m_fs = nullptr;
         auto* fs2 = new LittleFileSystem2("littlefs", NULL, 4096, 500, 256, 64);
         auto* sliced = new SlicingBlockDevice(raw, 0x4000, 0x1FC000);
-        fs2->reformat(sliced);
+        int ref_err = fs2->reformat(sliced);
+        Serial.print("{\"ev\":\"erase_ref\",\"err\":");
+        Serial.print(ref_err); Serial.println("}");
+        if (ref_err == 0) {
+            ref_err = fs2->mount(sliced);  /* mount after reformat — may or may not be needed */
+            if (ref_err != 0) {
+                Serial.print("{\"ev\":\"erase_mnt\",\"err\":");
+                Serial.print(ref_err); Serial.println("}");
+            }
+        }
         m_fs = fs2;
     }
     memset(m_entries, 0, sizeof(m_entries));
