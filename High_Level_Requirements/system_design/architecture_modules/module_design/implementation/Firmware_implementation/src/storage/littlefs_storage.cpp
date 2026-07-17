@@ -405,17 +405,33 @@ void LittleFSStorage::erase_all() {
         fs->unmount();
         delete fs;
         m_fs = nullptr;
+
+        /* mbed reformat() only formats if mount FAILS.  A valid FS
+           mounts fine → reformat is a no-op.  Erase the FS area
+           first to guarantee the BD is empty → reformat will format. */
+        /* Erase first 16 sectors (64KB) — covers superblock (blocks 0-1),
+           root directory (2-3), and initial metadata.  reformat() will
+           start fresh on a clean BD. */
+        for (uint32_t addr = 0x4000; addr < 0x14000; addr += 4096) {
+            raw->erase(addr, 4096);
+        }
+        delay(500);
+
         auto* fs2 = new LittleFileSystem2("littlefs", NULL, 4096, 500, 256, 64);
         auto* sliced = new SlicingBlockDevice(raw, 0x4000, 0x1FC000);
         int ref_err = fs2->reformat(sliced);
-        Serial.print("{\"ev\":\"erase_ref\",\"err\":");
-        Serial.print(ref_err); Serial.println("}");
-        if (ref_err == 0) {
-            ref_err = fs2->mount(sliced);  /* mount after reformat — may or may not be needed */
-            if (ref_err != 0) {
-                Serial.print("{\"ev\":\"erase_mnt\",\"err\":");
-                Serial.print(ref_err); Serial.println("}");
-            }
+        if (ref_err != 0) {
+            Serial.print("{\"ev\":\"erase_fail\",\"err\":");
+            Serial.print(ref_err); Serial.println("}");
+            delete fs2; delete sliced;
+            return;
+        }
+        ref_err = fs2->mount(sliced);
+        if (ref_err != 0) {
+            Serial.print("{\"ev\":\"erase_mnt\",\"err\":");
+            Serial.print(ref_err); Serial.println("}");
+            delete fs2; delete sliced;
+            return;
         }
         m_fs = fs2;
     }
