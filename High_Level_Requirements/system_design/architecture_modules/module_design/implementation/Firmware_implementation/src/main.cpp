@@ -118,12 +118,13 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* During stream mode, bulk-read and parse binary frames.
-       One-byte-per-call is too slow at 3,800 B/s — drain all
-       available bytes to keep up and catch the sentinel. */
+    /* During stream mode, bulk-read binary frames. Limit to 200 B/call
+       so the main loop can still run sensors, state machine, and the
+       start detector 10Hz feed. At 3,800 B/s the serial buffer is
+       constantly full — without a limit the for(;;) never exits. */
     if (g_stream_active) {
         static uint8_t buf[38];
-        for (;;) {
+        for (int i = 0; i < 200; i++) {
             /* ── Frame sync state machine ── */
             if (g_stream_pos == 0) {
                 if (c == 0xAA) { buf[0] = c; g_stream_pos = 1; }
@@ -162,7 +163,6 @@ void handle_serial()
                     }
                 }
             }
-            /* Read next byte (fresh after each state transition) */
             if (!Serial.available()) return;
             c = Serial.read();
         }
