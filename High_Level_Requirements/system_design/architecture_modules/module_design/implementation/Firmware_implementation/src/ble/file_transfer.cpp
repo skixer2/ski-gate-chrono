@@ -16,6 +16,7 @@ extern "C" {
 }
 
 extern LittleFSStorage g_fs;
+extern uint8_t g_ft_state;  /* from main.cpp — for reset on disconnect */
 
 enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_DONE = 2, FT_ERROR = 3 };
 
