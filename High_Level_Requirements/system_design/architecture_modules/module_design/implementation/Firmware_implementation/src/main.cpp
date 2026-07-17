@@ -71,7 +71,6 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
-uint32_t g_stream_last_byte = 0; /* timestamp of last byte received */
 
 /* ================================================================== */
 void flash_test();
@@ -118,11 +117,10 @@ void handle_serial()
     char c = Serial.read();
 
     /* Stream mode: read 18-byte RawFrame frames (2B sync + 16B payload).
-       Exit after 2s of silence (sentinel unreliable at high rates). */
+       Identical format to real peripheral — feed_sensors copies directly. */
     if (g_stream_active) {
         static uint8_t  sbuf[18];
         static uint8_t  spos = 0;
-        g_stream_last_byte = millis();
         for (;;) {
             if (spos == 0) {
                 if (c == 0xAA) spos = 1;
@@ -136,19 +134,6 @@ void handle_serial()
                     spos = 0;
                     RawFrame rf;
                     memcpy(&rf, sbuf + 2, sizeof(RawFrame));
-                    if (rf.q_w == 0 && rf.q_x == 0 && rf.q_y == 0 && rf.q_z == 0
-                     && rf.la_x == 0 && rf.la_y == 0 && rf.la_z == 0
-                     && rf.baro_pa_div2 == 0) {
-                        g_stream_active = false;
-                        json_begin(); json_kv("ev", "stream_end");
-                        Serial.print(','); json_kv("frames", (long)g_stream_frames);
-                        json_end();
-                        g_stream_frames = 0;
-                        if (g_sm.state() == DeviceState::LOGGING) {
-                            g_sm.force_state(DeviceState::POST_RUN);
-                        }
-                        return;
-                    }
                     test_set_frame(rf);
                     g_stream_frames++;
                 }
@@ -480,22 +465,6 @@ void loop()
        (close_run). ── */
     if (g_stream_active) {
         for (int i = 0; i < 40; i++) handle_serial();
-
-        /* Timeout: 2s of silence → end stream.  Sentinel detection in
-           the parser is unreliable at 3,800 B/s — parser throughput
-           can't keep up, so the sentinel arrives while backlog is
-           still being processed and gets buried. */
-        if (millis() - g_stream_last_byte > 2000) {
-            g_stream_active = false;
-            json_begin(); json_kv("ev", "stream_end");
-            Serial.print(','); json_kv("frames", (long)g_stream_frames);
-            json_end();
-            g_stream_frames = 0;
-            if (g_sm.state() == DeviceState::LOGGING) {
-                g_sm.force_state(DeviceState::POST_RUN);
-            }
-        }
-
         g_sm.tick();
 
         if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
