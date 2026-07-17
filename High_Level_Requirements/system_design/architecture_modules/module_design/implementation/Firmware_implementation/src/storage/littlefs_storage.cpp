@@ -114,7 +114,13 @@ void LittleFSStorage::scan_runs() {
     m_entry_count = 0; m_next_run_id = 0;
     memset(m_entries, 0, sizeof(m_entries));
     Dir dir;
-    if (dir.open(fs, "/") != 0) return;
+    int dir_err = dir.open(fs, "/");
+    if (dir_err != 0) {
+        Serial.print("{\"ev\":\"scan_err\",\"err\":");
+        Serial.print(dir_err);
+        Serial.println("}");
+        return;
+    }
     struct dirent ent;
     while (dir.read(&ent) > 0) {
         unsigned id = 0;
