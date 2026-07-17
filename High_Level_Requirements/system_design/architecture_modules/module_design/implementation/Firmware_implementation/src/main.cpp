@@ -202,6 +202,7 @@ void handle_serial()
         json_end();
         return;
     }
+    case 'd': g_fs.list_files(); return;
     case 'y': {
         Wire.begin();
         Serial.print("Wire scan: ");

@@ -81,9 +81,7 @@ bool LittleFSStorage::begin() {
        bumps the count.  No deinit needed. */
 
     /* Slice sectors 4–507 (reserve 508–511 for config).
-       For MX25R1635F (2MB): raw->size() = 0x200000.
-       Slice: 0x4000 → 0x1FC000 = 507 sectors, 4064 blocks @ 512B.
-       Stop is exclusive in mbed-os 6.x SlicingBlockDevice. */
+       For MX25R1635F (2MB): 504 sectors × 4096 bytes = 0x1FC000. */
     uint32_t stop = 0x1FC000;
     auto* sliced = new SlicingBlockDevice(raw, 0x4000, stop);
 
@@ -96,12 +94,18 @@ bool LittleFSStorage::begin() {
 
     int err = fs->mount(sliced);
     if (err != 0) {
+        /* Emit diagnostic before reformatting — silent data loss is
+           the #1 cause of "runs disappear after reboot" bugs.
+           Geometry mismatch (old FS at 508 blocks, new at 504) is a
+           common trigger.  Reformat wipes ALL data — log it. */
+        Serial.print("{\"ev\":\"fs_mount_fail\",\"err\":");
+        Serial.print(err); Serial.println("}");
         err = fs->reformat(sliced);
+        Serial.print("{\"ev\":\"fs_reformat\",\"err\":");
+        Serial.print(err); Serial.println("}");
         if (err != 0) { delete fs; delete sliced; return false; }
-        /* reformat() internally unmounts (deinits) after format.
-           Next mount() gets a clean single init. */
-        err = fs->mount(sliced);
-        if (err != 0) { delete fs; delete sliced; return false; }
+        /* mbed LittleFileSystem2::reformat() mounts after format —
+           no second mount() needed (double-mount leaks lfs2 caches). */
     }
     m_fs = fs;
     scan_runs();
@@ -132,7 +136,15 @@ void LittleFSStorage::scan_runs() {
         if (file.read(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) { file.close(); continue; }
         file.close();
         if (hdr.format_ver < 1 || hdr.format_ver > 3) continue;
-        if (hdr.arm_side > 1 || hdr.data_size == 0) continue;
+        if (hdr.arm_side > 1) continue;
+        /* data_size=0 → header rewrite failed in close_run() → skip but LOG it.
+           Silent skipping destroyed forensic evidence — Mechanism B of run loss. */
+        if (hdr.data_size == 0) {
+            Serial.print("{\"ev\":\"scan_skip\",\"id\":");
+            Serial.print(id); Serial.print(",\"reason\":\"data_size=0\"}");
+            Serial.println();
+            continue;
+        }
         if ((uint16_t)id >= m_next_run_id) m_next_run_id = (uint16_t)id + 1;
         if (m_entry_count < MAX_ENTRIES) {
             RunEntry& e = m_entries[m_entry_count++];
