@@ -167,9 +167,8 @@ void sgc_ble_init()
 void sgc_ble_update_state(DeviceState s)
 {
     switch (s) {
-    case DeviceState::SLEEP: BLE.stopAdvertise(); break;
     case DeviceState::IDLE: case DeviceState::POST_RUN: BLE.advertise(); break;
-    default: break;
+    default: BLE.stopAdvertise(); break;  /* SLEEP/ARMED/LOGGING — save power, prevent brown-out */
     }
     uint8_t sf = char_state.value() & 0xE0;
     char_state.writeValue(sf | (static_cast<uint8_t>(s) & 0x1F));
