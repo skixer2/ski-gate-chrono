@@ -1,8 +1,11 @@
 /**
  * @file    test_mode.cpp
- * @brief   Sensor injection for automated testing.
+ * @brief   Sensor injection for automated testing — single RawFrame.
  *
- * Always compiled — ADR-001 single-binary design.
+ * V2.53: g_test_frame stores the current test sensor data in the
+ * identical 16-byte RawFrame format as the real peripheral output.
+ * feed_sensors() in test mode copies it directly — same code path.
+ * The B/Q/L/Z commands read/write individual fields of the frame.
  */
 
 #include "test_mode.h"
@@ -10,102 +13,114 @@
 
 #include <Arduino.h>
 
-extern bool g_stream_active;  /* from main.cpp — stream mode flag */
-extern uint32_t g_stream_frames; /* frame counter */
+extern bool     g_stream_active;   /* from main.cpp */
+extern uint32_t g_stream_frames;   /* from main.cpp */
 
-static float  g_test_pressure  = 101325.0f;   // sea-level baseline
-static float  g_test_qw = 0.0f, g_test_qx = 0.0f;
-static float  g_test_qy = 0.0f, g_test_qz = 1.0f;
-static float  g_test_lax = 0.0f, g_test_lay = 0.0f, g_test_laz = -9810.0f;  /* 1g down = desk-still */
-static bool   g_test_mode = false;
+static RawFrame g_test_frame;       /* current test frame — real peripheral format */
+static bool     g_test_mode = false;
 
-void test_mode_init()
-{
-    // Boot JSON emitted by main.cpp setup() — nothing to do here.
-}
+/* ── Init ───────────────────────────────────────────────────── */
+void test_mode_init() {}
 
 bool test_mode_active() { return g_test_mode; }
 
-float test_get_pressure() { return g_test_pressure; }
-void  test_set_pressure(float pa_hpa) { g_test_pressure = pa_hpa; }
-float test_get_quat_w()   { return g_test_qw; }
-float test_get_quat_x()   { return g_test_qx; }
-float test_get_quat_y()   { return g_test_qy; }
-float test_get_quat_z()   { return g_test_qz; }
-float test_get_lax()      { return g_test_lax; }
-float test_get_lay()      { return g_test_lay; }
-float test_get_laz()      { return g_test_laz; }
+/* ── RawFrame access ────────────────────────────────────────── */
+const RawFrame& test_get_frame() { return g_test_frame; }
 
-/** Emit current injected values as JSON. */
-static void json_print_values()
-{
+void test_set_frame(const RawFrame& rf) {
+    memcpy(&g_test_frame, &rf, sizeof(RawFrame));
+}
+
+/* ── Individual getters (derived from g_test_frame) ─────────── */
+/* Pressure: baro_pa_div2 is Pa/2 → ×2 → Pa → /100 → hPa */
+float test_get_pressure() {
+    return (float)g_test_frame.baro_pa_div2 * 2.0f / 100.0f;
+}
+float test_get_quat_w() { return (float)g_test_frame.q_w / 16384.0f; }
+float test_get_quat_x() { return (float)g_test_frame.q_x / 16384.0f; }
+float test_get_quat_y() { return (float)g_test_frame.q_y / 16384.0f; }
+float test_get_quat_z() { return (float)g_test_frame.q_z / 16384.0f; }
+float test_get_lax()    { return (float)g_test_frame.la_x; }
+float test_get_lay()    { return (float)g_test_frame.la_y; }
+float test_get_laz()    { return (float)g_test_frame.la_z; }
+
+/* ── Static helpers for B/Q/L commands (Write RawFrame field) ── */
+static void set_pressure_hpa(float hpa) {
+    /* hPa → Pa → Pa/2: hpa * 100 / 2 = hpa * 50 */
+    g_test_frame.baro_pa_div2 = (uint16_t)(hpa * 50.0f);
+}
+static void set_quat(float w, float x, float y, float z) {
+    g_test_frame.q_w = (int16_t)(w * 16384.0f);
+    g_test_frame.q_x = (int16_t)(x * 16384.0f);
+    g_test_frame.q_y = (int16_t)(y * 16384.0f);
+    g_test_frame.q_z = (int16_t)(z * 16384.0f);
+}
+static void set_la(float x, float y, float z) {
+    g_test_frame.la_x = (int16_t)x;
+    g_test_frame.la_y = (int16_t)y;
+    g_test_frame.la_z = (int16_t)z;
+}
+
+/* ── Default frame (desk-still, sea-level) — init on test mode enter */
+static void init_default_frame() {
+    set_quat(0.0f, 0.0f, 0.0f, 1.0f);
+    set_la(0.0f, 0.0f, -9810.0f);
+    set_pressure_hpa(1013.25f);
+}
+
+/* ── JSON echo ──────────────────────────────────────────────── */
+static void json_print_values() {
     json_begin();
     json_kv("ev", "echo");
+    Serial.print(','); json_kv("p", test_get_pressure());
     Serial.print(',');
-    json_kv("p", g_test_pressure);
+    json_arr4("q", test_get_quat_w(), test_get_quat_x(),
+                    test_get_quat_y(), test_get_quat_z());
     Serial.print(',');
-    json_arr4("q", g_test_qw, g_test_qx, g_test_qy, g_test_qz);
-    Serial.print(',');
-    json_arr3("la", g_test_lax, g_test_lay, g_test_laz);
+    json_arr3("la", test_get_lax(), test_get_lay(), test_get_laz());
     json_end();
 }
 
+/* ── Serial command handler ─────────────────────────────────── */
 bool test_mode_handle_serial(char c)
 {
     switch (c) {
     case 'T':
         g_test_mode = !g_test_mode;
-        json_begin();
-        json_kv("ev", "cmd");
-        Serial.print(',');
-        json_kv("cmd", "T");
-        Serial.print(',');
-        json_kv_bool("tm", g_test_mode);
-        Serial.print(',');
-        json_kv("p", g_test_pressure);
-        Serial.print(',');
-        json_arr4("q", g_test_qw, g_test_qx, g_test_qy, g_test_qz);
-        Serial.print(',');
-        json_arr3("la", g_test_lax, g_test_lay, g_test_laz);
+        if (g_test_mode) init_default_frame();
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "T");
+        Serial.print(','); json_kv_bool("tm", g_test_mode);
         json_end();
         return true;
 
     case 'B': {
         float pa = Serial.parseFloat();
-        g_test_pressure = pa;
-        json_begin();
-        json_kv("ev", "cmd");
-        Serial.print(',');
-        json_kv("cmd", "B");
-        Serial.print(',');
-        json_kv("p", pa);
+        set_pressure_hpa(pa);
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "B");
+        Serial.print(','); json_kv("p", pa);
         json_end();
         return true;
     }
     case 'Q': {
-        g_test_qw = Serial.parseFloat();
-        g_test_qx = Serial.parseFloat();
-        g_test_qy = Serial.parseFloat();
-        g_test_qz = Serial.parseFloat();
-        json_begin();
-        json_kv("ev", "cmd");
+        float w = Serial.parseFloat(), x = Serial.parseFloat();
+        float y = Serial.parseFloat(), z = Serial.parseFloat();
+        set_quat(w, x, y, z);
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "Q");
         Serial.print(',');
-        json_kv("cmd", "Q");
-        Serial.print(',');
-        json_arr4("q", g_test_qw, g_test_qx, g_test_qy, g_test_qz);
+        json_arr4("q", w, x, y, z);
         json_end();
         return true;
     }
     case 'L': {
-        g_test_lax = Serial.parseFloat();
-        g_test_lay = Serial.parseFloat();
-        g_test_laz = Serial.parseFloat();
-        json_begin();
-        json_kv("ev", "cmd");
+        float x = Serial.parseFloat(), y = Serial.parseFloat(), z = Serial.parseFloat();
+        set_la(x, y, z);
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "L");
         Serial.print(',');
-        json_kv("cmd", "L");
-        Serial.print(',');
-        json_arr3("la", g_test_lax, g_test_lay, g_test_laz);
+        json_arr3("la", x, y, z);
         json_end();
         return true;
     }
@@ -113,30 +128,20 @@ bool test_mode_handle_serial(char c)
         json_print_values();
         return true;
     case 'S':
-        /* Enter stream mode: disable command parsing so binary frame
-           bytes don't match command characters (e.g. 'R'=0x52 → SREQ).
-           Frames: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B.
-           Exit on sentinel frame (frame_num = 0xFFFFFFFF). */
         g_stream_active = true;
-        g_stream_frames = 0;   /* reset frame counter */
-        json_begin();
-        json_kv("ev", "cmd");
-        Serial.print(',');
-        json_kv("cmd", "S");
-        Serial.print(',');
-        json_kv_bool("strm", true);
+        g_stream_frames = 0;
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "S");
+        Serial.print(','); json_kv_bool("strm", true);
         json_end();
         return true;
     case 'e':
         g_stream_active = false;
-        json_begin();
-        json_kv("ev", "cmd");
-        Serial.print(',');
-        json_kv("cmd", "e");
-        Serial.print(',');
-        json_kv_bool("strm", false);
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "e");
+        Serial.print(','); json_kv_bool("strm", false);
         json_end();
         return true;
     }
-    return false; // not a test command
+    return false;
 }

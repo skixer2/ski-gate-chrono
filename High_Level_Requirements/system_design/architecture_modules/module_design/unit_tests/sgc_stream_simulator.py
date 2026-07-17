@@ -74,6 +74,7 @@ END_MARKER = 0xBB          # DEPRECATED (naked marker) — firmware V2.14+ ignor
 # 0xFFFFFFFF, sent through the same 0xAA 0x55 sync + 36B payload discipline so
 # payload data can never spuriously trigger end-of-stream.
 STREAM_END_SENTINEL = 0xFFFFFFFF
+FRAME_BYTES = 18  # 2B sync + 16B RawFrame
 
 # SGC start detector (from start_detector.h)
 DROP_THRESHOLD_M = 2.0
@@ -331,15 +332,24 @@ def generate_gs_run(duration_s: float = 50.0,
 
 
 def pack_frame(frame: GSFrame) -> bytes:
-    """Pack a GSFrame into 38-byte binary wire format (little-endian)."""
+    """Pack a GSFrame into 18-byte RawFrame wire format.
+
+    Format identical to firmware RawFrame (ring_buffer.h):
+      7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2) = 16 bytes.
+      + 2-byte sync (0xAA 0x55) = 18 bytes total.
+    """
     payload = struct.pack(
-        '<Iffffffff',   # uint32 + 8×float32 = 4 + 32 = 36 bytes
-        frame.frame_num,
-        frame.pressure_hpa,
-        frame.qw, frame.qx, frame.qy, frame.qz,
-        frame.lax, frame.lay, frame.laz,
+        '<hhhhhhhH',   # 7×int16 LE + 1×uint16 LE = 14+2 = 16 bytes
+        int(frame.qw * 16384),     # quat_w (Q30)
+        int(frame.qx * 16384),     # quat_x
+        int(frame.qy * 16384),     # quat_y
+        int(frame.qz * 16384),     # quat_z
+        int(frame.lax),            # accel_x (mm/s²)
+        int(frame.lay),            # accel_y
+        int(frame.laz),            # accel_z
+        int(frame.pressure_hpa * 50),  # hPa → Pa/2
     )
-    return SYNC_WORD + payload  # 2 + 36 = 38 bytes
+    return SYNC_WORD + payload  # 2 + 16 = 18 bytes
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -553,7 +563,7 @@ class SGCDevice:
         Returns:
             Dictionary with stream statistics.
         """
-        FRAME_BYTES = 38  # 2-byte sync + 36 payload
+        FRAME_BYTES = 18  # 2-byte sync + 16 RawFrame
         total = len(frames)
 
         print(f"\n── Stream {total} frames ({total / FRAME_RATE_HZ:.1f}s) ──")
@@ -606,15 +616,9 @@ class SGCDevice:
                 print(f"   {sent}/{total} ({sent/total*100:.0f}%) "
                       f"@ {rate:.0f} fps, ΔP={delta_p:.2f} hPa")
 
-        # End-of-stream: framed sentinel (V2.14). A full 38-byte frame with
-        # frame_num=0xFFFFFFFF so it rides the same sync+payload discipline and
-        # can't be faked by float payload data. (The old naked 0xBB byte had no
-        # framing and was misread from payload data, exiting stream mode early.)
-        sentinel_payload = struct.pack(
-            '<Iffffffff',
-            STREAM_END_SENTINEL,
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        )
+        # End-of-stream sentinel: all-zeros RawFrame (16B). A real frame
+        # can never have all zeros (quat magnitude = 0 is invalid).
+        sentinel_payload = b'\x00' * 16
         # V2.17 harness: the sentinel is the LAST frame on the wire — it arrives
         # exactly when the device RX buffer is most congested, so it can be
         # dropped (v2.15/v2.16 runs showed NO stream_end at all → device stuck
