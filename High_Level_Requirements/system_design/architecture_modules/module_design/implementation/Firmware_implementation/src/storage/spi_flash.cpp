@@ -13,7 +13,7 @@ SPIFlash::SPIFlash() : m_bd(nullptr), m_ok(false) {}
 
 bool SPIFlash::begin()
 {
-    /* V2.29: Create explicit SPIFBlockDevice for MX25R1635F (SPI0:
+    /* V2.29: Create explicit SPIFBlockDevice for MX25R1635F (SPI1:
      * p4 MOSI, p5 MISO, p3 SCK, p26 CS_FLASH). get_default_instance()
      * returns internal nRF flash (512KB) — writes beyond 512KB silently
      * truncate/overflow, corrupting the LittleFS superblock. */

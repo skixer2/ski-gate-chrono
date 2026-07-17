@@ -378,6 +378,12 @@ void setup()
     Serial.print(','); json_kv_bool("ok", fs_ok);
     json_end();
 
+    /* fs_ok false means heap/SlicingBlockDevice corruption possible.
+       Halt here to prevent BHY2 from crashing on corrupted heap. */
+    if (!fs_ok) {
+        while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
+    }
+
     /* ── BHY2 init (standalone — only sensor hub, no BLE/I2C/DFU handlers) ── */
     json_begin();
     json_kv("ev", "init");
