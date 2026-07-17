@@ -70,8 +70,9 @@ static uint32_t g_last_cal_ms     = 0;
 
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
-uint8_t g_stream_pos = 0;      /* frame parser state (external for test_mode) */
+uint8_t  g_stream_pos = 0;      /* frame parser state (external for test_mode) */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
+uint32_t g_stream_last_fn = 0;  /* last frame_num — for false-sync rejection */
 
 /* ================================================================== */
 void flash_test();
@@ -121,12 +122,14 @@ void handle_serial()
        bytes from matching command chars (e.g. 'R'=0x52 → SREQ),
        (b) feed g_test_pressure from stream for start detection,
        (c) detect sentinel (frame_num=0xFFFFFFFF) → exit.
-       Frame: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B. */
+       Frame: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B.
+       Float data can contain false 0xAA,0x55 syncs — reject by
+       validating frame_num is monotonically increasing. */
     if (g_stream_active) {
         static uint8_t buf[38];
 
         if (g_stream_pos == 0) {
-            if (c != 0xAA) return;        /* skip until sync byte1 */
+            if (c != 0xAA) return;
             buf[0] = c; g_stream_pos = 1;
         } else if (g_stream_pos == 1) {
             if (c == 0xAA) { buf[0] = c; return; }  /* re-sync */
@@ -136,22 +139,26 @@ void handle_serial()
             buf[g_stream_pos++] = c;
             if (g_stream_pos >= 38) {
                 g_stream_pos = 0;
-                /* bytes 2-5 = frame_num (little-endian u32) */
                 uint32_t fn;
                 memcpy(&fn, buf + 2, 4);
+
                 if (fn == 0xFFFFFFFF) {
                     g_stream_active = false;
                     json_begin(); json_kv("ev", "stream_end");
                     Serial.print(','); json_kv("frames", (long)g_stream_frames);
                     json_end();
                     g_stream_frames = 0;
-                } else {
-                    /* bytes 34-37 = pressure_hpa (8th float, LE) */
+                } else if (fn >= g_stream_last_fn
+                        && fn - g_stream_last_fn < 100000) {
+                    /* Valid frame: monotonic, no huge gap */
                     float pr;
                     memcpy(&pr, buf + 34, 4);
                     test_set_pressure(pr);
+                    g_stream_last_fn = fn;
                     g_stream_frames++;
                 }
+                /* else: false sync (float data matched 0xAA,0x55) →
+                   silently discard, continue search */
             }
         }
         return;
