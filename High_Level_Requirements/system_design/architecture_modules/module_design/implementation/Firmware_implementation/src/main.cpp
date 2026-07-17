@@ -323,11 +323,13 @@ void setup()
 {
     nicla::begin();
     Serial.begin(115200);
-    delay(300);
 
-    json_begin(); json_kv("ev", "boot");
-    Serial.print(','); json_kv("ver", FW_VERSION);
-    json_end();
+    /* ── Version FIRST — no delay, no preamble ── */
+    Serial.print("{\"ev\":\"boot\",\"ver\":\"");
+    Serial.print(FW_VERSION);
+    Serial.println("\"}");
+    Serial.flush();
+    delay(50);
 
     /* ── LED ── */
     g_led.begin();
