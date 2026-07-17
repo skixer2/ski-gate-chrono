@@ -116,13 +116,11 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* Stream mode: process all available bytes in a burst, then yield
-       to main loop.  One-byte-per-call is too slow at 500 B/s vs the
-       3,800 B/s stream rate — the parser falls hours behind. */
+    /* Stream mode: drain all available bytes, then yield. For higher
+       throughput, loop() skips heavy ops during stream mode. */
     if (g_stream_active) {
         static uint8_t  sbuf[38];
         static uint8_t  spos = 0;
-        /* Process the already-read byte + any available */
         for (;;) {
             if (spos == 0) {
                 if (c == 0xAA) spos = 1;
@@ -486,6 +484,43 @@ void loop()
     static uint32_t g_factory_confirm_start = 0;
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
     static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
+
+    /* ── Stream mode: call handle_serial() in a tight burst.
+       Each Serial.available() returns just 1-2 bytes (bytes arrive
+       one-at-a-time at 115200 baud).  20× per iteration keeps
+       throughput at ~6,000 B/s — enough for 3,800 B/s stream.
+       Keep essential ops: g_sm.tick() for ARM timeout, start
+       detector 10Hz feed, state-change events, sensor feed. ── */
+    if (g_stream_active) {
+        for (int i = 0; i < 20; i++) handle_serial();
+        g_sm.tick();
+
+        /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
+        if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
+            float pa = test_mode_active()
+                ? test_get_pressure() * 100.0f
+                : pressure.value() * 100.0f;
+            if (g_start_det.feed(pa))
+                g_sm.force_state(DeviceState::LOGGING);
+            g_last_baro_ms = now;
+        }
+
+        DeviceState cur = g_sm.state();
+        if (cur != g_prev_state) {
+            json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
+            if (cur == DeviceState::ARMED) {
+                g_last_baro_ms = now;
+            }
+            apply_state_visuals(cur);
+            g_prev_state = cur;
+        }
+
+        if (now - g_last_sensor_ms >= 10) {
+            feed_sensors();
+            g_last_sensor_ms = now;
+        }
+        return;
+    }
 
     BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
     g_led.update(); g_sm.tick(); g_ldc.tick(); handle_serial();
