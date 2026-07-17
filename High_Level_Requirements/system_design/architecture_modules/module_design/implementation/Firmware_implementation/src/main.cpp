@@ -412,6 +412,8 @@ void setup()
     json_kv("ev", "ready");
     Serial.print(','); json_kv("st", g_sm.state_name());
     Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+    Serial.print(','); json_kv("ver", FW_VERSION);
+    Serial.print(','); json_kv("used_pct", (long)g_fs.flash_used_pct());
     json_end();
 }
 
