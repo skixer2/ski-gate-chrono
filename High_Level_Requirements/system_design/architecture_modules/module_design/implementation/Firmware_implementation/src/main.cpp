@@ -119,20 +119,18 @@ void handle_serial()
     char c = Serial.read();
 
     /* During stream mode, bulk-read and parse binary frames.
-       One-byte-per-call is too slow at 3,800 B/s — process all
-       available bytes to keep up with the stream and catch the
-       sentinel before the test harness times out. */
+       One-byte-per-call is too slow at 3,800 B/s — drain all
+       available bytes to keep up and catch the sentinel. */
     if (g_stream_active) {
         static uint8_t buf[38];
-        /* Process the byte already read, then drain the rest */
         for (;;) {
+            /* ── Frame sync state machine ── */
             if (g_stream_pos == 0) {
-                if (c != 0xAA) goto next_byte;
-                buf[0] = c; g_stream_pos = 1;
+                if (c == 0xAA) { buf[0] = c; g_stream_pos = 1; }
             } else if (g_stream_pos == 1) {
-                if (c == 0xAA) { buf[0] = c; goto next_byte; }
-                if (c != 0x55) { g_stream_pos = 0; goto next_byte; }
-                buf[1] = c; g_stream_pos = 2;
+                if (c == 0xAA) { buf[0] = c; }          /* re-sync */
+                else if (c == 0x55) { buf[1] = c; g_stream_pos = 2; }
+                else { g_stream_pos = 0; }
             } else {
                 buf[g_stream_pos++] = c;
                 if (g_stream_pos >= 38) {
@@ -157,7 +155,7 @@ void handle_serial()
                     }
                 }
             }
-        next_byte:
+            /* Read next byte (fresh after each state transition) */
             if (!Serial.available()) return;
             c = Serial.read();
         }
