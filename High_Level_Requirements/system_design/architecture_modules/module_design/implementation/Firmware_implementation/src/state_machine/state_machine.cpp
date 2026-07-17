@@ -153,14 +153,6 @@ void StateMachine::check_timeouts()
             json_end();
             enter_state(DeviceState::IDLE);
         }
-        if (elapsed >= SLEEP_TIMEOUT_MS) {
-            json_begin();
-            json_kv("ev", "timeout");
-            Serial.print(','); json_kv("from", "POST_RUN");
-            Serial.print(','); json_kv("to", "SLEEP");
-            json_end();
-            enter_state(DeviceState::SLEEP);
-        }
         break;
 
     case DeviceState::LOGGING:

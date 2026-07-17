@@ -176,7 +176,7 @@ void handle_serial()
                     ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
                     : pressure.value() * 100.0f;                     /* hPa→Pa */
                 if (test_mode_active()) { /* use injected pressure as-is */ }
-                else if (pa > 80000.0f) { /* use sensor pressure */ }
+                else if (pa > 50000.0f && pa < 110000.0f) { /* plausible real pressure */ }
                 else { pa = 101325.0f; }
                 g_start_det.reset(pa);
                 g_sm.force_state(DeviceState::ARMED);
@@ -690,7 +690,7 @@ void loop()
             json_kv("ev", "battery_low");
             Serial.print(','); json_kv("bat", (long)batt);
             json_end();
-            g_sm.force_state(DeviceState::SLEEP);
+            g_sm.force_state(DeviceState::POST_RUN);  /* route through close_run */
         }
         g_last_battery_ms = now;
     }
