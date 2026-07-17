@@ -69,6 +69,8 @@ static uint32_t g_last_qi_ms      = 0;
 static uint32_t g_last_cal_ms     = 0;
 
 static DeviceState g_prev_state = DeviceState::SLEEP;
+bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
+uint8_t g_stream_pos = 0;      /* frame parser state (external for test_mode) */
 
 /* ================================================================== */
 void flash_test();
@@ -113,6 +115,34 @@ void handle_serial()
 {
     if (!Serial.available()) return;
     char c = Serial.read();
+
+    /* During stream mode, read binary frames to detect sentinel.
+       All other bytes are discarded — prevents binary data from
+       matching command characters (e.g. 'R'=0x52 → SREQ).
+       Frame: SYNC(0xAA,0x55) + frame_num(u32 LE) + 8×f32 payload = 38B.
+       Sentinel: frame_num = 0xFFFFFFFF. */
+    if (g_stream_active) {
+        static uint8_t buf[38];
+
+        if (g_stream_pos == 0 && c != 0xAA) return;
+        if (g_stream_pos == 1 && c != 0x55) { g_stream_pos = 0; return; }
+
+        buf[g_stream_pos++] = c;
+        if (g_stream_pos >= 38) {
+            g_stream_pos = 0;
+            /* bytes 2-5 = frame_num (little-endian uint32) */
+            uint32_t fn = (uint32_t)buf[2] | ((uint32_t)buf[3] << 8)
+                        | ((uint32_t)buf[4] << 16) | ((uint32_t)buf[5] << 24);
+            if (fn == 0xFFFFFFFF) {
+                g_stream_active = false;
+                json_begin();
+                json_kv("ev", "stream_end");
+                Serial.print(','); json_kv("frames", 0L);
+                json_end();
+            }
+        }
+        return;
+    }
 
     if (test_mode_handle_serial(c)) return;
 

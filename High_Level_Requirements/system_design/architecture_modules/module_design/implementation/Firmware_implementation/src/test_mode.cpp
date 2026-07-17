@@ -10,6 +10,9 @@
 
 #include <Arduino.h>
 
+extern bool g_stream_active;  /* from main.cpp — stream mode flag */
+extern uint8_t g_stream_pos;  /* frame parser state */
+
 static float  g_test_pressure  = 101325.0f;   // sea-level baseline
 static float  g_test_qw = 0.0f, g_test_qx = 0.0f;
 static float  g_test_qy = 0.0f, g_test_qz = 1.0f;
@@ -107,6 +110,31 @@ bool test_mode_handle_serial(char c)
     }
     case 'Z':
         json_print_values();
+        return true;
+    case 'S':
+        /* Enter stream mode: disable command parsing so binary frame
+           bytes don't match command characters (e.g. 'R'=0x52 → SREQ).
+           Frames: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B.
+           Exit on sentinel frame (frame_num = 0xFFFFFFFF). */
+        g_stream_active = true;
+        g_stream_pos = 0;  /* reset frame parser */
+        json_begin();
+        json_kv("ev", "cmd");
+        Serial.print(',');
+        json_kv("cmd", "S");
+        Serial.print(',');
+        json_kv_bool("strm", true);
+        json_end();
+        return true;
+    case 'e':
+        g_stream_active = false;
+        json_begin();
+        json_kv("ev", "cmd");
+        Serial.print(',');
+        json_kv("cmd", "e");
+        Serial.print(',');
+        json_kv_bool("strm", false);
+        json_end();
         return true;
     }
     return false; // not a test command
