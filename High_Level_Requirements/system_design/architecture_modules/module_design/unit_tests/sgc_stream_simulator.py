@@ -784,8 +784,9 @@ class SGCDevice:
             print(f"     write_head={rs.get('wh')} entry_count={rs.get('ec')} "
                   f"total_count={rs.get('tc')}")
             if rs.get('fr', 0) > 0:
-                ratio = rs['sz'] / rs['fr'] if rs['fr'] > 0 else 0
-                print(f"     Compression: {rs['sz']} bytes / {rs['fr']} frames = "
+                sz = rs.get('sz', 0)
+                ratio = sz / rs['fr'] if rs['fr'] > 0 else 0
+                print(f"     Compression: {sz} bytes / {rs['fr']} frames = "
                       f"{ratio:.1f} bytes/frame")
 
             # ── Verify run count persisted (mirrors BLE ABC8 read) ──

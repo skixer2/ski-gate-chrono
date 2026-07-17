@@ -120,7 +120,7 @@ void handle_serial()
        Each call returns immediately — g_sm.tick(), sensors, and the
        start detector (10Hz, ARMED state) continue unimpeded. */
     if (g_stream_active) {
-        static uint8_t  sbuf[40];  /* 2 sync + 38 payload */
+        static uint8_t  sbuf[38];  /* 2 sync + 4 frame_num + 32 payload */
         static uint8_t  spos = 0;
 
         if (spos == 0) {
@@ -131,7 +131,7 @@ void handle_serial()
             else spos = 0;
         } else {
             sbuf[spos++] = c;
-            if (spos >= 40) {
+            if (spos >= 38) {
                 spos = 0;
                 /* sbuf[2..5] = frame_num (u32 LE) */
                 uint32_t fn;
@@ -143,9 +143,9 @@ void handle_serial()
                     json_end();
                     g_stream_frames = 0;
                 } else {
-                    /* sbuf[36..39] = pressure_hpa (8th float, LE) */
+                    /* sbuf[34..37] = pressure_hpa (8th float, LE) */
                     float pr;
-                    memcpy(&pr, sbuf + 36, 4);
+                    memcpy(&pr, sbuf + 34, 4);
                     test_set_pressure(pr);
                     g_stream_frames++;
                 }
