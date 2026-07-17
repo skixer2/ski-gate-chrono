@@ -11,9 +11,7 @@
 #include <Arduino.h>
 
 extern bool g_stream_active;  /* from main.cpp — stream mode flag */
-extern uint8_t  g_stream_pos;  /* frame parser state */
 extern uint32_t g_stream_frames; /* frame counter */
-extern uint32_t g_stream_last_fn; /* false-sync rejection */
 
 static float  g_test_pressure  = 101325.0f;   // sea-level baseline
 static float  g_test_qw = 0.0f, g_test_qx = 0.0f;
@@ -120,9 +118,7 @@ bool test_mode_handle_serial(char c)
            Frames: SYNC(0xAA,0x55) + u32 frame_num + 8×f32 = 38B.
            Exit on sentinel frame (frame_num = 0xFFFFFFFF). */
         g_stream_active = true;
-        g_stream_pos = 0;      /* reset frame parser */
         g_stream_frames = 0;   /* reset frame counter */
-        g_stream_last_fn = 0;  /* reset validation */
         json_begin();
         json_kv("ev", "cmd");
         Serial.print(',');

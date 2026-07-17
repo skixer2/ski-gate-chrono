@@ -70,9 +70,7 @@ static uint32_t g_last_cal_ms     = 0;
 
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
-uint8_t  g_stream_pos = 0;      /* frame parser state (external for test_mode) */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
-uint32_t g_stream_last_fn = 0;  /* last frame_num — for false-sync rejection */
 
 /* ================================================================== */
 void flash_test();
@@ -118,54 +116,42 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* During stream mode, bulk-read binary frames. Limit to 200 B/call
-       so the main loop can still run sensors, state machine, and the
-       start detector 10Hz feed. At 3,800 B/s the serial buffer is
-       constantly full — without a limit the for(;;) never exits. */
+    /* Stream mode: one byte per call to keep the main loop running.
+       Each call returns immediately — g_sm.tick(), sensors, and the
+       start detector (10Hz, ARMED state) continue unimpeded. */
     if (g_stream_active) {
-        static uint8_t buf[38];
-        for (int i = 0; i < 200; i++) {
-            /* ── Frame sync state machine ── */
-            if (g_stream_pos == 0) {
-                if (c == 0xAA) { buf[0] = c; g_stream_pos = 1; }
-            } else if (g_stream_pos == 1) {
-                if (c == 0xAA) { buf[0] = c; }          /* re-sync */
-                else if (c == 0x55) { buf[1] = c; g_stream_pos = 2; }
-                else { g_stream_pos = 0; }
-            } else {
-                buf[g_stream_pos++] = c;
-                if (g_stream_pos >= 38) {
-                    g_stream_pos = 0;
-                    uint32_t fn;
-                    memcpy(&fn, buf + 2, 4);
+        static uint8_t  sbuf[40];  /* 2 sync + 38 payload */
+        static uint8_t  spos = 0;
 
-                    if (fn == 0xFFFFFFFF) {
-                        g_stream_active = false;
-                        json_begin(); json_kv("ev", "stream_end");
-                        Serial.print(','); json_kv("frames", (long)g_stream_frames);
-                        json_end();
-                        g_stream_frames = 0;
-                        return;
-                    } else if (fn >= g_stream_last_fn
-                            && fn - g_stream_last_fn < 100000) {
-                        float pr;
-                        memcpy(&pr, buf + 34, 4);
-                        test_set_pressure(pr);
-                        g_stream_last_fn = fn;
-                        g_stream_frames++;
-                        if ((g_stream_frames % 100) == 0) {
-                            json_begin(); json_kv("ev", "sf");
-                            Serial.print(','); json_kv("fn", (long)fn);
-                            Serial.print(','); json_kv("n", (long)g_stream_frames);
-                            Serial.print(','); json_kv("pr", pr);
-                            json_end();
-                        }
-                    }
+        if (spos == 0) {
+            if (c == 0xAA) spos = 1;
+        } else if (spos == 1) {
+            if (c == 0xAA) { /* re-sync, pos stays 1 */ }
+            else if (c == 0x55) { sbuf[0]=0xAA; sbuf[1]=0x55; spos=2; }
+            else spos = 0;
+        } else {
+            sbuf[spos++] = c;
+            if (spos >= 40) {
+                spos = 0;
+                /* sbuf[2..5] = frame_num (u32 LE) */
+                uint32_t fn;
+                memcpy(&fn, sbuf + 2, 4);
+                if (fn == 0xFFFFFFFF) {
+                    g_stream_active = false;
+                    json_begin(); json_kv("ev", "stream_end");
+                    Serial.print(','); json_kv("frames", (long)g_stream_frames);
+                    json_end();
+                    g_stream_frames = 0;
+                } else {
+                    /* sbuf[36..39] = pressure_hpa (8th float, LE) */
+                    float pr;
+                    memcpy(&pr, sbuf + 36, 4);
+                    test_set_pressure(pr);
+                    g_stream_frames++;
                 }
             }
-            if (!Serial.available()) return;
-            c = Serial.read();
         }
+        return;
     }
 
     if (test_mode_handle_serial(c)) return;
