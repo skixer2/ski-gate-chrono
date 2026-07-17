@@ -76,22 +76,41 @@ bool LittleFSStorage::begin() {
     if (!m_bd) return false;
     auto* raw = static_cast<mbed::BlockDevice*>(m_bd);
 
-    auto* sliced = new SlicingBlockDevice(raw, 0x4000, 0x200000);
+    /* SPIFlash::begin() already called raw->init().  mbed LittleFileSystem2
+       will call sliced->init() → raw->init() again in mount() — double-init
+       is rejected.  Deinit now so mount() gets a clean init. */
+    raw->deinit();
+
+    /* Sector 4 through end of flash.  Use raw->size() for correct alignment
+       regardless of whether SlicingBlockDevice stop is inclusive or exclusive:
+         raw->size() = 0x200000 (2MB) → exclusive stop gives 508 × 4096.
+       Hardcoding 0x200000 broke when we switched from get_default_instance()
+       (clamped to 512KB) to SPIFBlockDevice (real 2MB). */
+    uint32_t stop = raw->size();
+    auto* sliced = new SlicingBlockDevice(raw, 0x4000, stop);
 
     /* block_size=4096 → 2×4KB caches = 8KB.  lookahead=64 → 512B.
-     * Total LittleFS alloc ~8.5KB. BD is SPIFBlockDevice (2MB), init'd.
-     * With correct BD, block_count closes cleanly (4064 blocks for 2MB). */
+       Total LittleFS alloc ~8.5KB. */
     auto* fs = new LittleFileSystem2("littlefs", NULL, 1, 1, 4096, 64);
     if (!fs) { delete sliced; return false; }
-    if (!fs) { delete sliced; return false; }  // heap exhausted
+
+    Serial.print("{\"ev\":\"fs_diag\",\"stop\":"); Serial.print(stop);
+    Serial.print(",\"raw_size\":"); Serial.print(raw->size());
+    Serial.println("}");
 
     int err = fs->mount(sliced);
+    Serial.print("{\"ev\":\"fs_diag\",\"step\":\"mount1\",\"err\":");
+    Serial.print(err); Serial.println("}");
     if (err != 0) {
         err = fs->reformat(sliced);
+        Serial.print("{\"ev\":\"fs_diag\",\"step\":\"reformat\",\"err\":");
+        Serial.print(err); Serial.println("}");
         if (err != 0) { delete sliced; delete fs; return false; }
-        /* mbed LittleFileSystem2::reformat() does NOT auto-mount.
-           Must mount after reformat, same pattern as erase_all(). */
+        /* mbed LittleFileSystem2::reformat() unmounts the BD (calling
+           deinit) after formatting.  Next mount() will init → fresh init. */
         err = fs->mount(sliced);
+        Serial.print("{\"ev\":\"fs_diag\",\"step\":\"mount2\",\"err\":");
+        Serial.print(err); Serial.println("}");
         if (err != 0) { delete sliced; delete fs; return false; }
     }
     m_fs = fs;
