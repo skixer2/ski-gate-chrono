@@ -152,6 +152,13 @@ void handle_serial()
                         test_set_pressure(pr);
                         g_stream_last_fn = fn;
                         g_stream_frames++;
+                        if ((g_stream_frames % 100) == 0) {
+                            json_begin(); json_kv("ev", "sf");
+                            Serial.print(','); json_kv("fn", (long)fn);
+                            Serial.print(','); json_kv("n", (long)g_stream_frames);
+                            Serial.print(','); json_kv("pr", pr);
+                            json_end();
+                        }
                     }
                 }
             }
