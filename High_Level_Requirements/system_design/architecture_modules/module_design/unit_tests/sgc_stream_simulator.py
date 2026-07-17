@@ -932,6 +932,7 @@ def run_full_test(port: str,
 
         # ── Step 4: Set initial pressure + arm ─────────────
         init_pa = frames[0].pressure_hpa
+        device.init_pressure = init_pa  # for accurate diagnostics
         device.set_pressure(init_pa)
         device.arm()
 
