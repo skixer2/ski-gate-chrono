@@ -71,6 +71,7 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
+uint32_t g_stream_last_byte = 0; /* timestamp of last byte received */
 
 /* ================================================================== */
 void flash_test();
@@ -117,26 +118,24 @@ void handle_serial()
     char c = Serial.read();
 
     /* Stream mode: read 18-byte RawFrame frames (2B sync + 16B payload).
-       Identical format to real peripheral — feed_sensors copies directly.
-       Drain all available bytes, then yield to main loop. */
+       Exit after 2s of silence (sentinel unreliable at high rates). */
     if (g_stream_active) {
-        static uint8_t  sbuf[18];   /* sync AA,55 + RawFrame (16B) */
+        static uint8_t  sbuf[18];
         static uint8_t  spos = 0;
+        g_stream_last_byte = millis();
         for (;;) {
             if (spos == 0) {
                 if (c == 0xAA) spos = 1;
             } else if (spos == 1) {
-                if (c == 0xAA) { /* re-sync, pos stays 1 */ }
+                if (c == 0xAA) { /* re-sync */ }
                 else if (c == 0x55) { sbuf[0]=0xAA; sbuf[1]=0x55; spos=2; }
                 else spos = 0;
             } else {
                 sbuf[spos++] = c;
                 if (spos >= 18) {
                     spos = 0;
-                    /* sbuf[2..17] = RawFrame (packed, 16 bytes) */
                     RawFrame rf;
                     memcpy(&rf, sbuf + 2, sizeof(RawFrame));
-                    /* Sentinel: all fields zero = end of stream */
                     if (rf.q_w == 0 && rf.q_x == 0 && rf.q_y == 0 && rf.q_z == 0
                      && rf.la_x == 0 && rf.la_y == 0 && rf.la_z == 0
                      && rf.baro_pa_div2 == 0) {
@@ -145,9 +144,6 @@ void handle_serial()
                         Serial.print(','); json_kv("frames", (long)g_stream_frames);
                         json_end();
                         g_stream_frames = 0;
-                        /* End-of-stream: force POST_RUN to trigger close_run.
-                           The end detector expects a pressure flatline which
-                           the stream's linear ramp never produces. */
                         if (g_sm.state() == DeviceState::LOGGING) {
                             g_sm.force_state(DeviceState::POST_RUN);
                         }
@@ -478,11 +474,80 @@ void loop()
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
     static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
 
-    /* ── Stream mode: burst-process bytes, then continue with normal loop.
-       The normal loop handles LOGGING entry (create_run), ring drain,
-       flash writes, and POST_RUN (close_run). ── */
+    /* ── Stream mode: maximize parser throughput. Skip heavy ops
+       (BHY2, BLE, LDC) for higher loop rate.  Keep all state
+       transitions including LOGGING (create_run) and POST_RUN
+       (close_run). ── */
     if (g_stream_active) {
-        for (int i = 0; i < 20; i++) handle_serial();
+        for (int i = 0; i < 40; i++) handle_serial();
+
+        /* Timeout: 2s of silence → end stream.  Sentinel detection in
+           the parser is unreliable at 3,800 B/s — parser throughput
+           can't keep up, so the sentinel arrives while backlog is
+           still being processed and gets buried. */
+        if (millis() - g_stream_last_byte > 2000) {
+            g_stream_active = false;
+            json_begin(); json_kv("ev", "stream_end");
+            Serial.print(','); json_kv("frames", (long)g_stream_frames);
+            json_end();
+            g_stream_frames = 0;
+            if (g_sm.state() == DeviceState::LOGGING) {
+                g_sm.force_state(DeviceState::POST_RUN);
+            }
+        }
+
+        g_sm.tick();
+
+        if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
+            float pa = test_mode_active()
+                ? (float)test_get_frame().baro_pa_div2 * 2.0f
+                : pressure.value() * 100.0f;
+            if (g_start_det.feed(pa))
+                g_sm.force_state(DeviceState::LOGGING);
+            g_last_baro_ms = now;
+        }
+
+        DeviceState cur = g_sm.state();
+        if (cur != g_prev_state) {
+            json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
+            if (cur == DeviceState::ARMED) {
+                g_ring.reset(); g_packer.reset();
+                g_page_cursor = 0;
+                g_run_created = false;
+                g_last_baro_ms = now;
+            }
+            if (cur == DeviceState::LOGGING) {
+                g_end_det.reset();
+                int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
+                uint8_t cal = 0;
+                g_run_created = g_fs.create_run(0, baro_temp, cal);
+                g_frame_count = 0;
+                json_begin(); json_kv("ev", "run_created");
+                Serial.print(','); json_kv_bool("ok", g_run_created);
+                Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
+                json_end();
+            }
+            if (cur == DeviceState::POST_RUN) {
+                flush_page_buffer();
+                uint16_t run_id = g_fs.close_run(g_frame_count);
+                sgc_ble_set_run_count(g_fs.run_count());
+                sgc_ble_set_flash_used(g_fs.flash_used_pct());
+                json_begin(); json_kv("ev", "run_saved");
+                Serial.print(','); json_kv("id", (long)run_id);
+                Serial.print(','); json_kv("fr", (long)g_frame_count);
+                Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
+                Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+                json_end();
+            }
+            apply_state_visuals(cur);
+            g_prev_state = cur;
+        }
+
+        if (now - g_last_sensor_ms >= 10) {
+            feed_sensors();
+            g_last_sensor_ms = now;
+        }
+        return;
     }
 
     BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
