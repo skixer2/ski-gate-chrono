@@ -132,23 +132,35 @@ void LittleFSStorage::scan_runs() {
         if (file.open(fs, path, O_RDONLY) != 0) continue;
         RunHeader hdr;
         if (file.read(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) { file.close(); continue; }
+        ssize_t file_sz = file.size();   /* V2.80: needed for format_ver=2 data_size */
         file.close();
         if (hdr.format_ver < 1 || hdr.format_ver > 3) continue;
         if (hdr.arm_side > 1) continue;
-        /* data_size=0 → header rewrite failed in close_run() → skip but LOG it.
-           Silent skipping destroyed forensic evidence — Mechanism B of run loss. */
-        if (hdr.data_size == 0) {
-            Serial.print("{\"ev\":\"scan_skip\",\"id\":");
-            Serial.print(id); Serial.print(",\"reason\":\"data_size=0\"}");
-            Serial.println();
-            continue;
+        /* V2.80 (H2 fix): format_ver>=2 uses append-only format.
+           data_size = file.size() - sizeof(RunHeader) - CRC32_TRAILER_SIZE.
+           Header data_size is always 0 — NOT a corruption indicator. */
+        uint32_t real_data_size = hdr.data_size;
+        uint16_t real_frame_count = hdr.frame_count;
+        if (hdr.format_ver >= 2) {
+            if (file_sz < 0 || (size_t)file_sz < sizeof(RunHeader) + CRC32_TRAILER_SIZE) continue;
+            real_data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
+            real_frame_count = 0;  /* not stored on-disk for v2 */
+        } else {
+            /* format_ver=1 legacy — data_size=0 means COW cascade corruption */
+            if (hdr.data_size == 0) {
+                Serial.print("{\"ev\":\"scan_skip\",\"id\":");
+                Serial.print(id); Serial.print(",\"reason\":\"data_size=0\"}");
+                Serial.println();
+                continue;
+            }
         }
         if ((uint16_t)id >= m_next_run_id) m_next_run_id = (uint16_t)id + 1;
         if (m_entry_count < MAX_ENTRIES) {
             RunEntry& e = m_entries[m_entry_count++];
             e.run_id = (uint16_t)id; e.timestamp = hdr.ts_utc;
             e.arm_side = hdr.arm_side; e.format_version = hdr.format_ver;
-            e.compressed_size = hdr.data_size; e.frame_count = hdr.frame_count;
+            /* V2.80: use computed values for format_ver>=2 */
+            e.compressed_size = real_data_size; e.frame_count = real_frame_count;
             e.page_start = 0; e.page_end = 0;
             memset(e._reserved, 0, sizeof(e._reserved));
         }
@@ -181,8 +193,10 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
         Serial.print(err); Serial.println("\"}");
         delete f; return false;
     }
+    /* V2.80: format_ver=2 — append-only, data_size/frame_count stay 0.
+       Real values computed from file.size() at scan time. */
     RunHeader hdr; memset(&hdr, 0, sizeof(hdr));
-    hdr.format_ver = 1; hdr.arm_side = arm_side; hdr.ts_utc = 0;
+    hdr.format_ver = 2; hdr.arm_side = arm_side; hdr.ts_utc = 0;
     hdr.baro_temp = baro_temp; hdr.data_size = 0; hdr.frame_count = 0;
     hdr.cal_accuracy = cal_accuracy; hdr._pad = 0;
     if (f->write(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) {
@@ -214,6 +228,11 @@ void LittleFSStorage::flush_write_buf() {
     if (m_write_buf_pos == 0) return;
     auto* f = static_cast<File*>(m_file);
     f->write(m_write_buf, m_write_buf_pos);
+    /* V2.80 (H3 fix): sync after every flush — commits LittleFS internal
+       256B cache to flash. Reduces data-loss window from ~512B to just
+       the app-level buffer. Tradeoff: more flash wear, more SPI traffic,
+       but critical gate-crossing frames are preserved. */
+    f->sync();
     m_write_buf_pos = 0;
 }
 
@@ -229,35 +248,31 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
         Serial.flush();
         return 0xFFFF;
     }
-    Serial.println("{\"ev\":\"cbc\",\"at\":\"pre_flush\"}"); Serial.flush();
-    flush_write_buf();
-    Serial.println("{\"ev\":\"cbc\",\"at\":\"post_flush\"}"); Serial.flush();
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
     auto* f  = static_cast<File*>(m_file);
     uint16_t run_id = m_next_run_id;
+    uint32_t run_sz = m_run_bytes;   /* save before zeroing */
     uint32_t crc = m_run_crc ^ 0xFFFFFFFF;
     uint8_t trailer[6] = {
         CRC32_MAGIC_HI, CRC32_MAGIC_LO,
         (uint8_t)(crc & 0xFF), (uint8_t)((crc>>8) & 0xFF),
         (uint8_t)((crc>>16) & 0xFF), (uint8_t)((crc>>24) & 0xFF)
     };
+    /* ── V2.80 (H2 fix): APPEND-ONLY close ──
+       NO seek(0)+write(header). The header was written at create_run()
+       with data_size=0,frame_count=0 and stays that way permanently.
+       Eliminates the LittleFS COW cascade:
+         - Old: flush→write_CRC→sync→seek(0)→rewrite_16B_header→
+                COW_copy_entire_file→sync→close
+         - New: flush→write_CRC→sync→close  (no COW, no double sync)
+       If power is lost during close, the file is truncated at the
+       last-synced point. The CRC trailer may or may not be present,
+       but the header is never touched → no data_size=0 corruption. */
+    Serial.println("{\"ev\":\"cbc\",\"at\":\"pre_flush\"}"); Serial.flush();
+    flush_write_buf();
+    Serial.println("{\"ev\":\"cbc\",\"at\":\"post_flush\"}"); Serial.flush();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"trailer_write\"}"); Serial.flush();
     f->write(trailer, 6);
     Serial.println("{\"ev\":\"cbc\",\"at\":\"trailer_sync\"}"); Serial.flush();
-    f->sync();
-    Serial.println("{\"ev\":\"cbc\",\"at\":\"seek0\"}"); Serial.flush();
-    int seek_rc = f->seek(0, SEEK_SET);
-    Serial.print("{\"ev\":\"cbc\",\"at\":\"seek0_done\",\"rc\":");
-    Serial.print((long)seek_rc); Serial.println("}"); Serial.flush();
-    RunHeader hdr; memset(&hdr, 0, sizeof(hdr));
-    hdr.format_ver = 1; hdr.arm_side = m_pending_arm_side; hdr.ts_utc = 0;
-    hdr.baro_temp = m_pending_baro_temp; hdr.data_size = m_run_bytes;
-    hdr.frame_count = frame_count; hdr.cal_accuracy = m_pending_cal_accuracy;
-    Serial.println("{\"ev\":\"cbc\",\"at\":\"hdr_rewrite\"}"); Serial.flush();
-    ssize_t hdr_wr = f->write(&hdr, sizeof(hdr));
-    Serial.print("{\"ev\":\"cbc\",\"at\":\"hdr_rewrite_done\",\"n\":");
-    Serial.print((long)hdr_wr); Serial.println("}"); Serial.flush();
-    Serial.println("{\"ev\":\"cbc\",\"at\":\"final_sync\"}"); Serial.flush();
     f->sync();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"close\"}"); Serial.flush();
     f->close(); delete f;
@@ -267,10 +282,10 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
         idx = m_entry_count; m_entries[idx].run_id = run_id; m_entry_count++;
     }
     if (idx >= 0) {
-        m_entries[idx].timestamp = hdr.ts_utc;
-        m_entries[idx].arm_side = hdr.arm_side;
-        m_entries[idx].format_version = hdr.format_ver;
-        m_entries[idx].compressed_size = m_run_bytes;
+        m_entries[idx].timestamp = 0;
+        m_entries[idx].arm_side = m_pending_arm_side;
+        m_entries[idx].format_version = 2;
+        m_entries[idx].compressed_size = run_sz;
         m_entries[idx].frame_count = frame_count;
     }
     m_next_run_id++; m_run_bytes = 0; m_run_crc = 0xFFFFFFFF;
@@ -281,7 +296,7 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     Serial.print("{\"ev\":\"run_saved\",\"ok\":1,\"id\":");
     Serial.print(run_id); Serial.print(",\"fr\":");
     Serial.print(frame_count); Serial.print(",\"sz\":");
-    Serial.print(m_run_bytes); Serial.print(",\"wh\":0,\"ec\":");
+    Serial.print(run_sz); Serial.print(",\"wh\":0,\"ec\":");
     Serial.print(m_entry_count); Serial.print(",\"tc\":");
     Serial.print(m_next_run_id); Serial.println("}");
     return run_id;
@@ -308,6 +323,15 @@ bool LittleFSStorage::read_run_header(uint16_t run_id, RunHeader& hdr) const {
     File file;
     if (file.open(fs, path, O_RDONLY) != 0) return false;
     bool ok = (file.read(&hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr));
+    /* V2.80: for format_ver>=2 (append-only), compute real data_size
+       from file size. BLE file transfer needs correct data_size for
+       transfer size calculation. */
+    if (ok && hdr.format_ver >= 2) {
+        ssize_t file_sz = file.size();
+        if (file_sz > 0 && (size_t)file_sz > sizeof(RunHeader) + CRC32_TRAILER_SIZE) {
+            hdr.data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
+        }
+    }
     file.close(); return ok;
 }
 bool LittleFSStorage::read_run_data(uint16_t run_id, uint32_t offset, uint8_t* buf, size_t len) const {

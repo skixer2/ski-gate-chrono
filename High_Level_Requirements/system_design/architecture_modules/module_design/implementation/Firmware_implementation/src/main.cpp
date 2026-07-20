@@ -425,6 +425,20 @@ void setup()
     sgc_ble_init();
     sgc_ble_transfer_init();
 
+    /* ── V2.80 (H1 fix): Power-Fail Comparator early warning ──
+       nRF52832 POFCON at 2.5V — gives ~100ms before 1.7V BOR.
+       Polled in loop() to abort in-progress flash operations
+       before brownout corrupts the superblock or page program.
+       H4 hardware fix (hold-up cap on MX25R VCC) needed for
+       production — see sgc_flash_persistence_hypotheses.md §4. */
+    NRF_POWER->POFCON = (POWER_POFCON_POF_Enabled << POWER_POFCON_POF_Pos)
+                      | (POWER_POFCON_THRESHOLD_V25 << POWER_POFCON_THRESHOLD_Pos);
+    json_begin();
+    json_kv("ev", "pof");
+    Serial.print(','); json_kv_bool("enabled", true);
+    Serial.print(','); json_kv("thr", "2.5V");
+    json_end();
+
     /* ── LittleFS (after BD init, before BHY2 for heap) ── */
     json_begin();
     json_kv("ev", "init");
@@ -510,6 +524,7 @@ void loop()
                 g_last_baro_ms = now;
             }
             if (cur == DeviceState::LOGGING) {
+                BLE.stopAdvertise();
                 g_end_det.reset();
                 int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
                 uint8_t cal = 0;
@@ -521,6 +536,7 @@ void loop()
                 json_end();
             }
             if (cur == DeviceState::POST_RUN) {
+                BLE.advertise();
                 /* Natural end-detector transition = stream complete */
                 if (g_stream_active) {
                     g_stream_active = false;
@@ -542,6 +558,13 @@ void loop()
             }
             apply_state_visuals(cur);
             g_prev_state = cur;
+        }
+
+        /* V2.80: POFWARN during stream mode — abort flash ops */
+        if (NRF_POWER->EVENTS_POFWARN) {
+            NRF_POWER->EVENTS_POFWARN = 0;
+            json_begin(); json_kv("ev","pof_warn"); json_end();
+            if (cur == DeviceState::LOGGING) g_sm.force_state(DeviceState::POST_RUN);
         }
 
         if (now - g_last_sensor_ms >= 10) {
@@ -646,6 +669,12 @@ void loop()
             g_run_created = false;
         }
         if (cur == DeviceState::LOGGING) {
+            /* V2.80 (H4 fix): Suspend BLE advertising during logging.
+               BLE TX current peaks (5-12mA) combined with flash page
+               program current (15mA) can sag battery voltage below
+               MX25R minimum. Stopping advertising eliminates the
+               highest-current BLE activity while keeping connections. */
+            BLE.stopAdvertise();
             g_end_det.reset();
 
             int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
@@ -661,6 +690,8 @@ void loop()
             json_end();
         }
         if (cur == DeviceState::POST_RUN) {
+            /* Resume BLE advertising after logging completes */
+            BLE.advertise();
             flush_page_buffer();
 
             uint16_t run_id = g_fs.close_run(g_frame_count);
@@ -684,6 +715,19 @@ void loop()
         }
         apply_state_visuals(cur);
         g_prev_state = cur;
+    }
+
+    /* ── V2.80 (H1): POFWARN early warning — abort flash ops before brownout ── */
+    if (NRF_POWER->EVENTS_POFWARN) {
+        NRF_POWER->EVENTS_POFWARN = 0;
+        json_begin();
+        json_kv("ev", "pof_warn");
+        Serial.print(','); json_kv("st", g_sm.state_name());
+        json_end();
+        /* If logging, force close_run() before voltage drops further */
+        if (cur == DeviceState::LOGGING) {
+            g_sm.force_state(DeviceState::POST_RUN);
+        }
     }
 
     if (now - g_last_battery_ms >= 30000) {

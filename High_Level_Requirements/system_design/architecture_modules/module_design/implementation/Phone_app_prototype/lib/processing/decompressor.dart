@@ -22,12 +22,19 @@ class RunHeader {
 
   static RunHeader parse(Uint8List data) {
     if (data.length < 16) throw Exception('Run file too short for header');
+    final formatVer = data[0];
+    int compressedSize = data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24);
+    // format_ver>=2: header compressedSize is always 0 (append-only format).
+    // Real size = total bytes - 16 (header) - 6 (CRC32 trailer).
+    if (formatVer >= 2 && compressedSize == 0) {
+      compressedSize = data.length - 16 - 6;
+    }
     return RunHeader(
-      formatVersion: data[0],
+      formatVersion: formatVer,
       armSide: data[1],
       startTimestamp: data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24),
       baroTempC: ((data[6] | (data[7] << 8)).toSigned(16)) / 10.0,
-      compressedSize: data[8] | (data[9] << 8) | (data[10] << 16) | (data[11] << 24),
+      compressedSize: compressedSize,
       calAccuracy: data[12],
     );
   }
@@ -53,9 +60,13 @@ class Decompressor {
   Decompressor({this.formatVersion = 2});
 
   /// Parse header and decompress in one call.
+  /// Strips the 6-byte CRC32 trailer (magic + CRC32) before decompression.
   DecompressResult decompressFull(Uint8List compressed) {
     final header = RunHeader.parse(compressed);
-    final frames = decompress(compressed);
+    // Strip CRC32 trailer (6 bytes) to avoid garbage frames at end
+    final dataLen = compressed.length - 6;
+    final dataOnly = (dataLen > 16) ? compressed.sublist(0, dataLen) : compressed;
+    final frames = decompress(dataOnly);
     final totalMs = frames.isNotEmpty ? frames.last.msFromStart.toDouble() : 0.0;
     return DecompressResult(
       header: header,
