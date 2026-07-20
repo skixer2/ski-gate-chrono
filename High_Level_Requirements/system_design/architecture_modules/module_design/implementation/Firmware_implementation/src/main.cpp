@@ -235,13 +235,12 @@ void handle_serial()
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
-        /* V2.80: Always sync metadata before unmount.
-           NVIC_SystemReset() cuts power to flash chip —
-           any in-flight write or uncommitted metadata becomes
-           superblock corruption (-138 LFS2_ERR_CORRUPT).
-           metadata_sync() forces a commit via a temp file. */
+        /* V2.81: metadata_sync() commits everything to flash.
+           DO NOT call unmount() — mbed's lfs_rawunmount() deinits
+           the SPI bus WITHOUT syncing. NVIC_SystemReset then
+           resets nRF52, CS pin glitches, flash receives spurious
+           commands → superblock corruption (-138). */
         g_fs.metadata_sync();
-        g_fs.unmount();
         delay(800);  /* let flash complete any pending writes */
         NVIC_SystemReset();
         return;
@@ -256,9 +255,9 @@ void handle_serial()
         Serial.flush();
         g_fs.metadata_sync();
         g_fs.erase_all();
-        /* metadata_sync+unmount AGAIN after erase (fs is still mounted) */
+        /* metadata_sync AFTER erase (fs still mounted after reformat).
+           DO NOT call unmount() — same SPI deinit glitch as '!'. */
         g_fs.metadata_sync();
-        g_fs.unmount();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
         NVIC_SystemReset();
