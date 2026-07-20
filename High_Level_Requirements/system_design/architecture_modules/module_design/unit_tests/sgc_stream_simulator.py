@@ -23,21 +23,9 @@ Usage:
 
 Binary frame format (little-endian, 38 bytes total, at 100 Hz):
   [0xAA 0x55] [uint32:frame_num] [float32:pressure_hPa] [float32:qw]
+# V2.53: 18-byte RawFrame format — 2B sync (0xAA,0x55) + 16B payload (7×int16 + 1×uint16).
   [float32:qx] [float32:qy] [float32:qz]
   [float32:lax] [float32:lay] [float32:laz]
-  End marker: [0xBB]
-
-  2-byte sync word 0xAA 0x55 avoids false positives from float data
-  (0xAA alone occurs ~1/256 per byte; 0xAA 0x55 ≈ 1/65536 per pair).
-  Pressure is in hPa (hectopascals) — same unit as BHY2 SENSOR_ID_BARO
-  on the Nicla Sense ME. At sea level: ~1013.25 hPa.
-
-NDJSON replay format (one frame per line):
-  {"fn":0,"p":797.25,"q":[0.985,0.0,0.174,0.0],"la":[0.0,0.0,-9810.0]}
-
-Bandwidth: 38 bytes × 100 Hz = 3,800 B/s → 33% of 115,200 baud.
-
-Author: ZioClaw — 2026-07-08
 """
 
 SIM_VERSION = "2.19.0"
@@ -69,11 +57,9 @@ FRAME_RATE_HZ = 100
 FRAME_PERIOD_S = 1.0 / FRAME_RATE_HZ
 SYNC_WORD = b'\xAA\x55'   # 2-byte sync: avoids false positives from float data
 SYNC_LEN = 2
-END_MARKER = 0xBB          # DEPRECATED (naked marker) — firmware V2.14+ ignores it
 # V2.14: end-of-stream is now a FRAMED sentinel frame whose frame_num field is
 # 0xFFFFFFFF, sent through the same 0xAA 0x55 sync + 36B payload discipline so
 # payload data can never spuriously trigger end-of-stream.
-STREAM_END_SENTINEL = 0xFFFFFFFF
 FRAME_BYTES = 18  # 2B sync + 16B RawFrame
 
 # SGC start detector (from start_detector.h)
