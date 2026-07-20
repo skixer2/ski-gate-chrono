@@ -94,30 +94,31 @@ bool LittleFSStorage::begin() {
 
     int err = fs->mount(sliced);
     if (err != 0) {
-        /* Log superblock contents for debugging */
         Serial.print("{\"ev\":\"fs_mount_fail\",\"err\":");
         Serial.print(err);
         Serial.print(",\"blk\":"); Serial.print(sliced->size() / 4096);
         Serial.print(",\"sz\":"); Serial.print(sliced->size());
         Serial.print(",\"es\":"); Serial.print(sliced->get_erase_size());
         Serial.println("}");
-        /* V2.80: Auto-reformat on corrupt superblock.
-           Legacy approach (halt + wait for 'R') bricked the device
-           because the while(1) loop never checked serial. */
-        Serial.print("{\"ev\":\"fs_reformat\",\"reason\":\"mount_fail_");
-        Serial.print(err); Serial.println("\"}");
-        int fmt_err = fs->reformat(sliced);
-        if (fmt_err != 0) {
-            Serial.print("{\"ev\":\"fs_reformat_fail\",\"err\":");
-            Serial.print(fmt_err); Serial.println("}");
-            delete fs; delete sliced;
-            return false;
+        /* V2.84: NO auto-reformat — that's the data-destroying trap.
+           Mount failure usually = CS glitch during reset (needs external
+           pull-up on PCB). Retry with delays — flash may need more
+           time to stabilize after SPI bus reinit. */
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            delay(200);
+            err = fs->mount(sliced);
+            if (err == 0) {
+                Serial.print("{\"ev\":\"fs_mount_retry_ok\",\"attempt\":");
+                Serial.print(attempt); Serial.println("}");
+                break;
+            }
         }
-        /* Retry mount after reformat */
-        err = fs->mount(sliced);
         if (err != 0) {
-            Serial.print("{\"ev\":\"fs_remount_fail\",\"err\":");
-            Serial.print(err); Serial.println("}");
+            /* All retries failed. Don't reformat — report error.
+               Device boots without storage. Factory reset ('R') needed. */
+            Serial.print("{\"ev\":\"fs_mount_fatal\",\"err\":");
+            Serial.print(err); Serial.print(",\"retries\":3");
+            Serial.println("}");
             delete fs; delete sliced;
             return false;
         }

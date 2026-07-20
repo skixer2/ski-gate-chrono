@@ -15,15 +15,27 @@
 #include <Nicla_System.h>
 #include <math.h>
 
-/* ── V2.83: Hold CS HIGH before reset — prevents SPI glitch corruption ──
+/* ── V2.84: Write Disable before reset — prevents CS glitch corruption ──
    nRF52832 GPIOs float during NVIC_SystemReset(). CS (p26) can glitch
-   LOW, flash misinterprets noise as valid command → superblock erased.
-   Driving CS HIGH just before reset keeps it deasserted longest.
-   Not a perfect fix (external pull-up needed on PCB) but sufficient
-   in practice — nRF52 output hold time > reset transition time. */
-static void flash_hold_cs() {
-    pinMode(26, OUTPUT);
-    digitalWrite(26, HIGH);
+   LOW, flash might interpret noise as a command. Sending Write Disable
+   (0x04) before reset ensures WEL=0 → any spurious write/erase commands
+   are silently ignored by MX25R. Single byte, minimal bit-bang. */
+static void flash_write_disable() {
+    pinMode(26, OUTPUT); pinMode(3, OUTPUT); pinMode(4, OUTPUT);
+    digitalWrite(26, HIGH); delayMicroseconds(5);
+    digitalWrite(26, LOW);  delayMicroseconds(1);
+    digitalWrite(4, LOW);   /* 0x04: bit 2=1, rest=0 */
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(4, HIGH);  /* bit 2 */
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(4, LOW);
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+    digitalWrite(26, HIGH); delayMicroseconds(5);
 }
 
 extern volatile uint8_t g_bhy2_accuracy[256];
@@ -253,7 +265,7 @@ void handle_serial()
            commands → superblock corruption (-138). */
         g_fs.metadata_sync();
         delay(800);  /* let flash complete any pending writes */
-        flash_hold_cs();
+        flash_write_disable();
         NVIC_SystemReset();
         return;
     case 'V':
@@ -272,7 +284,7 @@ void handle_serial()
         g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
-        flash_hold_cs();
+        flash_write_disable();
         NVIC_SystemReset();
         return;
     case '?': {
@@ -453,10 +465,12 @@ void setup()
     Serial.print(fs_ok ? "1" : "0");
     Serial.println("}");
 
-    /* fs_ok false means heap/SlicingBlockDevice corruption possible.
-       Halt here to prevent BHY2 from crashing on corrupted heap. */
+    /* fs_ok false → storage offline (usually CS glitch during reset).
+       Device continues without storage — BLE, sensors, state machine
+       all work. Factory reset ('R') will reformat and remount. */
     if (!fs_ok) {
-        while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
+        json_begin(); json_kv("ev","warn"); Serial.print(',');
+        json_kv("msg","storage_offline"); json_end();
     }
 
     /* ── BHY2 init (standalone — only sensor hub, no BLE/I2C/DFU handlers) ── */
@@ -638,7 +652,7 @@ void loop()
         g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
-        flash_hold_cs();
+        flash_write_disable();
         NVIC_SystemReset();
         return;
     }
