@@ -234,15 +234,15 @@ void handle_serial()
     }
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
-        delay(200);
-        /* MX25R1635F sector erase takes up to 400ms.  If NVIC_SystemReset
-           fires mid-erase, the superblock sector is corrupted → mount
-           fails → auto-reformat → data loss.  600ms delay lets any
-           in-flight erase complete. */
-        if (g_fs.run_count() > 0) {
-            g_fs.unmount();
-            delay(800);
-        }
+        Serial.flush();
+        /* V2.80: Always sync metadata before unmount.
+           NVIC_SystemReset() cuts power to flash chip —
+           any in-flight write or uncommitted metadata becomes
+           superblock corruption (-138 LFS2_ERR_CORRUPT).
+           metadata_sync() forces a commit via a temp file. */
+        g_fs.metadata_sync();
+        g_fs.unmount();
+        delay(800);  /* let flash complete any pending writes */
         NVIC_SystemReset();
         return;
     case 'V':
@@ -253,9 +253,13 @@ void handle_serial()
         return;
     case 'R':
         json_begin(); json_kv("ev", "factory_reset"); json_end();
+        Serial.flush();
+        g_fs.metadata_sync();
         g_fs.erase_all();
-        json_begin(); json_kv("ev", "reboot"); json_end();
+        /* metadata_sync+unmount AGAIN after erase (fs is still mounted) */
+        g_fs.metadata_sync();
         g_fs.unmount();
+        json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
         NVIC_SystemReset();
         return;
@@ -429,9 +433,12 @@ void setup()
     json_begin();
     json_kv("ev", "init");
     Serial.print(','); json_kv("sub", "littlefs");
-    bool fs_ok = g_fs.begin();
-    Serial.print(','); json_kv_bool("ok", fs_ok);
     json_end();
+    Serial.flush();   /* ensure init line is complete before begin() prints */
+    bool fs_ok = g_fs.begin();
+    Serial.print("{\"ev\":\"init\",\"sub\":\"littlefs_res\",\"ok\":");
+    Serial.print(fs_ok ? "1" : "0");
+    Serial.println("}");
 
     /* fs_ok false means heap/SlicingBlockDevice corruption possible.
        Halt here to prevent BHY2 from crashing on corrupted heap. */
