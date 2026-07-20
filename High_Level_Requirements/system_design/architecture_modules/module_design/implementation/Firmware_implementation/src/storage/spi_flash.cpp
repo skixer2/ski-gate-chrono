@@ -156,17 +156,7 @@ void SPIFlash::release_deep_powerdown()
         digitalWrite(3, LOW);
     }
 
-    /* Clock 8 more cycles to flush the 1-byte response (Electronic ID).
-       Prevents garbage byte from confusing SPIFBlockDevice init. */
-    digitalWrite(4, 0);
-    for (int i = 0; i < 8; i++) {
-        digitalWrite(3, HIGH);
-        delayMicroseconds(1);
-        digitalWrite(3, LOW);
-        delayMicroseconds(1);
-    }
-
     delayMicroseconds(1);
-    digitalWrite(26, HIGH);  /* CS HIGH → flash exits DP */
+    digitalWrite(26, HIGH);  /* CS↑ → flash exits DP */
     delayMicroseconds(50);   /* tDPDD = 35µs max */
 }
