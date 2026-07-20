@@ -60,14 +60,14 @@ static void flash_send_cmd_data(uint8_t cmd, uint8_t data) {
 static void flash_lock_all() {
     flash_send_cmd(0x06);          /* Write Enable */
     flash_send_cmd_data(0x01, 0x3C); /* Write Status Reg: BP[3:0]=1111 */
-    delay(10);                     /* tW = 15ms max, but BP write is fast */
+    delay(50);                     /* tW = 15ms max, 50ms safety margin */
 }
 
 /* BP3-BP0=0000 → remove all block protection */
 static void flash_unlock_all() {
     flash_send_cmd(0x06);          /* Write Enable */
     flash_send_cmd_data(0x01, 0x00); /* Write Status Reg: BP[3:0]=0000 */
-    delay(10);
+    delay(50);                     /* tW = 15ms max, 50ms safety margin */
 }
 
 extern volatile uint8_t g_bhy2_accuracy[256];
@@ -452,7 +452,9 @@ void setup()
 
     /* ── V2.85: Unlock flash BP bits BEFORE SPIFlash::begin() ──
        BP bits were set before last reset to protect against CS glitch.
-       Must clear them now, before mbed claims SPI bus. */
+       Must clear them now, before mbed claims SPI bus.
+       100ms delay ensures flash VCC and internal state are stable. */
+    delay(100);
     flash_unlock_all();
 
     /* ── SPI Flash (MX25R1635F on SPI0, CS_FLASH=p26) ── */
