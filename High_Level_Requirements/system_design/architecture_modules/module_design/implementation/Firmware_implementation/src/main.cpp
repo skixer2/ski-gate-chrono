@@ -15,61 +15,6 @@
 #include <Nicla_System.h>
 #include <math.h>
 
-/* ── V2.85: Block Protect bits — silicon-level flash write protection ──
-   MX25R Status Register BP3-BP0 bits prevent ALL write/erase at the
-   silicon level, regardless of WEL state. Set before NVIC_SystemReset()
-   to survive CS glitch during MCU reset. Clear on boot before LittleFS.
-   Bit-banged because this runs OUTSIDE mbed's SPI ownership window:
-   - lock: after all FS ops complete (metadata_sync done)
-   - unlock: before SPIFlash::begin() (mbed hasn't claimed SPI yet) */
-
-static void flash_send_cmd(uint8_t cmd) {
-    pinMode(26, OUTPUT); pinMode(3, OUTPUT); pinMode(4, OUTPUT);
-    digitalWrite(26, HIGH); digitalWrite(3, LOW);
-    delayMicroseconds(5);
-    digitalWrite(26, LOW); delayMicroseconds(1);
-    for (int i = 7; i >= 0; i--) {
-        digitalWrite(4, (cmd >> i) & 1); delayMicroseconds(1);
-        digitalWrite(3, HIGH); delayMicroseconds(1);
-        digitalWrite(3, LOW);
-    }
-    delayMicroseconds(1);
-    digitalWrite(26, HIGH); delayMicroseconds(5);
-}
-
-static void flash_send_cmd_data(uint8_t cmd, uint8_t data) {
-    pinMode(26, OUTPUT); pinMode(3, OUTPUT); pinMode(4, OUTPUT);
-    digitalWrite(26, HIGH); digitalWrite(3, LOW);
-    delayMicroseconds(5);
-    digitalWrite(26, LOW); delayMicroseconds(1);
-    for (int i = 7; i >= 0; i--) {
-        digitalWrite(4, (cmd >> i) & 1); delayMicroseconds(1);
-        digitalWrite(3, HIGH); delayMicroseconds(1);
-        digitalWrite(3, LOW);
-    }
-    for (int i = 7; i >= 0; i--) {
-        digitalWrite(4, (data >> i) & 1); delayMicroseconds(1);
-        digitalWrite(3, HIGH); delayMicroseconds(1);
-        digitalWrite(3, LOW);
-    }
-    delayMicroseconds(1);
-    digitalWrite(26, HIGH); delayMicroseconds(5);
-}
-
-/* BP3-BP0=1111 → protect entire 16Mb MX25R1635F. 0x3C = BP bits + SRWD=0, QE=0. */
-static void flash_lock_all() {
-    flash_send_cmd(0x06);          /* Write Enable */
-    flash_send_cmd_data(0x01, 0x3C); /* Write Status Reg: BP[3:0]=1111 */
-    delay(50);                     /* tW = 15ms max, 50ms safety margin */
-}
-
-/* BP3-BP0=0000 → remove all block protection */
-static void flash_unlock_all() {
-    flash_send_cmd(0x06);          /* Write Enable */
-    flash_send_cmd_data(0x01, 0x00); /* Write Status Reg: BP[3:0]=0000 */
-    delay(50);                     /* tW = 15ms max, 50ms safety margin */
-}
-
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
 void bhy2_cal_hook_init();
@@ -290,14 +235,10 @@ void handle_serial()
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
-        /* V2.81: metadata_sync() commits everything to flash.
-           DO NOT call unmount() — mbed's lfs_rawunmount() deinits
-           the SPI bus WITHOUT syncing. NVIC_SystemReset then
-           resets nRF52, CS pin glitches, flash receives spurious
-           commands → superblock corruption (-138). */
-        g_fs.metadata_sync();
-        delay(800);  /* let flash complete any pending writes */
-        flash_lock_all();
+        /* V2.87: Minimal reboot — close_run() already synced everything.
+           No metadata_sync, no flash commands. Just delay to let any
+           in-flight flash write complete, then reset. */
+        delay(200);
         NVIC_SystemReset();
         return;
     case 'V':
@@ -309,14 +250,9 @@ void handle_serial()
     case 'R':
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         Serial.flush();
-        g_fs.metadata_sync();
         g_fs.erase_all();
-        /* metadata_sync AFTER erase (fs still mounted after reformat).
-           DO NOT call unmount() — same SPI deinit glitch as '!'. */
-        g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
-        delay(800);
-        flash_lock_all();
+        delay(200);
         NVIC_SystemReset();
         return;
     case '?': {
@@ -449,13 +385,6 @@ void setup()
 
     /* ── LED ── */
     g_led.begin();
-
-    /* ── V2.85: Unlock flash BP bits BEFORE SPIFlash::begin() ──
-       BP bits were set before last reset to protect against CS glitch.
-       Must clear them now, before mbed claims SPI bus.
-       100ms delay ensures flash VCC and internal state are stable. */
-    delay(100);
-    flash_unlock_all();
 
     /* ── SPI Flash (MX25R1635F on SPI0, CS_FLASH=p26) ── */
     json_begin();
@@ -686,12 +615,9 @@ void loop()
         json_kv("ev", "factory_reset");
         Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
         json_end();
-        g_fs.metadata_sync();
         g_fs.erase_all();
-        g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
-        delay(800);
-        flash_lock_all();
+        delay(200);
         NVIC_SystemReset();
         return;
     }
