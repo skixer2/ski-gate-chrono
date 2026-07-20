@@ -8,7 +8,6 @@
 #include <Arduino.h>
 #include <BlockDevice.h>
 #include "SPIFBlockDevice.h"
-#include "nrf_gpio.h"
 
 SPIFlash::SPIFlash() : m_bd(nullptr), m_ok(false) {}
 
@@ -104,74 +103,70 @@ bool SPIFlash::self_test()
 
 void SPIFlash::enter_deep_powerdown()
 {
-    /* V2.90: Bit-bang 0xB9 via nrf_gpio — avoids SPI1 peripheral
-       conflict with mbed's SPIFBlockDevice. nrf_gpio is faster
-       and cleaner than Arduino digitalWrite (no mbed HAL overhead). */
-    nrf_gpio_cfg_output(26); nrf_gpio_pin_set(26);   /* CS=HIGH */
-    nrf_gpio_cfg_output(3);  nrf_gpio_pin_clear(3);  /* SCK=LOW */
-    nrf_gpio_cfg_output(4);                           /* MOSI */
+    /* V2.91: Simple bit-bang 0xB9 via Arduino digitalWrite.
+       Same pattern as V2.82 that gave -22 (proved DP protects flash).
+       Each bit takes ~2µs at mbed speed — well within MX25R timing. */
+    pinMode(26, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(4, OUTPUT);
+    digitalWrite(26, HIGH);  /* CS HIGH */
+    digitalWrite(3, LOW);    /* SCK LOW */
+    delayMicroseconds(10);
 
     /* CS LOW → select flash */
-    nrf_gpio_pin_clear(26);
+    digitalWrite(26, LOW);
+    delayMicroseconds(1);
 
-    /* Bit-bang 0xB9 (Enter Deep Power-Down), MSB first */
-    uint8_t cmd = 0xB9;
+    /* Send 0xB9 (Enter Deep Power-Down), MSB first */
     for (int i = 7; i >= 0; i--) {
-        if (cmd & (1 << i)) nrf_gpio_pin_set(4);
-        else                nrf_gpio_pin_clear(4);
-        nrf_gpio_pin_set(3);    /* SCK rising edge */
-        nrf_gpio_pin_clear(3);  /* SCK falling edge */
+        digitalWrite(4, (0xB9 >> i) & 1);
+        delayMicroseconds(1);
+        digitalWrite(3, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(3, LOW);
     }
 
-    /* CS HIGH → flash enters DP */
-    nrf_gpio_pin_set(26);
-
-    /* ~10µs for DP entry (spec: tDP = 3µs min) */
-    for (volatile int i = 0; i < 200; i++) {}
-
-    /* Return pins to input for mbed to reclaim */
-    nrf_gpio_cfg_input(26, NRF_GPIO_PIN_NOPULL);
-    nrf_gpio_cfg_input(3,  NRF_GPIO_PIN_NOPULL);
-    nrf_gpio_cfg_input(4,  NRF_GPIO_PIN_NOPULL);
+    delayMicroseconds(1);
+    digitalWrite(26, HIGH);  /* CS HIGH → flash enters DP */
+    delayMicroseconds(10);   /* tDP ≥ 3µs */
 }
 
 void SPIFlash::release_deep_powerdown()
 {
-    /* Drive CS HIGH first */
-    nrf_gpio_cfg_output(26);
-    nrf_gpio_pin_set(26);
-
-    /* Configure SPI1 — same as DP entry */
-    NRF_SPI1->PSELSCK  = 3;
-    NRF_SPI1->PSELMOSI = 4;
-    NRF_SPI1->PSELMISO = 5;
-    NRF_SPI1->FREQUENCY = 0x04000000;
-    NRF_SPI1->CONFIG = 0;
-    NRF_SPI1->EVENTS_READY = 0;
-    NRF_SPI1->ENABLE = 1;
+    /* V2.91: Bit-bang 0xAB to release from DP at boot.
+       In DP mode: wakes flash. In normal mode (cold boot):
+       reads 1 byte Electronic ID — harmless dummy read. */
+    pinMode(26, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(4, OUTPUT);
+    digitalWrite(26, HIGH);  /* CS HIGH */
+    digitalWrite(3, LOW);    /* SCK LOW */
+    delayMicroseconds(10);
 
     /* CS LOW → select flash */
-    nrf_gpio_pin_clear(26);
+    digitalWrite(26, LOW);
+    delayMicroseconds(1);
 
-    /* Send 0xAB (Release from DP / Read Electronic ID).
-       In DP mode: wakes flash. In normal mode: reads 1 byte ID. */
-    NRF_SPI1->TXD = 0xAB;
-    while (!NRF_SPI1->EVENTS_READY) {}
-    NRF_SPI1->EVENTS_READY = 0;
-    (void)NRF_SPI1->RXD;  /* dummy read — discards ID byte */
+    /* Send 0xAB (Release DP / Read Electronic ID), MSB first */
+    for (int i = 7; i >= 0; i--) {
+        digitalWrite(4, (0xAB >> i) & 1);
+        delayMicroseconds(1);
+        digitalWrite(3, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(3, LOW);
+    }
 
-    /* CS HIGH → flash exits DP (or completes dummy read) */
-    nrf_gpio_pin_set(26);
+    /* Clock 8 more cycles to flush the 1-byte response (Electronic ID).
+       Prevents garbage byte from confusing SPIFBlockDevice init. */
+    digitalWrite(4, 0);
+    for (int i = 0; i < 8; i++) {
+        digitalWrite(3, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(3, LOW);
+        delayMicroseconds(1);
+    }
 
-    /* tDPDD = 35µs max from CS↑ to ready */
-    for (volatile int i = 0; i < 1000; i++) {}
-
-    /* Disable SPI1 and disconnect pins */
-    NRF_SPI1->ENABLE = 0;
-    NRF_SPI1->PSELSCK  = 0xFFFFFFFF;
-    NRF_SPI1->PSELMOSI = 0xFFFFFFFF;
-    NRF_SPI1->PSELMISO = 0xFFFFFFFF;
-
-    /* Leave CS as input */
-    nrf_gpio_cfg_input(26, NRF_GPIO_PIN_NOPULL);
+    delayMicroseconds(1);
+    digitalWrite(26, HIGH);  /* CS HIGH → flash exits DP */
+    delayMicroseconds(50);   /* tDPDD = 35µs max */
 }

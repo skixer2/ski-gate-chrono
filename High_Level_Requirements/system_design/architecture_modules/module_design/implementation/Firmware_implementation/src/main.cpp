@@ -434,12 +434,10 @@ void setup()
     Serial.print(fs_ok ? "1" : "0");
     Serial.println("}");
 
-    /* fs_ok false → storage offline (usually CS glitch during reset).
-       Device continues without storage — BLE, sensors, state machine
-       all work. Factory reset ('R') will reformat and remount. */
+    /* fs_ok false means catastrophic failure (heap, flash dead).
+       Halt — device cannot operate without storage. */
     if (!fs_ok) {
-        json_begin(); json_kv("ev","warn"); Serial.print(',');
-        json_kv("msg","storage_offline"); json_end();
+        while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
     }
 
     /* ── BHY2 init (standalone — only sensor hub, no BLE/I2C/DFU handlers) ── */
