@@ -235,11 +235,15 @@ void handle_serial()
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
-        /* V2.87: Minimal reboot — close_run() already synced everything.
-           No metadata_sync, no flash commands. Just delay to let any
-           in-flight flash write complete, then reset. */
+        /* V2.88: Jump to reset vector instead of NVIC_SystemReset().
+           NVIC_SystemReset floats GPIOs → CS glitch. But Gemini's
+           new theory: mbed SPIFBlockDevice + SlicingBlockDevice
+           leaves cache bytes unflushed. Jump-to-boot keeps RAM
+           intact during transition, avoids hardware reset artifacts. */
         delay(200);
-        NVIC_SystemReset();
+        __set_MSP(*(volatile uint32_t *)0x00000000);
+        ((void (*)(void))(*(volatile uint32_t *)0x00000004))();
+        while(1);  /* never reached */
         return;
     case 'V':
         json_begin();
@@ -253,7 +257,9 @@ void handle_serial()
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(200);
-        NVIC_SystemReset();
+        __set_MSP(*(volatile uint32_t *)0x00000000);
+        ((void (*)(void))(*(volatile uint32_t *)0x00000004))();
+        while(1);
         return;
     case '?': {
         int8_t batt = nicla::getBatteryVoltagePercentage();
@@ -618,7 +624,9 @@ void loop()
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(200);
-        NVIC_SystemReset();
+        __set_MSP(*(volatile uint32_t *)0x00000000);
+        ((void (*)(void))(*(volatile uint32_t *)0x00000004))();
+        while(1);
         return;
     }
 
