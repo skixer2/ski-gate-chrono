@@ -7,11 +7,7 @@
 
 #include <stdint.h>
 
-<<<<<<< HEAD
 #define FW_VERSION "2.80"
-=======
-#define FW_VERSION "2.77"
->>>>>>> c215e6815be974bd85cb1af08812bd7dfb0ab381
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
