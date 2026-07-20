@@ -94,16 +94,33 @@ bool LittleFSStorage::begin() {
 
     int err = fs->mount(sliced);
     if (err != 0) {
-        /* Log superblock contents for debugging -22 */
+        /* Log superblock contents for debugging */
         Serial.print("{\"ev\":\"fs_mount_fail\",\"err\":");
         Serial.print(err);
         Serial.print(",\"blk\":"); Serial.print(sliced->size() / 4096);
         Serial.print(",\"sz\":"); Serial.print(sliced->size());
         Serial.print(",\"es\":"); Serial.print(sliced->get_erase_size());
         Serial.println("}");
-        /* No auto-reformat — halt. Let user send 'R' manually. */
-        delete fs; delete sliced;
-        return false;
+        /* V2.80: Auto-reformat on corrupt superblock.
+           Legacy approach (halt + wait for 'R') bricked the device
+           because the while(1) loop never checked serial. */
+        Serial.print("{\"ev\":\"fs_reformat\",\"reason\":\"mount_fail_");
+        Serial.print(err); Serial.println("\"}");
+        int fmt_err = fs->reformat(sliced);
+        if (fmt_err != 0) {
+            Serial.print("{\"ev\":\"fs_reformat_fail\",\"err\":");
+            Serial.print(fmt_err); Serial.println("}");
+            delete fs; delete sliced;
+            return false;
+        }
+        /* Retry mount after reformat */
+        err = fs->mount(sliced);
+        if (err != 0) {
+            Serial.print("{\"ev\":\"fs_remount_fail\",\"err\":");
+            Serial.print(err); Serial.println("}");
+            delete fs; delete sliced;
+            return false;
+        }
     }
     m_fs = fs;
     scan_runs();
