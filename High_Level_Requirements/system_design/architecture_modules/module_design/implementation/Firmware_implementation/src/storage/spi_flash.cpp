@@ -8,11 +8,17 @@
 #include <Arduino.h>
 #include <BlockDevice.h>
 #include "SPIFBlockDevice.h"
+#include "nrf_gpio.h"
 
 SPIFlash::SPIFlash() : m_bd(nullptr), m_ok(false) {}
 
 bool SPIFlash::begin()
 {
+    /* V2.89: Release from DP FIRST — flash was put in deep power-down
+       before previous reset to survive CS glitches. Safe even on
+       cold boot (not in DP): 0xAB = Read Electronic ID in normal mode. */
+    release_deep_powerdown();
+
     /* V2.29: Create explicit SPIFBlockDevice for MX25R1635F (SPI1:
      * p4 MOSI, p5 MISO, p3 SCK, p26 CS_FLASH). get_default_instance()
      * returns internal nRF flash (512KB) — writes beyond 512KB silently
@@ -81,4 +87,100 @@ bool SPIFlash::self_test()
     for (int i = 0; i < 256; i++)
         if (rd[i] != wr[i]) return false;
     return true;
+}
+
+/* ==================================================================
+ * V2.89: Deep Power-Down for NVIC_SystemReset() survival
+ *
+ * nRF52832 GPIOs float during reset → CS glitches LOW → flash
+ * interprets noise as SPI command → superblock corrupted → -138.
+ *
+ * DP mode (0xB9) makes flash ignore ALL commands except 0xAB.
+ * Release (0xAB) at boot wakes it. Safe on cold boot too:
+ * 0xAB = Read Electronic ID in normal mode (harmless dummy read).
+ *
+ * Uses nRF52 HW SPI1 (same peripheral as SPIFBlockDevice).
+ * ================================================================== */
+
+void SPIFlash::enter_deep_powerdown()
+{
+    /* Drive CS HIGH before touching SPI to prevent glitch. */
+    nrf_gpio_cfg_output(26);
+    nrf_gpio_pin_set(26);
+
+    /* Configure SPI1 manually — same pins as SPIFBlockDevice:
+       SCK=p3, MOSI=p4, MISO=p5. 1 MHz well within MX25R spec. */
+    NRF_SPI1->PSELSCK  = 3;
+    NRF_SPI1->PSELMOSI = 4;
+    NRF_SPI1->PSELMISO = 5;
+    NRF_SPI1->FREQUENCY = 0x04000000;  /* 1 MHz */
+    NRF_SPI1->CONFIG = 0;              /* Mode 0, MSB first */
+    NRF_SPI1->EVENTS_READY = 0;
+    NRF_SPI1->ENABLE = 1;
+
+    /* CS LOW → select flash */
+    nrf_gpio_pin_clear(26);
+
+    /* Send 0xB9 (Enter Deep Power-Down) */
+    NRF_SPI1->TXD = 0xB9;
+    while (!NRF_SPI1->EVENTS_READY) {}
+    NRF_SPI1->EVENTS_READY = 0;
+    (void)NRF_SPI1->RXD;  /* dummy read to clear RX */
+
+    /* CS HIGH → flash enters DP */
+    nrf_gpio_pin_set(26);
+
+    /* ~50 µs for DP entry (spec: tDP = 3µs min) */
+    for (volatile int i = 0; i < 1000; i++) {}
+
+    /* Disable SPI1 and disconnect pins so SPIFBlockDevice can
+       reconfigure them cleanly on next boot. */
+    NRF_SPI1->ENABLE = 0;
+    NRF_SPI1->PSELSCK  = 0xFFFFFFFF;
+    NRF_SPI1->PSELMOSI = 0xFFFFFFFF;
+    NRF_SPI1->PSELMISO = 0xFFFFFFFF;
+
+    /* Leave CS as input for mbed to reclaim */
+    nrf_gpio_cfg_input(26, NRF_GPIO_PIN_NOPULL);
+}
+
+void SPIFlash::release_deep_powerdown()
+{
+    /* Drive CS HIGH first */
+    nrf_gpio_cfg_output(26);
+    nrf_gpio_pin_set(26);
+
+    /* Configure SPI1 — same as DP entry */
+    NRF_SPI1->PSELSCK  = 3;
+    NRF_SPI1->PSELMOSI = 4;
+    NRF_SPI1->PSELMISO = 5;
+    NRF_SPI1->FREQUENCY = 0x04000000;
+    NRF_SPI1->CONFIG = 0;
+    NRF_SPI1->EVENTS_READY = 0;
+    NRF_SPI1->ENABLE = 1;
+
+    /* CS LOW → select flash */
+    nrf_gpio_pin_clear(26);
+
+    /* Send 0xAB (Release from DP / Read Electronic ID).
+       In DP mode: wakes flash. In normal mode: reads 1 byte ID. */
+    NRF_SPI1->TXD = 0xAB;
+    while (!NRF_SPI1->EVENTS_READY) {}
+    NRF_SPI1->EVENTS_READY = 0;
+    (void)NRF_SPI1->RXD;  /* dummy read — discards ID byte */
+
+    /* CS HIGH → flash exits DP (or completes dummy read) */
+    nrf_gpio_pin_set(26);
+
+    /* tDPDD = 35µs max from CS↑ to ready */
+    for (volatile int i = 0; i < 1000; i++) {}
+
+    /* Disable SPI1 and disconnect pins */
+    NRF_SPI1->ENABLE = 0;
+    NRF_SPI1->PSELSCK  = 0xFFFFFFFF;
+    NRF_SPI1->PSELMOSI = 0xFFFFFFFF;
+    NRF_SPI1->PSELMISO = 0xFFFFFFFF;
+
+    /* Leave CS as input */
+    nrf_gpio_cfg_input(26, NRF_GPIO_PIN_NOPULL);
 }
