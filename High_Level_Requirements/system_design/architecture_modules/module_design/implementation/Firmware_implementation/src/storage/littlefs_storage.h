@@ -3,10 +3,16 @@
  * @brief   Run storage on LittleFS v2 — replaces FlashManager (circular raw flash).
  *
  *   Runs stored as files: /run_NNNNN.dat
- *   Each file: [RunHeader 16B][compressed frames ...][0xC3][0x32][CRC32 LE 4B]
+ *   Each file (format_ver=2, V2.80+):
+ *     [RunHeader 16B — data_size=0,frame_count=0 at create]
+ *     [compressed frames ...]
+ *     [0xC3][0x32][CRC32 LE 4B]  — 6-byte trailer
  *
- *   Wear-leveling, power-loss resilience, and CRC32 handled by LittleFS.
- *   No manual sector alignment, no 0xFF gaps, no index sector wear-out.
+ *   APPEND-ONLY: no seek(0)+write(header) in close_run().
+ *   data_size = file.size() - 16 - 6 (computed at scan time).
+ *   Eliminates COW cascade (LittleFS in-place write copies entire file).
+ *
+ *   Wear-leveling, power-loss resilience handled by LittleFS.
  *
  * @requires mbed::BlockDevice (already initialized via SPIFlash::begin()).
  */
@@ -20,14 +26,18 @@
 
 /**
  * Run file header (16 bytes, packed).
+ *
+ * format_ver=2: data_size and frame_count are always 0 in the on-disk
+ * header (append-only). Real data_size = file.size() - 22.
+ * format_ver=1: data_size and frame_count written by seek(0)+rewrite on close.
  */
 struct __attribute__((packed)) RunHeader {
-    uint8_t  format_ver;     /* 1 */
+    uint8_t  format_ver;     /* 1=legacy, 2=append-only */
     uint8_t  arm_side;       /* 0=left, 1=right */
     uint32_t ts_utc;         /* UNIX timestamp at run start */
     int16_t  baro_temp;      /* barometric temperature, tenths of °C */
-    uint32_t data_size;      /* compressed data size (excl. header+trailer) */
-    uint16_t frame_count;    /* number of compressed frames in the run */
+    uint32_t data_size;      /* 0 on-disk for v2; computed from file.size() */
+    uint16_t frame_count;    /* 0 on-disk for v2 */
     uint8_t  cal_accuracy;   /* BHI260AP fusion accuracy 0-3 */
     uint8_t  _pad;           /* align → 16 bytes */
 };
@@ -90,7 +100,9 @@ public:
     void flush_write_buf();
 
     /**
-     * Finalize the run: flush buffer, write CRC32 trailer, close file, update run list.
+     * Finalize the run: flush buffer, write CRC32 trailer, sync, close.
+     * APPEND-ONLY (format_ver=2): NO seek(0)+write(header) — eliminates
+     * LittleFS COW cascade that caused data_size=0 on power loss.
      * Returns the new run_id, or 0xFFFF on failure.
      */
     uint16_t close_run(uint32_t frame_count);
@@ -180,12 +192,9 @@ private:
     uint8_t  m_write_buf[WRITE_BUF_SIZE];
     uint16_t m_write_buf_pos;
 
-    /* Pending run metadata (set in create_run, consumed by close_run).
-     * Needed for header rewrite in close_run() — we seek(0)+write(16B) to
-     * update the RunHeader. Despite the legacy comment, O_RDWR works on this
-     * platform (the original -138 was LFS2_ERR_CORRUPT from the SlicingBlockDevice
-     * partitioning bug, not an API restriction). Confirmed: seek0 rc=0, hdr_rewrite
-     * n=16 on v2.18. */
+    /* Pending run metadata (set in create_run, consumed by close_run
+     * for RunEntry population). No longer used for header rewrite
+     * (V2.80: append-only format, no seek+write on close). */
     uint8_t  m_pending_arm_side;
     int16_t  m_pending_baro_temp;
     uint8_t  m_pending_cal_accuracy;
