@@ -15,27 +15,59 @@
 #include <Nicla_System.h>
 #include <math.h>
 
-/* ── V2.84: Write Disable before reset — prevents CS glitch corruption ──
-   nRF52832 GPIOs float during NVIC_SystemReset(). CS (p26) can glitch
-   LOW, flash might interpret noise as a command. Sending Write Disable
-   (0x04) before reset ensures WEL=0 → any spurious write/erase commands
-   are silently ignored by MX25R. Single byte, minimal bit-bang. */
-static void flash_write_disable() {
+/* ── V2.85: Block Protect bits — silicon-level flash write protection ──
+   MX25R Status Register BP3-BP0 bits prevent ALL write/erase at the
+   silicon level, regardless of WEL state. Set before NVIC_SystemReset()
+   to survive CS glitch during MCU reset. Clear on boot before LittleFS.
+   Bit-banged because this runs OUTSIDE mbed's SPI ownership window:
+   - lock: after all FS ops complete (metadata_sync done)
+   - unlock: before SPIFlash::begin() (mbed hasn't claimed SPI yet) */
+
+static void flash_send_cmd(uint8_t cmd) {
     pinMode(26, OUTPUT); pinMode(3, OUTPUT); pinMode(4, OUTPUT);
+    digitalWrite(26, HIGH); digitalWrite(3, LOW);
+    delayMicroseconds(5);
+    digitalWrite(26, LOW); delayMicroseconds(1);
+    for (int i = 7; i >= 0; i--) {
+        digitalWrite(4, (cmd >> i) & 1); delayMicroseconds(1);
+        digitalWrite(3, HIGH); delayMicroseconds(1);
+        digitalWrite(3, LOW);
+    }
+    delayMicroseconds(1);
     digitalWrite(26, HIGH); delayMicroseconds(5);
-    digitalWrite(26, LOW);  delayMicroseconds(1);
-    digitalWrite(4, LOW);   /* 0x04: bit 2=1, rest=0 */
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(4, HIGH);  /* bit 2 */
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(4, LOW);
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
-    digitalWrite(3, HIGH);  delayMicroseconds(1); digitalWrite(3, LOW); delayMicroseconds(1);
+}
+
+static void flash_send_cmd_data(uint8_t cmd, uint8_t data) {
+    pinMode(26, OUTPUT); pinMode(3, OUTPUT); pinMode(4, OUTPUT);
+    digitalWrite(26, HIGH); digitalWrite(3, LOW);
+    delayMicroseconds(5);
+    digitalWrite(26, LOW); delayMicroseconds(1);
+    for (int i = 7; i >= 0; i--) {
+        digitalWrite(4, (cmd >> i) & 1); delayMicroseconds(1);
+        digitalWrite(3, HIGH); delayMicroseconds(1);
+        digitalWrite(3, LOW);
+    }
+    for (int i = 7; i >= 0; i--) {
+        digitalWrite(4, (data >> i) & 1); delayMicroseconds(1);
+        digitalWrite(3, HIGH); delayMicroseconds(1);
+        digitalWrite(3, LOW);
+    }
+    delayMicroseconds(1);
     digitalWrite(26, HIGH); delayMicroseconds(5);
+}
+
+/* BP3-BP0=1111 → protect entire 16Mb MX25R1635F. 0x3C = BP bits + SRWD=0, QE=0. */
+static void flash_lock_all() {
+    flash_send_cmd(0x06);          /* Write Enable */
+    flash_send_cmd_data(0x01, 0x3C); /* Write Status Reg: BP[3:0]=1111 */
+    delay(10);                     /* tW = 15ms max, but BP write is fast */
+}
+
+/* BP3-BP0=0000 → remove all block protection */
+static void flash_unlock_all() {
+    flash_send_cmd(0x06);          /* Write Enable */
+    flash_send_cmd_data(0x01, 0x00); /* Write Status Reg: BP[3:0]=0000 */
+    delay(10);
 }
 
 extern volatile uint8_t g_bhy2_accuracy[256];
@@ -265,7 +297,7 @@ void handle_serial()
            commands → superblock corruption (-138). */
         g_fs.metadata_sync();
         delay(800);  /* let flash complete any pending writes */
-        flash_write_disable();
+        flash_lock_all();
         NVIC_SystemReset();
         return;
     case 'V':
@@ -284,7 +316,7 @@ void handle_serial()
         g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
-        flash_write_disable();
+        flash_lock_all();
         NVIC_SystemReset();
         return;
     case '?': {
@@ -417,6 +449,11 @@ void setup()
 
     /* ── LED ── */
     g_led.begin();
+
+    /* ── V2.85: Unlock flash BP bits BEFORE SPIFlash::begin() ──
+       BP bits were set before last reset to protect against CS glitch.
+       Must clear them now, before mbed claims SPI bus. */
+    flash_unlock_all();
 
     /* ── SPI Flash (MX25R1635F on SPI0, CS_FLASH=p26) ── */
     json_begin();
@@ -652,7 +689,7 @@ void loop()
         g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
-        flash_write_disable();
+        flash_lock_all();
         NVIC_SystemReset();
         return;
     }
