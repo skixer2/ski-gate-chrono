@@ -93,6 +93,23 @@ bool LittleFSStorage::begin() {
     if (!fs) { delete sliced; return false; }
 
     int err = fs->mount(sliced);
+    if (err == -22) {
+        /* V2.90: -22 = EINVAL = no valid superblock (clean flash).
+           Auto-format — the erase_all() path (factory reset) erases
+           sectors but doesn't reformat. Let begin() handle it.
+           This is SAFE because -22 means NO existing data to lose.
+           -138 (CORRUPT) is NOT auto-formatted — data might be recoverable. */
+        Serial.print("{\"ev\":\"fs_auto_format\",\"reason\":\"no_superblock\"}");
+        Serial.println();
+        int fmt_err = fs->reformat(sliced);
+        if (fmt_err != 0) {
+            Serial.print("{\"ev\":\"fs_format_fail\",\"err\":");
+            Serial.print(fmt_err); Serial.println("}");
+            delete fs; delete sliced;
+            return false;
+        }
+        err = fs->mount(sliced);
+    }
     if (err != 0) {
         Serial.print("{\"ev\":\"fs_mount_fail\",\"err\":");
         Serial.print(err);
@@ -441,41 +458,21 @@ void LittleFSStorage::erase_all() {
         delete static_cast<File*>(m_file);
         m_file = nullptr; m_file_open = false;
     }
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
-    if (fs && m_bd) {
+    /* V2.90: Simplified erase — just wipe the FS area.
+       On next boot, begin() detects -22 (no superblock) and auto-formats.
+       No unmount/deinit/reformat/mount dance that corrupts state. */
+    if (m_bd) {
         auto* raw = static_cast<mbed::BlockDevice*>(m_bd);
-        fs->unmount();
-        delete fs;
-        m_fs = nullptr;
-
-        /* mbed reformat() only formats if mount FAILS.  A valid FS
-           mounts fine → reformat is a no-op.  Erase the FS area
-           first to guarantee the BD is empty → reformat will format. */
-        /* Erase first 16 sectors (64KB) — covers superblock (blocks 0-1),
-           root directory (2-3), and initial metadata.  reformat() will
-           start fresh on a clean BD. */
         for (uint32_t addr = 0x4000; addr < 0x14000; addr += 4096) {
             raw->erase(addr, 4096);
         }
         delay(500);
-
-        auto* fs2 = new LittleFileSystem2("littlefs", NULL, 4096, 500, 256, 64);
-        auto* sliced = new SlicingBlockDevice(raw, 0x4000, 0x1FC000);
-        int ref_err = fs2->reformat(sliced);
-        if (ref_err != 0) {
-            Serial.print("{\"ev\":\"erase_fail\",\"err\":");
-            Serial.print(ref_err); Serial.println("}");
-            delete fs2; delete sliced;
-            return;
-        }
-        ref_err = fs2->mount(sliced);
-        if (ref_err != 0) {
-            Serial.print("{\"ev\":\"erase_mnt\",\"err\":");
-            Serial.print(ref_err); Serial.println("}");
-            delete fs2; delete sliced;
-            return;
-        }
-        m_fs = fs2;
+    }
+    /* Reset RAM state — next boot's begin() will handle FS init */
+    if (m_fs) {
+        auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+        delete fs;
+        m_fs = nullptr;
     }
     memset(m_entries, 0, sizeof(m_entries));
     m_entry_count = 0; m_next_run_id = 0; m_run_count = 0;

@@ -104,44 +104,35 @@ bool SPIFlash::self_test()
 
 void SPIFlash::enter_deep_powerdown()
 {
-    /* Drive CS HIGH before touching SPI to prevent glitch. */
-    nrf_gpio_cfg_output(26);
-    nrf_gpio_pin_set(26);
-
-    /* Configure SPI1 manually — same pins as SPIFBlockDevice:
-       SCK=p3, MOSI=p4, MISO=p5. 1 MHz well within MX25R spec. */
-    NRF_SPI1->PSELSCK  = 3;
-    NRF_SPI1->PSELMOSI = 4;
-    NRF_SPI1->PSELMISO = 5;
-    NRF_SPI1->FREQUENCY = 0x04000000;  /* 1 MHz */
-    NRF_SPI1->CONFIG = 0;              /* Mode 0, MSB first */
-    NRF_SPI1->EVENTS_READY = 0;
-    NRF_SPI1->ENABLE = 1;
+    /* V2.90: Bit-bang 0xB9 via nrf_gpio — avoids SPI1 peripheral
+       conflict with mbed's SPIFBlockDevice. nrf_gpio is faster
+       and cleaner than Arduino digitalWrite (no mbed HAL overhead). */
+    nrf_gpio_cfg_output(26); nrf_gpio_pin_set(26);   /* CS=HIGH */
+    nrf_gpio_cfg_output(3);  nrf_gpio_pin_clear(3);  /* SCK=LOW */
+    nrf_gpio_cfg_output(4);                           /* MOSI */
 
     /* CS LOW → select flash */
     nrf_gpio_pin_clear(26);
 
-    /* Send 0xB9 (Enter Deep Power-Down) */
-    NRF_SPI1->TXD = 0xB9;
-    while (!NRF_SPI1->EVENTS_READY) {}
-    NRF_SPI1->EVENTS_READY = 0;
-    (void)NRF_SPI1->RXD;  /* dummy read to clear RX */
+    /* Bit-bang 0xB9 (Enter Deep Power-Down), MSB first */
+    uint8_t cmd = 0xB9;
+    for (int i = 7; i >= 0; i--) {
+        if (cmd & (1 << i)) nrf_gpio_pin_set(4);
+        else                nrf_gpio_pin_clear(4);
+        nrf_gpio_pin_set(3);    /* SCK rising edge */
+        nrf_gpio_pin_clear(3);  /* SCK falling edge */
+    }
 
     /* CS HIGH → flash enters DP */
     nrf_gpio_pin_set(26);
 
-    /* ~50 µs for DP entry (spec: tDP = 3µs min) */
-    for (volatile int i = 0; i < 1000; i++) {}
+    /* ~10µs for DP entry (spec: tDP = 3µs min) */
+    for (volatile int i = 0; i < 200; i++) {}
 
-    /* Disable SPI1 and disconnect pins so SPIFBlockDevice can
-       reconfigure them cleanly on next boot. */
-    NRF_SPI1->ENABLE = 0;
-    NRF_SPI1->PSELSCK  = 0xFFFFFFFF;
-    NRF_SPI1->PSELMOSI = 0xFFFFFFFF;
-    NRF_SPI1->PSELMISO = 0xFFFFFFFF;
-
-    /* Leave CS as input for mbed to reclaim */
+    /* Return pins to input for mbed to reclaim */
     nrf_gpio_cfg_input(26, NRF_GPIO_PIN_NOPULL);
+    nrf_gpio_cfg_input(3,  NRF_GPIO_PIN_NOPULL);
+    nrf_gpio_cfg_input(4,  NRF_GPIO_PIN_NOPULL);
 }
 
 void SPIFlash::release_deep_powerdown()

@@ -256,8 +256,7 @@ void handle_serial()
         g_flash.enter_deep_powerdown();
         delay(50);
         NVIC_SystemReset();
-        return;
-    case '?': {
+        return; {
         int8_t batt = nicla::getBatteryVoltagePercentage();
         json_begin();
         json_kv("ev", "status");
