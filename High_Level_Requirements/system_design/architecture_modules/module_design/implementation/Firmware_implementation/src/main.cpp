@@ -378,6 +378,7 @@ void setup()
 {
     nicla::begin();
     Serial.begin(115200);
+    delay(500);   /* let pio device monitor open the port before we print */
 
     /* ── Version FIRST — no delay, no preamble ── */
     uint32_t rr = NRF_POWER->RESETREAS;
