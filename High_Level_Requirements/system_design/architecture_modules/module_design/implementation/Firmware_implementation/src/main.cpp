@@ -15,37 +15,15 @@
 #include <Nicla_System.h>
 #include <math.h>
 
-/* ── V2.82: MX25R deep sleep before reset prevents CS glitch corruption ──
-   nRF52832 GPIO pins float during NVIC_SystemReset() — CS (p26) can
-   glitch LOW, and the flash chip interprets noise as a valid SPI command.
-   Sending Deep Power-Down (0xB9) puts MX25R in a state where ALL
-   commands except 0xAB are ignored. Wakes automatically on next CS
-   assertion (SPIFlash::begin()). Bit-banged because mbed SPIFBlockDevice
-   doesn't expose raw command API. */
-static void flash_deep_sleep() {
-    const uint8_t CS  = 26;   /* p26 = CS_FLASH (SPI1) */
-    const uint8_t SCK = 3;    /* p3  = SCK (SPI1) */
-    const uint8_t MOSI = 4;   /* p4  = MOSI (SPI1) */
-    pinMode(CS, OUTPUT);
-    pinMode(SCK, OUTPUT);
-    pinMode(MOSI, OUTPUT);
-    digitalWrite(CS, HIGH);
-    digitalWrite(SCK, LOW);
-    delayMicroseconds(10);
-
-    /* CS low → send 0xB9 → CS high = enter deep power-down */
-    digitalWrite(CS, LOW);
-    delayMicroseconds(1);
-    for (int i = 7; i >= 0; i--) {
-        digitalWrite(MOSI, (0xB9 >> i) & 1);
-        delayMicroseconds(1);
-        digitalWrite(SCK, HIGH);
-        delayMicroseconds(1);
-        digitalWrite(SCK, LOW);
-    }
-    delayMicroseconds(1);
-    digitalWrite(CS, HIGH);
-    delayMicroseconds(10);  /* tDP ≥ 3µs */
+/* ── V2.83: Hold CS HIGH before reset — prevents SPI glitch corruption ──
+   nRF52832 GPIOs float during NVIC_SystemReset(). CS (p26) can glitch
+   LOW, flash misinterprets noise as valid command → superblock erased.
+   Driving CS HIGH just before reset keeps it deasserted longest.
+   Not a perfect fix (external pull-up needed on PCB) but sufficient
+   in practice — nRF52 output hold time > reset transition time. */
+static void flash_hold_cs() {
+    pinMode(26, OUTPUT);
+    digitalWrite(26, HIGH);
 }
 
 extern volatile uint8_t g_bhy2_accuracy[256];
@@ -275,7 +253,7 @@ void handle_serial()
            commands → superblock corruption (-138). */
         g_fs.metadata_sync();
         delay(800);  /* let flash complete any pending writes */
-        flash_deep_sleep();
+        flash_hold_cs();
         NVIC_SystemReset();
         return;
     case 'V':
@@ -294,7 +272,7 @@ void handle_serial()
         g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
-        flash_deep_sleep();
+        flash_hold_cs();
         NVIC_SystemReset();
         return;
     case '?': {
@@ -660,7 +638,7 @@ void loop()
         g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         delay(800);
-        flash_deep_sleep();
+        flash_hold_cs();
         NVIC_SystemReset();
         return;
     }
