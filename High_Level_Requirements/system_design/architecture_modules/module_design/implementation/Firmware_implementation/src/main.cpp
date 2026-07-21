@@ -402,9 +402,8 @@ void system_restart(bool after_factory_reset)
         if (bd) bd->deinit();
     }
 
-    /* Stop BLE — deinit the stack before reinitializing */
+    /* Stop BLE advertising (BLE stack stays alive — end/begin crashes Cordio) */
     BLE.stopAdvertise();
-    BLE.end();
 
     /* ── Phase 2: Reset all static/global state ── */
     g_stream_active = false;
@@ -469,17 +468,6 @@ void system_restart(bool after_factory_reset)
 
     /* ── Flash ring reinit ── */
     g_ring.reset();
-
-    /* BLE reinit */
-    json_begin();
-    json_kv("ev", "init");
-    Serial.print(','); json_kv("sub", "ble");
-    bool ble_ok = BLE.begin();
-    Serial.print(','); json_kv_bool("ok", ble_ok);
-    json_end();
-    if (!ble_ok) { while (1) delay(1000); }
-    sgc_ble_init();
-    sgc_ble_transfer_init();
 
     /* ── BHY2: sensor hub stays running across restart.
        Only reinit sensor handles — BHY2.begin() can't be called twice. */
