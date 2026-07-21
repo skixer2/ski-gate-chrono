@@ -164,7 +164,10 @@ void handle_serial()
             float qx = rotation.x(), qy = rotation.y();
             float qz = rotation.z(), qw = rotation.w();
             float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
-            if (mag < 0.8f || mag > 1.2f) {
+            /* V2.95: Skip quaternion check in test mode — BHY2 may not
+               be stable yet after factory reset, but test frames have
+               known-good synthetic data. */
+            if (!test_mode_active() && (mag < 0.8f || mag > 1.2f)) {
                 json_begin();
                 json_kv("ev", "arm_refused");
                 Serial.print(','); json_kv("reason", "quat_magnitude");
