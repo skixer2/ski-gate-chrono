@@ -235,9 +235,11 @@ void handle_serial()
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
-        /* V2.89: Deep power-down protects flash through reset.
-           Flash ignores all SPI commands in DP — CS glitch is harmless.
-           Released at boot in SPIFlash::begin() via 0xAB. */
+        /* V2.93: Force LittleFS superblock commit, then DP to protect
+           flash through reset. On Nicla dev board (no CS pull-up),
+           NVIC_SystemReset still floats CS → possible corruption.
+           On custom PCB with CS pull-up, this guarantees persistence. */
+        g_fs.metadata_sync();
         g_flash.enter_deep_powerdown();
         delay(50);
         NVIC_SystemReset();
@@ -253,6 +255,7 @@ void handle_serial()
         Serial.flush();
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
+        g_fs.metadata_sync();
         g_flash.enter_deep_powerdown();
         delay(50);
         NVIC_SystemReset();
@@ -616,6 +619,7 @@ void loop()
         Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
         json_end();
         g_fs.erase_all();
+        g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         g_flash.enter_deep_powerdown();
         delay(50);
