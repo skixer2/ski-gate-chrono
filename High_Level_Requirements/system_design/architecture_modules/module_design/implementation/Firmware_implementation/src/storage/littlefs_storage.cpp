@@ -285,12 +285,26 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     flush_write_buf();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"post_flush\"}"); Serial.flush();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"trailer_write\"}"); Serial.flush();
-    f->write(trailer, 6);
+    ssize_t tw = f->write(trailer, 6);
     Serial.println("{\"ev\":\"cbc\",\"at\":\"trailer_sync\"}"); Serial.flush();
-    f->sync();
+    int sc = f->sync();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"close\"}"); Serial.flush();
-    f->close(); delete f;
+    int cc = f->close();
+    delete f;
     m_file = nullptr; m_file_open = false;
+
+    /* V2.94: Verify file operations before adding RAM entry.
+       If write/sync/close failed, file may not be on flash. */
+    if (tw != 6 || sc != 0 || cc != 0) {
+        Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",");
+        Serial.print("\"final_wh\":\"CLOSE_ERR\",\"tw\":");
+        Serial.print((long)tw); Serial.print(",\"sc\":");
+        Serial.print(sc); Serial.print(",\"cc\":");
+        Serial.print(cc); Serial.println("}");
+        Serial.flush();
+        return 0xFFFF;
+    }
+
     int idx = find_entry_idx(run_id);
     if (idx < 0 && m_entry_count < MAX_ENTRIES) {
         idx = m_entry_count; m_entries[idx].run_id = run_id; m_entry_count++;
@@ -441,8 +455,10 @@ void LittleFSStorage::erase_all() {
     if (fs && m_bd) {
         auto* raw = static_cast<mbed::BlockDevice*>(m_bd);
         fs->unmount();
-        delete fs;
-        m_fs = nullptr;
+
+        /* V2.94: Reuse the existing LittleFileSystem2 object instead of
+           delete+new — avoids ~1KB heap allocation that caused OOM.
+           SlicingBlockDevice is recreated (small ~80-byte leak, acceptable). */
 
         /* Erase first 16 sectors (64KB) — covers superblock (blocks 0-1),
            root directory (2-3), and initial metadata. */
@@ -451,23 +467,21 @@ void LittleFSStorage::erase_all() {
         }
         delay(500);
 
-        auto* fs2 = new LittleFileSystem2("littlefs", NULL, 4096, 500, 256, 64);
         auto* sliced = new SlicingBlockDevice(raw, 0x4000, 0x1FC000);
-        int ref_err = fs2->reformat(sliced);
+        int ref_err = fs->reformat(sliced);
         if (ref_err != 0) {
             Serial.print("{\"ev\":\"erase_fail\",\"err\":");
             Serial.print(ref_err); Serial.println("}");
-            delete fs2; delete sliced;
+            delete sliced;
             return;
         }
-        ref_err = fs2->mount(sliced);
+        ref_err = fs->mount(sliced);
         if (ref_err != 0) {
             Serial.print("{\"ev\":\"erase_mnt\",\"err\":");
             Serial.print(ref_err); Serial.println("}");
-            delete fs2; delete sliced;
+            delete sliced;
             return;
         }
-        m_fs = fs2;
     }
     memset(m_entries, 0, sizeof(m_entries));
     m_entry_count = 0; m_next_run_id = 0; m_run_count = 0;
