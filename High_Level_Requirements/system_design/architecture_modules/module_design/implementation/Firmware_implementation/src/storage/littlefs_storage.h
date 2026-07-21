@@ -109,11 +109,11 @@ public:
 
     /* ── Queries ──────────────────────────────────────────────── */
 
-    /** Number of valid runs currently stored — scans filesystem. */
-    uint16_t run_count();
+    /** Number of valid runs currently stored. */
+    uint16_t run_count() const { return m_entry_count; }
 
     /** Total runs ever created (monotonic counter). */
-    uint16_t total_run_count();
+    uint16_t total_run_count() const { return m_next_run_id; }
 
     /** Flash used percentage (0-100). */
     uint8_t flash_used_pct() const;
@@ -173,6 +173,12 @@ public:
     static uint32_t crc32_initial()  { return 0xFFFFFFFF; }
     static uint32_t crc32_finalize(uint32_t crc) { return crc ^ 0xFFFFFFFF; }
 
+    /* V2.95: scan_runs() is public — called from status command (?)
+       to ensure flash-truth counts. NOT called during normal operation
+       (BLE updates, transitions) to avoid concurrent read+write on
+       files that may be open for logging. */
+    void scan_runs();
+
 private:
     /* Opaque pointers — mbed types included only in .cpp */
     void* m_fs;        /* mbed::LittleFileSystem2* */
@@ -205,7 +211,6 @@ private:
     uint16_t m_entry_count;
 
     /* Internal helpers */
-    void scan_runs();
     void write_run_list_entry(uint16_t id, const RunEntry& entry);
     int  find_entry_idx(uint16_t run_id) const;
     void remove_entry_at(int idx);

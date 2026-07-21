@@ -267,6 +267,7 @@ void handle_serial()
         int8_t batt = nicla::getBatteryVoltagePercentage();
         json_begin();
         json_kv("ev", "status");
+        g_fs.scan_runs();  /* V2.95: refresh from flash, not RAM cache */
         Serial.print(','); json_kv("st", g_sm.state_name());
         Serial.print(','); json_kv("r", (long)g_ring.count());
         Serial.print(','); json_kv("rm", (long)RING_SIZE);
