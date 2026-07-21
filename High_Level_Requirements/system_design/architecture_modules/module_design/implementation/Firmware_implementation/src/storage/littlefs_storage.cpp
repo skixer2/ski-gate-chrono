@@ -331,6 +331,16 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
 }
 
 /* ── Queries ────────────────────────────────────────────────── */
+uint16_t LittleFSStorage::run_count() {
+    scan_runs();  /* always verify against filesystem */
+    return m_entry_count;
+}
+
+uint16_t LittleFSStorage::total_run_count() {
+    scan_runs();
+    return m_next_run_id;
+}
+
 uint8_t LittleFSStorage::flash_used_pct() const {
     auto* fs = static_cast<LittleFileSystem2*>(m_fs);
     if (!fs) return 0;

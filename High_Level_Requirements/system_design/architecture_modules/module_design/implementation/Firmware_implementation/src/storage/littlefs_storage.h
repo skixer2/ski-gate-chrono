@@ -109,11 +109,11 @@ public:
 
     /* ── Queries ──────────────────────────────────────────────── */
 
-    /** Number of valid runs currently stored. */
-    uint16_t run_count() const { return m_entry_count; }
+    /** Number of valid runs currently stored — scans filesystem. */
+    uint16_t run_count();
 
     /** Total runs ever created (monotonic counter). */
-    uint16_t total_run_count() const { return m_next_run_id; }
+    uint16_t total_run_count();
 
     /** Flash used percentage (0-100). */
     uint8_t flash_used_pct() const;
