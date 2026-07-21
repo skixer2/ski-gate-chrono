@@ -13,10 +13,18 @@ SPIFlash::SPIFlash() : m_bd(nullptr), m_ok(false) {}
 
 bool SPIFlash::begin()
 {
-    /* V2.89: Release from DP FIRST — flash was put in deep power-down
-       before previous reset to survive CS glitches. Safe even on
-       cold boot (not in DP): 0xAB = Read Electronic ID in normal mode. */
+    /* V2.94: Three-phase initialization for robust recovery after reset.
+       1. Release DP (cold-boot safe — CS pulse does nothing if not in DP)
+       2. Hardware reset (0x66+0x99) — clears all volatile bits, ensures
+          flash is in power-on state regardless of what happened during reset
+       3. SPIFBlockDevice init + self_test */
     release_deep_powerdown();
+
+    /* V2.94: Reset flash to power-on defaults after DP release.
+       Critical for recovery after NVIC_SystemReset() — clears any
+       residual state (WEL, WIP, BP, QE) that could interfere with
+       subsequent operations. Cold boot: harmless no-op. */
+    reset_device();
 
     /* V2.29: Create explicit SPIFBlockDevice for MX25R1635F (SPI1:
      * p4 MOSI, p5 MISO, p3 SCK, p26 CS_FLASH). get_default_instance()
@@ -89,16 +97,21 @@ bool SPIFlash::self_test()
 }
 
 /* ==================================================================
- * V2.89: Deep Power-Down for NVIC_SystemReset() survival
+ * V2.94: Deep Power-Down + Hardware Reset for NVIC_SystemReset()
  *
  * nRF52832 GPIOs float during reset → CS glitches LOW → flash
  * interprets noise as SPI command → superblock corrupted → -138.
  *
- * DP mode (0xB9) makes flash ignore ALL commands except 0xAB.
- * Release (0xAB) at boot wakes it. Safe on cold boot too:
- * 0xAB = Read Electronic ID in normal mode (harmless dummy read).
+ * DP mode (0xB9) makes flash ignore ALL commands. However, MX25R
+ * exits DP on CS pulse (tCRDP), so floating CS during reset can
+ * still cause corruption.
  *
- * Uses nRF52 HW SPI1 (same peripheral as SPIFBlockDevice).
+ * V2.94 strategy:
+ *   Pre-reset: metadata_sync() → enter DP → NVIC_SystemReset()
+ *   Post-boot: CS pulse release → reset_device (0x66+0x99) → init
+ *
+ * The 0x66+0x99 (Reset Enable + Reset Device) restores flash to
+ * power-on defaults, clearing any residual state from reset glitches.
  * ================================================================== */
 
 void SPIFlash::enter_deep_powerdown()
@@ -133,30 +146,81 @@ void SPIFlash::enter_deep_powerdown()
 
 void SPIFlash::release_deep_powerdown()
 {
-    /* V2.91: Bit-bang 0xAB to release from DP at boot.
-       In DP mode: wakes flash. In normal mode (cold boot):
-       reads 1 byte Electronic ID — harmless dummy read. */
+    /* V2.94: Release from DP using CS pulse (tCRDP).
+       The MX25R1635F exits DP when CS is pulsed LOW then HIGH.
+       The 0xAB RDP command also works, but CS pulse is the primary
+       mechanism per datasheet and doesn't need MOSI clocking.
+       
+       Sequence: CS HIGH → CS LOW (>=tCRDP) → CS HIGH → wait tRDP (35µs)
+       
+       Also safe on cold boot (not in DP): a CS pulse is harmless
+       and the flash stays in standby mode. */
     pinMode(26, OUTPUT);
     pinMode(3, OUTPUT);
     pinMode(4, OUTPUT);
+    pinMode(5, INPUT_PULLUP);  /* MISO input — prevent floating */
+    digitalWrite(26, HIGH);    /* CS HIGH */
+    digitalWrite(3, LOW);      /* SCK LOW */
+    digitalWrite(4, HIGH);     /* MOSI HIGH — idle state */
+    delayMicroseconds(10);
+
+    /* CS LOW for tCRDP (datasheet doesn't give exact min, but 1µs is safe) */
+    digitalWrite(26, LOW);
+    delayMicroseconds(5);      /* well above any tCRDP minimum */
+    digitalWrite(26, HIGH);    /* CS↑ → flash exits DP */
+    delayMicroseconds(50);     /* tRDP = 35µs max, 50µs for safety */
+}
+
+/* ==================================================================
+ * V2.94: reset_device() — send 0x66 (RSTEN) + 0x99 (RST)
+ *
+ * Restores flash to power-on defaults: clears all volatile bits
+ * (WEL, WIP, BP, SRAM lock), returns to standby mode.
+ *
+ * Call this at boot AFTER DP release but BEFORE SPIFBlockDevice init
+ * to ensure flash is in a known clean state regardless of what
+ * happened during the previous reset.
+ *
+ * Sequence: CS↓, 0x66, CS↑, CS↓, 0x99, CS↑
+ * ================================================================== */
+void SPIFlash::reset_device()
+{
+    pinMode(26, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(4, OUTPUT);
+    pinMode(5, INPUT_PULLUP);
     digitalWrite(26, HIGH);  /* CS HIGH */
     digitalWrite(3, LOW);    /* SCK LOW */
     delayMicroseconds(10);
 
-    /* CS LOW → select flash */
+    /* Send 0x66 (Reset Enable), MSB first */
     digitalWrite(26, LOW);
     delayMicroseconds(1);
-
-    /* Send 0xAB (Release DP / Read Electronic ID), MSB first */
     for (int i = 7; i >= 0; i--) {
-        digitalWrite(4, (0xAB >> i) & 1);
+        digitalWrite(4, (0x66 >> i) & 1);
         delayMicroseconds(1);
         digitalWrite(3, HIGH);
         delayMicroseconds(1);
         digitalWrite(3, LOW);
     }
-
     delayMicroseconds(1);
-    digitalWrite(26, HIGH);  /* CS↑ → flash exits DP */
-    delayMicroseconds(50);   /* tDPDD = 35µs max */
+    digitalWrite(26, HIGH);  /* CS↑ */
+    delayMicroseconds(10);   /* inter-command gap */
+
+    /* Send 0x99 (Reset Device), MSB first */
+    digitalWrite(26, LOW);
+    delayMicroseconds(1);
+    for (int i = 7; i >= 0; i--) {
+        digitalWrite(4, (0x99 >> i) & 1);
+        delayMicroseconds(1);
+        digitalWrite(3, HIGH);
+        delayMicroseconds(1);
+        digitalWrite(3, LOW);
+    }
+    delayMicroseconds(1);
+    digitalWrite(26, HIGH);  /* CS↑ — reset executes */
+
+    /* tRST = ~30µs typ. for device to complete reset.
+       Flash returns to standby with all volatile bits cleared. */
+    delayMicroseconds(100);
 }

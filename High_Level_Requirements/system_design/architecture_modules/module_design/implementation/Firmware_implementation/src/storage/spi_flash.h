@@ -43,9 +43,12 @@ public:
 
     /* V2.89: Deep Power-Down for NVIC_SystemReset() survival.
        Flash ignores all SPI in DP — CS glitches during reset are harmless.
-       enter: before every reset. release: at boot before SPIFBlockDevice. */
+       enter: before every reset. release: at boot before SPIFBlockDevice.
+       V2.94: Added reset_device() — sends 0x66+0x99 to restore flash
+       to power-on defaults after DP release, clearing any residual state. */
     void enter_deep_powerdown();
     void release_deep_powerdown();
+    void reset_device();
 
 private:
     void* m_bd;    /* mbed::BlockDevice* */

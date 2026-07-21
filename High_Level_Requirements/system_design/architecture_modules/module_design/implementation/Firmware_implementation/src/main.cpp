@@ -235,9 +235,15 @@ void handle_serial()
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
-        /* V2.89: Deep power-down protects flash through reset.
-           Flash ignores all SPI commands in DP — CS glitch is harmless.
-           Released at boot in SPIFlash::begin() via 0xAB. */
+        /* V2.94: Pre-reset cleanup sequence:
+           1. Force superblock commit via metadata_sync()
+           2. Enter DP to protect flash during reset
+           3. NVIC_SystemReset()
+           
+           At boot: release DP via CS pulse, then reset_device()
+           (0x66+0x99) restores flash to clean power-on state
+           before SPIFBlockDevice init. */
+        g_fs.metadata_sync();
         g_flash.enter_deep_powerdown();
         delay(50);
         NVIC_SystemReset();
@@ -252,6 +258,8 @@ void handle_serial()
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         Serial.flush();
         g_fs.erase_all();
+        /* V2.94: After reformat, sync + DP to protect fresh superblock */
+        g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         g_flash.enter_deep_powerdown();
         delay(50);
@@ -616,6 +624,8 @@ void loop()
         Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
         json_end();
         g_fs.erase_all();
+        /* V2.94: After reformat, sync + DP to protect fresh superblock */
+        g_fs.metadata_sync();
         json_begin(); json_kv("ev", "reboot"); json_end();
         g_flash.enter_deep_powerdown();
         delay(50);

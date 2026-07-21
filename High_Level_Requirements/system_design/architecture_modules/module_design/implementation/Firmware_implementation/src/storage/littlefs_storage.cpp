@@ -80,8 +80,45 @@ bool LittleFSStorage::begin() {
        init/deinit are ref-counted — a second init() from mount() just
        bumps the count.  No deinit needed. */
 
-    /* Slice sectors 4–507 (reserve 508–511 for config).
-       For MX25R1635F (2MB): 504 sectors × 4096 bytes = 0x1FC000. */
+    /* ── V2.94: Raw superblock diagnostic ──
+       Read first 32 bytes from 0x4000 (LittleFS superblock location)
+       using the raw BlockDevice BEFORE trying LittleFS mount.
+       This tells us definitively whether:
+         - Data is intact (contains "littlefs" magic at offset 0 or 8)
+         - Data is corrupted (non-0xFF, non-magic, maybe partial)
+         - Data is erased (all 0xFF — never written, or block erased)
+         - Address translation is wrong (unexpected data pattern) */
+    {
+        uint8_t sb_raw[32];
+        memset(sb_raw, 0, sizeof(sb_raw));
+        int rd_err = raw->read(sb_raw, 0x4000, 32);
+        Serial.print("{\"ev\":\"sb_diag\",\"rd\":");
+        Serial.print(rd_err);
+        Serial.print(",\"hex\":\"");
+        for (size_t i = 0; i < 32; i++) {
+            if (sb_raw[i] < 0x10) Serial.print('0');
+            Serial.print(sb_raw[i], HEX);
+        }
+        Serial.print("\",\"ascii\":\"");
+        for (size_t i = 0; i < 32; i++) {
+            char ch = (sb_raw[i] >= 0x20 && sb_raw[i] < 0x7F) ? (char)sb_raw[i] : '.';
+            Serial.print(ch);
+        }
+        Serial.print("\",\"has_magic\":");
+        bool has_magic = (sb_raw[0]=='l' && sb_raw[1]=='i' && sb_raw[2]=='t' && sb_raw[3]=='t'
+                       && sb_raw[4]=='l' && sb_raw[5]=='e' && sb_raw[6]=='f' && sb_raw[7]=='s')
+                      || (sb_raw[8]=='l' && sb_raw[9]=='i' && sb_raw[10]=='t' && sb_raw[11]=='t'
+                       && sb_raw[12]=='l' && sb_raw[13]=='e' && sb_raw[14]=='f' && sb_raw[15]=='s');
+        Serial.print(has_magic ? "1" : "0");
+        /* Check if all 0xFF (erased) */
+        bool all_ff = true;
+        for (size_t i = 0; i < 32; i++) { if (sb_raw[i] != 0xFF) { all_ff = false; break; } }
+        Serial.print(",\"all_ff\":"); Serial.print(all_ff ? "1" : "0");
+        Serial.println("}");
+    }
+
+    /* Slice sectors 4–511 (reserve 0 for ring buffer).
+       For MX25R1635F (2MB): 508 sectors × 4096 bytes = 0x1FC000. */
     uint32_t stop = 0x1FC000;
     auto* sliced = new SlicingBlockDevice(raw, 0x4000, stop);
 
