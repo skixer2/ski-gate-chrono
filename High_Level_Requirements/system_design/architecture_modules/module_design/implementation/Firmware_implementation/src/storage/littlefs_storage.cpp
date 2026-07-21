@@ -100,10 +100,90 @@ bool LittleFSStorage::begin() {
         Serial.print(",\"sz\":"); Serial.print(sliced->size());
         Serial.print(",\"es\":"); Serial.print(sliced->get_erase_size());
         Serial.println("}");
-        /* V2.91: Auto-reformat — simplest path. DP should prevent
-           corruption across reset. If mount still fails, reformat. */
+
+        /* ── V2.95 (Gemini): Superblock Recovery ──
+         * LittleFS v2 stores paired metadata blocks. The superblock
+         * lives at logical blocks 0 and 1. If mount fails, the other
+         * copy may still be intact. We scan for valid superblock
+         * magic and try mounting from alternate locations.
+         *
+         * Recovery strategy:
+         *   1. Check block 1 (alternate in metadata pair)
+         *   2. Scan next 8 sectors for "littlefs" magic
+         *   3. If found, erase block 0, copy valid block → block 0
+         *   4. Retry mount
+         *   5. Only if ALL fail: reformat */
+
+        bool recovered = false;
+        uint32_t esize = sliced->get_erase_size();
+        uint32_t total_blocks = sliced->size() / esize;
+
+        /* Step 1: Read raw block 1 (alternate in metadata pair) */
+        {
+            uint8_t* buf = new uint8_t[esize];
+            if (raw->read(buf, 0x4000 + esize, esize) == 0) {
+                bool magic_ok = (buf[0]=='l'&&buf[1]=='i'&&buf[2]=='t'&&buf[3]=='t'
+                              && buf[4]=='l'&&buf[5]=='e'&&buf[6]=='f'&&buf[7]=='s');
+                if (magic_ok) {
+                    Serial.print("{\"ev\":\"sb_recover\",\"src\":"block_1");
+                    /* Erase block 0, copy block 1 → block 0 */
+                    if (raw->erase(0x4000, esize) == 0 &&
+                        raw->program(buf, 0x4000, esize) == 0) {
+                        recovered = true;
+                        Serial.print(",\"ok\":1");
+                    } else {
+                        Serial.print(",\"ok\":0");
+                    }
+                    Serial.println("}");
+                }
+            }
+            delete[] buf;
+        }
+
+        /* Step 2: If block 1 didn't work, scan sectors for magic */
+        if (!recovered) {
+            uint8_t* scan = new uint8_t[32];
+            for (uint32_t blk = 2; blk < 8 && !recovered; blk++) {
+                uint32_t addr = 0x4000 + blk * esize;
+                if (raw->read(scan, addr, 32) != 0) continue;
+                bool magic_ok = (scan[0]=='l'&&scan[1]=='i'&&scan[2]=='t'&&scan[3]=='t'
+                              && scan[4]=='l'&&scan[5]=='e'&&scan[6]=='f'&&scan[7]=='s');
+                if (!magic_ok) continue;
+
+                /* Found valid magic — read full block and copy to block 0 */
+                uint8_t* full = new uint8_t[esize];
+                if (raw->read(full, addr, esize) == 0) {
+                    Serial.print("{\"ev\":\"sb_recover\",\"src\":\"scan");
+                    Serial.print(blk); Serial.print("\"");
+                    if (raw->erase(0x4000, esize) == 0 &&
+                        raw->program(full, 0x4000, esize) == 0) {
+                        recovered = true;
+                        Serial.print(",\"ok\":1");
+                    } else {
+                        Serial.print(",\"ok\":0");
+                    }
+                    Serial.println("}");
+                }
+                delete[] full;
+            }
+            delete[] scan;
+        }
+
+        /* Retry mount if recovered */
+        if (recovered) {
+            err = fs->mount(sliced);
+            if (err == 0) {
+                Serial.println("{\"ev\":\"sb_recover\",\"ok\":1,\"mounted\":1}");
+                goto mounted;
+            }
+            Serial.print("{\"ev\":\"sb_recover\",\"ok\":0,\"remount_err\":");
+            Serial.print(err); Serial.println("}");
+        }
+
+        /* Step 3: Recovery failed → reformat (last resort) */
         Serial.print("{\"ev\":\"fs_reformat\",\"reason\":\"mount_fail_");
-        Serial.print(err); Serial.println("\"}");
+        Serial.print(err);
+        Serial.println(",\"recovered\":0}");
         int fmt_err = fs->reformat(sliced);
         if (fmt_err != 0) {
             Serial.print("{\"ev\":\"fs_reformat_fail\",\"err\":");
@@ -119,6 +199,7 @@ bool LittleFSStorage::begin() {
             return false;
         }
     }
+mounted:
     m_fs = fs;
     scan_runs();
     return true;
