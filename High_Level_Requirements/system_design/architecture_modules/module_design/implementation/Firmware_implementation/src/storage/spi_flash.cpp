@@ -89,16 +89,14 @@ bool SPIFlash::self_test()
 }
 
 /* ==================================================================
- * V2.89: Deep Power-Down for NVIC_SystemReset() survival
- *
- * nRF52832 GPIOs float during reset → CS glitches LOW → flash
- * interprets noise as SPI command → superblock corrupted → -138.
+ * V2.93 (DeepSeek): DP is now a belt-and-suspenders safety measure.
+ * We NO LONGER use NVIC_SystemReset() — instead do in-place restart
+ * (system_restart()). But we keep DP as a defensive layer in case
+ * any code path or future maintainer adds a hardware reset.
  *
  * DP mode (0xB9) makes flash ignore ALL commands except 0xAB.
  * Release (0xAB) at boot wakes it. Safe on cold boot too:
  * 0xAB = Read Electronic ID in normal mode (harmless dummy read).
- *
- * Uses nRF52 HW SPI1 (same peripheral as SPIFBlockDevice).
  * ================================================================== */
 
 void SPIFlash::enter_deep_powerdown()

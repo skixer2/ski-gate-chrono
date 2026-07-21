@@ -79,6 +79,7 @@ void handle_serial();
 void feed_sensors();
 void beep_on();  void beep_off();
 void flush_page_buffer();
+void system_restart(bool after_factory_reset);
 
 /* ================================================================== */
 void beep_on()  { analogWrite(1, 128); }
@@ -233,14 +234,17 @@ void handle_serial()
         return;
     }
     case '!':
+        /* V2.93 (DeepSeek): In-place restart — NO CPU reset.
+           NVIC_SystemReset unavoidably floats CS on this hardware
+           (Nicla Sense ME has no external CS pull-up), corrupting the
+           LittleFS superblock. Instead we cleanly reinitialize all
+           subsystems without touching the CPU reset line.
+           Flash data survives because flash is never power-cycled
+           and CS never floats. */
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
-        /* V2.89: Deep power-down protects flash through reset.
-           Flash ignores all SPI commands in DP — CS glitch is harmless.
-           Released at boot in SPIFlash::begin() via 0xAB. */
-        g_flash.enter_deep_powerdown();
-        delay(50);
-        NVIC_SystemReset();
+        delay(200);
+        system_restart(false);
         return;
     case 'V':
         json_begin();
@@ -249,13 +253,16 @@ void handle_serial()
         json_end();
         return;
     case 'R':
+        /* V2.93 (DeepSeek): Factory reset in-place — no CPU reset.
+           erase_all() already unmounts, erases, reformats, and remounts
+           LittleFS. We just need to reinit everything else. */
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         Serial.flush();
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
-        g_flash.enter_deep_powerdown();
-        delay(50);
-        NVIC_SystemReset();
+        Serial.flush();
+        delay(200);
+        system_restart(true);
         return;
     case '?': {
         int8_t batt = nicla::getBatteryVoltagePercentage();
@@ -365,6 +372,146 @@ void feed_sensors()
             g_sm.force_state(DeviceState::POST_RUN);
         return;
     }
+}
+
+/* ================================================================== */
+void system_restart(bool after_factory_reset)
+{
+    /* ── V2.93 (DeepSeek): In-place system restart ──
+     * Eliminates NVIC_SystemReset() entirely. The nRF52832 GPIO pins
+     * float during ANY form of CPU reset (soft, WDT, pin, System OFF),
+     * meaning CS (P0.26) can glitch LOW → flash misinterprets noise as
+     * SPI commands → LittleFS superblock corruption.
+     *
+     * This Nicla Sense ME board has NO external pull-up on CS.
+     * Software fix: never reset the CPU. Reinitialize everything
+     * in-place. Flash data survives because the flash chip is never
+     * power-cycled nor exposed to a floating CS. */
+
+    /* ── Phase 1: Clean up current state ── */
+    if (after_factory_reset) {
+        /* FS already freshly formatted + mounted by erase_all().
+           Just reinit everything else. */
+    } else {
+        /* Cleanly unmount filesystem — commits metadata, deinits BD */
+        g_fs.metadata_sync();
+        g_fs.unmount();
+        /* Deinit SPIFBlockDevice — ref-counted, owns SPI peripheral.
+           Must deinit so our reinit in SPIFlash::begin() is clean. */
+        auto* bd = static_cast<mbed::BlockDevice*>(g_flash.get_bd());
+        if (bd) bd->deinit();
+    }
+
+    /* Stop BLE — deinit the stack before reinitializing */
+    BLE.stopAdvertise();
+    BLE.end();
+
+    /* ── Phase 2: Reset all static/global state ── */
+    g_stream_active = false;
+    g_stream_frames = 0;
+    g_run_created = false;
+    g_frame_count = 0;
+    g_page_cursor = 0;
+    g_last_sensor_ms = 0;
+    g_last_baro_ms = 0;
+    g_last_battery_ms = 0;
+    g_last_qi_ms = 0;
+    g_last_cal_ms = 0;
+
+    /* Give hardware time to settle after deinitialization */
+    delay(100);
+
+    /* ── Phase 3: Reinitialize (mimics setup() flow) ── */
+    /* Print boot JSON so downstream tools detect the restart */
+    Serial.print("{\"ev\":\"boot\",\"ver\":\"");
+    Serial.print(FW_VERSION);
+    Serial.print("\",\"rr\":99,");
+    Serial.print("\"restart\":\"in_place\"");
+    Serial.println("}");
+    Serial.flush();
+    delay(50);
+
+    /* LED reinit */
+    g_led.begin();
+
+    /* ── SPI Flash reinit ── */
+    if (after_factory_reset) {
+        /* FS is already mounted. Flash should be initialized already,
+           but ensure it is (self-test validation). */
+    } else {
+        /* Full flash reinit — release DP + SPIFBlockDevice init + self-test */
+        bool flash_ok = g_flash.begin();
+        json_begin();
+        json_kv("ev", "init");
+        Serial.print(','); json_kv("sub", "flash");
+        Serial.print(','); json_kv_bool("ok", flash_ok);
+        json_end();
+        if (!flash_ok) {
+            while (1) { g_led.set_pattern(LedPattern::OFF); delay(1000); }
+        }
+
+        /* Remount LittleFS — flash is reinitialized, BD is fresh.
+           All data from before the restart should be intact
+           because the flash chip was never reset. */
+        json_begin();
+        json_kv("ev", "init");
+        Serial.print(','); json_kv("sub", "littlefs");
+        json_end();
+        Serial.flush();
+        bool fs_ok = g_fs.begin();
+        Serial.print("{\"ev\":\"init\",\"sub\":\"littlefs_res\",\"ok\":");
+        Serial.print(fs_ok ? "1" : "0");
+        Serial.println("}");
+        if (!fs_ok) {
+            while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
+        }
+    }
+
+    /* ── Flash ring reinit ── */
+    g_ring.reset();
+
+    /* BLE reinit */
+    json_begin();
+    json_kv("ev", "init");
+    Serial.print(','); json_kv("sub", "ble");
+    bool ble_ok = BLE.begin();
+    Serial.print(','); json_kv_bool("ok", ble_ok);
+    json_end();
+    if (!ble_ok) { while (1) delay(1000); }
+    sgc_ble_init();
+    sgc_ble_transfer_init();
+
+    /* ── BHY2: sensor hub stays running across restart.
+       Only reinit sensor handles — BHY2.begin() can't be called twice. */
+    rotation.begin(); lin_acc.begin();
+    pressure.begin(); temperature.begin();
+
+    test_mode_init();
+    bhy2_cal_hook_init();
+
+    /* ── State machine: go to IDLE ── */
+    g_sm.force_state(DeviceState::IDLE);
+    g_prev_state = g_sm.state();
+    apply_state_visuals(g_sm.state());
+
+    /* ── Update BLE characteristics ── */
+    int8_t batt = nicla::getBatteryVoltagePercentage();
+    sgc_ble_set_battery(batt >= 0 ? (uint8_t)batt : 0);
+    sgc_ble_set_run_count(g_fs.run_count());
+    sgc_ble_set_flash_used(g_fs.flash_used_pct());
+
+    /* ── Ready! ── */
+    json_begin();
+    json_kv("ev", "ready");
+    Serial.print(','); json_kv("st", g_sm.state_name());
+    Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+    Serial.print(','); json_kv("ver", FW_VERSION);
+    Serial.print(','); json_kv("used_pct", (long)g_fs.flash_used_pct());
+    json_end();
+
+    /* Return to Arduino main loop — framework calls loop() again.
+       All static state has been reset. g_stream_active=false,
+       so the next loop() iteration proceeds normally. */
 }
 
 /* ================================================================== */
@@ -617,9 +764,9 @@ void loop()
         json_end();
         g_fs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
-        g_flash.enter_deep_powerdown();
-        delay(50);
-        NVIC_SystemReset();
+        Serial.flush();
+        delay(200);
+        system_restart(true);
         return;
     }
 

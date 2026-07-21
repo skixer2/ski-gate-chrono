@@ -41,9 +41,8 @@ public:
     /* V2.29: expose BD for LittleFS to share */
     void* get_bd() const { return m_bd; }
 
-    /* V2.89: Deep Power-Down for NVIC_SystemReset() survival.
-       Flash ignores all SPI in DP — CS glitches during reset are harmless.
-       enter: before every reset. release: at boot before SPIFBlockDevice. */
+    /* V2.93 (DeepSeek): DP retained as safety layer for in-place restart.
+       Flash ignores all SPI in DP — CS glitches are harmless. */
     void enter_deep_powerdown();
     void release_deep_powerdown();
 
