@@ -192,6 +192,60 @@ void LittleFSStorage::scan_runs() {
         }
     }
     dir.close();
+
+    /* V3.01: Fallback — littlefs v2.0.2 Dir::read can miss entries
+       when metadata pairs are split/compacted during rapid create+close.
+       Try to find any runs that Dir::read missed by probing with
+       lfs2_stat (same path as File::open, which does traverse correctly).
+       Scan run IDs that the Dir::read entry count implies may exist. */
+    uint16_t dirents_found = dirent_count;
+    if (dirents_found <= 2 && m_entry_count == 0 && m_next_run_id == 0) {
+        /* No run_*.dat files found by Dir::read.
+           Try sequential IDs until we hit N consecutive misses. */
+        int consecutive_miss = 0;
+        for (uint16_t id = 0; id < 256 && consecutive_miss < 4; id++) {
+            char path[32]; make_run_path(id, path, sizeof(path));
+            struct stat st;
+            if (fs->stat(path, &st) != 0) {
+                consecutive_miss++;
+                continue;
+            }
+            consecutive_miss = 0;
+            if (!(st.st_mode & S_IFREG)) continue;
+            /* Found a run file bypassing Dir::read */
+            File file;
+            if (file.open(fs, path, O_RDONLY) != 0) continue;
+            RunHeader hdr;
+            if (file.read(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr))
+                { file.close(); continue; }
+            ssize_t file_sz = file.size();
+            file.close();
+            if (hdr.format_ver < 1 || hdr.format_ver > 3) continue;
+            if (hdr.arm_side > 1) continue;
+            uint32_t real_data_size = hdr.data_size;
+            uint16_t real_frame_count = hdr.frame_count;
+            if (hdr.format_ver >= 2) {
+                if (file_sz < 0 || (size_t)file_sz < sizeof(RunHeader) + CRC32_TRAILER_SIZE) continue;
+                real_data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
+                real_frame_count = 0;
+            } else {
+                if (hdr.data_size == 0) continue;
+            }
+            if ((uint16_t)id >= m_next_run_id) m_next_run_id = (uint16_t)id + 1;
+            if (m_entry_count < MAX_ENTRIES) {
+                RunEntry& e = m_entries[m_entry_count++];
+                e.run_id = (uint16_t)id; e.timestamp = hdr.ts_utc;
+                e.arm_side = hdr.arm_side; e.format_version = hdr.format_ver;
+                e.compressed_size = real_data_size; e.frame_count = real_frame_count;
+                e.page_start = 0; e.page_end = 0;
+                memset(e._reserved, 0, sizeof(e._reserved));
+                Serial.print("{\"ev\":\"scan_stat_found\",\"id\":");
+                Serial.print(id); Serial.print(",\"sz\":");
+                Serial.print((long)real_data_size); Serial.println("}");
+            }
+        }
+    }
+
     Serial.print("{\"ev\":\"scan_summary\",\"dirents\":");
     Serial.print(dirent_count);
     Serial.print(",\"entries\":");
@@ -310,29 +364,53 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     delete f;
     m_file = nullptr; m_file_open = false;
 
-    /* V2.98: Force directory metadata commit.
-       lfs_file_close() commits file metadata but littlefs batches
-       directory metadata — pending dir entries stay in cache.
-       mkdir()+remove() forces dir flush without File object overhead. */
+    /* V3.01: Verify file committed via stat (uses lfs2_dir_find, same
+       path as File::open — finds entries across metadata pair splits).
+       Does NOT force directory commit (read-only). Relies on
+       lfs2_file_sync inside lfs2_file_close to commit the dir entry.
+       
+       Previous V2.98 mkdir()+remove() approach CORRUPTED the filesystem
+       (LFS_ERR_CORRUPT on subsequent Dir::open). Root cause: rapid
+       mkdir→remove on the root dir triggers metadata-pair compaction
+       in littlefs v2.0.2, and the mlist manipulation in lfs2_remove
+       for directories can leave the metadata pair inconsistent.
+       
+       Instead, we verify correct commit via stat() and add a
+       persistent stash directory (created once, never removed).
+       Creating this dir on first close after format forces the
+       root dir metadata to flush any batched entries. */
     Serial.println("{\"ev\":\"cbc\",\"at\":\"dir_commit\"}"); Serial.flush();
     {
         auto* fs = static_cast<LittleFileSystem2*>(m_fs);
-        fs->remove("_sync_");
-        int mk = fs->mkdir("_sync_", 0755);
-        if (mk == 0 || mk == -EEXIST) {
-            fs->remove("_sync_");
-        }
-        /* Diagnostic: can we open the run file directly by path?
-           If this succeeds but Dir::read() misses it, Dir is broken. */
         char rpath[32]; make_run_path(run_id, rpath, sizeof(rpath));
-        File probe;
-        int p_open = probe.open(fs, rpath, O_RDONLY);
-        Serial.print("{\"ev\":\"cbc\",\"at\":\"probe\",\"path\":\"");
-        Serial.print(rpath);
-        Serial.print("\",\"open\":");
-        Serial.print(p_open);
+
+        /* V3.01: Verify the run file is committed.
+           lfs2_stat() uses lfs2_dir_find() — same internal path as
+           File::open(O_RDONLY) — which traverses ALL metadata pairs
+           including tails. This is the same code path that succeeds
+           in the probe, while Dir::read (lfs2_dir_read) can miss
+           entries in littlefs v2.0.2. */
+        struct stat st;
+        int stat_err = fs->stat(rpath, &st);
+        Serial.print("{\"ev\":\"cbc\",\"at\":\"stat_verify\",\"path\":\"");
+        Serial.print(rpath); Serial.print("\",\"err\":");
+        Serial.print(stat_err);
+        if (stat_err == 0) {
+            Serial.print(",\"sz\":"); Serial.print((long)st.st_size);
+        }
         Serial.println("}");
-        if (p_open == 0) probe.close();
+
+        /* V3.01: Create persistent sync directory on first post-format
+           close.  This forces the root directory to commit, flushing
+           any pending file entries from lfs2_file_sync's batched writes.
+           The directory persists for the life of the filesystem.
+           mkdir alone does NOT corrupt — the corruption in V2.98 was
+           from rapid mkdir→remove cycling. */
+        int mk = fs->mkdir(".sync", 0755);
+        if (mk != 0 && mk != -EEXIST) {
+            Serial.print("{\"ev\":\"cbc\",\"at\":\"mkdir_err\",\"err\":");
+            Serial.print(mk); Serial.println("}");
+        }
     }
 
     /* V2.94: Verify file operations before adding RAM entry.
