@@ -310,21 +310,17 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     delete f;
     m_file = nullptr; m_file_open = false;
 
-    /* V2.97: Force directory metadata commit.
+    /* V2.98: Force directory metadata commit.
        lfs_file_close() commits file metadata but littlefs batches
        directory metadata — pending dir entries stay in cache.
-       Touching a temp file forces dir metadata to flush to flash,
-       making the run file visible to subsequent directory scans.
-       This is NOT the same as metadata_sync() which just opens
-       the dir read-only (no commit triggered). */
+       mkdir()+remove() forces dir flush without File object overhead. */
     Serial.println("{\"ev\":\"cbc\",\"at\":\"dir_commit\"}"); Serial.flush();
     {
         auto* fs = static_cast<LittleFileSystem2*>(m_fs);
-        File tmp;
-        int t_open = tmp.open(fs, "_sync_.tmp", O_WRONLY | O_CREAT | O_TRUNC);
-        if (t_open == 0) {
-            tmp.close();
-            fs->remove("_sync_.tmp");
+        fs->remove("_sync_");           /* clean up from any prior crash */
+        int mk = fs->mkdir("_sync_");
+        if (mk == 0 || mk == -EEXIST) {
+            fs->remove("_sync_");
         }
     }
 
