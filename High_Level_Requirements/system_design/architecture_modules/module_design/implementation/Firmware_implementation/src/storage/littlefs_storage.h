@@ -181,7 +181,7 @@ public:
 
 private:
     /* Opaque pointers — mbed types included only in .cpp */
-    void* m_fs;        /* mbed::LittleFileSystem2* */
+    void* m_fs;        /* mbed::LittleFileSystem* */
     void* m_bd;        /* mbed::BlockDevice*        */
     void* m_file;      /* fs_file_t* (open during logging) */
 
