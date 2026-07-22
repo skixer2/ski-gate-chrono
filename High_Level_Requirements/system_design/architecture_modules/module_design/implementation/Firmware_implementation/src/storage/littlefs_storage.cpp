@@ -1,6 +1,6 @@
 /**
  * @file    littlefs_storage.cpp
- * @brief   Run storage via mbed LittleFileSystem2 on MX25R1635F.
+ * @brief   Run storage via mbed LittleFileSystem on MX25R1635F.
  *
  * Replaces FlashManager with wear-leveling filesystem.
  * LittleFS partitioned to sectors 4-511; flash ring uses sectors 0-3.
@@ -14,7 +14,7 @@
 #include <Arduino.h>
 #include <BlockDevice.h>
 #include <SlicingBlockDevice.h>
-#include <LittleFileSystem2.h>
+#include <LittleFileSystem.h>
 #include <File.h>
 #include <Dir.h>
 #include <cstring>
@@ -22,7 +22,7 @@
 
 using mbed::File;
 using mbed::Dir;
-using mbed::LittleFileSystem2;
+using mbed::LittleFileSystem;
 using mbed::SlicingBlockDevice;
 
 /* POSIX flags (correct values, overriding any system defines) */
@@ -43,7 +43,7 @@ using mbed::SlicingBlockDevice;
 
 /* ── Helpers ──────────────────────────────────────────────────── */
 static void make_run_path(uint16_t id, char* buf, size_t sz) {
-    snprintf(buf, sz, "runs/run_%u.dat", (unsigned)id);
+    snprintf(buf, sz, "run_%u.dat", (unsigned)id);
 }
 
 LittleFSStorage::LittleFSStorage()
@@ -62,7 +62,7 @@ LittleFSStorage::~LittleFSStorage() {
         delete static_cast<File*>(m_file);
     }
     if (m_fs) {
-        auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+        auto* fs = static_cast<LittleFileSystem*>(m_fs);
         fs->unmount();
         delete fs;
     }
@@ -85,11 +85,8 @@ bool LittleFSStorage::begin() {
     uint32_t stop = 0x1FC000;
     auto* sliced = new SlicingBlockDevice(raw, 0x4000, stop);
 
-    /* mbed-os 6.17 signature: LittleFileSystem2(name, bd, block_size,
-       block_cycles, cache_size, lookahead_size).
-       block_size=4096 matches flash erase size; cache_size=256 keeps
-       heap ~776 B (2×256 + 64B lookahead).  block_cycles=500 is sane. */
-    auto* fs = new LittleFileSystem2("littlefs", NULL, 4096, 500, 256, 64);
+    /* LittleFS v1 — Arduino example baseline, no v2 metadata-pair bug. */
+    auto* fs = new LittleFileSystem("littlefs");
     if (!fs) { delete sliced; return false; }
 
     int err = fs->mount(sliced);
@@ -120,18 +117,17 @@ bool LittleFSStorage::begin() {
         }
     }
     m_fs = fs;
-    fs->mkdir("runs", 0755);  /* ensure subdirectory exists; ignore EEXIST */
     scan_runs();
     return true;
 }
 
 /* ── scan_runs() ─────────────────────────────────────────────── */
 void LittleFSStorage::scan_runs() {
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     m_entry_count = 0; m_next_run_id = 0;
     memset(m_entries, 0, sizeof(m_entries));
     Dir dir;
-    int dir_err = dir.open(fs, "runs");
+    int dir_err = dir.open(fs, "/");
     if (dir_err != 0) {
         Serial.print("{\"ev\":\"scan_err\",\"err\":");
         Serial.print(dir_err);
@@ -262,7 +258,7 @@ void LittleFSStorage::scan_runs() {
 
 /* ── create_run() ────────────────────────────────────────────── */
 bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy) {
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) {
         Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_NO_FS\"}");
         return false;
@@ -371,7 +367,7 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
        filesystem-modifying operations (no mkdir, no temp files). */
     Serial.println("{\"ev\":\"cbc\",\"at\":\"stat_verify\"}"); Serial.flush();
     {
-        auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+        auto* fs = static_cast<LittleFileSystem*>(m_fs);
         char rpath[32]; make_run_path(run_id, rpath, sizeof(rpath));
         struct stat st;
         int stat_err = fs->stat(rpath, &st);
@@ -422,7 +418,7 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
 
 /* ── Queries ────────────────────────────────────────────────── */
 uint8_t LittleFSStorage::flash_used_pct() const {
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) return 0;
     struct statvfs st; memset(&st, 0, sizeof(st));
     if (fs->statvfs("/", &st) != 0 || st.f_blocks == 0) return 0;
@@ -435,7 +431,7 @@ uint32_t LittleFSStorage::oldest_run_age() const {
 
 /* ── File access ────────────────────────────────────────────── */
 bool LittleFSStorage::read_run_header(uint16_t run_id, RunHeader& hdr) const {
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) return false;
     char path[32]; make_run_path(run_id, path, sizeof(path));
     File file;
@@ -453,7 +449,7 @@ bool LittleFSStorage::read_run_header(uint16_t run_id, RunHeader& hdr) const {
     file.close(); return ok;
 }
 bool LittleFSStorage::read_run_data(uint16_t run_id, uint32_t offset, uint8_t* buf, size_t len) const {
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) return false;
     char path[32]; make_run_path(run_id, path, sizeof(path));
     File file;
@@ -500,7 +496,7 @@ void LittleFSStorage::remove_entry_at(int idx) {
 }
 void LittleFSStorage::delete_oldest_run() {
     if (m_entry_count == 0) return;
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) return;
     uint16_t oldest = 0;
     for (uint16_t i = 1; i < m_entry_count; i++)
@@ -517,7 +513,7 @@ void LittleFSStorage::unmount() {
         delete static_cast<File*>(m_file);
         m_file = nullptr; m_file_open = false;
     }
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (fs) {
         fs->unmount();
     }
@@ -527,7 +523,7 @@ void LittleFSStorage::metadata_sync() {
     /* Opening root dir for reading triggers a metadata commit
        in littlefs, flushing pending superblock/directory changes.
        lfs_unmount() alone does NOT commit metadata. */
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (fs) {
         Dir dir;
         dir.open(fs, "/");
@@ -557,7 +553,7 @@ void LittleFSStorage::erase_all() {
 }
 
 void LittleFSStorage::list_files() const {
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) { Serial.println("{\"ev\":\"ls\",\"err\":\"fs_null\"}"); return; }
     Dir dir;
     if (dir.open(fs, "/") != 0) { Serial.println("{\"ev\":\"ls\",\"err\":\"dir_open_failed\"}"); return; }
