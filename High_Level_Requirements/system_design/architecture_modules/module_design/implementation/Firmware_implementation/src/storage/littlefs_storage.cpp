@@ -364,53 +364,22 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     delete f;
     m_file = nullptr; m_file_open = false;
 
-    /* V3.01: Verify file committed via stat (uses lfs2_dir_find, same
-       path as File::open — finds entries across metadata pair splits).
-       Does NOT force directory commit (read-only). Relies on
-       lfs2_file_sync inside lfs2_file_close to commit the dir entry.
-       
-       Previous V2.98 mkdir()+remove() approach CORRUPTED the filesystem
-       (LFS_ERR_CORRUPT on subsequent Dir::open). Root cause: rapid
-       mkdir→remove on the root dir triggers metadata-pair compaction
-       in littlefs v2.0.2, and the mlist manipulation in lfs2_remove
-       for directories can leave the metadata pair inconsistent.
-       
-       Instead, we verify correct commit via stat() and add a
-       persistent stash directory (created once, never removed).
-       Creating this dir on first close after format forces the
-       root dir metadata to flush any batched entries. */
-    Serial.println("{\"ev\":\"cbc\",\"at\":\"dir_commit\"}"); Serial.flush();
+    /* V3.02: Dir::read() bug in littlefs v2.0.2 misses entries after
+       metadata compaction — scan_runs() has a stat-based fallback.
+       Stat-verify here confirms the file is readable without any
+       filesystem-modifying operations (no mkdir, no temp files). */
+    Serial.println("{\"ev\":\"cbc\",\"at\":\"stat_verify\"}"); Serial.flush();
     {
         auto* fs = static_cast<LittleFileSystem2*>(m_fs);
         char rpath[32]; make_run_path(run_id, rpath, sizeof(rpath));
-
-        /* V3.01: Verify the run file is committed.
-           lfs2_stat() uses lfs2_dir_find() — same internal path as
-           File::open(O_RDONLY) — which traverses ALL metadata pairs
-           including tails. This is the same code path that succeeds
-           in the probe, while Dir::read (lfs2_dir_read) can miss
-           entries in littlefs v2.0.2. */
         struct stat st;
         int stat_err = fs->stat(rpath, &st);
-        Serial.print("{\"ev\":\"cbc\",\"at\":\"stat_verify\",\"path\":\"");
-        Serial.print(rpath); Serial.print("\",\"err\":");
+        Serial.print("{\"ev\":\"cbc\",\"at\":\"probe\",\"err\":");
         Serial.print(stat_err);
         if (stat_err == 0) {
             Serial.print(",\"sz\":"); Serial.print((long)st.st_size);
         }
         Serial.println("}");
-
-        /* V3.01: Create persistent sync directory on first post-format
-           close.  This forces the root directory to commit, flushing
-           any pending file entries from lfs2_file_sync's batched writes.
-           The directory persists for the life of the filesystem.
-           mkdir alone does NOT corrupt — the corruption in V2.98 was
-           from rapid mkdir→remove cycling. */
-        int mk = fs->mkdir(".sync", 0755);
-        if (mk != 0 && mk != -EEXIST) {
-            Serial.print("{\"ev\":\"cbc\",\"at\":\"mkdir_err\",\"err\":");
-            Serial.print(mk); Serial.println("}");
-        }
     }
 
     /* V2.94: Verify file operations before adding RAM entry.
