@@ -319,6 +319,7 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
        the dir read-only (no commit triggered). */
     Serial.println("{\"ev\":\"cbc\",\"at\":\"dir_commit\"}"); Serial.flush();
     {
+        auto* fs = static_cast<LittleFileSystem2*>(m_fs);
         File tmp;
         int t_open = tmp.open(fs, "_sync_.tmp", O_WRONLY | O_CREAT | O_TRUNC);
         if (t_open == 0) {
