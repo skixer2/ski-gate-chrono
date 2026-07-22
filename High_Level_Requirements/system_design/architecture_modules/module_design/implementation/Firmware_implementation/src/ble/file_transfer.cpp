@@ -85,6 +85,14 @@ void sgc_ble_ft_on_request(uint16_t run_id)
         json_begin();
         json_kv("ev", "ft_error");
         Serial.print(','); json_kv("reason", "not_found");
+        Serial.print(','); json_kv("have", (long)g_fs.run_count());
+        /* Dump available entry IDs for debug */
+        Serial.print(",\"ids\":[");
+        for (uint16_t i = 0; i < g_fs.run_count(); i++) {
+            if (i) Serial.print(',');
+            Serial.print((long)g_fs.get_entry(i)->run_id);
+        }
+        Serial.print(']');
         json_end();
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
         return;
