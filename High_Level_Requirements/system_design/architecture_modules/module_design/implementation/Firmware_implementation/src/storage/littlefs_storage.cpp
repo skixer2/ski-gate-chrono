@@ -135,117 +135,36 @@ void LittleFSStorage::scan_runs() {
         return;
     }
     struct dirent ent;
-    int dirent_count = 0;
     while (dir.read(&ent) > 0) {
-        dirent_count++;
-        Serial.print("{\"ev\":\"scan_dirent\",\"n\":");
-        Serial.print(dirent_count);
-        Serial.print(",\"name\":\"");
-        Serial.print(ent.d_name);
-        Serial.println("\"}");
         unsigned id = 0;
-        if (sscanf(ent.d_name, "run_%5u.dat", &id) != 1 || id > 65535) {
-            Serial.print("{\"ev\":\"scan_skip\",\"name\":\"");
-            Serial.print(ent.d_name);
-            Serial.println("\",\"reason\":\"name_mismatch\"}");
-            continue;
-        }
+        if (sscanf(ent.d_name, "run_%5u.dat", &id) != 1 || id > 65535) continue;
         char path[32]; make_run_path((uint16_t)id, path, sizeof(path));
         File file;
         if (file.open(fs, path, O_RDONLY) != 0) continue;
         RunHeader hdr;
         if (file.read(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) { file.close(); continue; }
-        ssize_t file_sz = file.size();   /* V2.80: needed for format_ver=2 data_size */
+        ssize_t file_sz = file.size();
         file.close();
         if (hdr.format_ver < 1 || hdr.format_ver > 3) continue;
         if (hdr.arm_side > 1) continue;
-        /* V2.80 (H2 fix): format_ver>=2 uses append-only format.
-           data_size = file.size() - sizeof(RunHeader) - CRC32_TRAILER_SIZE.
-           Header data_size is always 0 — NOT a corruption indicator. */
         uint32_t real_data_size = hdr.data_size;
         uint16_t real_frame_count = hdr.frame_count;
         if (hdr.format_ver >= 2) {
             if (file_sz < 0 || (size_t)file_sz < sizeof(RunHeader) + CRC32_TRAILER_SIZE) continue;
             real_data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
-            real_frame_count = 0;  /* not stored on-disk for v2 */
-        } else {
-            /* format_ver=1 legacy — data_size=0 means COW cascade corruption */
-            if (hdr.data_size == 0) {
-                Serial.print("{\"ev\":\"scan_skip\",\"id\":");
-                Serial.print(id); Serial.print(",\"reason\":\"data_size=0\"}");
-                Serial.println();
-                continue;
-            }
-        }
+            real_frame_count = 0;
+        } else if (hdr.data_size == 0) continue;
         if ((uint16_t)id >= m_next_run_id) m_next_run_id = (uint16_t)id + 1;
         if (m_entry_count < MAX_ENTRIES) {
             RunEntry& e = m_entries[m_entry_count++];
             e.run_id = (uint16_t)id; e.timestamp = hdr.ts_utc;
             e.arm_side = hdr.arm_side; e.format_version = hdr.format_ver;
-            /* V2.80: use computed values for format_ver>=2 */
             e.compressed_size = real_data_size; e.frame_count = real_frame_count;
-            e.page_start = 0; e.page_end = 0;
-            memset(e._reserved, 0, sizeof(e._reserved));
         }
     }
     dir.close();
 
-    /* V3.01: Fallback — littlefs v2.0.2 Dir::read can miss entries
-       when metadata pairs are split/compacted during rapid create+close.
-       Try to find any runs that Dir::read missed by probing with
-       lfs2_stat (same path as File::open, which does traverse correctly).
-       Scan run IDs that the Dir::read entry count implies may exist. */
-    uint16_t dirents_found = dirent_count;
-    if (dirents_found <= 2 && m_entry_count == 0 && m_next_run_id == 0) {
-        /* No run_*.dat files found by Dir::read.
-           Try sequential IDs until we hit N consecutive misses. */
-        int consecutive_miss = 0;
-        for (uint16_t id = 0; id < 256 && consecutive_miss < 4; id++) {
-            char path[32]; make_run_path(id, path, sizeof(path));
-            struct stat st;
-            if (fs->stat(path, &st) != 0) {
-                consecutive_miss++;
-                continue;
-            }
-            consecutive_miss = 0;
-            if (!(st.st_mode & S_IFREG)) continue;
-            /* Found a run file bypassing Dir::read */
-            File file;
-            if (file.open(fs, path, O_RDONLY) != 0) continue;
-            RunHeader hdr;
-            if (file.read(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr))
-                { file.close(); continue; }
-            ssize_t file_sz = file.size();
-            file.close();
-            if (hdr.format_ver < 1 || hdr.format_ver > 3) continue;
-            if (hdr.arm_side > 1) continue;
-            uint32_t real_data_size = hdr.data_size;
-            uint16_t real_frame_count = hdr.frame_count;
-            if (hdr.format_ver >= 2) {
-                if (file_sz < 0 || (size_t)file_sz < sizeof(RunHeader) + CRC32_TRAILER_SIZE) continue;
-                real_data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
-                real_frame_count = 0;
-            } else {
-                if (hdr.data_size == 0) continue;
-            }
-            if ((uint16_t)id >= m_next_run_id) m_next_run_id = (uint16_t)id + 1;
-            if (m_entry_count < MAX_ENTRIES) {
-                RunEntry& e = m_entries[m_entry_count++];
-                e.run_id = (uint16_t)id; e.timestamp = hdr.ts_utc;
-                e.arm_side = hdr.arm_side; e.format_version = hdr.format_ver;
-                e.compressed_size = real_data_size; e.frame_count = real_frame_count;
-                e.page_start = 0; e.page_end = 0;
-                memset(e._reserved, 0, sizeof(e._reserved));
-                Serial.print("{\"ev\":\"scan_stat_found\",\"id\":");
-                Serial.print(id); Serial.print(",\"sz\":");
-                Serial.print((long)real_data_size); Serial.println("}");
-            }
-        }
-    }
-
-    Serial.print("{\"ev\":\"scan_summary\",\"dirents\":");
-    Serial.print(dirent_count);
-    Serial.print(",\"entries\":");
+    Serial.print("{\"ev\":\"scan_summary\",\"entries\":");
     Serial.print(m_entry_count);
     Serial.println("}");
     for (uint16_t i = 1; i < m_entry_count; i++) {
