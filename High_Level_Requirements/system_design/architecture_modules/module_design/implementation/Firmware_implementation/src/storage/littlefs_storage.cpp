@@ -318,7 +318,7 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     {
         auto* fs = static_cast<LittleFileSystem2*>(m_fs);
         fs->remove("_sync_");           /* clean up from any prior crash */
-        int mk = fs->mkdir("_sync_");
+        int mk = fs->mkdir("_sync_", 0755);
         if (mk == 0 || mk == -EEXIST) {
             fs->remove("_sync_");
         }
