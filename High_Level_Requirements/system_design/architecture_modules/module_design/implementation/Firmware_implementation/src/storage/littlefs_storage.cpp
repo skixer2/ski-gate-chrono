@@ -43,7 +43,7 @@ using mbed::SlicingBlockDevice;
 
 /* ── Helpers ──────────────────────────────────────────────────── */
 static void make_run_path(uint16_t id, char* buf, size_t sz) {
-    snprintf(buf, sz, "run_%u.dat", (unsigned)id);
+    snprintf(buf, sz, "runs/run_%u.dat", (unsigned)id);
 }
 
 LittleFSStorage::LittleFSStorage()
@@ -120,6 +120,7 @@ bool LittleFSStorage::begin() {
         }
     }
     m_fs = fs;
+    fs->mkdir("runs", 0755);  /* ensure subdirectory exists; ignore EEXIST */
     scan_runs();
     return true;
 }
@@ -130,7 +131,7 @@ void LittleFSStorage::scan_runs() {
     m_entry_count = 0; m_next_run_id = 0;
     memset(m_entries, 0, sizeof(m_entries));
     Dir dir;
-    int dir_err = dir.open(fs, "/");
+    int dir_err = dir.open(fs, "runs");
     if (dir_err != 0) {
         Serial.print("{\"ev\":\"scan_err\",\"err\":");
         Serial.print(dir_err);
@@ -535,41 +536,19 @@ void LittleFSStorage::metadata_sync() {
 }
 
 void LittleFSStorage::erase_all() {
+    /* Close any open file (C++ cleanup only, safe). */
     if (m_file_open && m_file) {
         static_cast<File*>(m_file)->close();
         delete static_cast<File*>(m_file);
         m_file = nullptr; m_file_open = false;
     }
-    auto* fs = static_cast<LittleFileSystem2*>(m_fs);
-    if (fs && m_bd) {
+    /* Erase raw sectors directly — NO LittleFS operations.
+       fs->unmount() / fs->reformat() can HardFault on corrupt metadata.
+       Boot init handles fresh format+mount. */
+    if (m_bd) {
         auto* raw = static_cast<mbed::BlockDevice*>(m_bd);
-        fs->unmount();
-
-        /* V2.94: Reuse the existing LittleFileSystem2 object instead of
-           delete+new — avoids ~1KB heap allocation that caused OOM.
-           SlicingBlockDevice is recreated (small ~80-byte leak, acceptable). */
-
-        /* Erase first 16 sectors (64KB) — covers superblock (blocks 0-1),
-           root directory (2-3), and initial metadata. */
         for (uint32_t addr = 0x4000; addr < 0x14000; addr += 4096) {
             raw->erase(addr, 4096);
-        }
-        delay(500);
-
-        auto* sliced = new SlicingBlockDevice(raw, 0x4000, 0x1FC000);
-        int ref_err = fs->reformat(sliced);
-        if (ref_err != 0) {
-            Serial.print("{\"ev\":\"erase_fail\",\"err\":");
-            Serial.print(ref_err); Serial.println("}");
-            delete sliced;
-            return;
-        }
-        ref_err = fs->mount(sliced);
-        if (ref_err != 0) {
-            Serial.print("{\"ev\":\"erase_mnt\",\"err\":");
-            Serial.print(ref_err); Serial.println("}");
-            delete sliced;
-            return;
         }
     }
     memset(m_entries, 0, sizeof(m_entries));
