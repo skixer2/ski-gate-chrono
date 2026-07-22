@@ -317,11 +317,22 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     Serial.println("{\"ev\":\"cbc\",\"at\":\"dir_commit\"}"); Serial.flush();
     {
         auto* fs = static_cast<LittleFileSystem2*>(m_fs);
-        fs->remove("_sync_");           /* clean up from any prior crash */
+        fs->remove("_sync_");
         int mk = fs->mkdir("_sync_", 0755);
         if (mk == 0 || mk == -EEXIST) {
             fs->remove("_sync_");
         }
+        /* Diagnostic: can we open the run file directly by path?
+           If this succeeds but Dir::read() misses it, Dir is broken. */
+        char rpath[32]; make_run_path(run_id, rpath, sizeof(rpath));
+        File probe;
+        int p_open = probe.open(fs, rpath, O_RDONLY);
+        Serial.print("{\"ev\":\"cbc\",\"at\":\"probe\",\"path\":\"");
+        Serial.print(rpath);
+        Serial.print("\",\"open\":");
+        Serial.print(p_open);
+        Serial.println("}");
+        if (p_open == 0) probe.close();
     }
 
     /* V2.94: Verify file operations before adding RAM entry.
