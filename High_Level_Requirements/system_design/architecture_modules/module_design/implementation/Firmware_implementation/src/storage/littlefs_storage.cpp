@@ -138,9 +138,21 @@ void LittleFSStorage::scan_runs() {
         return;
     }
     struct dirent ent;
+    int dirent_count = 0;
     while (dir.read(&ent) > 0) {
+        dirent_count++;
+        Serial.print("{\"ev\":\"scan_dirent\",\"n\":");
+        Serial.print(dirent_count);
+        Serial.print(",\"name\":\"");
+        Serial.print(ent.d_name);
+        Serial.println("\"}");
         unsigned id = 0;
-        if (sscanf(ent.d_name, "run_%5u.dat", &id) != 1 || id > 65535) continue;
+        if (sscanf(ent.d_name, "run_%5u.dat", &id) != 1 || id > 65535) {
+            Serial.print("{\"ev\":\"scan_skip\",\"name\":\"");
+            Serial.print(ent.d_name);
+            Serial.println("\",\"reason\":\"name_mismatch\"}");
+            continue;
+        }
         char path[32]; make_run_path((uint16_t)id, path, sizeof(path));
         File file;
         if (file.open(fs, path, O_RDONLY) != 0) continue;
@@ -180,6 +192,11 @@ void LittleFSStorage::scan_runs() {
         }
     }
     dir.close();
+    Serial.print("{\"ev\":\"scan_summary\",\"dirents\":");
+    Serial.print(dirent_count);
+    Serial.print(",\"entries\":");
+    Serial.print(m_entry_count);
+    Serial.println("}");
     for (uint16_t i = 1; i < m_entry_count; i++) {
         RunEntry key = m_entries[i]; int16_t j = (int16_t)i - 1;
         while (j >= 0 && m_entries[j].run_id > key.run_id)
