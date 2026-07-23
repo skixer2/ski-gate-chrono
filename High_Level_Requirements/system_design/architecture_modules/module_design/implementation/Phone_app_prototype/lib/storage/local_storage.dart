@@ -73,6 +73,7 @@ class LocalStorage {
     required String deviceName,
   }) async {
     final dir = await _dir;
+    debugPrint('[LocalStorage] Storage dir: ${dir.path}');
     final fileName = 'run_${runId}_${result.header.startTimestamp}.bin';
     final file = File('${dir.path}/$fileName');
     await file.writeAsBytes(compressedData);
