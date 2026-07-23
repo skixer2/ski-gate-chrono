@@ -429,6 +429,7 @@ void setup()
     Serial.print(','); json_kv_bool("bl_ok", g_ldc.baseline_valid());
     json_end();
     g_ldc.enable_interrupt();
+    g_ldc.force_recalibrate();  /* auto-calibrate baseline to current reading on every boot */
 
     /* ── BLE first — needs heap for thread before BHY2 exhausts it ── */
     json_begin();
