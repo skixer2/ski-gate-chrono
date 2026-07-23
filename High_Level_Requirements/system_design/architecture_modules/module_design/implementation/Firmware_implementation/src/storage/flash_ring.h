@@ -37,8 +37,9 @@ public:
     FlashRing(class SPIFlash& flash);
 
     void reset();                  /* erase all 4 blocks, reset pointers */
-    void write(const RawFrame& f); /* write one frame at HEAD */
+    void write(const RawFrame& f); /* write one frame at HEAD (stores millis() timestamp) */
     RawFrame read();               /* read oldest frame at TAIL (consumes) */
+    uint32_t last_read_ts() const { return m_last_ts; }  /* timestamp of last-read frame */
     bool peek(RawFrame& f) const;  /* read oldest frame at TAIL (no consume) */
 
     bool is_full()  const { return m_count >= MAX_COUNT; }
@@ -49,6 +50,16 @@ private:
     SPIFlash& m_flash;
     uint16_t  m_head;    /* next write slot (0..999) */
     uint16_t  m_count;   /* 0..500 */
+    uint32_t  m_last_ts; /* timestamp of last frame returned by read() */
+
+    /* ── Timestamp ring (parallel to flash slots) ──
+       uint16_t at 10 ms resolution gives 655 s window (ring holds 5 s).
+       1000 slots × 2 bytes = 2000 bytes RAM (~3%).
+       m_ts_wr indexes the write position (ring-invariant: m_ts_wr advances
+       on write, and read_idx = m_ts_wr - m_count always points to the
+       oldest entry's timestamp). */
+    uint16_t  m_ts[TOTAL_SLOTS];
+    uint16_t  m_ts_wr;    /* next write index in m_ts[] */
 
     uint16_t tail() const { return (m_head - m_count + TOTAL_SLOTS) % TOTAL_SLOTS; }
     uint32_t  slot_addr(uint16_t slot) const {

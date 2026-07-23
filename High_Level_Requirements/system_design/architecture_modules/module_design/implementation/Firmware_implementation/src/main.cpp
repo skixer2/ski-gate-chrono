@@ -352,7 +352,11 @@ void feed_sensors()
 
         for (uint8_t i = 0; i < pop_n; i++) {
             RawFrame oldest = g_ring.read();
-            g_packer.encode(oldest, millis());
+            /* V4.07: Use the frame's arrival timestamp (stored in the
+               ring at write time), not millis() at pop time.  When
+               popping 2 frames at once, both got the SAME millis() →
+               second frame had delta=0 → ~50% time loss. */
+            g_packer.encode(oldest, g_ring.last_read_ts());
             uint8_t cf_size = g_packer.last_size();
             const uint8_t* cf_buf = g_packer.buffer();
 
