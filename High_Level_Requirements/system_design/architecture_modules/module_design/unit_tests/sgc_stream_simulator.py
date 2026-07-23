@@ -641,6 +641,7 @@ class SGCDevice:
             "actual_fps": sent / elapsed if elapsed > 0 else 0,
             "target_fps": FRAME_RATE_HZ,
         }
+        self.frames_sent = sent  # for verify_run lost-frames calculation
         print(f"\n   Done: {sent} frames in {elapsed:.1f}s ({stats['actual_fps']:.0f} fps)")
         return stats
 
@@ -720,7 +721,14 @@ class SGCDevice:
 
         if stream_end:
             se = stream_end[-1]
-            print(f"   Stream end: {se.get('fn')} frames, {se.get('lost')} lost")
+            received = se.get("frames", 0)
+            sent = getattr(self, "frames_sent", 0)
+            lost = sent - received if sent > 0 else 0
+            if sent > 0:
+                print(f"   Stream end: {received}/{sent} frames received"
+                      f" ({lost} lost, {lost/sent*100:.1f}%)")
+            else:
+                print(f"   Stream end: {received} frames")
 
         if timeout_events:
             print("   Timeout events:")
