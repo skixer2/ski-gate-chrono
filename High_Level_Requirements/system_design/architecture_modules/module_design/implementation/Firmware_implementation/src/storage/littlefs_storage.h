@@ -115,6 +115,9 @@ public:
     /** Total runs ever created (monotonic counter). */
     uint16_t total_run_count() const { return m_next_run_id; }
 
+    /** Compressed bytes written to current open run (before CRC trailer). */
+    uint32_t run_bytes() const { return m_run_bytes; }
+
     /** Flash used percentage (0-100). */
     uint8_t flash_used_pct() const;
 

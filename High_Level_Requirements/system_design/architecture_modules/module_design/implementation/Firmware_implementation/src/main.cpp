@@ -566,6 +566,7 @@ void loop()
                     while (Serial.available()) Serial.read();
                 }
                 flush_page_buffer();
+                uint32_t compressed_sz = g_fs.run_bytes(); /* capture before close_run zeroes it */
                 uint16_t run_id = g_fs.close_run(g_frame_count);
                 /* V4.03: Drain AGAIN after close_run(). The SPI flash
                    operations (flush, write trailer, sync) take 50-200ms
@@ -577,6 +578,7 @@ void loop()
                 json_begin(); json_kv("ev", "run_saved");
                 Serial.print(','); json_kv("id", (long)run_id);
                 Serial.print(','); json_kv("fr", (long)g_frame_count);
+                Serial.print(','); json_kv("sz", (long)compressed_sz);
                 Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
                 Serial.print(','); json_kv("runs", (long)g_fs.run_count());
                 json_end();
@@ -715,6 +717,7 @@ void loop()
             BLE.advertise();
             flush_page_buffer();
 
+            uint32_t compressed_sz = g_fs.run_bytes(); /* capture before close_run zeroes it */
             uint16_t run_id = g_fs.close_run(g_frame_count);
 
             sgc_ble_set_run_count(g_fs.run_count());
@@ -724,6 +727,7 @@ void loop()
             json_kv("ev", "run_saved");
             Serial.print(','); json_kv("id", (long)run_id);
             Serial.print(','); json_kv("fr", (long)g_frame_count);
+            Serial.print(','); json_kv("sz", (long)compressed_sz);
             Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
             long diag = run_id != 0xFFFF ? 0
                       : (!g_run_created ? 1 : 2);

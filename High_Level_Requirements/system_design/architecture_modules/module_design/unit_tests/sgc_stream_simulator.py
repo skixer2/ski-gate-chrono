@@ -28,7 +28,7 @@ Binary frame format (little-endian, 38 bytes total, at 100 Hz):
   [float32:lax] [float32:lay] [float32:laz]
 """
 
-SIM_VERSION = "2.19.0"
+SIM_VERSION = "2.19.1"
 
 import argparse
 import hashlib
@@ -511,6 +511,7 @@ class SGCDevice:
             return False
         # Split complete lines; keep the trailing partial for next poll.
         *lines, self._rx_partial = self._rx_partial.split(b"\n")
+        early = getattr(self, "early_events", [])
         for raw in lines:
             line = raw.decode("ascii", errors="replace").strip()
             if not line.startswith("{"):
@@ -519,6 +520,10 @@ class SGCDevice:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            # V4.03: Forward ALL events to early_events so verify_run() can
+            # see run_created, cbc, close_trace, run_saved etc. Previously
+            # only boot/bc were captured; everything else was silently lost.
+            early.append(obj)
             ev = obj.get("ev", "")
             if ev == "bc":
                 self.breadcrumbs.append(obj)
