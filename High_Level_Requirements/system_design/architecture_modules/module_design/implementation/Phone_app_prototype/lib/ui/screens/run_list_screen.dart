@@ -6,6 +6,7 @@ import '../../ble/ble_manager.dart' hide ScanResult;
 import '../../ble/sgc_service.dart';
 import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
+import '../../storage/local_storage.dart';
 import '../../models/device_config.dart';
 import 'run_detail_screen.dart';
 
@@ -17,12 +18,20 @@ class RunListScreen extends StatefulWidget {
 
 class _RunListScreenState extends State<RunListScreen> {
   final _ble = BLEManager();
+  final _storage = LocalStorage();
   SGCService? _sgc;
   DeviceConfig? _config;
   int _runCount = 0;
   bool _isConnecting = false;
   bool _isScanning = false;
   bool _isDownloading = false;
+  List<SavedRun> _localRuns = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocalRuns();
+  }
 
   @override
   void dispose() {
@@ -140,6 +149,30 @@ class _RunListScreenState extends State<RunListScreen> {
     });
   }
 
+  Future<void> _loadLocalRuns() async {
+    final runs = await _storage.listAll();
+    if (mounted) setState(() => _localRuns = runs);
+  }
+
+  Future<void> _openLocalRun(SavedRun run) async {
+    final data = await _storage.load(run.fileName);
+    if (data == null || !mounted) return;
+
+    final decompressor = Decompressor();
+    final decoded = decompressor.decompressFull(data);
+
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RunDetailScreen(
+            result: decoded,
+            deviceName: run.deviceName,
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _downloadRuns() async {
     if (_sgc == null || _isDownloading) return;
     setState(() => _isDownloading = true);
@@ -178,6 +211,17 @@ class _RunListScreenState extends State<RunListScreen> {
       // Decompress
       final decompressor = Decompressor();
       final decoded = decompressor.decompressFull(result.compressedData);
+
+      // Save to local storage
+      await _storage.save(
+        runId: latest.id,
+        compressedData: result.compressedData,
+        result: decoded,
+        deviceName: _config?.deviceName ?? 'SGC',
+      );
+
+      // Reload local runs list
+      await _loadLocalRuns();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -241,16 +285,41 @@ class _RunListScreenState extends State<RunListScreen> {
       ),
       body: isConnected
           ? _buildConnectedView()
-          : const Center(
-              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.timer_off, size: 64, color: Colors.grey),
-                SizedBox(height: 16),
-                Text('No runs yet', style: TextStyle(fontSize: 18, color: Colors.grey)),
-                SizedBox(height: 8),
-                Text('Connect a device via BLE to download runs',
-                    style: TextStyle(color: Colors.grey)),
-              ]),
-            ),
+          : _localRuns.isEmpty
+              ? const Center(
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.timer_off, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text('No runs yet', style: TextStyle(fontSize: 18, color: Colors.grey)),
+                    SizedBox(height: 8),
+                    Text('Connect a device via BLE to download runs',
+                        style: TextStyle(color: Colors.grey)),
+                  ]),
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Card(
+                      color: Colors.blue.shade50,
+                      child: const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Row(children: [
+                          Icon(Icons.info_outline, size: 18, color: Colors.blue),
+                          SizedBox(width: 8),
+                          Expanded(child: Text('Connect a device to download more runs',
+                              style: TextStyle(color: Colors.blue, fontSize: 13))),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      child: Text('Saved Runs (${_localRuns.length})',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                    ),
+                    ..._localRuns.map(_buildLocalRunTile),
+                  ],
+                ),
       floatingActionButton: _isConnecting
           ? const FloatingActionButton.extended(
               onPressed: null,
@@ -298,13 +367,44 @@ class _RunListScreenState extends State<RunListScreen> {
             leading: _isDownloading
                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.download),
-            title: const Text('Download Runs'),
+            title: const Text('Download Latest Run'),
             subtitle: Text(_isDownloading ? 'Transferring…' : 'Transfer runs from device'),
             trailing: const Icon(Icons.chevron_right),
             onTap: (_runCount > 0 && !_isDownloading) ? _downloadRuns : null,
           ),
         ),
+        // ── Local runs section ──
+        if (_localRuns.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Text('Saved Runs (${_localRuns.length})',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+          ),
+          ..._localRuns.map(_buildLocalRunTile),
+        ],
       ],
+    );
+  }
+
+  Widget _buildLocalRunTile(SavedRun run) {
+    final dateStr = DateTime.fromMillisecondsSinceEpoch(run.timestamp * 1000, isUtc: true)
+        .toLocal().toString().substring(0, 16);
+    final durStr = '${(run.durationSec ~/ 60).toString().padLeft(2, '0')}:'
+        '${(run.durationSec % 60).toStringAsFixed(1).padLeft(4, '0')}';
+
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          run.side == 'right' ? Icons.arrow_forward : Icons.arrow_back,
+          color: Colors.blue.shade400,
+        ),
+        title: Text('Run #${run.id} — $durStr',
+            style: const TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Text('$dateStr · ${run.frameCount} frames · ${run.deviceName}'),
+        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+        onTap: () => _openLocalRun(run),
+      ),
     );
   }
 
