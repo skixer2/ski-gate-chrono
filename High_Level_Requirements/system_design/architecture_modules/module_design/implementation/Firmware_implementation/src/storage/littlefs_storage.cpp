@@ -325,13 +325,9 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":");
     Serial.print(m_entry_count); Serial.print(",\"run_count\":");
     Serial.print(m_next_run_id); Serial.println("}");
-    /* run_saved for test harness compatibility */
-    Serial.print("{\"ev\":\"run_saved\",\"ok\":1,\"id\":");
-    Serial.print(run_id); Serial.print(",\"fr\":");
-    Serial.print(frame_count); Serial.print(",\"sz\":");
-    Serial.print(run_sz); Serial.print(",\"wh\":0,\"ec\":");
-    Serial.print(m_entry_count); Serial.print(",\"tc\":");
-    Serial.print(m_next_run_id); Serial.println("}");
+    /* V4.03: run_saved is emitted by main.cpp (single source of truth).
+       The duplicate run_saved here was stale (wh:0) and was picked up
+       first by the test harness, masking the real values. */
     return run_id;
 }
 

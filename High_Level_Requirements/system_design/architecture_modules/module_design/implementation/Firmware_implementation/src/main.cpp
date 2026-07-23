@@ -268,7 +268,10 @@ void handle_serial()
         json_begin();
         json_kv("ev", "status");
         g_fs.metadata_sync();  /* flush pending directory commits */
-        g_fs.scan_runs();  /* refresh from flash, not RAM cache */
+        /* V4.03: Do NOT call scan_runs() here — it wipes the RAM cache
+           that close_run() just populated. The RAM cache is authoritative
+           during operation (close_run adds entries, delete_oldest_run
+           removes them). scan_runs() is for boot-time initialization only. */
         Serial.print(','); json_kv("st", g_sm.state_name());
         Serial.print(','); json_kv("r", (long)g_ring.count());
         Serial.print(','); json_kv("rm", (long)RING_SIZE);
@@ -466,6 +469,14 @@ void setup()
 
     g_sm.force_state(DeviceState::IDLE);
     g_prev_state = g_sm.state();
+    /* V4.03: Reset timestamps to current millis(). On nRF52 warm resets
+       (NVIC_SystemReset), static variables retain their values. If
+       g_last_baro_ms was e.g. 45000 from before reset and millis()
+       restarts at ~0, "now - g_last_baro_ms" underflows unsigned,
+       firing start-detection immediately with stale sensor data. */
+    g_last_baro_ms   = millis();
+    g_last_sensor_ms = millis();
+    g_last_battery_ms = millis();
     apply_state_visuals(g_sm.state());
 
     int8_t batt = nicla::getBatteryVoltagePercentage();
@@ -540,9 +551,27 @@ void loop()
                     Serial.print(','); json_kv("frames", (long)g_stream_frames);
                     json_end();
                     g_stream_frames = 0;
+                    /* V4.03: Drain serial RX buffer NOW. Stream frames were
+                       arriving at 100 Hz through handle_serial()'s stream
+                       parser.  After g_stream_active=false, ANY remaining
+                       bytes go through the NORMAL command parser where
+                       random payload bytes match real commands:
+                         'l' (0x6C) → force LOGGING  ← THE BUG
+                         'i' (0x69) → force IDLE
+                         'R' (0x52) → factory reset
+                         'p' (0x70) → force POST_RUN
+                         '!' (0x21) → reboot
+                       Drain them immediately — before close_run() which
+                       takes 100ms+ and lets more bytes accumulate. */
+                    while (Serial.available()) Serial.read();
                 }
                 flush_page_buffer();
                 uint16_t run_id = g_fs.close_run(g_frame_count);
+                /* V4.03: Drain AGAIN after close_run(). The SPI flash
+                   operations (flush, write trailer, sync) take 50-200ms
+                   during which more stream frames may have arrived.
+                   Catch them before the normal path's handle_serial(). */
+                while (Serial.available()) Serial.read();
                 sgc_ble_set_run_count(g_fs.run_count());
                 sgc_ble_set_flash_used(g_fs.flash_used_pct());
                 json_begin(); json_kv("ev", "run_saved");
