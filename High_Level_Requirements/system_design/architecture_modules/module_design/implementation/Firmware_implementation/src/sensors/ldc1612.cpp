@@ -56,16 +56,16 @@ static constexpr uint32_t DEFAULT_ARM_HOLD_MS      = 1000;
 static constexpr uint32_t DEFAULT_FACTORY_HOLD_MS  = 20000;
 static constexpr uint32_t TICK_PERIOD_MS           = 20;
 
-/* Phase 11: EWMA auto-recalibration — time constant ≈ 1.3 s at 20 ms ticks.
-   When a target IS present, use a much slower EWMA (÷4096, τ ≈ 82 s)
+/* Phase 11: EWMA auto-recalibration — time constant ~1.3 s at 20 ms ticks.
+   Shifts of 1/64 per tick are invisible against a real target (delta >> 500),
+   but absorb the ~0.5-3 count/min drift of the LC tank with temperature.
+
+   When a target IS present, use a much slower EWMA (1/4096, tau ~82 s)
    so a stale baseline slowly recovers without affecting normal arming. */
 static constexpr uint8_t  BASELINE_EWMA_SHIFT      = 6;       /* ÷64 per tick — no target */
-static constexpr uint8_t  BASELINE_EWMA_SHIFT_PROX = 12;      /* ÷4096 per tick — target present */
- * Shifts of 1/64 per tick are invisible against a real target (Δ ≫ 500),
- * but absorb the ~0.5–3 count/min drift of the LC tank with temperature. */
-static constexpr uint8_t  BASELINE_EWMA_SHIFT      = 6;       /* ÷64 per tick */
+static constexpr uint8_t  BASELINE_EWMA_SHIFT_PROX = 12;      /* div 4096 per tick — target present */
 
-/* I²C */
+/* I2C */
 static constexpr uint8_t  I2C_ADDR = 0x2B;
 static constexpr uint32_t I2C_CLK  = 100000;
 
