@@ -28,7 +28,7 @@ Binary frame format (little-endian, 38 bytes total, at 100 Hz):
   [float32:lax] [float32:lay] [float32:laz]
 """
 
-SIM_VERSION = "2.19.1"
+SIM_VERSION = "2.20.0"
 
 import argparse
 import hashlib
@@ -57,9 +57,7 @@ FRAME_RATE_HZ = 100
 FRAME_PERIOD_S = 1.0 / FRAME_RATE_HZ
 SYNC_WORD = b'\xAA\x55'   # 2-byte sync: avoids false positives from float data
 SYNC_LEN = 2
-# V2.14: end-of-stream is now a FRAMED sentinel frame whose frame_num field is
-# 0xFFFFFFFF, sent through the same 0xAA 0x55 sync + 36B payload discipline so
-# payload data can never spuriously trigger end-of-stream.
+# V4.06: No sentinel — natural end detection (5s flatline) ends the stream.
 FRAME_BYTES = 18  # 2B sync + 16B RawFrame
 
 # SGC start detector (from start_detector.h)
@@ -608,30 +606,33 @@ class SGCDevice:
                 print(f"   {sent}/{total} ({sent/total*100:.0f}%) "
                       f"@ {rate:.0f} fps, ΔP={delta_p:.2f} hPa")
 
-        # End-of-stream sentinel: all-zeros RawFrame (16B). A real frame
-        # can never have all zeros (quat magnitude = 0 is invalid).
-        sentinel_payload = b'\x00' * 16
-        # V2.17 harness: the sentinel is the LAST frame on the wire — it arrives
-        # exactly when the device RX buffer is most congested, so it can be
-        # dropped (v2.15/v2.16 runs showed NO stream_end at all → device stuck
-        # in stream mode → '?' eaten by the frame parser). Send it, wait for the
-        # stream_end ack, resend up to 3 times. Any JSON captured while waiting
-        # is stashed in self.early_events for verify_run() to merge.
+        # V4.06: No sentinel — wait for natural end detection.
+        # After frames stop, the firmware feeds the last frame's pressure
+        # to the end detector at 0.5 Hz. It needs 10 samples (5 s) of
+        # <2 m descent. The flatline phase provides ~2 s during streaming;
+        # we wait up to 10 s for the remaining samples.
         self.early_events = getattr(self, "early_events", [])
+        print(f"\n   Waiting for natural end detection (up to 10s)...")
+        wait_deadline = time.time() + 10.0
         got_end = False
-        for attempt in range(3):
-            self.ser.write(SYNC_WORD + sentinel_payload)
-            self.ser.flush()
-            for r in self.read_json_lines(2.0):
+        while time.time() < wait_deadline:
+            for r in self.read_json_lines(1.0):
                 self.early_events.append(r)
                 if r.get("ev") == "stream_end":
                     got_end = True
             if got_end:
                 break
-            print(f"   ⚠ no stream_end ack — resending sentinel "
-                  f"(attempt {attempt + 2}/3)")
-        if not got_end:
-            print("   ⚠ stream_end NEVER acked — device may still be in stream mode")
+            # Also check for end detection via state transition
+            for r in self.early_events:
+                if r.get("ev") == "st" and r.get("to") == "POST_RUN":
+                    got_end = True
+            if got_end:
+                break
+        if got_end:
+            elapsed_end = time.time() - t0
+            print(f"   End detected {elapsed_end:.1f}s after stream start")
+        else:
+            print("   ⚠ End detection never fired — device may be stuck")
 
         elapsed = time.perf_counter() - t0
         stats = {

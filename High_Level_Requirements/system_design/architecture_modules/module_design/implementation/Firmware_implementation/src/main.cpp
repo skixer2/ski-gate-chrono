@@ -139,19 +139,11 @@ void handle_serial()
                     g_stream_spos = 0;
                     RawFrame rf;
                     memcpy(&rf, g_stream_sbuf + 2, sizeof(RawFrame));
-                    /* All-zeros = sentinel (quat magnitude 0 is physically
-                       impossible).  Emit stream_end for the test harness. */
-                    if (rf.q_w == 0 && rf.q_x == 0 && rf.q_y == 0 && rf.q_z == 0
-                     && rf.la_x == 0 && rf.la_y == 0 && rf.la_z == 0
-                     && rf.baro_pa_div2 == 0) {
-                        g_stream_active = false;
-                        g_stream_spos = 0;
-                        json_begin(); json_kv("ev", "stream_end");
-                        Serial.print(','); json_kv("frames", (long)g_stream_frames);
-                        json_end();
-                        g_stream_frames = 0;
-                        return;
-                    }
+                    /* V4.06: No sentinel — natural end detection (5s flat
+                       pressure) handles stream exit. Sentinels were a
+                       test-only concept not present in production.
+                       When frames stop arriving, the last frame's pressure
+                       feeds the end detector until it fires. */
                     test_set_frame(rf);
                     g_stream_frames++;
                 }
