@@ -7,6 +7,7 @@ import '../../ble/sgc_service.dart';
 import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
 import '../../storage/local_storage.dart';
+import '../../config/app_version.dart';
 import '../../models/device_config.dart';
 import 'run_detail_screen.dart';
 
@@ -272,7 +273,14 @@ class _RunListScreenState extends State<RunListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Runs'),
+        title: Row(
+          children: [
+            const Text('Runs'),
+            const Spacer(),
+            Text('v$APP_VERSION',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontWeight: FontWeight.normal)),
+          ],
+        ),
         actions: isConnected
             ? [
                 IconButton(
