@@ -629,7 +629,7 @@ class SGCDevice:
             if got_end:
                 break
         if got_end:
-            elapsed_end = time.time() - t0
+            elapsed_end = time.perf_counter() - t0
             print(f"   End detected {elapsed_end:.1f}s after stream start")
         else:
             print("   ⚠ End detection never fired — device may be stuck")
