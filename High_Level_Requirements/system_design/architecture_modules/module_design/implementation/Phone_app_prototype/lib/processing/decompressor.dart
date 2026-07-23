@@ -152,9 +152,13 @@ class Decompressor {
       accMs += (deltaMs & 0x03FF);
       final baroPa = baroPaDiv2 * 2.0;  // Pa/2 → Pa
 
-      // Compute altitude with sanity clamping (prevents spikes at run boundaries)
+      // Compute altitude (temporarily unclamped for spike debugging)
       double alt = 44330 * (1 - _pow(baroPa / 101325, 0.1903));
-      alt = alt.clamp(-500.0, 5000.0);  // ski-racing range
+
+      // Debug: log extreme pressure values
+      if (alt > 4000 || alt < -200) {
+        debugPrint('[Decompressor] SPIKE: alt=$alt baroPa=$baroPa baroDiv2=$baroPaDiv2 frame=${frames.length}');
+      }
 
       frames.add(SensorFrame(
         msFromStart: accMs,

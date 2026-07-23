@@ -391,6 +391,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                 child: Text(
                   '${f.msFromStart.toString().padLeft(6)}ms | '
                   'alt:${f.baroAltitudeM.toStringAsFixed(1)}m | '
+                  'Pa:${f.baroPressurePa.toStringAsFixed(0)} | '
                   'q:(${f.qW.toStringAsFixed(3)},${f.qX.toStringAsFixed(3)},${f.qY.toStringAsFixed(3)},${f.qZ.toStringAsFixed(3)}) | '
                   'la:(${f.laX.toStringAsFixed(0)},${f.laY.toStringAsFixed(0)},${f.laZ.toStringAsFixed(0)})',
                   style: TextStyle(
