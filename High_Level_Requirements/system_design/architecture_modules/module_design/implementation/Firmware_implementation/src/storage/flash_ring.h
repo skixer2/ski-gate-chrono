@@ -52,14 +52,13 @@ private:
     uint16_t  m_count;   /* 0..500 */
     uint32_t  m_last_ts; /* timestamp of last frame returned by read() */
 
-    /* ── Timestamp ring (parallel to flash slots) ──
-       uint16_t at 10 ms resolution gives 655 s window (ring holds 5 s).
-       1000 slots × 2 bytes = 2000 bytes RAM (~3%).
-       m_ts_wr indexes the write position (ring-invariant: m_ts_wr advances
-       on write, and read_idx = m_ts_wr - m_count always points to the
-       oldest entry's timestamp). */
-    uint16_t  m_ts[TOTAL_SLOTS];
-    uint16_t  m_ts_wr;    /* next write index in m_ts[] */
+    /* ── Timestamp ring (parallel to flash slots, but only MAX_COUNT
+       entries — the ring never holds more than 500 active frames).
+       uint16_t at 10 ms resolution; uint32_t write counter avoids wrap
+       for 136 years at 100 Hz. 500 × 2 = 1000 bytes RAM (~1.5%).
+       Index: write at m_ts_wr % MAX_COUNT, read at (m_ts_wr - m_count) % MAX_COUNT. */
+    uint16_t  m_ts[MAX_COUNT];
+    uint32_t  m_ts_wr;    /* write counter (monotonic, modulo MAX_COUNT for array index) */
 
     uint16_t tail() const { return (m_head - m_count + TOTAL_SLOTS) % TOTAL_SLOTS; }
     uint32_t  slot_addr(uint16_t slot) const {

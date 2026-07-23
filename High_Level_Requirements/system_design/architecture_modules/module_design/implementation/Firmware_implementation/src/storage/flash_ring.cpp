@@ -36,7 +36,7 @@ void FlashRing::write(const RawFrame& f)
 {
     /* ── Timestamp: store now at 10 ms resolution ── */
     uint16_t ts16 = (uint16_t)(millis() / 10);
-    uint16_t ts_idx = (uint16_t)(m_ts_wr % TOTAL_SLOTS);
+    uint16_t ts_idx = (uint16_t)(m_ts_wr % MAX_COUNT);
     m_ts[ts_idx] = ts16;
     m_ts_wr++;
 
@@ -71,10 +71,11 @@ RawFrame FlashRing::read()
     m_flash.read_data(slot_addr(t), (uint8_t*)&f, sizeof(RawFrame));
     m_count--;
 
-    /* ── Retrieve stored timestamp (arrival time, not pop time) ── */
-    int32_t ts_ri = (int32_t)m_ts_wr - (int32_t)(m_count + 1);
-    if (ts_ri < 0) ts_ri += TOTAL_SLOTS;
-    uint16_t ts16 = m_ts[(uint16_t)(ts_ri % TOTAL_SLOTS)];
+    /* ── Retrieve stored timestamp (arrival time, not pop time) ──
+       m_ts_wr is the write counter (monotonic). The oldest frame's
+       timestamp was written at m_ts_wr - m_count - 1 (before this
+       read decrements m_count).  Map to array via % MAX_COUNT. */
+    uint16_t ts16 = m_ts[(uint16_t)((m_ts_wr - m_count - 1) % MAX_COUNT)];
     /* Reconstruct uint32_t millis() from uint16_t at 10ms resolution.
        The ring spans 5 s (500 frames × 10 ms), so no wrap correction
        needed — zero-extension is correct for this window. */
