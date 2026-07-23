@@ -699,6 +699,11 @@ void loop()
             g_page_cursor = 0;
             g_run_created = false;
         }
+        if (cur == DeviceState::SLEEP) {
+            /* Recalibrate LDC baseline on sleep entry — device is
+               unattended, definitely no athlete nearby. */
+            g_ldc.force_recalibrate();
+        }
         if (cur == DeviceState::LOGGING) {
             /* V2.80 (H4 fix): Suspend BLE advertising during logging.
                BLE TX current peaks (5-12mA) combined with flash page

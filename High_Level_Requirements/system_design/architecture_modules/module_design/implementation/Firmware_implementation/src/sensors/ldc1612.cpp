@@ -57,6 +57,10 @@ static constexpr uint32_t DEFAULT_FACTORY_HOLD_MS  = 20000;
 static constexpr uint32_t TICK_PERIOD_MS           = 20;
 
 /* Phase 11: EWMA auto-recalibration — time constant ≈ 1.3 s at 20 ms ticks.
+   When a target IS present, use a much slower EWMA (÷4096, τ ≈ 82 s)
+   so a stale baseline slowly recovers without affecting normal arming. */
+static constexpr uint8_t  BASELINE_EWMA_SHIFT      = 6;       /* ÷64 per tick — no target */
+static constexpr uint8_t  BASELINE_EWMA_SHIFT_PROX = 12;      /* ÷4096 per tick — target present */
  * Shifts of 1/64 per tick are invisible against a real target (Δ ≫ 500),
  * but absorb the ~0.5–3 count/min drift of the LC tank with temperature. */
 static constexpr uint8_t  BASELINE_EWMA_SHIFT      = 6;       /* ÷64 per tick */
@@ -219,6 +223,12 @@ void LDC1612::detect_proximity(uint32_t raw)
             m_status = Status::FACTORY_HOLD;
         else if (m_proximity_ms >= m_arm_hold_ms)
             m_status = Status::ARMED;
+        /* Slow EWMA even during proximity — recovers from stale baseline
+           over ~82s without affecting real athlete detection (τ<< hold time). */
+        int64_t ewma = (int64_t)m_baseline +
+                       (((int64_t)raw - (int64_t)m_baseline) >> BASELINE_EWMA_SHIFT_PROX);
+        m_baseline = (uint32_t)ewma;
+        m_baseline_valid = true;
     } else {
         m_status = Status::NO_TARGET;
         m_proximity_ms = 0;
