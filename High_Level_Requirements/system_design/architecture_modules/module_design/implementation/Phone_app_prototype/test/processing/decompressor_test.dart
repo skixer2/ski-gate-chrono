@@ -3,6 +3,9 @@ import 'package:sgc_phone/processing/decompressor.dart';
 import 'dart:typed_data';
 import '../data/synthetic_data.dart';
 
+/// Q14 scale from synthetic_data (must match decompressor's _quatScale).
+const quatScale = 16384;
+
 void main() {
   group('RunHeader.parse', () {
     test('parses a valid 16-byte header', () {
@@ -39,7 +42,8 @@ void main() {
     test('decodes a single Type 3 frame', () {
       // First frame of any run is always Type 3 (anchor, full baro)
       // baro=50000 (100kPa/2), all-zero IMU values
-      final frame1 = encodeType3Frame(10, 50000, [0, 0, 0, 0, 0, 0, 0]);
+      // Q14 quaternion: 200/16384 ≈ 0.0122
+      final frame1 = encodeType3Frame(10, 50000, [200, 150, -100, 50, 800, -400, 600]);
       final header = buildRunHeader();
       final data = Uint8List.fromList([...header, ...frame1]);
 
@@ -47,11 +51,11 @@ void main() {
       expect(frames.length, equals(1));
       expect(frames[0].msFromStart, equals(10));
       expect(frames[0].baroPressurePa, closeTo(100000.0, 1.0)); // 50000*2
-      expect(frames[0].qW, closeTo(0.0, 0.01));
+      expect(frames[0].qW, closeTo(200 / quatScale, 0.0001));
     });
 
     test('accumulates 4-bit deltas across frames', () {
-      // Frame 1: qW=+2, qX=0, qY=0, qZ=0
+      // Frame 1: qW=+2, qX=0, qY=0, qZ=0 (deltas in Q14 space)
       final f1 = encodeType1Frame(10, 50000, [2, 0, 0, 0, 0, 0, 0]);
       // Frame 2: qW=+1, qX=+3, qY=-2 (4-bit signed), qZ=0
       final f2 = encodeType1Frame(10, 50000, [1, 3, -2, 0, 0, 0, 0]);
@@ -61,14 +65,12 @@ void main() {
 
       final frames = Decompressor().decompress(data);
       expect(frames.length, equals(3));
-      // Frame 0: start all zero + [2,0,0,0,...] = [2,0,0,0,...]
-      // Frame 1: previous + [1,3,-2,0,...] = [3,3,-2,0,...]
-      // Frame 2: previous + [0,0,0,0,...] = [3,3,-2,0,...]
-      expect(frames[0].qW, closeTo(2.0, 0.01));
-      expect(frames[1].qW, closeTo(3.0, 0.01)); // 2+1
-      expect(frames[1].qX, closeTo(3.0, 0.01)); // 0+3
-      expect(frames[1].qY, closeTo(-2.0, 0.01)); // 0-2
-      expect(frames[2].qW, closeTo(3.0, 0.01)); // stayed
+      // Q14 scaling: raw/16384
+      expect(frames[0].qW, closeTo(2 / quatScale, 0.0001));
+      expect(frames[1].qW, closeTo(3 / quatScale, 0.0001)); // 2+1
+      expect(frames[1].qX, closeTo(3 / quatScale, 0.0001)); // 0+3
+      expect(frames[1].qY, closeTo(-2 / quatScale, 0.0001)); // 0-2
+      expect(frames[2].qW, closeTo(3 / quatScale, 0.0001)); // stayed
     });
 
     test('sign-extends negative 4-bit values', () {
@@ -77,10 +79,10 @@ void main() {
       final data = Uint8List.fromList([...header, ...f1]);
 
       final frames = Decompressor().decompress(data);
-      expect(frames[0].qW, closeTo(-1.0, 0.01));
-      expect(frames[0].qX, closeTo(-2.0, 0.01));
-      expect(frames[0].qY, closeTo(-3.0, 0.01));
-      expect(frames[0].qZ, closeTo(-4.0, 0.01));
+      expect(frames[0].qW, closeTo(-1 / quatScale, 0.0001));
+      expect(frames[0].qX, closeTo(-2 / quatScale, 0.0001));
+      expect(frames[0].qY, closeTo(-3 / quatScale, 0.0001));
+      expect(frames[0].qZ, closeTo(-4 / quatScale, 0.0001));
       expect(frames[0].laX, closeTo(-5.0, 0.01));
       expect(frames[0].laY, closeTo(-6.0, 0.01));
       expect(frames[0].laZ, closeTo(-7.0, 0.01));
@@ -96,20 +98,22 @@ void main() {
 
       final frames = Decompressor().decompress(data);
       expect(frames.length, equals(2));
-      expect(frames[0].qW, closeTo(50.0, 0.01));
-      expect(frames[0].qX, closeTo(-30.0, 0.01));
-      expect(frames[0].qY, closeTo(20.0, 0.01));
-      expect(frames[0].qZ, closeTo(-10.0, 0.01));
+      // Q14 scaling: raw/16384
+      expect(frames[0].qW, closeTo(50 / quatScale, 0.0001));
+      expect(frames[0].qX, closeTo(-30 / quatScale, 0.0001));
+      expect(frames[0].qY, closeTo(20 / quatScale, 0.0001));
+      expect(frames[0].qZ, closeTo(-10 / quatScale, 0.0001));
       expect(frames[0].laX, closeTo(5.0, 0.01));
       expect(frames[0].laY, closeTo(-5.0, 0.01));
       expect(frames[0].laZ, closeTo(3.0, 0.01));
-      // Second frame: no change (deltas stay)
-      expect(frames[1].qW, closeTo(50.0, 0.01));
+      // Second frame: no change
+      expect(frames[1].qW, closeTo(50 / quatScale, 0.0001));
     });
   });
 
   group('Decompressor.decompress — Type 3 (16-bit absolute)', () {
     test('decodes absolute quaternion + acceleration values', () {
+      // Q14 scaled: 200/16384, 150/16384, etc.
       final absVals = [200, 150, -100, 50, 800, -400, 600];
       final f1 = encodeType3Frame(10, 50000, absVals);
       final header = buildRunHeader();
@@ -117,17 +121,17 @@ void main() {
 
       final frames = Decompressor().decompress(data);
       expect(frames.length, equals(1));
-      expect(frames[0].qW, closeTo(200.0, 0.01));
-      expect(frames[0].qX, closeTo(150.0, 0.01));
-      expect(frames[0].qY, closeTo(-100.0, 0.01));
-      expect(frames[0].qZ, closeTo(50.0, 0.01));
+      expect(frames[0].qW, closeTo(200 / quatScale, 0.0001));
+      expect(frames[0].qX, closeTo(150 / quatScale, 0.0001));
+      expect(frames[0].qY, closeTo(-100 / quatScale, 0.0001));
+      expect(frames[0].qZ, closeTo(50 / quatScale, 0.0001));
       expect(frames[0].laX, closeTo(800.0, 0.01));
       expect(frames[0].laY, closeTo(-400.0, 0.01));
       expect(frames[0].laZ, closeTo(600.0, 0.01));
     });
 
     test('Type 3 resets accumulator (absolute, not delta)', () {
-      // Type 2 frame sets qW=50
+      // Type 2 frame sets qW=50 in Q14 space
       final f1 = encodeType2Frame(10, 50000, [50, 0, 0, 0, 0, 0, 0]);
       // Type 3 frame sets qW=100 (absolute, not 50+100)
       final f2 = encodeType3Frame(10, 50000, [100, 0, 0, 0, 0, 0, 0]);
@@ -135,7 +139,7 @@ void main() {
       final data = Uint8List.fromList([...header, ...f1, ...f2]);
 
       final frames = Decompressor().decompress(data);
-      expect(frames[1].qW, closeTo(100.0, 0.01)); // absolute, not 150
+      expect(frames[1].qW, closeTo(100 / quatScale, 0.0001)); // absolute, not 150
     });
   });
 

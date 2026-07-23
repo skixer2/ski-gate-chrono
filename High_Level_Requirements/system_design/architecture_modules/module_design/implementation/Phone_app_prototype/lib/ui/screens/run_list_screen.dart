@@ -7,6 +7,7 @@ import '../../ble/sgc_service.dart';
 import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
 import '../../models/device_config.dart';
+import 'run_detail_screen.dart';
 
 class RunListScreen extends StatefulWidget {
   const RunListScreen({super.key});
@@ -187,6 +188,17 @@ class _RunListScreenState extends State<RunListScreen> {
               '(${decoded.totalDurationSec.toStringAsFixed(1)}s)',
             ),
             backgroundColor: Colors.green,
+          ),
+        );
+
+        // Navigate to detail screen
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RunDetailScreen(
+              result: decoded,
+              deviceName: _config?.deviceName,
+              armSide: _config?.armSide,
+            ),
           ),
         );
       }

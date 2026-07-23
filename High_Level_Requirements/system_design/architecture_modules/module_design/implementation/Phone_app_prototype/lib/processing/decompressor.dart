@@ -59,13 +59,20 @@ class Decompressor {
   final int formatVersion;
   Decompressor({this.formatVersion = 2});
 
+  /// Quaternion scale factor: firmware stores Q14 fixed-point (÷16384).
+  static const double _quatScale = 16384.0;
+
   /// Parse header and decompress in one call.
   /// Strips the 6-byte CRC32 trailer (magic + CRC32) before decompression.
   DecompressResult decompressFull(Uint8List compressed) {
     final header = RunHeader.parse(compressed);
-    // Strip CRC32 trailer (6 bytes) to avoid garbage frames at end
+    // Strip CRC32 trailer (6 bytes: 0xC3 0x32 + 4-byte CRC32) to avoid garbage frames at end
     final dataLen = compressed.length - 6;
-    final dataOnly = (dataLen > 16) ? compressed.sublist(0, dataLen) : compressed;
+    // Only strip if trailer is valid (magic bytes present)
+    final hasTrailer = compressed.length >= 22 &&
+        compressed[compressed.length - 6] == 0xC3 &&
+        compressed[compressed.length - 5] == 0x32;
+    final dataOnly = hasTrailer ? compressed.sublist(0, compressed.length - 6) : compressed;
     final frames = decompress(dataOnly);
     final totalMs = frames.isNotEmpty ? frames.last.msFromStart.toDouble() : 0.0;
     return DecompressResult(
@@ -80,6 +87,7 @@ class Decompressor {
   /// v2.4 (Phase 11): Baro is now delta-encoded in the payload,
   /// NOT in the header.  Header is 2 bytes (was 4).
   /// Baro scaling: Pa/2 (was Pa/4).
+  /// Quaternion: Q14 fixed-point (÷16384).
   List<SensorFrame> decompress(Uint8List compressed) {
     final frames = <SensorFrame>[];
     if (compressed.length < 16) return frames;
@@ -92,6 +100,7 @@ class Decompressor {
 
     while (offset + 2 <= compressed.length) {
       // Header: 2 bytes (was 4 in v2.3)
+      // bits 15-14: packet type, 13-10: sequence counter, 9-0: delta ms
       final deltaMs = compressed[offset] | (compressed[offset + 1] << 8);
       final pktType = (deltaMs >> 14) & 0x03;
       offset += 2;
@@ -120,7 +129,7 @@ class Decompressor {
         laZ += compressed[offset + 6].toSigned(8).toDouble();
         baroPaDiv2 += compressed[offset + 7].toSigned(8);
         offset += 8;
-      } else {
+      } else if (pktType == 0) {
         // Type 1: 8×int4 (7 IMU deltas + 1 baro_delta) = 4 bytes
         if (offset + 4 > compressed.length) break;
         final b0 = compressed[offset], b1 = compressed[offset + 1];
@@ -134,6 +143,10 @@ class Decompressor {
         laZ += _signExt4(b3 >> 4).toDouble();
         baroPaDiv2 += _signExt4(b3 & 0x0F);
         offset += 4;
+      } else {
+        // Unknown pktType (3) — skip this frame to avoid data corruption
+        debugPrint('[Decompressor] Unknown pktType=$pktType at offset ${offset - 2}, skipping');
+        break;
       }
 
       accMs += (deltaMs & 0x03FF);
@@ -141,7 +154,10 @@ class Decompressor {
 
       frames.add(SensorFrame(
         msFromStart: accMs,
-        qW: qW, qX: qX, qY: qY, qZ: qZ,
+        qW: qW / _quatScale,
+        qX: qX / _quatScale,
+        qY: qY / _quatScale,
+        qZ: qZ / _quatScale,
         laX: laX, laY: laY, laZ: laZ,
         baroPressurePa: baroPa,
         baroAltitudeM: 44330 * (1 - _pow(baroPa / 101325, 0.1903)),

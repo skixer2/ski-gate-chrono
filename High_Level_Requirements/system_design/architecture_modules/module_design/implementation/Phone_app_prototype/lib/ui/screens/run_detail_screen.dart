@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../processing/decompressor.dart';
 import '../../processing/gate_time_estimator.dart';
 import '../../processing/impact_detector.dart';
@@ -49,22 +50,27 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
   }
 
   void _processRun() {
-    final frames = widget.result.frames;
-    if (frames.isEmpty) return;
+    try {
+      final frames = widget.result.frames;
+      if (frames.isEmpty) return;
 
-    // Compute decimated 10 Hz barometric data with vertical speed.
-    _baroData = _computeBaroData(frames);
+      // Compute decimated 10 Hz barometric data with vertical speed.
+      _baroData = _computeBaroData(frames);
 
-    // Detect impacts
-    final detector = ImpactDetector(multiplier: 2.5, baselineWindow: 50);
-    final impacts = detector.detect(frames);
+      // Detect impacts
+      final detector = ImpactDetector(multiplier: 2.5, baselineWindow: 50);
+      final impacts = detector.detect(frames);
 
-    // Estimate gate timestamps (Bronze tier: no course map)
-    final estimator = GateTimeEstimator(
-      course: null, // Bronze tier for now
-      knownImpacts: impacts,
-    );
-    _gateTimestamps = estimator.estimate(frames);
+      // Estimate gate timestamps (Bronze tier: no course map)
+      final estimator = GateTimeEstimator(
+        course: null, // Bronze tier for now
+        knownImpacts: impacts,
+      );
+      _gateTimestamps = estimator.estimate(frames);
+    } catch (e, stack) {
+      debugPrint('[RunDetail] _processRun error: $e\n$stack');
+      _gateTimestamps = [];
+    }
   }
 
   /// Decimate 100 Hz frames to 10 Hz barometric points with vertical speed.
@@ -168,7 +174,29 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
                   ]),
                 )
               : _gateTimestamps.isEmpty
-                  ? const Center(child: Text('Processing…'))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Icon(Icons.speed, size: 48, color: Colors.orange.shade300),
+                          SizedBox(height: 16),
+                          Text('No gates detected', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500)),
+                          SizedBox(height: 12),
+                          Text(
+                            '${frames.length} frames decoded but no gate crossings found.\n\n'
+                            'This may indicate:\n'
+                            '• Sensor calibration not yet complete\n'
+                            '• Run too short (< 1 second)\n'
+                            '• Device motionless during recording',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                          ),
+                          SizedBox(height: 24),
+                          // Still show basic metadata
+                          _buildShortRunSummary(dateStr, duration, hdr, frames),
+                        ]),
+                      ),
+                    )
                   : ListView(
               padding: const EdgeInsets.all(16),
               children: [

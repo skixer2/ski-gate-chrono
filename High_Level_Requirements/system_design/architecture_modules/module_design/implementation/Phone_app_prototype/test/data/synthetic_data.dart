@@ -4,10 +4,21 @@
 /// single source of truth for phone test data — the companion Python
 /// script `scripts/generate_phone_test_data.py` produces identical
 /// binary blobs for cross-validation.
+///
+/// Q-format conventions (matching firmware bit_packer.cpp):
+///   - Quaternion:  Q14 fixed-point (÷16384) for both absolute and delta values
+///   - LA:          mm/s² int16 (direct)
+///   - Baro:        Pa/2 uint16 (×2 to get Pa)
 library;
 
 import 'dart:typed_data';
 import 'dart:math';
+
+/// Q14 scale factor matching firmware.
+const quatScale = 16384;
+
+/// Convert a float quaternion component to Q14 int16 for test data.
+int toQ14(double v) => (v * quatScale).round().clamp(-32768, 32767);
 
 // ═══════════════════════════════════════════════════════════════════
 // Decompressor test data
