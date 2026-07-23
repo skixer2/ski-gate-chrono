@@ -152,6 +152,10 @@ class Decompressor {
       accMs += (deltaMs & 0x03FF);
       final baroPa = baroPaDiv2 * 2.0;  // Pa/2 → Pa
 
+      // Compute altitude with sanity clamping (prevents spikes at run boundaries)
+      double alt = 44330 * (1 - _pow(baroPa / 101325, 0.1903));
+      alt = alt.clamp(-500.0, 5000.0);  // ski-racing range
+
       frames.add(SensorFrame(
         msFromStart: accMs,
         qW: qW / _quatScale,
@@ -160,7 +164,7 @@ class Decompressor {
         qZ: qZ / _quatScale,
         laX: laX, laY: laY, laZ: laZ,
         baroPressurePa: baroPa,
-        baroAltitudeM: 44330 * (1 - _pow(baroPa / 101325, 0.1903)),
+        baroAltitudeM: alt,
       ));
     }
     return frames;

@@ -371,33 +371,35 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
   }
 
   Widget _buildRawDataSection() {
+    final maxItems = widget.result.frameCount.clamp(0, 100);
+    final items = <Widget>[];
+    for (int i = 0; i < maxItems; i++) {
+      final f = widget.result.frames[i];
+      items.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Text(
+          '${f.msFromStart.toString().padLeft(6)}ms | '
+          'alt:${f.baroAltitudeM.toStringAsFixed(1)}m | '
+          'la:(${f.laX.toStringAsFixed(1)},${f.laY.toStringAsFixed(1)},${f.laZ.toStringAsFixed(1)})',
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 10,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ));
+    }
     return ExpansionTile(
       title: const Text('Raw Sensor Data',
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-      subtitle: Text(
-          '${widget.result.frameCount} frames at 100 Hz'),
+      subtitle: Text('${widget.result.frameCount} frames at 100 Hz'),
       children: [
         SizedBox(
           height: 200,
-          child: ListView.builder(
+          child: ListView(
+            shrinkWrap: true,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: widget.result.frames.length.clamp(0, 100), // first 100
-            itemBuilder: (context, index) {
-              final f = widget.result.frames[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '${f.msFromStart.toString().padLeft(6)}ms | '
-                  'alt:${f.baroAltitudeM.toStringAsFixed(1)}m | '
-                  'la:(${f.laX.toStringAsFixed(1)},${f.laY.toStringAsFixed(1)},${f.laZ.toStringAsFixed(1)})',
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 10,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-              );
-            },
+            children: items,
           ),
         ),
       ],
