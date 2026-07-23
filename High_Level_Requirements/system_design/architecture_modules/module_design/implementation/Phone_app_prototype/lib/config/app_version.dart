@@ -8,4 +8,6 @@
 ///          run-count source changed from total→stored, char_run_list 100→512)
 ///   1.2  – v2.22: LittleFS config fix (invalid prog_size/block_size → silent
 ///          reformat on every boot, wiping all runs)
-const String APP_VERSION = '1.2';
+///   1.3  – Q14 quaternion scaling, local run storage, X-axis labels,
+///          navigation download→detail, altitude clamping, pktType guard
+const String APP_VERSION = '1.3';

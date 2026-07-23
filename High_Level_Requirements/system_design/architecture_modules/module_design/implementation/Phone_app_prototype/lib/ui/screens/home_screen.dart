@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../config/app_version.dart';
 import 'run_list_screen.dart';
 import 'course_setup_screen.dart';
 import 'settings_screen.dart';
@@ -25,12 +26,26 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _selectedIndex,
         children: _screens.map((t) => t.screen).toList(),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-        destinations: _screens
-            .map((t) => NavigationDestination(icon: Icon(t.icon), label: t.label))
-            .toList(),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NavigationBar(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+            destinations: _screens
+                .map((t) => NavigationDestination(icon: Icon(t.icon), label: t.label))
+                .toList(),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              'SGC v$APP_VERSION',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+            ),
+          ),
+        ],
       ),
     );
   }
