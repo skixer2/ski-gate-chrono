@@ -5,8 +5,8 @@
  * Test commands always compiled in, test mode starts OFF.
  *
  * Flash layout:
- *   Sectors 0-3:    Flash ring buffer (flash_ring.cpp)
- *   Sectors 4-511:  LittleFS run storage (littlefs_storage.cpp)
+ *   Sectors 0-5:    Flash ring buffer (flash_ring.cpp) — 20-byte RingEntry
+ *   Sectors 6-507:  LittleFS run storage (littlefs_storage.cpp)
  */
 
 #include <ArduinoBLE.h>

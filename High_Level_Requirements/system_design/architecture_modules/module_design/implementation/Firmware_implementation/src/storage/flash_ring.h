@@ -1,20 +1,22 @@
 /**
  * @file    flash_ring.h
- * @brief   Flash-based ring buffer — 4 blocks, 1000-slot circular region.
- *          Always holds the most recent 500 RawFrames (5 s at 100 Hz).
+ * @brief   Flash-based ring buffer — 500-frame sliding window on external flash.
+ *          Always holds the most recent 500 frames (5 s at 100 Hz).
  *
- *   Half A: slots 0-499   (blocks 0-1, addr 0x0000-0x1FFF)
- *   Half B: slots 500-999 (blocks 2-3, addr 0x2000-0x3FFF)
+ *   Half A: slots   0-499 (sectors 0-2, addr 0x0000-0x2FFF)
+ *   Half B: slots 500-999 (sectors 3-5, addr 0x3000-0x5FFF)
+ *
+ *   V4.07: Each slot stores a RingEntry (RawFrame + uint32_t arrival_ms,
+ *   20 bytes).  The arrival timestamp is written at frame arrival time
+ *   and read back at pop time — eliminating the ~50% delta=0 bug when
+ *   popping 2 frames per iteration.
  *
  *   Algorithm:
  *     1. Fill to 500 (HEAD advances, COUNT grows)
- *     2. At HEAD=500: erase Half B (blocks 2-3), HEAD=501, COUNT=500, TAIL=1
+ *     2. At HEAD=500: erase Half B (sectors 3-5), HEAD=501, COUNT=500, TAIL=1
  *     3. HEAD advances through Half B (501-999)
- *     4. At HEAD=1000: erase Half A (blocks 0-1), HEAD=0, COUNT=500, TAIL=500
+ *     4. At HEAD=1000: erase Half A (sectors 0-2), HEAD=0, COUNT=500, TAIL=500
  *     5. Repeat: HEAD 0→499, then erase Half B at HEAD=500, etc.
- *
- *   Physical: 4 blocks × 4096B = 16384B = 1024 slots × 16B (use 1000)
- *   Run data: starts at block 4 (addr 0x4000)
  */
 
 #pragma once
@@ -27,17 +29,26 @@ static constexpr uint16_t MAX_COUNT        = 500;
 static constexpr uint16_t HALF_SIZE        = 500;   /* slots per half */
 static constexpr uint16_t TOTAL_SLOTS      = 1000;  /* 2 halves */
 static constexpr uint32_t RING_FLASH_START = 0;
-static constexpr uint32_t RING_FLASH_SIZE  = 4 * 4096;     /* 16KB */
+static constexpr uint32_t RING_FLASH_SIZE  = 6 * 4096;     /* 24 KB — 6 sectors */
+static constexpr uint32_t HALF_A_BASE      = 0x0000;       /* sectors 0-2 */
+static constexpr uint32_t HALF_B_BASE      = 0x3000;       /* sectors 3-5 */
+static constexpr uint32_t RING_FLASH_END   = 0x6000;       /* LittleFS starts here */
 
-/* Run data starts at block 5 (block 4 = index sector). Defined in main.cpp. */
+/* RingEntry: RawFrame + arrival timestamp (20 bytes, stored on external flash).
+   Kept separate from RawFrame (16 bytes) so the serial stream protocol
+   and test framework are unaffected. */
+struct __attribute__((packed)) RingEntry {
+    RawFrame frame;        /* 16 bytes — sensor data */
+    uint32_t arrival_ms;   /*  4 bytes — millis() at write time */
+};
 
 class FlashRing
 {
 public:
     FlashRing(class SPIFlash& flash);
 
-    void reset();                  /* erase all 4 blocks, reset pointers */
-    void write(const RawFrame& f); /* write one frame at HEAD (stores millis() timestamp) */
+    void reset();                  /* erase all 6 sectors, reset pointers */
+    void write(const RawFrame& f); /* write one frame + millis() timestamp at HEAD */
     RawFrame read();               /* read oldest frame at TAIL (consumes) */
     uint32_t last_read_ts() const { return m_last_ts; }  /* timestamp of last-read frame */
     bool peek(RawFrame& f) const;  /* read oldest frame at TAIL (no consume) */
@@ -48,20 +59,15 @@ public:
 
 private:
     SPIFlash& m_flash;
-    uint16_t  m_head;    /* next write slot (0..999) */
-    uint16_t  m_count;   /* 0..500 */
-    uint32_t  m_last_ts; /* timestamp of last frame returned by read() */
-
-    /* ── Timestamp ring (parallel to flash slots, but only MAX_COUNT
-       entries — the ring never holds more than 500 active frames).
-       uint16_t at 10 ms resolution; uint32_t write counter avoids wrap
-       for 136 years at 100 Hz. 500 × 2 = 1000 bytes RAM (~1.5%).
-       Index: write at m_ts_wr % MAX_COUNT, read at (m_ts_wr - m_count) % MAX_COUNT. */
-    uint16_t  m_ts[MAX_COUNT];
-    uint32_t  m_ts_wr;    /* write counter (monotonic, modulo MAX_COUNT for array index) */
+    uint16_t  m_head;      /* next write slot (0..999) */
+    uint16_t  m_count;     /* 0..500 */
+    uint32_t  m_last_ts;   /* arrival_ms of last frame returned by read() */
 
     uint16_t tail() const { return (m_head - m_count + TOTAL_SLOTS) % TOTAL_SLOTS; }
     uint32_t  slot_addr(uint16_t slot) const {
-        return RING_FLASH_START + slot * sizeof(RawFrame);
+        if (slot < HALF_SIZE)
+            return HALF_A_BASE + slot * sizeof(RingEntry);
+        else
+            return HALF_B_BASE + (slot - HALF_SIZE) * sizeof(RingEntry);
     }
 };
