@@ -115,6 +115,18 @@ class _AltitudeChartPainter extends CustomPainter {
       tp.paint(canvas, Offset(chartLeft - tp.width - 4, altToY(alt) - tp.height / 2));
     }
 
+    // Draw X-axis time labels (every ~20% of duration)
+    for (int i = 0; i <= 5; i++) {
+      final frac = i / 5.0;
+      final tSec = frac * timeMax / 1000.0;
+      final x = chartLeft + frac * chartWidth;
+      final tp = TextPainter(
+        text: TextSpan(text: tSec.toStringAsFixed(1), style: labelPaint),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(x - tp.width / 2, chartBottom + 4));
+    }
+
     // Draw grid lines
     final gridPaint = Paint()
       ..color = Colors.grey.shade200

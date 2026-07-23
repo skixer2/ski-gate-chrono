@@ -116,6 +116,18 @@ class _SpeedChartPainter extends CustomPainter {
       tp.paint(canvas, Offset(chartLeft - tp.width - 4, velToY(v) - tp.height / 2));
     }
 
+    // X-axis time labels
+    for (int i = 0; i <= 5; i++) {
+      final frac = i / 5.0;
+      final tSec = frac * timeMax / 1000.0;
+      final x = chartLeft + frac * chartWidth;
+      final tp = TextPainter(
+        text: TextSpan(text: tSec.toStringAsFixed(1), style: labelPaint),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(x - tp.width / 2, chartBottom + 4));
+    }
+
     // Zero line (highlighted)
     final zeroLinePaint = Paint()
       ..color = Colors.grey.shade400
