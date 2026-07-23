@@ -204,6 +204,55 @@ void handle_serial()
         return;
     }
     case 'd': g_fs.list_files(); return;
+    case 'h': {
+        /* Hex/baro dump for a specific run: h <run_id>
+           Reads the run file and prints baro_div2 at every 100th frame
+           (T3 anchors) to verify firmware-side encoding is correct. */
+        long rid = Serial.parseInt();
+        if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
+        RunHeader hdr;
+        if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
+            json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_run"); json_kv("id",rid); json_end(); return;
+        }
+        uint32_t data_sz = hdr.data_size;
+        if (data_sz == 0 || data_sz > 200000) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size"); json_kv("sz",(long)data_sz); json_end(); return; }
+        Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
+        Serial.print(",\"sz\":"); Serial.print((long)data_sz);
+        Serial.print(",\"anchors\":[");
+        uint8_t buf[18];
+        uint32_t offset = sizeof(RunHeader);
+        uint32_t end = offset + data_sz;
+        bool first = true;
+        int32_t baro_recon = 0;
+        uint16_t frame_idx = 0;
+        while (offset + 2 <= end && offset + 2 - sizeof(RunHeader) < data_sz) {
+            if (!g_fs.read_run_data((uint16_t)rid, offset, buf, 2)) break;
+            uint16_t h = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+            uint8_t pkt_type = (h >> 14) & 0x03;
+            uint8_t pkt_size = (pkt_type == 0) ? 6 : ((pkt_type == 1) ? 10 : 18);
+            if (offset + pkt_size > end) break;
+            if (!g_fs.read_run_data((uint16_t)rid, offset + 2, buf + 2, pkt_size - 2)) break;
+            /* Decode baro */
+            if (pkt_type == 2) {
+                baro_recon = ((uint16_t)buf[16] | ((uint16_t)buf[17] << 8));
+            } else if (pkt_type == 1) {
+                baro_recon += (int32_t)(int8_t)buf[9];
+            } else {
+                baro_recon += (int32_t)(int8_t)((buf[5] & 0x0F) << 4) / 16;
+            }
+            /* Print every 100th frame */
+            if (frame_idx % 100 == 0) {
+                if (!first) Serial.print(',');
+                Serial.print('['); Serial.print(frame_idx); Serial.print(','); Serial.print((long)baro_recon);
+                Serial.print(']');
+                first = false;
+            }
+            frame_idx++;
+            offset += pkt_size;
+        }
+        Serial.print("],\"frames\":"); Serial.print(frame_idx); Serial.println("}");
+        return;
+    }
     case 'y': {
         Wire.begin();
         Serial.print("Wire scan: ");
