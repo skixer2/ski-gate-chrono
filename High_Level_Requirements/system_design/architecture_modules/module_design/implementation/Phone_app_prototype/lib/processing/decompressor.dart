@@ -152,12 +152,13 @@ class Decompressor {
       accMs += (deltaMs & 0x03FF);
       final baroPa = baroPaDiv2 * 2.0;  // Pa/2 → Pa
 
-      // Compute altitude (temporarily unclamped for spike debugging)
+      // Compute altitude
       double alt = 44330 * (1 - _pow(baroPa / 101325, 0.1903));
 
-      // Debug: log extreme pressure values
-      if (alt > 4000 || alt < -200) {
-        debugPrint('[Decompressor] SPIKE: alt=$alt baroPa=$baroPa baroDiv2=$baroPaDiv2 frame=${frames.length}');
+      // Debug: log every frame near spikes for offset tracing
+      if (frames.length >= 455 && frames.length <= 645) {
+        debugPrint('[Decompiler] F#${frames.length} off=$offset type=$pktType '
+            'baroDiv2=$baroPaDiv2 baroPa=$baroPa alt=${alt.toStringAsFixed(0)}');
       }
 
       frames.add(SensorFrame(
