@@ -72,6 +72,11 @@ static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
 
+/* Stream parser state — must be reset between runs to prevent
+   frame misalignment from stale partial-frame data. */
+uint8_t  g_stream_sbuf[18];
+uint8_t  g_stream_spos = 0;
+
 /* ================================================================== */
 void flash_test();
 void apply_state_visuals(DeviceState s);
@@ -119,27 +124,28 @@ void handle_serial()
     /* Stream mode: read 18-byte RawFrame frames (2B sync + 16B payload).
        Identical format to real peripheral — feed_sensors copies directly. */
     if (g_stream_active) {
-        static uint8_t  sbuf[18];
-        static uint8_t  spos = 0;
+        /* V4.05: g_stream_spos/sbuf are module-scope — reset between runs
+           to prevent frame misalignment from stale partial data. */
         for (;;) {
-            if (spos == 0) {
-                if (c == 0xAA) spos = 1;
-            } else if (spos == 1) {
+            if (g_stream_spos == 0) {
+                if (c == 0xAA) g_stream_spos = 1;
+            } else if (g_stream_spos == 1) {
                 if (c == 0xAA) { /* re-sync */ }
-                else if (c == 0x55) { sbuf[0]=0xAA; sbuf[1]=0x55; spos=2; }
-                else spos = 0;
+                else if (c == 0x55) { g_stream_sbuf[0]=0xAA; g_stream_sbuf[1]=0x55; g_stream_spos=2; }
+                else g_stream_spos = 0;
             } else {
-                sbuf[spos++] = c;
-                if (spos >= 18) {
-                    spos = 0;
+                g_stream_sbuf[g_stream_spos++] = c;
+                if (g_stream_spos >= 18) {
+                    g_stream_spos = 0;
                     RawFrame rf;
-                    memcpy(&rf, sbuf + 2, sizeof(RawFrame));
+                    memcpy(&rf, g_stream_sbuf + 2, sizeof(RawFrame));
                     /* All-zeros = sentinel (quat magnitude 0 is physically
                        impossible).  Emit stream_end for the test harness. */
                     if (rf.q_w == 0 && rf.q_x == 0 && rf.q_y == 0 && rf.q_z == 0
                      && rf.la_x == 0 && rf.la_y == 0 && rf.la_z == 0
                      && rf.baro_pa_div2 == 0) {
                         g_stream_active = false;
+                        g_stream_spos = 0;
                         json_begin(); json_kv("ev", "stream_end");
                         Serial.print(','); json_kv("frames", (long)g_stream_frames);
                         json_end();
@@ -547,6 +553,7 @@ void loop()
                 /* Natural end-detector transition = stream complete */
                 if (g_stream_active) {
                     g_stream_active = false;
+                    g_stream_spos = 0;   /* V4.05: prevent stale parser state */
                     json_begin(); json_kv("ev", "stream_end");
                     Serial.print(','); json_kv("frames", (long)g_stream_frames);
                     json_end();

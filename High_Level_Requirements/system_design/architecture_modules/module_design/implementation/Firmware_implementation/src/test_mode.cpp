@@ -15,6 +15,7 @@
 
 extern bool     g_stream_active;   /* from main.cpp */
 extern uint32_t g_stream_frames;   /* from main.cpp */
+extern uint8_t  g_stream_spos;     /* stream parser sync position */
 
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
@@ -130,6 +131,7 @@ bool test_mode_handle_serial(char c)
     case 'S':
         g_stream_active = true;
         g_stream_frames = 0;
+        g_stream_spos = 0;  /* V4.05: reset parser to prevent frame misalignment */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);
