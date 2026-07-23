@@ -233,6 +233,10 @@ void handle_serial()
         Serial.println("Stopped.");
         return;
     }
+    case 'c':
+        g_ldc.force_recalibrate();
+        json_begin(); json_kv("ev", "ldc_recal"); json_end();
+        return;
     case '!':
         json_begin(); json_kv("ev", "reboot"); json_end();
         Serial.flush();
