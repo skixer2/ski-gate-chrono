@@ -207,7 +207,8 @@ void handle_serial()
     case 'h': {
         /* Hex/baro dump for a specific run.
            h <run_id>              → anchors every 100th frame (T3)
-           h <run_id> <from> <to>  → baro for every frame in range */
+           h <run_id> <from> <to>  → baro for every frame in range
+           Add trailing 'r' for raw hex: h <id> <from> <to> r */
         long rid = Serial.parseInt();
         if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
         RunHeader hdr;
@@ -220,20 +221,27 @@ void handle_serial()
         Serial.print(",\"sz\":"); Serial.print((long)data_sz);
         /* Optional frame range: peek ahead; if more digits follow, parse them */
         long from_frame = -1, to_frame = -1;
+        bool raw_mode = false;
         while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
         bool has_range = false;
         if (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') {
             from_frame = Serial.parseInt();
             to_frame   = Serial.parseInt();
             has_range  = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
+            /* Check for trailing 'r' flag */
+            while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
+            if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) {
+                Serial.read(); raw_mode = true;
+            }
         }
         if (has_range) {
             Serial.print(",\"range\":["); Serial.print(from_frame); Serial.print(',');
             Serial.print(to_frame); Serial.print(']');
+            if (raw_mode) Serial.print(",\"raw\":1");
         } else {
             Serial.print(",\"anchors\":[");
         }
-        Serial.print(has_range ? ",\"baro\":[" : "");
+        Serial.print(raw_mode ? ",\"hex\":[" : (has_range ? ",\"baro\":[" : ""));
         uint8_t buf[18];
         uint32_t offset = sizeof(RunHeader);
         uint32_t end = offset + data_sz;
@@ -258,7 +266,18 @@ void handle_serial()
             if (has_range) {
                 if (frame_idx >= (uint16_t)from_frame && frame_idx <= (uint16_t)to_frame) {
                     if (!first) Serial.print(',');
-                    Serial.print('['); Serial.print(frame_idx); Serial.print(','); Serial.print((long)baro_recon);
+                    Serial.print('['); Serial.print(frame_idx);
+                    if (raw_mode) {
+                        /* Dump raw bytes as hex string, type, baro */
+                        Serial.print(",\"");
+                        for (uint8_t i = 0; i < pkt_size; i++) {
+                            if (buf[i] < 16) Serial.print('0');
+                            Serial.print(buf[i], HEX);
+                        }
+                        Serial.print('"');
+                        Serial.print(','); Serial.print(pkt_type);
+                    }
+                    Serial.print(','); Serial.print((long)baro_recon);
                     Serial.print(']');
                     first = false;
                 }
@@ -275,7 +294,7 @@ void handle_serial()
             frame_idx++;
             offset += pkt_size;
         }
-        if (has_range) Serial.print(']'); else Serial.print(']');
+        Serial.print(']');
         Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
         return;
     }

@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.08"  /* h cmd: optional frame range arg */
+#define FW_VERSION "4.09"  /* h cmd: raw hex mode (r flag) */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
