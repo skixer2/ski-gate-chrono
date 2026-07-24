@@ -200,30 +200,51 @@ class _RunListScreenState extends State<RunListScreen> {
       final latest = runs.last;
       debugPrint('[SGC] Downloading run #${latest.id} (${latest.size} bytes, side=${latest.side})');
 
-      final result = await ft.download(latest.id);
+      // Download with up to one retry on CRC failure (BLE GATT notification loss)
+      TransferResult? result;
+      bool crcOk = false;
+      const maxAttempts = 2;
+      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        result = await ft.download(latest.id);
 
-      if (result.compressedData.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Download failed — empty data')),
-          );
+        if (result.compressedData.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Download failed — empty data')),
+            );
+          }
+          return;
         }
-        return;
+
+        final decompressor = Decompressor();
+        crcOk = decompressor.validateCRC(result.compressedData);
+        if (crcOk) {
+          debugPrint('[SGC] ✅ CRC valid for run #${latest.id} (attempt $attempt)');
+          break;
+        }
+        debugPrint('[SGC] ⚠️ CRC FAILED for run #${latest.id} (attempt $attempt/${maxAttempts})');
+        if (attempt < maxAttempts) {
+          debugPrint('[SGC]    Retrying download...');
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
       }
 
-      // Validate CRC before decompressing (detects BLE transfer corruption)
-      final decompressor = Decompressor();
-      final crcOk = decompressor.validateCRC(result.compressedData);
       if (!crcOk) {
-        debugPrint('[SGC] ⚠️ CRC VALIDATION FAILED for run #${latest.id} — data may be corrupted!');
-        debugPrint('[SGC]    Expected CRC trailing bytes 0xC3 0x32, got: '
-            '${result.compressedData.length >= 6 ? result.compressedData.sublist(result.compressedData.length - 6).map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ') : 'too short'}');
-      } else {
-        debugPrint('[SGC] ✅ CRC valid for run #${latest.id}');
+        debugPrint('[SGC] ⚠️ CRC STILL FAILED after $maxAttempts attempts for run #${latest.id}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Download may be corrupted — CRC mismatch after retry'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
       }
 
       // Decompress
-      final decoded = decompressor.decompressFull(result.compressedData);
+      final decompressor = Decompressor();
+      final decoded = decompressor.decompressFull(result!.compressedData);
 
       // Save to local storage
       await _storage.save(

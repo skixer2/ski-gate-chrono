@@ -11,4 +11,5 @@
 ///   1.3  – Q14 quaternion scaling, local run storage, X-axis labels,
 ///          navigation download→detail, altitude clamping, pktType guard
 ///   1.4  – CRC32 validation on download + local open (BLE corruption diagnostic)
-const String APP_VERSION = '1.4';
+///   1.5  – Auto-retry on CRC failure (BLE GATT notification loss recovery)
+const String APP_VERSION = '1.5';

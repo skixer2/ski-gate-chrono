@@ -33,10 +33,10 @@ void sgc_ble_transfer_poll()
 
     static uint32_t last_chunk_ms = 0;
     uint32_t now = millis();
-    if (now - last_chunk_ms < 20) return;
+    if (now - last_chunk_ms < 30) return;  /* V4.10: relaxed from 20ms */
     last_chunk_ms = now;
 
-    const size_t chunk_size = 244;
+    const size_t chunk_size = 128;  /* V4.10: reduced for BLE reliability */
     uint8_t buf[chunk_size];
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
     size_t send_len = (remaining > chunk_size) ? chunk_size : remaining;

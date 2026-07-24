@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.09"  /* h cmd: raw hex mode (r flag) */
+#define FW_VERSION "4.10"  /* BLE: 128B chunks, 30ms interval */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
