@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes, at 100 Hz):
   No sync word — fixed-size frames on dedicated point-to-point link.
 """
 
-SIM_VERSION = "2.22.0"  /* + verify_data_integrity */
+SIM_VERSION = "2.22.0"  # + verify_data_integrity
 
 import argparse
 import hashlib
