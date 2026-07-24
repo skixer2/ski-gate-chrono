@@ -66,6 +66,11 @@ class Decompressor {
   /// Strips the 6-byte CRC32 trailer (magic + CRC32) before decompression.
   DecompressResult decompressFull(Uint8List compressed) {
     final header = RunHeader.parse(compressed);
+    // Validate CRC before decompressing
+    final crcOk = validateCRC(compressed);
+    if (!crcOk) {
+      debugPrint('[Decompressor] ⚠️ CRC32 FAILED — BLE data may be corrupted (${compressed.length} bytes)');
+    }
     // Strip CRC32 trailer (6 bytes: 0xC3 0x32 + 4-byte CRC32) to avoid garbage frames at end
     final dataLen = compressed.length - 6;
     // Only strip if trailer is valid (magic bytes present)

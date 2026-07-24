@@ -10,4 +10,5 @@
 ///          reformat on every boot, wiping all runs)
 ///   1.3  – Q14 quaternion scaling, local run storage, X-axis labels,
 ///          navigation download→detail, altitude clamping, pktType guard
-const String APP_VERSION = '1.3';
+///   1.4  – CRC32 validation on download + local open (BLE corruption diagnostic)
+const String APP_VERSION = '1.4';

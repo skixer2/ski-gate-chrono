@@ -205,9 +205,9 @@ void handle_serial()
     }
     case 'd': g_fs.list_files(); return;
     case 'h': {
-        /* Hex/baro dump for a specific run: h <run_id>
-           Reads the run file and prints baro_div2 at every 100th frame
-           (T3 anchors) to verify firmware-side encoding is correct. */
+        /* Hex/baro dump for a specific run.
+           h <run_id>              → anchors every 100th frame (T3)
+           h <run_id> <from> <to>  → baro for every frame in range */
         long rid = Serial.parseInt();
         if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
         RunHeader hdr;
@@ -218,7 +218,22 @@ void handle_serial()
         if (data_sz == 0 || data_sz > 200000) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size"); json_kv("sz",(long)data_sz); json_end(); return; }
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
         Serial.print(",\"sz\":"); Serial.print((long)data_sz);
-        Serial.print(",\"anchors\":[");
+        /* Optional frame range: peek ahead; if more digits follow, parse them */
+        long from_frame = -1, to_frame = -1;
+        while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
+        bool has_range = false;
+        if (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') {
+            from_frame = Serial.parseInt();
+            to_frame   = Serial.parseInt();
+            has_range  = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
+        }
+        if (has_range) {
+            Serial.print(",\"range\":["); Serial.print(from_frame); Serial.print(',');
+            Serial.print(to_frame); Serial.print(']');
+        } else {
+            Serial.print(",\"anchors\":[");
+        }
+        Serial.print(has_range ? ",\"baro\":[" : "");
         uint8_t buf[18];
         uint32_t offset = sizeof(RunHeader);
         uint32_t end = offset + data_sz;
@@ -240,17 +255,28 @@ void handle_serial()
             } else {
                 baro_recon += (int32_t)(int8_t)((buf[5] & 0x0F) << 4) / 16;
             }
-            /* Print every 100th frame */
-            if (frame_idx % 100 == 0) {
-                if (!first) Serial.print(',');
-                Serial.print('['); Serial.print(frame_idx); Serial.print(','); Serial.print((long)baro_recon);
-                Serial.print(']');
-                first = false;
+            if (has_range) {
+                if (frame_idx >= (uint16_t)from_frame && frame_idx <= (uint16_t)to_frame) {
+                    if (!first) Serial.print(',');
+                    Serial.print('['); Serial.print(frame_idx); Serial.print(','); Serial.print((long)baro_recon);
+                    Serial.print(']');
+                    first = false;
+                }
+                if (frame_idx > (uint16_t)to_frame) break;
+            } else {
+                /* Print every 100th frame (anchor mode) */
+                if (frame_idx % 100 == 0) {
+                    if (!first) Serial.print(',');
+                    Serial.print('['); Serial.print(frame_idx); Serial.print(','); Serial.print((long)baro_recon);
+                    Serial.print(']');
+                    first = false;
+                }
             }
             frame_idx++;
             offset += pkt_size;
         }
-        Serial.print("],\"frames\":"); Serial.print(frame_idx); Serial.println("}");
+        if (has_range) Serial.print(']'); else Serial.print(']');
+        Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
         return;
     }
     case 'y': {

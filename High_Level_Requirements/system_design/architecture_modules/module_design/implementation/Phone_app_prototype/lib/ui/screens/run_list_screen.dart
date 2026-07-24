@@ -160,6 +160,8 @@ class _RunListScreenState extends State<RunListScreen> {
     if (data == null || !mounted) return;
 
     final decompressor = Decompressor();
+    final crcOk = decompressor.validateCRC(data);
+    debugPrint('[SGC] ${crcOk ? "✅" : "⚠️"} Local CRC for ${run.fileName}: ${crcOk ? "OK" : "FAILED"}');
     final decoded = decompressor.decompressFull(data);
 
     if (mounted) {
@@ -209,8 +211,18 @@ class _RunListScreenState extends State<RunListScreen> {
         return;
       }
 
-      // Decompress
+      // Validate CRC before decompressing (detects BLE transfer corruption)
       final decompressor = Decompressor();
+      final crcOk = decompressor.validateCRC(result.compressedData);
+      if (!crcOk) {
+        debugPrint('[SGC] ⚠️ CRC VALIDATION FAILED for run #${latest.id} — data may be corrupted!');
+        debugPrint('[SGC]    Expected CRC trailing bytes 0xC3 0x32, got: '
+            '${result.compressedData.length >= 6 ? result.compressedData.sublist(result.compressedData.length - 6).map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ') : 'too short'}');
+      } else {
+        debugPrint('[SGC] ✅ CRC valid for run #${latest.id}');
+      }
+
+      // Decompress
       final decoded = decompressor.decompressFull(result.compressedData);
 
       // Save to local storage
