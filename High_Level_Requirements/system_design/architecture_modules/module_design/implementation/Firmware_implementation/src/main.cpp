@@ -74,7 +74,7 @@ uint32_t g_stream_frames = 0;   /* frames received in stream mode */
 
 /* Stream parser state — must be reset between runs to prevent
    frame misalignment from stale partial-frame data. */
-uint8_t  g_stream_sbuf[18];
+uint8_t  g_stream_sbuf[16];  /* V4.11: no sync word, raw 16B frames */
 uint8_t  g_stream_spos = 0;
 
 /* ================================================================== */
@@ -121,32 +121,18 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* Stream mode: read 18-byte RawFrame frames (2B sync + 16B payload).
-       Identical format to real peripheral — feed_sensors copies directly. */
+    /* V4.11: Stream mode — read 16-byte RawFrame frames directly.
+       No sync words: dedicated point-to-point link, fixed frame size.
+       Same strategy as internal BHY2 (fixed-size struct at known rate). */
     if (g_stream_active) {
-        /* V4.05: g_stream_spos/sbuf are module-scope — reset between runs
-           to prevent frame misalignment from stale partial data. */
         for (;;) {
-            if (g_stream_spos == 0) {
-                if (c == 0xAA) g_stream_spos = 1;
-            } else if (g_stream_spos == 1) {
-                if (c == 0xAA) { /* re-sync */ }
-                else if (c == 0x55) { g_stream_sbuf[0]=0xAA; g_stream_sbuf[1]=0x55; g_stream_spos=2; }
-                else g_stream_spos = 0;
-            } else {
-                g_stream_sbuf[g_stream_spos++] = c;
-                if (g_stream_spos >= 18) {
-                    g_stream_spos = 0;
-                    RawFrame rf;
-                    memcpy(&rf, g_stream_sbuf + 2, sizeof(RawFrame));
-                    /* V4.06: No sentinel — natural end detection (5s flat
-                       pressure) handles stream exit. Sentinels were a
-                       test-only concept not present in production.
-                       When frames stop arriving, the last frame's pressure
-                       feeds the end detector until it fires. */
-                    test_set_frame(rf);
-                    g_stream_frames++;
-                }
+            g_stream_sbuf[g_stream_spos++] = c;
+            if (g_stream_spos >= 16) {
+                g_stream_spos = 0;
+                RawFrame rf;
+                memcpy(&rf, g_stream_sbuf, sizeof(RawFrame));
+                test_set_frame(rf);
+                g_stream_frames++;
             }
             if (!Serial.available()) return;
             c = Serial.read();

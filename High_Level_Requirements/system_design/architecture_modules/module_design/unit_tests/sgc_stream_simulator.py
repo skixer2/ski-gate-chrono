@@ -21,14 +21,12 @@ Usage:
   # Custom run parameters
   python sgc_stream_simulator.py COM8 --duration 60 --gates 40 --seed 123
 
-Binary frame format (little-endian, 38 bytes total, at 100 Hz):
-  [0xAA 0x55] [uint32:frame_num] [float32:pressure_hPa] [float32:qw]
-# V2.53: 18-byte RawFrame format — 2B sync (0xAA,0x55) + 16B payload (7×int16 + 1×uint16).
-  [float32:qx] [float32:qy] [float32:qz]
-  [float32:lax] [float32:lay] [float32:laz]
+Binary frame format (little-endian, 16 bytes, at 100 Hz):
+  RawFrame: 7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2).
+  No sync word — fixed-size frames on dedicated point-to-point link.
 """
 
-SIM_VERSION = "2.20.0"
+SIM_VERSION = "2.21.0"
 
 import argparse
 import hashlib
@@ -55,10 +53,7 @@ except ImportError:
 BAUD_RATE = 115200
 FRAME_RATE_HZ = 100
 FRAME_PERIOD_S = 1.0 / FRAME_RATE_HZ
-SYNC_WORD = b'\xAA\x55'   # 2-byte sync: avoids false positives from float data
-SYNC_LEN = 2
-# V4.06: No sentinel — natural end detection (5s flatline) ends the stream.
-FRAME_BYTES = 18  # 2B sync + 16B RawFrame
+FRAME_BYTES = 16  # RawFrame: 7×int16 + 1×uint16, no sync word
 
 # SGC start detector (from start_detector.h)
 DROP_THRESHOLD_M = 2.0
@@ -317,14 +312,14 @@ def generate_gs_run(duration_s: float = 50.0,
 
 
 def pack_frame(frame: GSFrame) -> bytes:
-    """Pack a GSFrame into 18-byte RawFrame wire format.
+    """Pack a GSFrame into 16-byte RawFrame wire format.
 
     Format identical to firmware RawFrame (ring_buffer.h):
       7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2) = 16 bytes.
-      + 2-byte sync (0xAA 0x55) = 18 bytes total.
+      No sync word — dedicated point-to-point link, fixed frame size.
     """
-    payload = struct.pack(
-        '<hhhhhhhH',   # 7×int16 LE + 1×uint16 LE = 14+2 = 16 bytes
+    return struct.pack(
+        '<hhhhhhhH',   # 7×int16 LE + 1×uint16 LE = 16 bytes
         int(frame.qw * 16384),     # quat_w (Q30)
         int(frame.qx * 16384),     # quat_x
         int(frame.qy * 16384),     # quat_y
@@ -334,7 +329,6 @@ def pack_frame(frame: GSFrame) -> bytes:
         int(frame.laz),            # accel_z
         int(frame.pressure_hpa * 50),  # hPa → Pa/2
     )
-    return SYNC_WORD + payload  # 2 + 16 = 18 bytes
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -553,7 +547,6 @@ class SGCDevice:
         Returns:
             Dictionary with stream statistics.
         """
-        FRAME_BYTES = 18  # 2-byte sync + 16 RawFrame
         total = len(frames)
 
         print(f"\n── Stream {total} frames ({total / FRAME_RATE_HZ:.1f}s) ──")
