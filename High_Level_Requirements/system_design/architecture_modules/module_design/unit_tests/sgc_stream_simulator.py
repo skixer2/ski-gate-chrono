@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes, at 100 Hz):
   No sync word — fixed-size frames on dedicated point-to-point link.
 """
 
-SIM_VERSION = "2.21.0"
+SIM_VERSION = "2.22.0"  /* + verify_data_integrity */
 
 import argparse
 import hashlib
@@ -854,6 +854,105 @@ class SGCDevice:
 
         return None
 
+    def verify_data_integrity(self, ndjson_path: str, run_id: int = 0) -> bool:
+        """Compare firmware flash data against the original NDJSON.
+
+        Uses 'h <run_id>' to read baro at every 100th frame from flash,
+        then matches each anchor's pressure against the NDJSON source data.
+        Verifies that the encoder stored correct data on flash.
+
+        Returns True if integrity check passes."""
+        print("\n── Data Integrity Check ──")
+
+        # Load NDJSON
+        with open(ndjson_path, 'r') as f:
+            ndjson = [json.loads(line) for line in f if line.strip()]
+        ndjson_bp2 = [int(d['p'] * 50) for d in ndjson]
+
+        # Read anchors from firmware
+        self.send_cmd(f'h {run_id}', wait_ms=300)
+        time.sleep(2.0)  # allow time for full response
+        resp = self.drain_responses(3.0)
+
+        hex_dump = None
+        for r in resp:
+            if r.get('ev') == 'hex_dump':
+                hex_dump = r
+                break
+
+        if not hex_dump:
+            # Try reading more — large responses may need multiple reads
+            resp2 = self.drain_responses(3.0)
+            for r in resp2:
+                if r.get('ev') == 'hex_dump':
+                    hex_dump = r
+                    break
+
+        if not hex_dump:
+            print("   ✗ No hex_dump response from device")
+            return False
+
+        anchors = hex_dump.get('anchors', [])
+        total_frames = hex_dump.get('frames', 0)
+        compressed_sz = hex_dump.get('sz', 0)
+
+        if not anchors:
+            print("   ✗ No anchors in hex_dump response")
+            return False
+
+        print(f"   Compressed: {compressed_sz} bytes, {total_frames} frames, "
+              f"{len(anchors)} anchors")
+
+        # Map each firmware anchor to the closest NDJSON frame by baro_div2
+        mappings = []
+        for fw_frame, fw_baro in anchors:
+            best_idx = None
+            best_diff = 999999
+            for nd_idx, nd_baro in enumerate(ndjson_bp2):
+                diff = abs(nd_baro - fw_baro)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_idx = nd_idx
+            if best_diff <= 2:  # tolerance: ±4 Pa
+                mappings.append((fw_frame, fw_baro, best_idx, best_diff))
+            else:
+                print(f"   ⚠ Anchor fw#{fw_frame} baro={fw_baro} — no NDJSON match "
+                      f"(closest: nd#{best_idx} baro={ndjson_bp2[best_idx]} diff={best_diff})")
+
+        if len(mappings) < 3:
+            print(f"   ✗ Only {len(mappings)} anchors matched — not enough to verify")
+            return False
+
+        # Check consistency: NDJSON frame offset should increase monotonically
+        offsets = [m[2] - m[0] for m in mappings]  # ndjson_idx - fw_frame
+        offset_deltas = [offsets[i+1] - offsets[i] for i in range(len(offsets)-1)]
+
+        print(f"   Matched {len(mappings)}/{len(anchors)} anchors:")
+        print(f"     First: fw#0 baro={mappings[0][1]} → nd#{mappings[0][2]} "
+              f"(offset={offsets[0]})")
+        print(f"     Last:  fw#{mappings[-1][0]} baro={mappings[-1][1]} → "
+              f"nd#{mappings[-1][2]} (offset={offsets[-1]})")
+
+        # Check for anomalies in the offset progression
+        # With frame loss, offset should increase (fw skips ahead vs ndjson)
+        anomalies = [d for d in offset_deltas if d < -10]  # negative jump = corruption
+        if anomalies:
+            print(f"   ✗ {len(anomalies)} offset anomalies detected "
+                  f"(negative jumps in NDJSON→FW mapping)")
+            return False
+
+        # Verify the pressure values match (within tolerance)
+        baro_diffs = [m[3] for m in mappings]
+        max_diff = max(baro_diffs)
+        avg_diff = sum(baro_diffs) / len(baro_diffs)
+        print(f"   Baro match: max_diff={max_diff}, avg_diff={avg_diff:.1f} Pa/2")
+        if max_diff > 2:
+            print(f"   ✗ Baro mismatch > tolerance")
+            return False
+
+        print(f"   ✓ Data integrity verified — flash matches NDJSON")
+        return True
+
 
 # ═══════════════════════════════════════════════════════════════════
 # Main test scenario
@@ -951,11 +1050,27 @@ def run_full_test(port: str,
         result = device.verify_run()
 
         if result:
+            # Step 7: Verify flash data matches the NDJSON source
+            ndjson_to_check = save_path
+            if not ndjson_to_check:
+                # Save to temp file for integrity check
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.ndjson', delete=False) as tf:
+                    for frm in frames:
+                        tf.write(json.dumps(frm.to_dict()) + '\n')
+                    ndjson_to_check = tf.name
+                print(f"\n   (saved temp NDJSON for integrity check: {ndjson_to_check})")
+
+            integrity_ok = device.verify_data_integrity(ndjson_to_check)
+
             print("\n" + "=" * 50)
-            print("✓ TEST PASSED")
+            if integrity_ok:
+                print("✓ TEST PASSED — data integrity verified")
+            else:
+                print("⚠ TEST PASSED but data integrity check FAILED")
             print(f"  Firmware version: v{device.fw_version}")
             print("=" * 50)
-            return 0
+            return 0 if integrity_ok else 1
         else:
             print("\n" + "=" * 50)
             if device.reset_event:
