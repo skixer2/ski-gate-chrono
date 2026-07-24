@@ -40,3 +40,5 @@ android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 
 # Test results (runtime artifacts)
 **/test/results/
+*.ndjson
+*.png
