@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.11"  /* Stream: no sync words, raw 16B frames */
+#define FW_VERSION "4.12"  /* Stream: flush stray bytes on S cmd */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

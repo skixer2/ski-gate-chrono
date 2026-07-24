@@ -129,9 +129,10 @@ bool test_mode_handle_serial(char c)
         json_print_values();
         return true;
     case 'S':
+        while (Serial.available()) Serial.read();  /* V4.12: flush stray bytes before binary stream */
         g_stream_active = true;
         g_stream_frames = 0;
-        g_stream_spos = 0;  /* V4.05: reset parser to prevent frame misalignment */
+        g_stream_spos = 0;
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);
