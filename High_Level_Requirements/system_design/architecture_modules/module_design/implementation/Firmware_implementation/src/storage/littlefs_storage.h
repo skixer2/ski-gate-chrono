@@ -62,6 +62,11 @@ static constexpr uint8_t  CRC32_MAGIC_HI    = 0xC3;
 static constexpr uint8_t  CRC32_MAGIC_LO    = 0x32;
 static constexpr uint32_t CRC32_TRAILER_SIZE = 6;  /* magic(2) + crc32(4) */
 
+/* V4.18: Time-based sync interval — commit LittleFS metadata to flash
+   at most once per 2s. Reduces SPI flash wear and keeps stream test
+   throughput high while preserving power-loss safety (~512B window). */
+static constexpr uint32_t SYNC_INTERVAL_MS = 2000;
+
 /* ── LittleFSStorage class ─────────────────────────────────────── */
 
 class LittleFSStorage
@@ -200,6 +205,7 @@ private:
     static constexpr size_t WRITE_BUF_SIZE = 256;
     uint8_t  m_write_buf[WRITE_BUF_SIZE];
     uint16_t m_write_buf_pos;
+    uint32_t m_last_sync_ms = 0;  /* V4.18: time-based sync throttle */
 
     /* Pending run metadata (set in create_run, consumed by close_run
      * for RunEntry population). No longer used for header rewrite
