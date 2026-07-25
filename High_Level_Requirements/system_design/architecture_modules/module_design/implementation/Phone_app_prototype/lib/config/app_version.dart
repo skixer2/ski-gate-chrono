@@ -12,4 +12,5 @@
 ///          navigation download→detail, altitude clamping, pktType guard
 ///   1.4  – CRC32 validation on download + local open (BLE corruption diagnostic)
 ///   1.5  – Auto-retry on CRC failure (BLE GATT notification loss recovery)
-const String APP_VERSION = '1.5';
+///   1.6  – Abort navigation on CRC fail (no more "No gates detected" from corrupt data)
+const String APP_VERSION = '1.6';

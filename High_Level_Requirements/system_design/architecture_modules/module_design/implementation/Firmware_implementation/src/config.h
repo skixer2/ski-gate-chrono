@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.16"  /* Direct encode in pull-model LOGGING — skip flash ring */
+#define FW_VERSION "4.17"  /* Deferred end-detection until EOF; skip LED in stream */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

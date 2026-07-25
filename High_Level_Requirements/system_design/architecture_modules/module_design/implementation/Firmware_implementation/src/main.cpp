@@ -451,10 +451,13 @@ void feed_sensors()
             g_page_cursor += cf_size;
             g_frame_count++;
 
-            /* End detector */
-            float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
-            if (g_end_det.feed(pa_raw))
-                g_sm.force_state(DeviceState::POST_RUN);
+            /* V4.17: End detector only after PC stops (EOF).
+               Active streaming stretches flatline past 5s window. */
+            if (test_stream_eof()) {
+                float pa_raw = (float)f.baro_pa_div2 * 2.0f;
+                if (g_end_det.feed(pa_raw))
+                    g_sm.force_state(DeviceState::POST_RUN);
+            }
             return;
         }
 
@@ -619,7 +622,8 @@ void loop()
        for maximum loop rate.  Keep all state transitions. ── */
     if (g_stream_active) {
         handle_serial();  /* normal commands (non-blocking) */
-        g_led.update();
+        /* Skip g_led.update() during streaming — I2C LED writes slow
+           the loop. Pattern is set on state transitions. */
         g_sm.tick();
 
         if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {

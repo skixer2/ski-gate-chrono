@@ -230,16 +230,18 @@ class _RunListScreenState extends State<RunListScreen> {
       }
 
       if (!crcOk) {
-        debugPrint('[SGC] ⚠️ CRC STILL FAILED after $maxAttempts attempts for run #${latest.id}');
+        debugPrint('[SGC] ⚠️ CRC STILL FAILED after $maxAttempts attempts for run #${latest.id} — download aborted');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('⚠️ Download may be corrupted — CRC mismatch after retry'),
+              content: Text('⚠️ Download corrupted — try again. Firmware chunk rate may need reduction.'),
               backgroundColor: Colors.orange,
-              duration: Duration(seconds: 4),
+              duration: Duration(seconds: 5),
             ),
           );
         }
+        setState(() => _isDownloading = false);
+        return; // Don't decompress or navigate on corrupt data
       }
 
       // Decompress

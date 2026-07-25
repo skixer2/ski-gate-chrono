@@ -627,10 +627,9 @@ class SGCDevice:
                 if b == REQUEST_BYTE:
                     # Found a request — flush JSON buffered so far
                     _parse_json_lines()
-                    # Send the next frame
+                    # Send frame immediately — no flush (adds USB latency on Windows)
                     if sent < total:
                         self.ser.write(pack_frame(frames[sent]))
-                        self.ser.flush()
                         sent += 1
                 else:
                     # Not a request — accumulate as potential JSON
