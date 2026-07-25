@@ -69,13 +69,11 @@ static uint32_t g_last_qi_ms      = 0;
 static uint32_t g_last_cal_ms     = 0;
 
 static DeviceState g_prev_state = DeviceState::SLEEP;
-bool g_stream_active = false;  /* 'S' command — binary frame ingestion */
+bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
 
-/* Stream parser state — must be reset between runs to prevent
-   frame misalignment from stale partial-frame data. */
-uint8_t  g_stream_sbuf[16];  /* V4.11: no sync word, raw 16B frames */
-uint8_t  g_stream_spos = 0;
+/* Stream mode: pull model — firmware requests frames via 0x3F,
+   PC responds with one 16-byte RawFrame. No parser state needed. */
 
 /* ================================================================== */
 void flash_test();
@@ -121,23 +119,9 @@ void handle_serial()
     if (!Serial.available()) return;
     char c = Serial.read();
 
-    /* V4.11: Stream mode — read 16-byte RawFrame frames directly.
-       No sync words: dedicated point-to-point link, fixed frame size.
-       Same strategy as internal BHY2 (fixed-size struct at known rate). */
-    if (g_stream_active) {
-        for (;;) {
-            g_stream_sbuf[g_stream_spos++] = c;
-            if (g_stream_spos >= 16) {
-                g_stream_spos = 0;
-                RawFrame rf;
-                memcpy(&rf, g_stream_sbuf, sizeof(RawFrame));
-                test_set_frame(rf);
-                g_stream_frames++;
-            }
-            if (!Serial.available()) return;
-            c = Serial.read();
-        }
-    }
+    /* V4.13: Pull model — no binary parser needed. Frames are pulled
+       by feed_sensors() → test_request_frame() via request-response.
+       In stream mode, handle_serial() skips the binary path entirely. */
 
     if (test_mode_handle_serial(c)) return;
 
@@ -395,10 +379,14 @@ void feed_sensors()
 {
     RawFrame f;
 
-    /* ── Test mode: copy injected frame directly — same 16B format
-       as the real peripheral output.  Stream parser updates it via
-       test_set_frame().  B/Q/L commands set individual fields. ── */
+    /* ── Test mode: copy injected frame. In stream mode, pull one
+       frame from PC via request-response (like polling BHY2).
+       In manual mode (B/Q/L commands), use the static test frame. ── */
     if (test_mode_active()) {
+        if (g_stream_active) {
+            test_request_frame();  /* updates g_test_frame on success;
+                                      leaves it unchanged on timeout */
+        }
         f = test_get_frame();
     } else {
         f.q_w = (int16_t)(rotation.w() * 16384.0f);
@@ -590,12 +578,11 @@ void loop()
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
     static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
 
-    /* ── Stream mode: maximize parser throughput. Skip heavy ops
-       (BHY2, BLE, LDC) for higher loop rate.  Keep all state
-       transitions including LOGGING (create_run) and POST_RUN
-       (close_run). ── */
+    /* ── Stream mode: pull model — feed_sensors() does
+       request-response with PC.  Skip heavy ops (BHY2, BLE, LDC)
+       for maximum loop rate.  Keep all state transitions. ── */
     if (g_stream_active) {
-        for (int i = 0; i < 40; i++) handle_serial();
+        handle_serial();  /* normal commands (non-blocking) */
         g_led.update();
         g_sm.tick();
 
@@ -634,33 +621,16 @@ void loop()
                 /* Natural end-detector transition = stream complete */
                 if (g_stream_active) {
                     g_stream_active = false;
-                    g_stream_spos = 0;   /* V4.05: prevent stale parser state */
                     json_begin(); json_kv("ev", "stream_end");
                     Serial.print(','); json_kv("frames", (long)g_stream_frames);
                     json_end();
                     g_stream_frames = 0;
-                    /* V4.03: Drain serial RX buffer NOW. Stream frames were
-                       arriving at 100 Hz through handle_serial()'s stream
-                       parser.  After g_stream_active=false, ANY remaining
-                       bytes go through the NORMAL command parser where
-                       random payload bytes match real commands:
-                         'l' (0x6C) → force LOGGING  ← THE BUG
-                         'i' (0x69) → force IDLE
-                         'R' (0x52) → factory reset
-                         'p' (0x70) → force POST_RUN
-                         '!' (0x21) → reboot
-                       Drain them immediately — before close_run() which
-                       takes 100ms+ and lets more bytes accumulate. */
-                    while (Serial.available()) Serial.read();
+                    /* V4.13: Pull model — no stray binary bytes. PC waits for
+                       0x3F; firmware stops requesting → PC stops sending. */
                 }
                 flush_page_buffer();
                 uint32_t compressed_sz = g_fs.run_bytes(); /* capture before close_run zeroes it */
                 uint16_t run_id = g_fs.close_run(g_frame_count);
-                /* V4.03: Drain AGAIN after close_run(). The SPI flash
-                   operations (flush, write trailer, sync) take 50-200ms
-                   during which more stream frames may have arrived.
-                   Catch them before the normal path's handle_serial(). */
-                while (Serial.available()) Serial.read();
                 sgc_ble_set_run_count(g_fs.run_count());
                 sgc_ble_set_flash_used(g_fs.flash_used_pct());
                 json_begin(); json_kv("ev", "run_saved");

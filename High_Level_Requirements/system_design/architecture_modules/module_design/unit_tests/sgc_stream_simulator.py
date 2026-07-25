@@ -21,12 +21,12 @@ Usage:
   # Custom run parameters
   python sgc_stream_simulator.py COM8 --duration 60 --gates 40 --seed 123
 
-Binary frame format (little-endian, 16 bytes, at 100 Hz):
+Binary frame format (little-endian, 16 bytes):
   RawFrame: 7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2).
-  No sync word — fixed-size frames on dedicated point-to-point link.
+  Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.22.0"  # + verify_data_integrity
+SIM_VERSION = "2.23.0"  # pull model: respond to 0x3F requests
 
 import argparse
 import hashlib
@@ -538,20 +538,17 @@ class SGCDevice:
 
     def stream_frames(self, frames: List[GSFrame], pre_fill: int = 30) -> dict:
         """
-        Stream frames at 100Hz with pre-fill buffer.
-
-        Strategy: send pre_fill frames immediately to fill the device's
-        serial buffer, then maintain exactly 100Hz for the rest.
-        This prevents underruns if Python scheduling jitters.
+        Pull model: firmware sends 0x3F to request each frame, we respond.
+        No timing control needed — firmware sets the pace via its 10ms
+        feed_sensors() loop. One 16-byte RawFrame per request.
 
         Returns:
             Dictionary with stream statistics.
         """
         total = len(frames)
+        REQUEST_BYTE = 0x3F  # firmware's frame request character
 
-        print(f"\n── Stream {total} frames ({total / FRAME_RATE_HZ:.1f}s) ──")
-        print(f"   BW: {FRAME_BYTES * FRAME_RATE_HZ} B/s "
-              f"({FRAME_BYTES * FRAME_RATE_HZ / BAUD_RATE * 100:.1f}% of {BAUD_RATE} baud)")
+        print(f"\n── Stream {total} frames (pull model: respond to 0x3F) ──")
         print(f"   Phase: prep 0-2s | pushes 2-2.8s | descent 3-45s | finish 45s+")
         print(f"   Start P₀: {frames[0].pressure_hpa:.2f} hPa")
         ds = int(3.1 * FRAME_RATE_HZ)
@@ -560,67 +557,101 @@ class SGCDevice:
               f"(ΔP={dp:.2f} hPa, start detection needs "
               f"~{DROP_THRESHOLD_M * PA_PER_M_HPA:.2f} hPa)")
 
-        # Pre-fill
-        pre_data = b''.join(pack_frame(f) for f in frames[:pre_fill])
-        self.ser.write(pre_data)
-        self.ser.flush()
-
-        # Stream at 100Hz
         t0 = time.perf_counter()
-        sent = pre_fill
+        sent = 0
         last_report = 0
+        reset_detected = False
+        self.early_events = []
+        self._rx_partial = b""
 
-        for i in range(pre_fill, total):
-            frame = frames[i]
-            data = pack_frame(frame)
-            target_time = t0 + (i - pre_fill) * FRAME_PERIOD_S
-            sleep_t = target_time - time.perf_counter()
+        # Helper: process buffered JSON lines
+        def _parse_json_lines():
+            nonlocal reset_detected
+            if not self._rx_partial:
+                return
+            *lines, self._rx_partial = self._rx_partial.split(b"\n")
+            for raw in lines:
+                line = raw.decode("ascii", errors="replace").strip()
+                if not line.startswith("{"):
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                self.early_events.append(obj)
+                if obj.get("ev") == "boot":
+                    self.reset_event = obj
+                    rr = int(obj.get("rr", 0))
+                    print("\n" + "!" * 52)
+                    print("   💥 DEVICE RESET DETECTED MID-STREAM")
+                    print(f"      boot ver = v{obj.get('ver')}")
+                    print(f"      RESETREAS = {rr} (0x{rr:08X}) → "
+                          f"{self.decode_reset_reason(rr)}")
+                    print("!" * 52)
+                    reset_detected = True
 
-            if sleep_t > 0:
-                time.sleep(sleep_t)
+        while sent < total and not reset_detected:
+            if self.ser.in_waiting == 0:
+                time.sleep(0.001)
+                # Periodically flush any partial JSON we've accumulated
+                _parse_json_lines()
+                continue
 
-            self.ser.write(data)
-            sent += 1
+            # Read ALL available bytes; scan for request markers
+            raw = self.ser.read(self.ser.in_waiting)
 
-            # Poll for a mid-stream device reset frequently (cheap in_waiting
-            # check). The device prints its boot line the instant it reboots;
-            # catch it before the OS serial buffer overflows and drops it.
-            if (sent % 10) == 0 and self.poll_reset_during_stream():
-                print(f"   ⚠ Aborting stream at frame {sent}/{total} "
-                      f"(device reset).")
-                break
+            for b in raw:
+                if b == REQUEST_BYTE:
+                    # Found a request — flush JSON buffered so far
+                    _parse_json_lines()
+                    # Send the next frame
+                    if sent < total:
+                        self.ser.write(pack_frame(frames[sent]))
+                        self.ser.flush()
+                        sent += 1
+                else:
+                    # Not a request — accumulate as potential JSON
+                    self._rx_partial += bytes([b])
+
+            # Parse any complete JSON lines
+            _parse_json_lines()
 
             # Progress every 100 frames
             if sent - last_report >= 100:
                 last_report = sent
                 elapsed = time.perf_counter() - t0
                 rate = sent / elapsed if elapsed > 0 else 0
-                delta_p = frames[min(i, total - 1)].pressure_hpa - frames[0].pressure_hpa
+                idx = min(sent - 1, total - 1)
+                delta_p = frames[idx].pressure_hpa - frames[0].pressure_hpa
                 print(f"   {sent}/{total} ({sent/total*100:.0f}%) "
                       f"@ {rate:.0f} fps, ΔP={delta_p:.2f} hPa")
 
-        # V4.06: No sentinel — wait for natural end detection.
-        # After frames stop, the firmware feeds the last frame's pressure
-        # to the end detector at 0.5 Hz. It needs 10 samples (5 s) of
-        # <2 m descent. The flatline phase provides ~2 s during streaming;
-        # we wait up to 10 s for the remaining samples.
-        self.early_events = getattr(self, "early_events", [])
-        print(f"\n   Waiting for natural end detection (up to 10s)...")
-        wait_deadline = time.time() + 10.0
+        if reset_detected:
+            print(f"   ⚠ Aborted at frame {sent}/{total} (device reset).")
+
+        # All frames sent — firmware continues to request but gets no response.
+        # test_request_frame() times out after 100ms, feed_sensors() uses last
+        # known frame. End detector sees flatline → fires → POST_RUN.
+        print(f"\n   All {sent}/{total} frames sent — waiting for end detection (up to 15s)...")
+        wait_deadline = time.time() + 15.0
         got_end = False
         while time.time() < wait_deadline:
-            for r in self.read_json_lines(1.0):
-                self.early_events.append(r)
+            # Keep reading any late JSON output
+            raw_data = b""
+            if self.ser.in_waiting:
+                raw_data = self.ser.read(self.ser.in_waiting)
+                # Filter out 0x3F request bytes (firmware may still be requesting)
+                self._rx_partial += bytes(b for b in raw_data if b != 0x3F)
+            _parse_json_lines()
+            for r in self.early_events:
                 if r.get("ev") == "stream_end":
                     got_end = True
-            if got_end:
-                break
-            # Also check for end detection via state transition
-            for r in self.early_events:
                 if r.get("ev") == "st" and r.get("to") == "POST_RUN":
                     got_end = True
             if got_end:
                 break
+            if not raw_data:
+                time.sleep(0.1)
         if got_end:
             elapsed_end = time.perf_counter() - t0
             print(f"   End detected {elapsed_end:.1f}s after stream start")
@@ -634,7 +665,7 @@ class SGCDevice:
             "actual_fps": sent / elapsed if elapsed > 0 else 0,
             "target_fps": FRAME_RATE_HZ,
         }
-        self.frames_sent = sent  # for verify_run lost-frames calculation
+        self.frames_sent = sent
         print(f"\n   Done: {sent} frames in {elapsed:.1f}s ({stats['actual_fps']:.0f} fps)")
         return stats
 
@@ -869,10 +900,10 @@ class SGCDevice:
             ndjson = [json.loads(line) for line in f if line.strip()]
         ndjson_bp2 = [int(d['p'] * 50) for d in ndjson]
 
-        # Read anchors from firmware
-        self.send_cmd(f'h {run_id}', wait_ms=300)
-        time.sleep(2.0)  # allow time for full response
-        resp = self.drain_responses(3.0)
+        # Read anchors from firmware — give plenty of time for flash reads
+        self.send_cmd(f'h {run_id}', wait_ms=500)
+        time.sleep(5.0)  # allow time for full anchor scan + serial transmission
+        resp = self.drain_responses(5.0)
 
         hex_dump = None
         for r in resp:
@@ -881,8 +912,12 @@ class SGCDevice:
                 break
 
         if not hex_dump:
-            # Try reading more — large responses may need multiple reads
-            resp2 = self.drain_responses(3.0)
+            # The device may have been busy — wait more and try again
+            print("   Retrying h command...")
+            self.send_cmd('i', wait_ms=300)  # ensure IDLE
+            self.send_cmd(f'h {run_id}', wait_ms=500)
+            time.sleep(5.0)
+            resp2 = self.drain_responses(5.0)
             for r in resp2:
                 if r.get('ev') == 'hex_dump':
                     hex_dump = r

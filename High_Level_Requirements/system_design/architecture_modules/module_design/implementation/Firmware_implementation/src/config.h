@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.12"  /* Stream: flush stray bytes on S cmd */
+#define FW_VERSION "4.13"  /* Pull model: request-response stream frames */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

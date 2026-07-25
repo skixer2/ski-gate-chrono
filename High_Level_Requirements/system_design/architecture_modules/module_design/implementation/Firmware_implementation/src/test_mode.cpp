@@ -2,10 +2,10 @@
  * @file    test_mode.cpp
  * @brief   Sensor injection for automated testing — single RawFrame.
  *
- * V2.53: g_test_frame stores the current test sensor data in the
- * identical 16-byte RawFrame format as the real peripheral output.
- * feed_sensors() in test mode copies it directly — same code path.
- * The B/Q/L/Z commands read/write individual fields of the frame.
+ * V4.13: Pull model for stream mode. test_request_frame() sends 0x3F
+ * to request a frame from the PC, then blocks for a 16-byte response.
+ * Eliminates the push-model clobbering bug (USB delivers 3-4 frames
+ * per chunk, only the last survived in the single g_test_frame slot).
  */
 
 #include "test_mode.h"
@@ -15,7 +15,6 @@
 
 extern bool     g_stream_active;   /* from main.cpp */
 extern uint32_t g_stream_frames;   /* from main.cpp */
-extern uint8_t  g_stream_spos;     /* stream parser sync position */
 
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
@@ -82,6 +81,31 @@ static void json_print_values() {
     json_end();
 }
 
+/* ── Pull one frame from PC (request-response) ──────────────── */
+bool test_request_frame(uint32_t timeout_ms)
+{
+    Serial.write(0x3F);  /* '?' — request one frame */
+    Serial.flush();
+    
+    uint32_t deadline = millis() + timeout_ms;
+    uint8_t buf[16];
+    uint8_t pos = 0;
+    
+    while (pos < 16) {
+        if (Serial.available()) {
+            buf[pos++] = Serial.read();
+        } else {
+            /* millis() wrap-safe timeout check */
+            if ((int32_t)(millis() - deadline) > 0)
+                return false;
+        }
+    }
+    
+    memcpy(&g_test_frame, buf, sizeof(RawFrame));
+    g_stream_frames++;
+    return true;
+}
+
 /* ── Serial command handler ─────────────────────────────────── */
 bool test_mode_handle_serial(char c)
 {
@@ -129,10 +153,11 @@ bool test_mode_handle_serial(char c)
         json_print_values();
         return true;
     case 'S':
-        while (Serial.available()) Serial.read();  /* V4.12: flush stray bytes before binary stream */
+        /* V4.13: Pull model — firmware requests frames via 0x3F,
+           PC responds with one 16-byte RawFrame per request.
+           No stray bytes to flush. */
         g_stream_active = true;
         g_stream_frames = 0;
-        g_stream_spos = 0;
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);

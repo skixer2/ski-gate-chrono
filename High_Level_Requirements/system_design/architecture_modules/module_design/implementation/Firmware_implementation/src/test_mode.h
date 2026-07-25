@@ -6,16 +6,16 @@
  * Test mode is OFF by default at boot. Requires serial 'T' command
  * to activate, which is harmless in production (USB inaccessible).
  *
- * V2.53: test data is a single RawFrame (identical format to real
- * peripheral output).  Individual B/Q/L getters derive from it.
+ * V4.13: Pull model for stream mode. Firmware sends 0x3F request byte,
+ * PC responds with one 16-byte RawFrame. Eliminates push-model clobbering
+ * (USB chunk delivers 3-4 frames → only last survived).
  *
  * Serial protocol:
  *   B <pa>            — set barometric pressure (hPa)
  *   Q <w> <x> <y> <z> — set quaternion (floats)
  *   L <x> <y> <z>     — set linear acceleration (mm/s²)
  *   T                  — toggle test mode on/off
- *   S                  — enter stream mode (receive RawFrames via serial)
- *   e                  — exit stream mode
+ *   S                  — enter stream mode (pull frames via request-response)
  *   Z                  — print current injected values
  */
 
@@ -30,6 +30,10 @@ bool test_mode_active();
 /* RawFrame getter/setter — used by feed_sensors() in test mode */
 const RawFrame& test_get_frame();
 void  test_set_frame(const RawFrame& rf);
+
+/* Pull one frame from PC (request-response). Returns false on timeout.
+   On success, updates g_test_frame and increments g_stream_frames. */
+bool test_request_frame(uint32_t timeout_ms = 100);
 
 /* Individual getters (derived from g_test_frame) */
 float test_get_pressure();   /* hPa, from baro_pa_div2 */
