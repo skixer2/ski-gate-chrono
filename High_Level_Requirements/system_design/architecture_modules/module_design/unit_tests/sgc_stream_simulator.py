@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.25.0"  # silence detection: 1s no-0x3F = firmware done
+SIM_VERSION = "2.26.0"  # scan loop timeout: 5s no-0x3F = firmware stopped
 
 import argparse
 import hashlib
@@ -583,6 +583,7 @@ class SGCDevice:
         t0 = time.perf_counter()
         sent = 0
         last_report = 0
+        last_request_time = time.perf_counter()  # timeout for mid-stream end
         reset_detected = False
         self.early_events = []
         self._rx_partial = b""
@@ -616,8 +617,12 @@ class SGCDevice:
         while sent < total and not reset_detected:
             if self.ser.in_waiting == 0:
                 time.sleep(0.001)
-                # Periodically flush any partial JSON we've accumulated
                 _parse_json_lines()
+                # If firmware stopped requesting mid-stream (end detector),
+                # break after 5s of silence instead of looping forever.
+                if time.perf_counter() - last_request_time > 5.0:
+                    print(f"\n   ⚠ No requests for 5s — firmware stopped at frame {sent}/{total}")
+                    break
                 continue
 
             # Read ALL available bytes; scan for request markers
@@ -625,7 +630,7 @@ class SGCDevice:
 
             for b in raw:
                 if b == REQUEST_BYTE:
-                    # Found a request — flush JSON buffered so far
+                    last_request_time = time.perf_counter()  # reset timeout
                     _parse_json_lines()
                     # Send one frame per request (as close to real BHY2 as possible)
                     if sent < total:
@@ -651,7 +656,12 @@ class SGCDevice:
         if reset_detected:
             print(f"   ⚠ Aborted at frame {sent}/{total} (device reset).")
 
-        # All frames sent. Firmware keeps requesting 0x3F but gets no
+        premature_end = (sent < total and not reset_detected)
+        if premature_end:
+            print(f"   ⚠ Firmware stopped mid-stream — end detector fired.")
+
+        # All frames sent (or firmware stopped). Firmware keeps requesting
+        # 0x3F but gets no response → timeout → g_stream_eof = true → stops.
         # response → timeout → g_stream_eof = true → stops requesting.
         # Wait for 1 second of silence (no 0x3F) = firmware done.
         print(f"\n   All {sent}/{total} frames sent — waiting for firmware to stop requesting...")
