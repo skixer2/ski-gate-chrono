@@ -71,6 +71,7 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
+static bool g_ring_drained = false;  /* V4.16: true after ring drain in pull-model LOGGING */
 
 /* Stream mode: pull model — firmware requests frames via 0x3F,
    PC responds with one 16-byte RawFrame. No parser state needed. */
@@ -419,15 +420,50 @@ void feed_sensors()
     }
 
     if (st == DeviceState::LOGGING) {
+
+        /* ── V4.16: Pull model — encode frame directly (no ring). ── */
+        if (test_mode_active() && g_stream_active) {
+            if (!g_ring_drained) {
+                /* First LOGGING call: drain all ARM-pre-buffered ring frames */
+                uint8_t count = g_ring.count();
+                for (uint8_t i = 0; i < count; i++) {
+                    RawFrame oldest = g_ring.read();
+                    g_packer.encode(oldest, g_ring.last_read_ts());
+                    uint8_t cf_size = g_packer.last_size();
+                    if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
+                        flush_page_buffer();
+                    }
+                    memcpy(g_page_buf + g_page_cursor, g_packer.buffer(), cf_size);
+                    g_page_cursor += cf_size;
+                    g_frame_count++;
+                }
+                ring_drained = true;
+            }
+
+            /* Encode the pulled frame directly — no flash ring ops.
+               Timestamp: use millis() directly (no ring to buffer). */
+            g_packer.encode(f, millis());
+            uint8_t cf_size = g_packer.last_size();
+            if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
+                flush_page_buffer();
+            }
+            memcpy(g_page_buf + g_page_cursor, g_packer.buffer(), cf_size);
+            g_page_cursor += cf_size;
+            g_frame_count++;
+
+            /* End detector */
+            float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
+            if (g_end_det.feed(pa_raw))
+                g_sm.force_state(DeviceState::POST_RUN);
+            return;
+        }
+
+        /* ── Real-sensor path: ring-based (original) ── */
         uint8_t count = g_ring.count();
         uint8_t pop_n = count >= 2 ? 2 : count;
 
         for (uint8_t i = 0; i < pop_n; i++) {
             RawFrame oldest = g_ring.read();
-            /* V4.07: Use the frame's arrival timestamp (stored in the
-               ring at write time), not millis() at pop time.  When
-               popping 2 frames at once, both got the SAME millis() →
-               second frame had delta=0 → ~50% time loss. */
             g_packer.encode(oldest, g_ring.last_read_ts());
             uint8_t cf_size = g_packer.last_size();
             const uint8_t* cf_buf = g_packer.buffer();
@@ -602,6 +638,7 @@ void loop()
                 g_ring.reset(); g_packer.reset();
                 g_page_cursor = 0;
                 g_run_created = false;
+                g_ring_drained = false;
                 g_last_baro_ms = now;
             }
             if (cur == DeviceState::LOGGING) {
@@ -748,6 +785,7 @@ void loop()
             g_ring.reset(); g_packer.reset();
             g_page_cursor = 0;
             g_run_created = false;
+            g_ring_drained = false;
         }
         if (cur == DeviceState::SLEEP) {
             /* Recalibrate LDC baseline on sleep entry — device is

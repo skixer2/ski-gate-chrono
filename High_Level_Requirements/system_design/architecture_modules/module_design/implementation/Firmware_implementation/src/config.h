@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.15"  /* Deferred EOF: only after had_data → then timeout */
+#define FW_VERSION "4.16"  /* Direct encode in pull-model LOGGING — skip flash ring */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
