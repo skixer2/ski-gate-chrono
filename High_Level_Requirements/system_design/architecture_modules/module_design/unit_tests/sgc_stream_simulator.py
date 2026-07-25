@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.26.0"  # scan loop timeout: 5s no-0x3F = firmware stopped
+SIM_VERSION = "2.27.0"  # hex dump timeout 30s (was 5s, too short for 2287 frames)
 
 import argparse
 import hashlib
@@ -932,10 +932,11 @@ class SGCDevice:
             ndjson = [json.loads(line) for line in f if line.strip()]
         ndjson_bp2 = [int(d['p'] * 50) for d in ndjson]
 
-        # Read anchors from firmware — give plenty of time for flash reads
+        # Read anchors from firmware — hex dump iterates ALL frames
+        # (2 SPI reads each), ~10ms/frame. For 2287 frames = ~23s.
         self.send_cmd(f'h {run_id}', wait_ms=500)
-        time.sleep(5.0)  # allow time for full anchor scan + serial transmission
-        resp = self.drain_responses(5.0)
+        time.sleep(30.0)  # generous: ~10ms × 2287 frames + margin
+        resp = self.drain_responses(10.0)
 
         hex_dump = None
         for r in resp:
@@ -948,8 +949,8 @@ class SGCDevice:
             print("   Retrying h command...")
             self.send_cmd('i', wait_ms=300)  # ensure IDLE
             self.send_cmd(f'h {run_id}', wait_ms=500)
-            time.sleep(5.0)
-            resp2 = self.drain_responses(5.0)
+            time.sleep(30.0)
+            resp2 = self.drain_responses(10.0)
             for r in resp2:
                 if r.get('ev') == 'hex_dump':
                     hex_dump = r
