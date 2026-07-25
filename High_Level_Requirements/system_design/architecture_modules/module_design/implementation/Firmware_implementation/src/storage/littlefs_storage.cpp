@@ -49,7 +49,7 @@ static void make_run_path(uint16_t id, char* buf, size_t sz) {
 LittleFSStorage::LittleFSStorage()
     : m_fs(nullptr), m_bd(nullptr), m_file(nullptr), m_file_open(false)
     , m_run_count(0), m_next_run_id(0), m_run_bytes(0), m_run_crc(0xFFFFFFFF)
-    , m_write_buf_pos(0), m_last_sync_ms(0)
+    , m_write_buf_pos(0)
     , m_entry_count(0)
 {
     memset(m_write_buf, 0, sizeof(m_write_buf));
@@ -208,7 +208,6 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
     }
     m_file = f; m_file_open = true; m_run_bytes = 0; m_run_crc = 0xFFFFFFFF;
     m_write_buf_pos = 0;
-    m_last_sync_ms = millis();  /* V4.19: fresh sync timer per run */
     m_pending_arm_side = arm_side; m_pending_baro_temp = baro_temp;
     m_pending_cal_accuracy = cal_accuracy;
     Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":true}");
@@ -231,17 +230,9 @@ void LittleFSStorage::flush_write_buf() {
     if (m_write_buf_pos == 0) return;
     auto* f = static_cast<File*>(m_file);
     f->write(m_write_buf, m_write_buf_pos);
-    /* V4.18: Time-based sync — every 2s instead of every flush.
-       Per-flush sync() (H3 fix) was committing LittleFS metadata
-       to SPI flash every ~23 frames (20-40ms), dropping stream
-       test throughput from 100fps to 27fps.
-       Time-based sync keeps the power-loss safety window at
-       ~512B (46 frames @ 11B/f) while avoiding the speed hit. */
-    uint32_t now = millis();
-    if (now - m_last_sync_ms >= SYNC_INTERVAL_MS) {
-        f->sync();
-        m_last_sync_ms = now;
-    }
+    /* V4.19: No sync() in flush path — it was a 20-40ms SPI flash
+       hit every ~23 frames.  close_run() syncs.  If battery dies
+       mid-run, athlete is responsible — device must be charged. */
     m_write_buf_pos = 0;
 }
 
