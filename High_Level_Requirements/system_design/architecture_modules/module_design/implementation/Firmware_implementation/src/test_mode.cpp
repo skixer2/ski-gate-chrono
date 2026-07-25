@@ -85,55 +85,7 @@ static void json_print_values() {
 
 bool test_stream_eof() { return g_stream_eof; }
 
-/* ── Batch buffer (V4.20) — 16 RawFrames = 256 B RAM ──────── */
-static RawFrame batch_buf[BATCH_MAX];
-static uint8_t  batch_head = 0, batch_tail = 0;
-
-uint8_t test_batch_available() {
-    return (batch_tail - batch_head) & (BATCH_MAX - 1);
-}
-
-bool test_request_batch(uint8_t n, uint32_t timeout_ms) {
-    if (g_stream_eof) return false;
-    if (n > BATCH_MAX) n = BATCH_MAX;
-    
-    /* Send N request bytes at once */
-    for (uint8_t i = 0; i < n; i++) Serial.write(0x3F);
-    
-    uint32_t deadline = millis() + timeout_ms;
-    uint8_t need = n * 16;
-    uint8_t buf[256];  /* max: 16 × 16 = 256 */
-    uint8_t pos = 0;
-    
-    while (pos < need) {
-        if (Serial.available()) {
-            buf[pos++] = Serial.read();
-        } else if ((int32_t)(millis() - deadline) > 0) {
-            if (g_stream_had_data) g_stream_eof = true;
-            return false;
-        }
-    }
-    
-    /* Store in ring buffer */
-    for (uint8_t i = 0; i < n; i++) {
-        memcpy(&batch_buf[(batch_tail + i) & (BATCH_MAX - 1)],
-               buf + i * 16, 16);
-    }
-    batch_tail = (batch_tail + n) & (BATCH_MAX - 1);
-    g_stream_had_data = true;
-    g_stream_frames += n;
-    return true;
-}
-
-/* Pop one frame from batch, update g_test_frame. Returns false if empty. */
-static bool test_batch_pop() {
-    if (test_batch_available() == 0) return false;
-    memcpy(&g_test_frame, &batch_buf[batch_head], sizeof(RawFrame));
-    batch_head = (batch_head + 1) & (BATCH_MAX - 1);
-    return true;
-}
-
-/* ── Single-frame pull (legacy, used when batch is empty) ──── */
+/* ── Pull one frame from PC (request-response) ──────────────── */
 bool test_request_frame(uint32_t timeout_ms)
 {
     /* Once EOF is set, stop all serial traffic — PC is done.
@@ -224,7 +176,6 @@ bool test_mode_handle_serial(char c)
         g_stream_frames = 0;
         g_stream_eof = false;
         g_stream_had_data = false;
-        batch_head = batch_tail = 0;  /* V4.20: fresh batch ring */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);

@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.20"  /* Batch pull: 8 frames per USB round-trip */
+#define FW_VERSION "4.20"  /* Revert batch; keep sync removal. Real path verified 100fps. */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

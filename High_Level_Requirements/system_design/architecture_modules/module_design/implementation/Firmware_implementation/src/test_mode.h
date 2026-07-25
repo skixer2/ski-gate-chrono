@@ -40,13 +40,6 @@ bool test_request_frame(uint32_t timeout_ms = 100);
 /* True after first request timeout — PC has no more frames. */
 bool test_stream_eof();
 
-/* Batch pull: request N frames at once (N consecutive 0x3F bytes),
-   read N×16 byte response. Amortizes USB CDC round-trip latency. */
-static constexpr uint8_t BATCH_SIZE = 8;
-static constexpr uint8_t BATCH_MAX  = 16;  /* ring capacity */
-bool test_request_batch(uint8_t n = BATCH_SIZE, uint32_t timeout_ms = 100);
-uint8_t test_batch_available();  /* frames ready in batch buffer */
-
 /* Individual getters (derived from g_test_frame) */
 float test_get_pressure();   /* hPa, from baro_pa_div2 */
 float test_get_quat_w();     /* from q_w / 16384.0 */

@@ -620,35 +620,20 @@ class SGCDevice:
                 _parse_json_lines()
                 continue
 
-            # Read ALL available bytes; scan for request markers.
-            # V4.20: Count consecutive 0x3F bytes → batch-send N frames.
+            # Read ALL available bytes; scan for request markers
             raw = self.ser.read(self.ser.in_waiting)
-            batch_count = 0
 
             for b in raw:
                 if b == REQUEST_BYTE:
-                    batch_count += 1
+                    # Found a request — flush JSON buffered so far
+                    _parse_json_lines()
+                    # Send one frame per request (as close to real BHY2 as possible)
+                    if sent < total:
+                        self.ser.write(pack_frame(frames[sent]))
+                        sent += 1
                 else:
-                    # Flush pending batch before processing non-request byte
-                    if batch_count > 0:
-                        _parse_json_lines()
-                        to_send = min(batch_count, total - sent)
-                        if to_send > 0:
-                            data = b''.join(pack_frame(frames[sent + i]) for i in range(to_send))
-                            self.ser.write(data)
-                            sent += to_send
-                        batch_count = 0
-                    # Non-request — accumulate as potential JSON
+                    # Not a request — accumulate as potential JSON
                     self._rx_partial += bytes([b])
-
-            # Flush any remaining batch at end of raw data
-            if batch_count > 0:
-                _parse_json_lines()
-                to_send = min(batch_count, total - sent)
-                if to_send > 0:
-                    data = b''.join(pack_frame(frames[sent + i]) for i in range(to_send))
-                    self.ser.write(data)
-                    sent += to_send
 
             # Parse any complete JSON lines
             _parse_json_lines()
