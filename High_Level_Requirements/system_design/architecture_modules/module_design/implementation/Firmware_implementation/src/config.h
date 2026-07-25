@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.13"  /* Pull model: request-response stream frames */
+#define FW_VERSION "4.14"  /* Stream EOF: stop requesting after first timeout */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

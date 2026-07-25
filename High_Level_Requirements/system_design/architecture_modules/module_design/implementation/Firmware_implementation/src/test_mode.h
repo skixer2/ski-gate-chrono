@@ -32,8 +32,13 @@ const RawFrame& test_get_frame();
 void  test_set_frame(const RawFrame& rf);
 
 /* Pull one frame from PC (request-response). Returns false on timeout.
-   On success, updates g_test_frame and increments g_stream_frames. */
+   On success, updates g_test_frame and increments g_stream_frames.
+   After first timeout, sets internal EOF flag — subsequent calls return
+   immediately (no 0x3F, no block) so feed_sensors() runs at full speed. */
 bool test_request_frame(uint32_t timeout_ms = 100);
+
+/* True after first request timeout — PC has no more frames. */
+bool test_stream_eof();
 
 /* Individual getters (derived from g_test_frame) */
 float test_get_pressure();   /* hPa, from baro_pa_div2 */

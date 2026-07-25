@@ -18,6 +18,7 @@ extern uint32_t g_stream_frames;   /* from main.cpp */
 
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
+static bool     g_stream_eof = false;  /* true after first request timeout — stop polling */
 
 /* ── Init ───────────────────────────────────────────────────── */
 void test_mode_init() {}
@@ -81,9 +82,16 @@ static void json_print_values() {
     json_end();
 }
 
+bool test_stream_eof() { return g_stream_eof; }
+
 /* ── Pull one frame from PC (request-response) ──────────────── */
 bool test_request_frame(uint32_t timeout_ms)
 {
+    /* After first timeout, stop requesting — PC has no more frames.
+       Let feed_sensors() run at full 100Hz to feed end detector fast. */
+    if (g_stream_eof)
+        return false;
+    
     Serial.write(0x3F);  /* '?' — request one frame */
     Serial.flush();
     
@@ -95,9 +103,10 @@ bool test_request_frame(uint32_t timeout_ms)
         if (Serial.available()) {
             buf[pos++] = Serial.read();
         } else {
-            /* millis() wrap-safe timeout check */
-            if ((int32_t)(millis() - deadline) > 0)
+            if ((int32_t)(millis() - deadline) > 0) {
+                g_stream_eof = true;  /* PC stopped responding */
                 return false;
+            }
         }
     }
     
@@ -155,9 +164,11 @@ bool test_mode_handle_serial(char c)
     case 'S':
         /* V4.13: Pull model — firmware requests frames via 0x3F,
            PC responds with one 16-byte RawFrame per request.
-           No stray bytes to flush. */
+           g_stream_eof set false here; goes true on first timeout
+           after PC stops sending → feed_sensors() runs at 100Hz. */
         g_stream_active = true;
         g_stream_frames = 0;
+        g_stream_eof = false;
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);
