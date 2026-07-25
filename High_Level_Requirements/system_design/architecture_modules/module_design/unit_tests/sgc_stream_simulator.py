@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.24.0"  # fix enter_stream_mode hang (0x3F bytes confused drain)
+SIM_VERSION = "2.25.0"  # silence detection: 1s no-0x3F = firmware done
 
 import argparse
 import hashlib
@@ -651,34 +651,34 @@ class SGCDevice:
         if reset_detected:
             print(f"   ⚠ Aborted at frame {sent}/{total} (device reset).")
 
-        # All frames sent — firmware continues to request but gets no response.
-        # test_request_frame() times out after 100ms, feed_sensors() uses last
-        # known frame. End detector sees flatline → fires → POST_RUN.
-        print(f"\n   All {sent}/{total} frames sent — waiting for end detection (up to 15s)...")
-        wait_deadline = time.time() + 15.0
-        got_end = False
-        while time.time() < wait_deadline:
-            # Keep reading any late JSON output
-            raw_data = b""
+        # All frames sent. Firmware keeps requesting 0x3F but gets no
+        # response → timeout → g_stream_eof = true → stops requesting.
+        # Wait for 1 second of silence (no 0x3F) = firmware done.
+        print(f"\n   All {sent}/{total} frames sent — waiting for firmware to stop requesting...")
+        last_request = time.perf_counter()
+        end_timeout_s = 2.0  # wait up to 2s for last request, then 1s silence
+        deadline = time.perf_counter() + end_timeout_s
+        got_last_request = False
+        while time.perf_counter() < deadline:
             if self.ser.in_waiting:
-                raw_data = self.ser.read(self.ser.in_waiting)
-                # Filter out 0x3F request bytes (firmware may still be requesting)
-                self._rx_partial += bytes(b for b in raw_data if b != 0x3F)
+                raw = self.ser.read(self.ser.in_waiting)
+                for b in raw:
+                    if b == REQUEST_BYTE:
+                        last_request = time.perf_counter()
+                        got_last_request = True
+                    else:
+                        self._rx_partial += bytes([b])
             _parse_json_lines()
-            for r in self.early_events:
-                if r.get("ev") == "stream_end":
-                    got_end = True
-                if r.get("ev") == "st" and r.get("to") == "POST_RUN":
-                    got_end = True
-            if got_end:
+            # Check for silence: 1s since last request
+            if got_last_request and (time.perf_counter() - last_request) > 1.0:
+                print("   Firmware stopped requesting — streaming complete.")
                 break
-            if not raw_data:
-                time.sleep(0.1)
-        if got_end:
-            elapsed_end = time.perf_counter() - t0
-            print(f"   End detected {elapsed_end:.1f}s after stream start")
+            time.sleep(0.01)
         else:
-            print("   ⚠ End detection never fired — device may be stuck")
+            if not got_last_request:
+                print("   ⚠ Firmware never sent a request after last frame")
+            else:
+                print("   ⚠ Firmware kept requesting (timeout)")
 
         elapsed = time.perf_counter() - t0
         stats = {

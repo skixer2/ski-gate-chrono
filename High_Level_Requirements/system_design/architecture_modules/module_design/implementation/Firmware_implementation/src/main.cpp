@@ -451,13 +451,10 @@ void feed_sensors()
             g_page_cursor += cf_size;
             g_frame_count++;
 
-            /* V4.17: End detector only after PC stops (EOF).
-               Active streaming stretches flatline past 5s window. */
-            if (test_stream_eof()) {
-                float pa_raw = (float)f.baro_pa_div2 * 2.0f;
-                if (g_end_det.feed(pa_raw))
-                    g_sm.force_state(DeviceState::POST_RUN);
-            }
+            /* End detector */
+            float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
+            if (g_end_det.feed(pa_raw))
+                g_sm.force_state(DeviceState::POST_RUN);
             return;
         }
 
