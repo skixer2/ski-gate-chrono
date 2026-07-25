@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.14"  /* Stream EOF: stop requesting after first timeout */
+#define FW_VERSION "4.15"  /* Deferred EOF: only after had_data → then timeout */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

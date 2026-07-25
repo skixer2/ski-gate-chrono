@@ -18,7 +18,8 @@ extern uint32_t g_stream_frames;   /* from main.cpp */
 
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
-static bool     g_stream_eof = false;  /* true after first request timeout — stop polling */
+static bool     g_stream_eof = false;     /* stop requesting after PC stops responding */
+static bool     g_stream_had_data = false; /* set after first successful frame */
 
 /* ── Init ───────────────────────────────────────────────────── */
 void test_mode_init() {}
@@ -87,8 +88,8 @@ bool test_stream_eof() { return g_stream_eof; }
 /* ── Pull one frame from PC (request-response) ──────────────── */
 bool test_request_frame(uint32_t timeout_ms)
 {
-    /* After first timeout, stop requesting — PC has no more frames.
-       Let feed_sensors() run at full 100Hz to feed end detector fast. */
+    /* Once EOF is set, stop all serial traffic — PC is done.
+       feed_sensors() runs at full 100Hz to feed end detector. */
     if (g_stream_eof)
         return false;
     
@@ -104,13 +105,18 @@ bool test_request_frame(uint32_t timeout_ms)
             buf[pos++] = Serial.read();
         } else {
             if ((int32_t)(millis() - deadline) > 0) {
-                g_stream_eof = true;  /* PC stopped responding */
+                /* Only set EOF if we've received data before.
+                   During initial setup (enter_stream_mode pause),
+                   the PC hasn't started sending yet — keep polling. */
+                if (g_stream_had_data)
+                    g_stream_eof = true;
                 return false;
             }
         }
     }
     
     memcpy(&g_test_frame, buf, sizeof(RawFrame));
+    g_stream_had_data = true;  /* PC is alive */
     g_stream_frames++;
     return true;
 }
@@ -162,13 +168,13 @@ bool test_mode_handle_serial(char c)
         json_print_values();
         return true;
     case 'S':
-        /* V4.13: Pull model — firmware requests frames via 0x3F,
-           PC responds with one 16-byte RawFrame per request.
-           g_stream_eof set false here; goes true on first timeout
-           after PC stops sending → feed_sensors() runs at 100Hz. */
+        /* V4.14: Pull model. g_stream_had_data prevents premature
+           EOF during the initial setup pause (enter_stream_mode).
+           EOF only activates after PC responds AND then stops. */
         g_stream_active = true;
         g_stream_frames = 0;
         g_stream_eof = false;
+        g_stream_had_data = false;
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);
