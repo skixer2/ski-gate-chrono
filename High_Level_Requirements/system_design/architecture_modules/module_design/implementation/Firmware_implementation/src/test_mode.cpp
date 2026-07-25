@@ -94,7 +94,8 @@ bool test_request_frame(uint32_t timeout_ms)
         return false;
     
     Serial.write(0x3F);  /* '?' — request one frame */
-    Serial.flush();
+    /* No flush() — USB CDC flush on nRF52 blocks waiting for host.
+       The byte goes to the TX buffer and will be sent naturally. */
     
     uint32_t deadline = millis() + timeout_ms;
     uint8_t buf[16];

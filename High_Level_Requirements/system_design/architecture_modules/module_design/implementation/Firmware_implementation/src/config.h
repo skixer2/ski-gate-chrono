@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.17"  /* Deferred end-detection until EOF; skip LED in stream */
+#define FW_VERSION "4.18"  /* Remove per-flush sync() + Serial.flush() — speed fix */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

@@ -230,11 +230,12 @@ void LittleFSStorage::flush_write_buf() {
     if (m_write_buf_pos == 0) return;
     auto* f = static_cast<File*>(m_file);
     f->write(m_write_buf, m_write_buf_pos);
-    /* V2.80 (H3 fix): sync after every flush — commits LittleFS internal
-       256B cache to flash. Reduces data-loss window from ~512B to just
-       the app-level buffer. Tradeoff: more flash wear, more SPI traffic,
-       but critical gate-crossing frames are preserved. */
-    f->sync();
+    /* V4.18: Remove per-flush sync().  sync() commits LittleFS metadata
+       to SPI flash (20-40ms) and was the dominant bottleneck in stream
+       tests (~27fps vs expected 100fps).  Data is safe: close_run()
+       syncs, and LittleFS's internal 256B cache is atomic.
+       Tradeoff: power loss during logging may lose up to ~512B of
+       buffered data (acceptable for stream test throughput). */
     m_write_buf_pos = 0;
 }
 
