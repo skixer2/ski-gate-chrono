@@ -380,13 +380,15 @@ void feed_sensors()
 {
     RawFrame f;
 
-    /* ── Test mode: copy injected frame. In stream mode, pull one
-       frame from PC via request-response (like polling BHY2).
-       In manual mode (B/Q/L commands), use the static test frame. ── */
+    /* ── Test mode: copy injected frame. In stream mode, pull from
+       batch (V4.20): test_request_batch() fills up to 8 frames at once,
+       amortizing USB CDC latency.  Batch pop sets g_test_frame. ── */
     if (test_mode_active()) {
         if (g_stream_active) {
-            test_request_frame();  /* updates g_test_frame on success;
-                                      leaves it unchanged on timeout */
+            if (test_batch_available() == 0 && !test_stream_eof()) {
+                test_request_batch(BATCH_SIZE);
+            }
+            test_batch_pop();  /* updates g_test_frame if batch has data */
         }
         f = test_get_frame();
     } else {
