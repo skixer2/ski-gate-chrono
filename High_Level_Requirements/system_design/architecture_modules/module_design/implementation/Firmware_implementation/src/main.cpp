@@ -437,7 +437,7 @@ void feed_sensors()
                     g_page_cursor += cf_size;
                     g_frame_count++;
                 }
-                ring_drained = true;
+                g_ring_drained = true;
             }
 
             /* Encode the pulled frame directly — no flash ring ops.
