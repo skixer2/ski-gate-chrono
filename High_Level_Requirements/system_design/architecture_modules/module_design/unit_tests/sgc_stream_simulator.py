@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.23.0"  # pull model: respond to 0x3F requests
+SIM_VERSION = "2.24.0"  # fix enter_stream_mode hang (0x3F bytes confused drain)
 
 import argparse
 import hashlib
@@ -451,11 +451,34 @@ class SGCDevice:
 
     def enter_stream_mode(self) -> None:
         print("\n── Enter Stream Mode ──")
-        self.send_cmd('S', wait_ms=300)
-        resp = self.drain_responses(1.0)
-        for r in resp:
-            if r.get("ev") == "cmd" and r.get("cmd") == "S":
-                print(f"  Stream mode: {r.get('strm')}")
+        self.ser.reset_input_buffer()
+        self.ser.write(b'S\n')
+        self.ser.flush()
+
+        # Firmware sends JSON response, then immediately starts sending
+        # 0x3F request bytes. Read the JSON line first, then drain 0x3F bytes.
+        deadline = time.time() + 2.0
+        saw_response = False
+        while time.time() < deadline:
+            raw = self.ser.readline()
+            line = raw.decode('ascii', errors='replace').strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+                if obj.get("ev") == "cmd" and obj.get("cmd") == "S":
+                    print(f"  Stream mode: {obj.get('strm')}")
+                    saw_response = True
+                    break
+            except json.JSONDecodeError:
+                pass  # skip 0x3F bytes that arrived before the JSON response
+
+        # Drain any accumulated request bytes (0x3F) before stream_frames starts
+        if self.ser.in_waiting:
+            self.ser.read(self.ser.in_waiting)
+
+        if not saw_response:
+            print("  ⚠ No 'S' response from device")
 
     def arm(self) -> None:
         """Arm via serial command."""
