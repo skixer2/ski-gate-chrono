@@ -736,6 +736,7 @@ class SGCDevice:
         close_trace = []
         close_bc = []  # {"ev":"cbc",...} close_run() step breadcrumbs (V2.13)
         enc_dbg_events = []
+        ring_dbg_events = []
         all_events = []
 
         for r in responses:
@@ -755,6 +756,8 @@ class SGCDevice:
                 close_bc.append(r)
             elif ev == "enc_dbg":
                 enc_dbg_events.append(r)
+            elif ev == "ring_dbg":
+                ring_dbg_events.append(r)
             elif ev in ("sd", "start"):
                 sd_events.append(r)
             elif ev == "bc":
@@ -1132,7 +1135,8 @@ def run_full_test(port: str,
                     ndjson_to_check = tf.name
                 print(f"\n   (saved temp NDJSON for integrity check: {ndjson_to_check})")
 
-            integrity_ok = device.verify_data_integrity(ndjson_to_check)
+            integrity_ok = device.verify_data_integrity(ndjson_to_check,
+                                                         result.get('id', 0))
 
             print("\n" + "=" * 50)
             if integrity_ok:

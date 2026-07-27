@@ -485,6 +485,18 @@ void feed_sensors()
                 uint8_t count = g_ring.count();
                 for (uint8_t i = 0; i < count; i++) {
                     RawFrame oldest = g_ring.read();
+                    if (i == 0) {
+                        /* Dump raw bytes of first ring frame */
+                        uint8_t* raw = (uint8_t*)&oldest;
+                        json_begin(); json_kv("ev","ring_dbg");
+                        Serial.print(",\"bytes\":\"");
+                        for (int b = 0; b < 16; b++) {
+                            if (raw[b] < 16) Serial.print('0');
+                            Serial.print(raw[b], HEX);
+                        }
+                        Serial.print('"');
+                        json_end();
+                    }
                     g_packer.encode(oldest, g_ring.last_read_ts());
                     uint8_t cf_size = g_packer.last_size();
                     uint8_t cf_type = g_packer.last_type();
