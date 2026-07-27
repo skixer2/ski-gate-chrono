@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.28"  /* enc_dbg events: log first encode type/size/qw/baro at LOGGING entry */
+#define FW_VERSION "4.29"  /* ring_dbg: raw bytes of first ring frame + run_id fix in test */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
