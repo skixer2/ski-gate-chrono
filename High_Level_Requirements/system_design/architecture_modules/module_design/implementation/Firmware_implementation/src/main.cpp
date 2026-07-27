@@ -871,6 +871,7 @@ void loop()
             g_page_cursor = 0;
             g_run_created = false;
             g_ring_drained = false;
+            g_last_baro_ms = now;
         }
         if (cur == DeviceState::SLEEP) {
             g_ldc.force_recalibrate();
