@@ -17,7 +17,6 @@
 
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
-extern bool g_stream_had_data;  /* from test_mode.cpp */
 void bhy2_cal_hook_init();
 #include "ble/sgc_service.h"
 #include "ble/file_transfer.h"
@@ -72,7 +71,6 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
-static bool g_sd_inited = false;     /* start detector init flag for test mode */
 static bool g_ring_drained = false;  /* V4.16: true after ring drain in pull-model LOGGING */
 
 /* Stream mode: pull model — firmware requests frames via 0x3F,
@@ -133,27 +131,25 @@ void handle_serial()
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             if (test_mode_active()) {
-                /* Test mode: skip quat check + start det. Start det will be
-                   initialised with first stream frame's pressure in feed_sensors(). */
-                g_stream_active = true;  /* ARM triggers frame requests */
+                g_stream_active = true;  /* ARM triggers stream pull loop */
                 g_sm.force_state(DeviceState::ARMED);
             } else {
-                float qx = rotation.x(), qy = rotation.y();
-                float qz = rotation.z(), qw = rotation.w();
-                float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
-                if (mag < 0.8f || mag > 1.2f) {
-                    json_begin();
-                    json_kv("ev", "arm_refused");
-                    Serial.print(','); json_kv("reason", "quat_magnitude");
-                    Serial.print(','); json_kv("mag", mag);
-                    json_end();
-                } else {
-                    float pa = pressure.value() * 100.0f;
-                    if (pa > 50000.0f && pa < 110000.0f) { /* plausible */ }
-                    else { pa = 101325.0f; }
-                    g_start_det.reset(pa);
-                    g_sm.force_state(DeviceState::ARMED);
-                }
+            float qx = rotation.x(), qy = rotation.y();
+            float qz = rotation.z(), qw = rotation.w();
+            float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+            if (mag < 0.8f || mag > 1.2f) {
+                json_begin();
+                json_kv("ev", "arm_refused");
+                Serial.print(','); json_kv("reason", "quat_magnitude");
+                Serial.print(','); json_kv("mag", mag);
+                json_end();
+            } else {
+                float pa = pressure.value() * 100.0f;
+                if (pa > 50000.0f && pa < 110000.0f) { /* plausible */ }
+                else { pa = 101325.0f; }
+                g_start_det.reset(pa);
+                g_sm.force_state(DeviceState::ARMED);
+            }
             }
         }
         break;
@@ -443,8 +439,9 @@ void feed_sensors()
        frame from PC via request-response (like polling BHY2).
        In manual mode (B/Q/L commands), use the static test frame. ── */
     if (test_mode_active()) {
-        if (g_sm.state() == DeviceState::ARMED || g_sm.state() == DeviceState::LOGGING) {
-            test_request_frame();  /* request from PC during run states */
+        if (g_stream_active) {
+            test_request_frame();  /* updates g_test_frame on success;
+                                      leaves it unchanged on timeout */
         }
         f = test_get_frame();
     } else {
@@ -462,12 +459,6 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        /* In test mode, init start detector with first stream frame's pressure */
-        if (test_mode_active() && !g_sd_inited && g_stream_had_data) {
-            float pa = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
-            g_start_det.reset(pa);
-            g_sd_inited = true;
-        }
         if (!g_ring.is_full()) {
             g_ring.write(f);
             if (g_ring.is_full()) {
@@ -736,7 +727,6 @@ void loop()
                 g_page_cursor = 0;
                 g_run_created = false;
                 g_ring_drained = false;
-                g_sd_inited = false;
                 g_last_baro_ms = now;
             }
             if (cur == DeviceState::LOGGING) {
@@ -862,12 +852,8 @@ void loop()
         nicla::leds.setColor(0, 0, 0);
     }
 
-    if (now - g_last_sensor_ms >= 10) {
-        feed_sensors();
-        g_last_sensor_ms = now;
-    }
-
-    /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
+    /* ── Start detector + state transitions BEFORE feed_sensors ──
+       (feed_sensors may block in test_request_frame, so JSON must go first) */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
         float pa = test_mode_active()
             ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
@@ -887,25 +873,15 @@ void loop()
             g_ring_drained = false;
         }
         if (cur == DeviceState::SLEEP) {
-            /* Recalibrate LDC baseline on sleep entry — device is
-               unattended, definitely no athlete nearby. */
             g_ldc.force_recalibrate();
         }
         if (cur == DeviceState::LOGGING) {
-            /* V2.80 (H4 fix): Suspend BLE advertising during logging.
-               BLE TX current peaks (5-12mA) combined with flash page
-               program current (15mA) can sag battery voltage below
-               MX25R minimum. Stopping advertising eliminates the
-               highest-current BLE activity while keeping connections. */
             BLE.stopAdvertise();
             g_end_det.reset();
-
             int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
             uint8_t cal = 0;
-
             g_run_created = g_fs.create_run(0, baro_temp, cal);
             g_frame_count = 0;
-
             json_begin();
             json_kv("ev", "run_created");
             Serial.print(','); json_kv_bool("ok", g_run_created);
@@ -913,16 +889,12 @@ void loop()
             json_end();
         }
         if (cur == DeviceState::POST_RUN) {
-            /* Resume BLE advertising after logging completes */
             BLE.advertise();
             flush_page_buffer();
-
-            uint32_t compressed_sz = g_fs.run_bytes(); /* capture before close_run zeroes it */
+            uint32_t compressed_sz = g_fs.run_bytes();
             uint16_t run_id = g_fs.close_run(g_frame_count);
-
             sgc_ble_set_run_count(g_fs.run_count());
             sgc_ble_set_flash_used(g_fs.flash_used_pct());
-
             json_begin();
             json_kv("ev", "run_saved");
             Serial.print(','); json_kv("id", (long)run_id);
@@ -940,6 +912,11 @@ void loop()
         }
         apply_state_visuals(cur);
         g_prev_state = cur;
+    }
+
+    if (now - g_last_sensor_ms >= 10) {
+        feed_sensors();
+        g_last_sensor_ms = now;
     }
 
     if (now - g_last_battery_ms >= 30000) {

@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.29.0"  # S before ARM: g_stream_active=true when ARM enters
+SIM_VERSION = "2.30.0"  # ARM sent inside stream_frames, no separate arm() call
 
 import argparse
 import hashlib
@@ -583,10 +583,14 @@ class SGCDevice:
         t0 = time.perf_counter()
         sent = 0
         last_report = 0
-        last_request_time = time.perf_counter()  # timeout for mid-stream end
+        last_request = time.perf_counter()
         reset_detected = False
         self.early_events = []
         self._rx_partial = b""
+
+        # ── Send ARM — device starts requesting frames via 0x3F ──
+        self.send_cmd('a', wait_ms=300)
+        time.sleep(0.15)
 
         # Helper: process buffered JSON lines
         def _parse_json_lines():
@@ -1107,15 +1111,11 @@ def run_full_test(port: str,
             if save_path:
                 save_frames_ndjson(frames, save_path)
 
-        # ── Step 4: Arm (triggers frame requests in test mode) ──
-        device.arm()
-
-        # ── Step 5: Stream ────────────
+        # ── Step 4: Stream (triggers ARM internally, then pull-model) ──
         if interactive:
             input("\nPress ENTER to start streaming...")
         else:
             print("\nStarting stream (non-interactive)...")
-            time.sleep(0.5)  # let device settle in stream mode
         device.ser.reset_input_buffer()
         device.ser.reset_output_buffer()
 
