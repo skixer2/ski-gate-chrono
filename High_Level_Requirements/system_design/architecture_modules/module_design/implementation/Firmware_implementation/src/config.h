@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.30"  /* g_ring.reset() at S cmd: discard hybrid frames from ARM→S gap */
+#define FW_VERSION "4.31"  /* Remove g_stream_active guard: request frames as soon as ARMED */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

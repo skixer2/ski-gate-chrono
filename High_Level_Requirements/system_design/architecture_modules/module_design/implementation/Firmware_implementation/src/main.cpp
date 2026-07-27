@@ -441,10 +441,8 @@ void feed_sensors()
        frame from PC via request-response (like polling BHY2).
        In manual mode (B/Q/L commands), use the static test frame. ── */
     if (test_mode_active()) {
-        if (g_stream_active) {
-            test_request_frame();  /* updates g_test_frame on success;
-                                      leaves it unchanged on timeout */
-        }
+        test_request_frame();  /* updates g_test_frame on success;
+                                  leaves it unchanged on timeout */
         f = test_get_frame();
     } else {
         f.q_w = (int16_t)(rotation.w() * 16384.0f);
