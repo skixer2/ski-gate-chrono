@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.23"  /* hex dump uses read_run_data() bulk (same path as BLE xfer) + hex_dbg traces */
+#define FW_VERSION "4.24"  /* Removed hex_dbg events that broke hex_dump JSON line with injected newlines */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

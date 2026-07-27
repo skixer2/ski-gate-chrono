@@ -184,14 +184,11 @@ void handle_serial()
         long rid = Serial.parseInt();
         if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
 
-        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","start"); json_kv("id",rid); json_end();
-
         RunHeader hdr;
         if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
             json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_run"); json_kv("id",rid); json_end(); return;
         }
         uint32_t data_sz = hdr.data_size;
-        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","hdr_ok"); json_kv("sz",(long)data_sz); json_end();
         if (data_sz == 0 || data_sz > 200000) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size"); json_kv("sz",(long)data_sz); json_end(); return; }
 
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
@@ -221,8 +218,6 @@ void handle_serial()
         int32_t  baro_recon = 0;
         uint16_t frame_idx  = 0;
 
-        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","loop_start"); json_kv("remaining",(long)data_sz); json_end();
-
         while (offset < end || buf_pos < buf_avail) {
             /* Need more data? */
             if (buf_pos + 2 > buf_avail && offset < end) {
@@ -231,7 +226,6 @@ void handle_serial()
                 if (tail > 0) memmove(buf, buf + buf_pos, tail);
                 size_t to_read = (end - offset > CHUNK) ? CHUNK : (end - offset);
                 if (!g_fs.read_run_data((uint16_t)rid, offset, buf + tail, to_read)) {
-                    json_begin(); json_kv("ev","hex_dbg"); json_kv("at","read_fail"); json_kv("off",(long)offset); json_end();
                     break;
                 }
                 offset += to_read;
@@ -286,7 +280,6 @@ void handle_serial()
             buf_pos += pkt_size;
         }
 
-        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","loop_end"); json_kv("frames",(long)frame_idx); json_end();
         Serial.print(']');
         Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
         return;
