@@ -735,6 +735,7 @@ class SGCDevice:
         timeout_events = []
         close_trace = []
         close_bc = []  # {"ev":"cbc",...} close_run() step breadcrumbs (V2.13)
+        enc_dbg_events = []
         all_events = []
 
         for r in responses:
@@ -752,6 +753,8 @@ class SGCDevice:
                 close_trace.append(r)
             elif ev == "cbc":
                 close_bc.append(r)
+            elif ev == "enc_dbg":
+                enc_dbg_events.append(r)
             elif ev in ("sd", "start"):
                 sd_events.append(r)
             elif ev == "bc":
@@ -774,6 +777,12 @@ class SGCDevice:
         print("   State transitions:")
         for se in state_events:
             print(f"     {se.get('from'):>10} → {se.get('to')}")
+
+        if enc_dbg_events:
+            print("   ── First encode debug ──")
+            for e in enc_dbg_events:
+                print(f"     src={e.get('src','?')} type={e.get('type','?')} "
+                      f"sz={e.get('sz','?')} qw={e.get('qw','?')} baro={e.get('baro','?')}")
 
         if stream_end:
             se = stream_end[-1]
