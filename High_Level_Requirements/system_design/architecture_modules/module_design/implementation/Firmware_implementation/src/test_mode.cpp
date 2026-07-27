@@ -21,7 +21,7 @@ extern FlashRing g_ring;           /* from main.cpp */
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
 static bool     g_stream_eof = false;     /* stop requesting after PC stops responding */
-static bool     g_stream_had_data = false; /* set after first successful frame */
+bool     g_stream_had_data = false; /* set after first successful frame */
 
 /* ── Init ───────────────────────────────────────────────────── */
 void test_mode_init() {}

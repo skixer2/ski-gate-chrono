@@ -17,6 +17,7 @@
 
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
+extern bool g_stream_had_data;  /* from test_mode.cpp */
 void bhy2_cal_hook_init();
 #include "ble/sgc_service.h"
 #include "ble/file_transfer.h"
@@ -71,6 +72,7 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
+static bool g_sd_inited = false;     /* start detector init flag for test mode */
 static bool g_ring_drained = false;  /* V4.16: true after ring drain in pull-model LOGGING */
 
 /* Stream mode: pull model — firmware requests frames via 0x3F,
@@ -130,28 +132,28 @@ void handle_serial()
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
-            float qx = rotation.x(), qy = rotation.y();
-            float qz = rotation.z(), qw = rotation.w();
-            float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
-            /* V2.95: Skip quaternion check in test mode — BHY2 may not
-               be stable yet after factory reset, but test frames have
-               known-good synthetic data. */
-            if (!test_mode_active() && (mag < 0.8f || mag > 1.2f)) {
-                json_begin();
-                json_kv("ev", "arm_refused");
-                Serial.print(','); json_kv("reason", "quat_magnitude");
-                Serial.print(','); json_kv("mag", mag);
-                json_end();
-            } else {
-                /* ── Pressure units: hPa→Pa (×100.0f) ── */
-                float pa = test_mode_active()
-                    ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
-                    : pressure.value() * 100.0f;                     /* hPa→Pa */
-                if (test_mode_active()) { /* use injected pressure as-is */ }
-                else if (pa > 50000.0f && pa < 110000.0f) { /* plausible real pressure */ }
-                else { pa = 101325.0f; }
-                g_start_det.reset(pa);
+            if (test_mode_active()) {
+                /* Test mode: skip quat check + start det. Start det will be
+                   initialised with first stream frame's pressure in feed_sensors(). */
+                g_stream_active = true;  /* ARM triggers frame requests */
                 g_sm.force_state(DeviceState::ARMED);
+            } else {
+                float qx = rotation.x(), qy = rotation.y();
+                float qz = rotation.z(), qw = rotation.w();
+                float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+                if (mag < 0.8f || mag > 1.2f) {
+                    json_begin();
+                    json_kv("ev", "arm_refused");
+                    Serial.print(','); json_kv("reason", "quat_magnitude");
+                    Serial.print(','); json_kv("mag", mag);
+                    json_end();
+                } else {
+                    float pa = pressure.value() * 100.0f;
+                    if (pa > 50000.0f && pa < 110000.0f) { /* plausible */ }
+                    else { pa = 101325.0f; }
+                    g_start_det.reset(pa);
+                    g_sm.force_state(DeviceState::ARMED);
+                }
             }
         }
         break;
@@ -441,9 +443,8 @@ void feed_sensors()
        frame from PC via request-response (like polling BHY2).
        In manual mode (B/Q/L commands), use the static test frame. ── */
     if (test_mode_active()) {
-        if (g_stream_active) {
-            test_request_frame();  /* updates g_test_frame on success;
-                                      leaves it unchanged on timeout */
+        if (g_sm.state() == DeviceState::ARMED || g_sm.state() == DeviceState::LOGGING) {
+            test_request_frame();  /* request from PC during run states */
         }
         f = test_get_frame();
     } else {
@@ -461,6 +462,12 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
+        /* In test mode, init start detector with first stream frame's pressure */
+        if (test_mode_active() && !g_sd_inited && g_stream_had_data) {
+            float pa = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
+            g_start_det.reset(pa);
+            g_sd_inited = true;
+        }
         if (!g_ring.is_full()) {
             g_ring.write(f);
             if (g_ring.is_full()) {
@@ -729,6 +736,7 @@ void loop()
                 g_page_cursor = 0;
                 g_run_created = false;
                 g_ring_drained = false;
+                g_sd_inited = false;
                 g_last_baro_ms = now;
             }
             if (cur == DeviceState::LOGGING) {

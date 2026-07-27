@@ -1107,13 +1107,7 @@ def run_full_test(port: str,
             if save_path:
                 save_frames_ndjson(frames, save_path)
 
-        # ── Step 4: Enter stream mode BEFORE set_pressure+arm ──
-        # (so g_stream_active=true when ARM enters, test_request_frame runs)
-        device.enter_stream_mode()
-
-        init_pa = frames[0].pressure_hpa
-        device.init_pressure = init_pa  # for accurate diagnostics
-        device.set_pressure(init_pa)
+        # ── Step 4: Arm (triggers frame requests in test mode) ──
         device.arm()
 
         # ── Step 5: Stream ────────────

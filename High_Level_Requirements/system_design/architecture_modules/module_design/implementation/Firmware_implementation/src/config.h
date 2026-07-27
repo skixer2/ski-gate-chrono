@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.30"  /* g_ring.reset() at S cmd + test: S before ARM (g_stream_active at arm) */
+#define FW_VERSION "4.33"  /* ARM triggers stream: no S/B needed. Simple flow. */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
