@@ -441,8 +441,7 @@ void feed_sensors()
        frame from PC via request-response (like polling BHY2).
        In manual mode (B/Q/L commands), use the static test frame. ── */
     if (test_mode_active()) {
-        DeviceState st = g_sm.state();
-        if (st == DeviceState::ARMED || st == DeviceState::LOGGING) {
+        if (g_stream_active) {
             test_request_frame();  /* updates g_test_frame on success;
                                       leaves it unchanged on timeout */
         }

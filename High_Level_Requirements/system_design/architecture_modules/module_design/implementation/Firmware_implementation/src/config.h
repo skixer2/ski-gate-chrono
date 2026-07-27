@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.32"  /* test_request_frame() only in ARMED/LOGGING, not IDLE */
+#define FW_VERSION "4.30"  /* g_ring.reset() at S cmd + test: S before ARM (g_stream_active at arm) */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

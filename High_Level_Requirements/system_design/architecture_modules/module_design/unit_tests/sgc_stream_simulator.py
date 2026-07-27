@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.28.0"  # chunked raw hex dump + decompressor + debug output
+SIM_VERSION = "2.29.0"  # S before ARM: g_stream_active=true when ARM enters
 
 import argparse
 import hashlib
@@ -1107,14 +1107,16 @@ def run_full_test(port: str,
             if save_path:
                 save_frames_ndjson(frames, save_path)
 
-        # ── Step 4: Set initial pressure + arm ─────────────
+        # ── Step 4: Enter stream mode BEFORE set_pressure+arm ──
+        # (so g_stream_active=true when ARM enters, test_request_frame runs)
+        device.enter_stream_mode()
+
         init_pa = frames[0].pressure_hpa
         device.init_pressure = init_pa  # for accurate diagnostics
         device.set_pressure(init_pa)
         device.arm()
 
-        # ── Step 5: Enter stream mode + Stream ────────────
-        device.enter_stream_mode()
+        # ── Step 5: Stream ────────────
         if interactive:
             input("\nPress ENTER to start streaming...")
         else:
