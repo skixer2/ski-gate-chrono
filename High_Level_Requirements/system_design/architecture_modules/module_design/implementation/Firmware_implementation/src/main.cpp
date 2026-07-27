@@ -193,16 +193,42 @@ void handle_serial()
 
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
         Serial.print(",\"sz\":"); Serial.print((long)data_sz);
-        /* Optional frame range */
+        /* Argument parsing:
+           h <id>            → anchors every 100th frame
+           h <id> raw        → hex string of entire file (same bytes as BLE→phone)
+           h <id> <from> <to>  → baro for range
+           h <id> <from> <to> r → raw hex for range */
         long from_frame = -1, to_frame = -1;
-        bool raw_mode = false, has_range = false;
+        bool raw_mode = false, has_range = false, raw_file_mode = false;
         while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
         if (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') {
-            from_frame = Serial.parseInt(); to_frame = Serial.parseInt();
-            has_range = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
-            while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
-            if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) { Serial.read(); raw_mode = true; }
+            if (Serial.peek() >= '0' && Serial.peek() <= '9') {
+                from_frame = Serial.parseInt(); to_frame = Serial.parseInt();
+                has_range = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
+                while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
+                if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) { Serial.read(); raw_mode = true; }
+            } else {
+                raw_file_mode = true;
+                while (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') Serial.read();
+            }
         }
+        if (raw_file_mode) {
+            /* Dump entire file as hex string (same bytes BLE sends to phone) */
+            Serial.print(",\"raw\":\"");
+            size_t file_total = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
+            uint8_t rbuf[128];
+            for (uint32_t off = 0; off < file_total; off += sizeof(rbuf)) {
+                size_t chunk = (file_total - off > sizeof(rbuf)) ? sizeof(rbuf) : (file_total - off);
+                if (!g_fs.read_run_data((uint16_t)rid, off, rbuf, chunk)) break;
+                for (size_t i = 0; i < chunk; i++) {
+                    if (rbuf[i] < 16) Serial.print('0');
+                    Serial.print(rbuf[i], HEX);
+                }
+            }
+            Serial.println("\"}");
+            return;
+        }
+
         if (has_range) { Serial.print(",\"range\":["); Serial.print(from_frame); Serial.print(','); Serial.print(to_frame); Serial.print(']'); if (raw_mode) Serial.print(",\"raw\":1"); }
         else { Serial.print(",\"anchors\":["); }
         Serial.print(raw_mode ? ",\"hex\":[" : (has_range ? ",\"baro\":[" : ""));

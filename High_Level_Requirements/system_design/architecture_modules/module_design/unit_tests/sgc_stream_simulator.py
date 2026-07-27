@@ -918,33 +918,25 @@ class SGCDevice:
         return None
 
     def verify_data_integrity(self, ndjson_path: str, run_id: int = 0) -> bool:
-        """Compare firmware flash data against the original NDJSON.
+        """Retrieve raw bytes from flash (same as BLE→phone), decompress, compare to NDJSON.
 
-        Uses 'h <run_id>' to read baro at every 100th frame from flash,
-        then matches each anchor's pressure against the NDJSON source data.
-        Verifies that the encoder stored correct data on flash.
+        Uses 'h <run_id> raw' to get the full run file as a hex string —
+        identical to what BLE file transfer sends to the phone app.
+        Decompresses using sgc_decompressor (same algorithm as phone).
 
         Returns True if integrity check passes."""
+        from sgc_decompressor import decompress_from_hex, compare_to_ndjson
+
         print("\n── Data Integrity Check ──")
 
-        # Load NDJSON
-        with open(ndjson_path, 'r') as f:
-            ndjson = [json.loads(line) for line in f if line.strip()]
-        ndjson_bp2 = [int(d['p'] * 50) for d in ndjson]
-
-        # Read anchors from firmware — hex dump iterates ALL frames
-        # (2 file read calls each), ~8ms/frame. For 2287 frames = ~18s
-        # BUT each read opens/closes the file → ~5ms overhead/read.
-        # Total: 2287 × 2 × (5ms + 8ms) ≈ 60s worst case.
-        self.send_cmd(f'h {run_id}', wait_ms=500)
-        time.sleep(60.0)  # generous margin for 4524 file ops
+        # Request raw hex dump (same bytes BLE sends to phone)
+        self.send_cmd(f'h {run_id} raw', wait_ms=500)
+        time.sleep(5.0)  # 30466 bytes → ~8KB of hex, fast over 115200
         resp = self.drain_responses(15.0)
 
         hex_dump = None
         hex_err = None
         for r in resp:
-            if r.get('ev') == 'hex_dbg':
-                print(f"   [hex_dbg] {r}")
             if r.get('ev') == 'hex_dump':
                 hex_dump = r
                 break
@@ -955,15 +947,12 @@ class SGCDevice:
             if hex_err:
                 print(f"   ✗ Firmware returned hex_err: {hex_err}")
                 return False
-            # The device may have been busy — wait more and try again
             print("   Retrying h command...")
-            self.send_cmd('i', wait_ms=300)  # ensure IDLE
-            self.send_cmd(f'h {run_id}', wait_ms=500)
-            time.sleep(60.0)
+            self.send_cmd('i', wait_ms=300)
+            self.send_cmd(f'h {run_id} raw', wait_ms=500)
+            time.sleep(5.0)
             resp2 = self.drain_responses(15.0)
             for r in resp2:
-                if r.get('ev') == 'hex_dbg':
-                    print(f"   [hex_dbg retry] {r}")
                 if r.get('ev') == 'hex_dump':
                     hex_dump = r
                     break
@@ -978,65 +967,39 @@ class SGCDevice:
             print("   ✗ No hex_dump response from device")
             return False
 
-        anchors = hex_dump.get('anchors', [])
-        total_frames = hex_dump.get('frames', 0)
-        compressed_sz = hex_dump.get('sz', 0)
-
-        if not anchors:
-            print("   ✗ No anchors in hex_dump response")
+        raw_hex = hex_dump.get('raw', '')
+        sz = hex_dump.get('sz', 0)
+        if not raw_hex:
+            print("   ✗ No 'raw' field in hex_dump response")
             return False
 
-        print(f"   Compressed: {compressed_sz} bytes, {total_frames} frames, "
-              f"{len(anchors)} anchors")
+        print(f"   Retrieved {len(raw_hex)} hex chars ({sz} bytes compressed)")
 
-        # Map each firmware anchor to the closest NDJSON frame by baro_div2
-        mappings = []
-        for fw_frame, fw_baro in anchors:
-            best_idx = None
-            best_diff = 999999
-            for nd_idx, nd_baro in enumerate(ndjson_bp2):
-                diff = abs(nd_baro - fw_baro)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_idx = nd_idx
-            if best_diff <= 2:  # tolerance: ±4 Pa
-                mappings.append((fw_frame, fw_baro, best_idx, best_diff))
-            else:
-                print(f"   ⚠ Anchor fw#{fw_frame} baro={fw_baro} — no NDJSON match "
-                      f"(closest: nd#{best_idx} baro={ndjson_bp2[best_idx]} diff={best_diff})")
+        # Decompress (same algorithm as phone app)
+        frames = decompress_from_hex(raw_hex)
+        print(f"   Decompressed {len(frames)} frames")
 
-        if len(mappings) < 3:
-            print(f"   ✗ Only {len(mappings)} anchors matched — not enough to verify")
+        if len(frames) == 0:
+            print("   ✗ Decompression produced no frames")
             return False
 
-        # Check consistency: NDJSON frame offset should increase monotonically
-        offsets = [m[2] - m[0] for m in mappings]  # ndjson_idx - fw_frame
-        offset_deltas = [offsets[i+1] - offsets[i] for i in range(len(offsets)-1)]
+        # Compare to original NDJSON
+        matched, mismatched, missing, errors = compare_to_ndjson(frames, ndjson_path)
 
-        print(f"   Matched {len(mappings)}/{len(anchors)} anchors:")
-        print(f"     First: fw#0 baro={mappings[0][1]} → nd#{mappings[0][2]} "
-              f"(offset={offsets[0]})")
-        print(f"     Last:  fw#{mappings[-1][0]} baro={mappings[-1][1]} → "
-              f"nd#{mappings[-1][2]} (offset={offsets[-1]})")
+        print(f"   Compare: {matched} matched, {mismatched} mismatched, {missing} missing")
 
-        # Check for anomalies in the offset progression
-        # With frame loss, offset should increase (fw skips ahead vs ndjson)
-        anomalies = [d for d in offset_deltas if d < -10]  # negative jump = corruption
-        if anomalies:
-            print(f"   ✗ {len(anomalies)} offset anomalies detected "
-                  f"(negative jumps in NDJSON→FW mapping)")
+        if errors:
+            for e in errors:
+                print(e)
+
+        if mismatched > 0:
+            print(f"   ✗ {mismatched} frames mismatch — data corruption")
+            return False
+        if matched == 0:
+            print(f"   ✗ No frames matched — decompression error")
             return False
 
-        # Verify the pressure values match (within tolerance)
-        baro_diffs = [m[3] for m in mappings]
-        max_diff = max(baro_diffs)
-        avg_diff = sum(baro_diffs) / len(baro_diffs)
-        print(f"   Baro match: max_diff={max_diff}, avg_diff={avg_diff:.1f} Pa/2")
-        if max_diff > 2:
-            print(f"   ✗ Baro mismatch > tolerance")
-            return False
-
-        print(f"   ✓ Data integrity verified — flash matches NDJSON")
+        print(f"   ✓ Data integrity verified — {matched} frames match NDJSON")
         return True
 
 
