@@ -487,6 +487,16 @@ void feed_sensors()
                     RawFrame oldest = g_ring.read();
                     g_packer.encode(oldest, g_ring.last_read_ts());
                     uint8_t cf_size = g_packer.last_size();
+                    uint8_t cf_type = g_packer.last_type();
+                    if (i == 0) {
+                        json_begin(); json_kv("ev","enc_dbg");
+                        Serial.print(','); json_kv("src","ring");
+                        Serial.print(','); json_kv("type", (long)cf_type);
+                        Serial.print(','); json_kv("sz", (long)cf_size);
+                        Serial.print(','); json_kv("qw", (long)oldest.q_w);
+                        Serial.print(','); json_kv("baro", (long)oldest.baro_pa_div2);
+                        json_end();
+                    }
                     if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
                         flush_page_buffer();
                     }
@@ -501,6 +511,16 @@ void feed_sensors()
                Timestamp: use millis() directly (no ring to buffer). */
             g_packer.encode(f, millis());
             uint8_t cf_size = g_packer.last_size();
+            uint8_t cf_type = g_packer.last_type();
+            if (g_frame_count == 0) {
+                json_begin(); json_kv("ev","enc_dbg");
+                Serial.print(','); json_kv("src","direct");
+                Serial.print(','); json_kv("type", (long)cf_type);
+                Serial.print(','); json_kv("sz", (long)cf_size);
+                Serial.print(','); json_kv("qw", (long)f.q_w);
+                Serial.print(','); json_kv("baro", (long)f.baro_pa_div2);
+                json_end();
+            }
             if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
                 flush_page_buffer();
             }
