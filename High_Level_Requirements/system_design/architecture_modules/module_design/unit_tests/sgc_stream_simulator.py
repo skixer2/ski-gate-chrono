@@ -930,50 +930,54 @@ class SGCDevice:
         print("\n── Data Integrity Check ──")
 
         # Request raw hex dump (same bytes BLE sends to phone)
+        # Output is chunked into short JSON lines to avoid readline timeout
         self.send_cmd(f'h {run_id} raw', wait_ms=500)
-        time.sleep(5.0)  # 30466 bytes → ~8KB of hex, fast over 115200
-        resp = self.drain_responses(15.0)
+        time.sleep(2.0)  # ~240 chunks × 256 hex chars each, fast at 115200 baud
+        resp = self.drain_responses(20.0)
 
         hex_dump = None
         hex_err = None
+        raw_chunks = []  # collect {"ev":"raw","off":...,"hex":...} events
         for r in resp:
             if r.get('ev') == 'hex_dump':
                 hex_dump = r
-                break
-            if r.get('ev') == 'hex_err':
+            elif r.get('ev') == 'hex_err':
                 hex_err = r
+            elif r.get('ev') == 'raw':
+                raw_chunks.append(r)
 
-        if not hex_dump:
+        if not hex_dump and not raw_chunks:
             if hex_err:
                 print(f"   ✗ Firmware returned hex_err: {hex_err}")
                 return False
             print("   Retrying h command...")
             self.send_cmd('i', wait_ms=300)
             self.send_cmd(f'h {run_id} raw', wait_ms=500)
-            time.sleep(5.0)
-            resp2 = self.drain_responses(15.0)
+            time.sleep(2.0)
+            resp2 = self.drain_responses(20.0)
             for r in resp2:
                 if r.get('ev') == 'hex_dump':
                     hex_dump = r
-                    break
-                if r.get('ev') == 'hex_err':
+                elif r.get('ev') == 'hex_err':
                     hex_err = r
-                    break
+                elif r.get('ev') == 'raw':
+                    raw_chunks.append(r)
 
         if hex_err:
             print(f"   ✗ Firmware returned hex_err: {hex_err}")
             return False
-        if not hex_dump:
-            print("   ✗ No hex_dump response from device")
+        if not raw_chunks:
+            print("   ✗ No raw data chunks from device")
             return False
 
-        raw_hex = hex_dump.get('raw', '')
-        sz = hex_dump.get('sz', 0)
-        if not raw_hex:
-            print("   ✗ No 'raw' field in hex_dump response")
-            return False
+        # Assemble hex from chunks (sorted by offset)
+        raw_chunks.sort(key=lambda r: r.get('off', 0))
+        raw_hex = ''.join(r.get('hex', '') for r in raw_chunks)
+        sz = hex_dump.get('sz', 0) if hex_dump else 0
+        expected_chunks = hex_dump.get('chunks', 0) if hex_dump else 0
 
-        print(f"   Retrieved {len(raw_hex)} hex chars ({sz} bytes compressed)")
+        print(f"   Retrieved {len(raw_chunks)}/{expected_chunks} chunks, "
+              f"{len(raw_hex)} hex chars ({sz} bytes compressed)")
 
         # Decompress (same algorithm as phone app)
         frames = decompress_from_hex(raw_hex)

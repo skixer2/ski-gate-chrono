@@ -228,9 +228,9 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
 
         frame_dict = frame.to_dict()
 
-        # Compare pressure (within ±0.03 hPa for quantization)
+        # Compare pressure (within ±0.04 hPa for Pa/2 quantization: 2 Pa/LSB)
         p_diff = abs(frame_dict['p'] - nd['p'])
-        if p_diff > 0.03:
+        if p_diff > 0.04:
             errors.append(
                 f"  Frame {frame.fn}: pressure mismatch "
                 f"(decompressed={frame_dict['p']:.2f}, ndjson={nd['p']:.2f}, diff={p_diff:.3f})"

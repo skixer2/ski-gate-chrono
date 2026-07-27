@@ -213,19 +213,35 @@ void handle_serial()
             }
         }
         if (raw_file_mode) {
-            /* Dump entire file as hex string (same bytes BLE sends to phone) */
-            Serial.print(",\"raw\":\"");
+            /* Dump entire file as hex, split into short JSON lines
+               (each line fits within 1s readline timeout at 115200 baud).
+               Format:
+                 {"ev":"hex_dump","id":0,"sz":30420}
+                 {"ev":"raw","off":0,"hex":"A1B2..."}
+                 {"ev":"raw","off":128,"hex":"C3D4..."}
+                 ...
+               Test script concatenates raw[].hex fields, decompresses. */
+            Serial.print(",\"chunks\":");
             size_t file_total = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
+            Serial.print((file_total + 127) / 128);  /* chunk count */
+            Serial.println("}");
+
             uint8_t rbuf[128];
             for (uint32_t off = 0; off < file_total; off += sizeof(rbuf)) {
                 size_t chunk = (file_total - off > sizeof(rbuf)) ? sizeof(rbuf) : (file_total - off);
                 if (!g_fs.read_run_data((uint16_t)rid, off, rbuf, chunk)) break;
+                json_begin();
+                json_kv("ev","raw");
+                Serial.print(','); json_kv("id",rid);
+                Serial.print(','); json_kv("off",(long)off);
+                Serial.print(",\"hex\":\"");
                 for (size_t i = 0; i < chunk; i++) {
                     if (rbuf[i] < 16) Serial.print('0');
                     Serial.print(rbuf[i], HEX);
                 }
+                Serial.print('"');
+                json_end();
             }
-            Serial.println("\"}");
             return;
         }
 

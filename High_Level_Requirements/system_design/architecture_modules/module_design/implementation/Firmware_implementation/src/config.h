@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.25"  /* h <id> raw: hex dump entire file (same bytes as BLE→phone) + Python decompressor */
+#define FW_VERSION "4.26"  /* Chunked hex dump: short JSON lines avoid readline timeout at 115200 baud */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
