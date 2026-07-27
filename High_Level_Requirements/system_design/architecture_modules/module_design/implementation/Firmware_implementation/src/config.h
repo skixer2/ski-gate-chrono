@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.26"  /* Chunked hex dump: short JSON lines avoid readline timeout at 115200 baud */
+#define FW_VERSION "4.27"  /* g_packer.reset() at LOGGING entry — ensures first frame is T3 anchor */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

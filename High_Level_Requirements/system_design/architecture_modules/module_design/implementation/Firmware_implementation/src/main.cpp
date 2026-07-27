@@ -702,6 +702,7 @@ void loop()
             if (cur == DeviceState::LOGGING) {
                 BLE.stopAdvertise();
                 g_end_det.reset();
+                g_packer.reset();  /* V4.27: fresh packer at every run start */
                 int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
                 uint8_t cal = 0;
                 g_run_created = g_fs.create_run(0, baro_temp, cal);
