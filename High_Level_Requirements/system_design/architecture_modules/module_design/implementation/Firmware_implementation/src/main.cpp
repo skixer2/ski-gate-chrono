@@ -459,11 +459,6 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        /* Init start detector with first stream frame's pressure (once) */
-        if (test_mode_active() && g_stream_active && g_ring.count() == 0) {
-            float pa = (float)f.baro_pa_div2 * 2.0f;
-            if (pa > 50000.0f && pa < 110000.0f) g_start_det.reset(pa);
-        }
         if (!g_ring.is_full()) {
             g_ring.write(f);
             if (g_ring.is_full()) {

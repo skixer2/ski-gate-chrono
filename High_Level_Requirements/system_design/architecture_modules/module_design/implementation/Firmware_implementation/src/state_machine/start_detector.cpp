@@ -21,7 +21,14 @@ void StartDetector::reset(float p0_pa)
 bool StartDetector::feed(float pressure_pa)
 {
     if (m_drop_triggered) return true;
-    if (pressure_pa <= 0 || m_p0 <= 0) return false;
+    /* Auto-init: first valid pressure becomes reference */
+    if (m_p0 <= 0.0f) {
+        if (pressure_pa > 50000.0f && pressure_pa < 110000.0f) {
+            m_p0 = pressure_pa;
+        }
+        return false;
+    }
+    if (pressure_pa <= 0) return false;
 
     /* Descent = pressure INCREASES (lower altitude = higher pressure).
      * PA_PER_M scales with local air density: ~12 at sea level, ~10.5 at 1100 m. */
