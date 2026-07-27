@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.27.0"  # hex dump timeout 30s (was 5s, too short for 2287 frames)
+SIM_VERSION = "2.28.0"  # chunked raw hex dump + decompressor + debug output
 
 import argparse
 import hashlib
@@ -979,9 +979,18 @@ class SGCDevice:
         print(f"   Retrieved {len(raw_chunks)}/{expected_chunks} chunks, "
               f"{len(raw_hex)} hex chars ({sz} bytes compressed)")
 
+        # Debug: show first 64 raw bytes
+        raw_bytes = bytes.fromhex(raw_hex)
+        print(f"   First 64 raw bytes: {raw_bytes[:64].hex()}")
+        print(f"   Header: ver={raw_bytes[0]} side={raw_bytes[1]} data_sz={struct.unpack_from('<I', raw_bytes, 8)[0]}")
+
         # Decompress (same algorithm as phone app)
         frames = decompress_from_hex(raw_hex)
         print(f"   Decompressed {len(frames)} frames")
+
+        if len(frames) >= 2:
+            print(f"   Frame 0: p={frames[0].p:.3f} q_w={frames[0].q_w} q_y={frames[0].q_y} baro_pa_div2(direct)")
+            print(f"   Frame 1: p={frames[1].p:.3f} q_w={frames[1].q_w} q_y={frames[1].q_y}")
 
         if len(frames) == 0:
             print("   ✗ Decompression produced no frames")
