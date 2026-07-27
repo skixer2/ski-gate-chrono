@@ -13,7 +13,23 @@
 #include "nrf_power.h"
 #include "Arduino_BHY2.h"
 #include <Nicla_System.h>
+#include <LittleFileSystem.h>
+#include <File.h>
+#include <BlockDevice.h>
 #include <math.h>
+
+/* POSIX flags (matching littlefs_storage.cpp — LittleFS v1 expects 0/1/2) */
+#ifdef O_RDONLY
+#undef O_RDONLY
+#undef O_WRONLY
+#undef O_RDWR
+#endif
+#define O_RDONLY  0
+#define O_WRONLY  1
+#define O_RDWR    2
+
+using mbed::File;
+using mbed::LittleFileSystem;
 
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
@@ -176,18 +192,31 @@ void handle_serial()
     }
     case 'd': g_fs.list_files(); return;
     case 'h': {
-        /* Hex/baro dump for a specific run.
+        /* Hex/baro dump for a specific run (V4.20: single-pass file read).
            h <run_id>              → anchors every 100th frame (T3)
            h <run_id> <from> <to>  → baro for every frame in range
            Add trailing 'r' for raw hex: h <id> <from> <to> r */
         long rid = Serial.parseInt();
         if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
+
+        /* ── Open file ONCE (was: 4524 open/close per frame = 30-45s) ── */
+        char rpath[32]; snprintf(rpath, sizeof(rpath), "/runs/run_%ld.dat", rid);
         RunHeader hdr;
         if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
             json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_run"); json_kv("id",rid); json_end(); return;
         }
         uint32_t data_sz = hdr.data_size;
         if (data_sz == 0 || data_sz > 200000) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size"); json_kv("sz",(long)data_sz); json_end(); return; }
+
+        File f;
+        if (f.open(static_cast<LittleFileSystem*>(g_fs.get_fs()), rpath, O_RDONLY) != 0) {
+            json_begin(); json_kv("ev","hex_err"); json_kv("reason","open_fail"); json_kv("id",rid); json_end(); return;
+        }
+        /* Seek past header (already validated by read_run_header) */
+        if (f.seek(sizeof(RunHeader), SEEK_SET) != (off_t)sizeof(RunHeader)) {
+            json_begin(); json_kv("ev","hex_err"); json_kv("reason","seek_fail"); json_kv("id",rid); json_end();
+            f.close(); return;
+        }
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
         Serial.print(",\"sz\":"); Serial.print((long)data_sz);
         /* Optional frame range: peek ahead; if more digits follow, parse them */
@@ -199,7 +228,6 @@ void handle_serial()
             from_frame = Serial.parseInt();
             to_frame   = Serial.parseInt();
             has_range  = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
-            /* Check for trailing 'r' flag */
             while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
             if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) {
                 Serial.read(); raw_mode = true;
@@ -214,19 +242,17 @@ void handle_serial()
         }
         Serial.print(raw_mode ? ",\"hex\":[" : (has_range ? ",\"baro\":[" : ""));
         uint8_t buf[18];
-        uint32_t offset = sizeof(RunHeader);
-        uint32_t end = offset + data_sz;
+        uint32_t remaining = data_sz;
         bool first = true;
         int32_t baro_recon = 0;
         uint16_t frame_idx = 0;
-        while (offset + 2 <= end && offset + 2 - sizeof(RunHeader) < data_sz) {
-            if (!g_fs.read_run_data((uint16_t)rid, offset, buf, 2)) break;
+        while (remaining >= 2) {
+            if (f.read(buf, 2) != 2) break;
             uint16_t h = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
             uint8_t pkt_type = (h >> 14) & 0x03;
             uint8_t pkt_size = (pkt_type == 0) ? 6 : ((pkt_type == 1) ? 10 : 18);
-            if (offset + pkt_size > end) break;
-            if (!g_fs.read_run_data((uint16_t)rid, offset + 2, buf + 2, pkt_size - 2)) break;
-            /* Decode baro */
+            if (pkt_size < 2 || remaining < pkt_size) break;
+            if (f.read(buf + 2, pkt_size - 2) != (ssize_t)(pkt_size - 2)) break;
             if (pkt_type == 2) {
                 baro_recon = ((uint16_t)buf[16] | ((uint16_t)buf[17] << 8));
             } else if (pkt_type == 1) {
@@ -239,7 +265,6 @@ void handle_serial()
                     if (!first) Serial.print(',');
                     Serial.print('['); Serial.print(frame_idx);
                     if (raw_mode) {
-                        /* Dump raw bytes as hex string, type, baro */
                         Serial.print(",\"");
                         for (uint8_t i = 0; i < pkt_size; i++) {
                             if (buf[i] < 16) Serial.print('0');
@@ -254,19 +279,19 @@ void handle_serial()
                 }
                 if (frame_idx > (uint16_t)to_frame) break;
             } else {
-                /* Print every 100th frame (anchor mode) */
                 if (frame_idx % 100 == 0) {
                     if (!first) Serial.print(',');
-                    Serial.print('['); Serial.print(frame_idx); Serial.print(','); Serial.print((long)baro_recon);
-                    Serial.print(']');
+                    Serial.print('['); Serial.print(frame_idx); Serial.print(',');
+                    Serial.print((long)baro_recon); Serial.print(']');
                     first = false;
                 }
             }
             frame_idx++;
-            offset += pkt_size;
+            remaining -= pkt_size;
         }
         Serial.print(']');
         Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
+        f.close();
         return;
     }
     case 'y': {

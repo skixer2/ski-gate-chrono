@@ -933,29 +933,43 @@ class SGCDevice:
         ndjson_bp2 = [int(d['p'] * 50) for d in ndjson]
 
         # Read anchors from firmware — hex dump iterates ALL frames
-        # (2 SPI reads each), ~10ms/frame. For 2287 frames = ~23s.
+        # (2 file read calls each), ~8ms/frame. For 2287 frames = ~18s
+        # BUT each read opens/closes the file → ~5ms overhead/read.
+        # Total: 2287 × 2 × (5ms + 8ms) ≈ 60s worst case.
         self.send_cmd(f'h {run_id}', wait_ms=500)
-        time.sleep(30.0)  # generous: ~10ms × 2287 frames + margin
-        resp = self.drain_responses(10.0)
+        time.sleep(60.0)  # generous margin for 4524 file ops
+        resp = self.drain_responses(15.0)
 
         hex_dump = None
+        hex_err = None
         for r in resp:
             if r.get('ev') == 'hex_dump':
                 hex_dump = r
                 break
+            if r.get('ev') == 'hex_err':
+                hex_err = r
 
         if not hex_dump:
+            if hex_err:
+                print(f"   ✗ Firmware returned hex_err: {hex_err}")
+                return False
             # The device may have been busy — wait more and try again
             print("   Retrying h command...")
             self.send_cmd('i', wait_ms=300)  # ensure IDLE
             self.send_cmd(f'h {run_id}', wait_ms=500)
-            time.sleep(30.0)
-            resp2 = self.drain_responses(10.0)
+            time.sleep(60.0)
+            resp2 = self.drain_responses(15.0)
             for r in resp2:
                 if r.get('ev') == 'hex_dump':
                     hex_dump = r
                     break
+                if r.get('ev') == 'hex_err':
+                    hex_err = r
+                    break
 
+        if hex_err:
+            print(f"   ✗ Firmware returned hex_err: {hex_err}")
+            return False
         if not hex_dump:
             print("   ✗ No hex_dump response from device")
             return False

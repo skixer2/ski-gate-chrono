@@ -164,6 +164,9 @@ public:
     /** V2.21: List all files in the LittleFS root dir via Serial (debug). */
     void list_files() const;
 
+    /** V4.20: Access underlying filesystem for single-pass file reads. */
+    void* get_fs() const { return m_fs; }
+
     /** Delete the oldest run (by timestamp) to make space.
      *  V2.19: public — called from main.cpp at ARM time, not from
      *  create_run() at LOGGING entry. */
