@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.22"  /* Fix O_RDONLY for hex dump f.open() in main.cpp */
+#define FW_VERSION "4.23"  /* hex dump uses read_run_data() bulk (same path as BLE xfer) + hex_dbg traces */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

@@ -943,6 +943,8 @@ class SGCDevice:
         hex_dump = None
         hex_err = None
         for r in resp:
+            if r.get('ev') == 'hex_dbg':
+                print(f"   [hex_dbg] {r}")
             if r.get('ev') == 'hex_dump':
                 hex_dump = r
                 break
@@ -960,6 +962,8 @@ class SGCDevice:
             time.sleep(60.0)
             resp2 = self.drain_responses(15.0)
             for r in resp2:
+                if r.get('ev') == 'hex_dbg':
+                    print(f"   [hex_dbg retry] {r}")
                 if r.get('ev') == 'hex_dump':
                     hex_dump = r
                     break

@@ -13,23 +13,7 @@
 #include "nrf_power.h"
 #include "Arduino_BHY2.h"
 #include <Nicla_System.h>
-#include <LittleFileSystem.h>
-#include <File.h>
-#include <BlockDevice.h>
 #include <math.h>
-
-/* POSIX flags (matching littlefs_storage.cpp — LittleFS v1 expects 0/1/2) */
-#ifdef O_RDONLY
-#undef O_RDONLY
-#undef O_WRONLY
-#undef O_RDWR
-#endif
-#define O_RDONLY  0
-#define O_WRONLY  1
-#define O_RDWR    2
-
-using mbed::File;
-using mbed::LittleFileSystem;
 
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
@@ -192,74 +176,88 @@ void handle_serial()
     }
     case 'd': g_fs.list_files(); return;
     case 'h': {
-        /* Hex/baro dump for a specific run (V4.20: single-pass file read).
+        /* Hex/baro dump for a specific run.
+           Uses same read_run_data() as BLE file transfer — fork at output.
            h <run_id>              → anchors every 100th frame (T3)
            h <run_id> <from> <to>  → baro for every frame in range
            Add trailing 'r' for raw hex: h <id> <from> <to> r */
         long rid = Serial.parseInt();
         if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
 
-        /* ── Open file ONCE (was: 4524 open/close per frame = 30-45s) ── */
-        char rpath[32]; snprintf(rpath, sizeof(rpath), "/runs/run_%ld.dat", rid);
+        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","start"); json_kv("id",rid); json_end();
+
         RunHeader hdr;
         if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
             json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_run"); json_kv("id",rid); json_end(); return;
         }
         uint32_t data_sz = hdr.data_size;
+        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","hdr_ok"); json_kv("sz",(long)data_sz); json_end();
         if (data_sz == 0 || data_sz > 200000) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size"); json_kv("sz",(long)data_sz); json_end(); return; }
 
-        File f;
-        if (f.open(static_cast<LittleFileSystem*>(g_fs.get_fs()), rpath, O_RDONLY) != 0) {
-            json_begin(); json_kv("ev","hex_err"); json_kv("reason","open_fail"); json_kv("id",rid); json_end(); return;
-        }
-        /* Seek past header (already validated by read_run_header) */
-        if (f.seek(sizeof(RunHeader), SEEK_SET) != (off_t)sizeof(RunHeader)) {
-            json_begin(); json_kv("ev","hex_err"); json_kv("reason","seek_fail"); json_kv("id",rid); json_end();
-            f.close(); return;
-        }
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
         Serial.print(",\"sz\":"); Serial.print((long)data_sz);
-        /* Optional frame range: peek ahead; if more digits follow, parse them */
+        /* Optional frame range */
         long from_frame = -1, to_frame = -1;
-        bool raw_mode = false;
+        bool raw_mode = false, has_range = false;
         while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
-        bool has_range = false;
         if (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') {
-            from_frame = Serial.parseInt();
-            to_frame   = Serial.parseInt();
-            has_range  = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
+            from_frame = Serial.parseInt(); to_frame = Serial.parseInt();
+            has_range = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
             while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
-            if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) {
-                Serial.read(); raw_mode = true;
-            }
+            if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) { Serial.read(); raw_mode = true; }
         }
-        if (has_range) {
-            Serial.print(",\"range\":["); Serial.print(from_frame); Serial.print(',');
-            Serial.print(to_frame); Serial.print(']');
-            if (raw_mode) Serial.print(",\"raw\":1");
-        } else {
-            Serial.print(",\"anchors\":[");
-        }
+        if (has_range) { Serial.print(",\"range\":["); Serial.print(from_frame); Serial.print(','); Serial.print(to_frame); Serial.print(']'); if (raw_mode) Serial.print(",\"raw\":1"); }
+        else { Serial.print(",\"anchors\":["); }
         Serial.print(raw_mode ? ",\"hex\":[" : (has_range ? ",\"baro\":[" : ""));
-        uint8_t buf[18];
-        uint32_t remaining = data_sz;
-        bool first = true;
-        int32_t baro_recon = 0;
-        uint16_t frame_idx = 0;
-        while (remaining >= 2) {
-            if (f.read(buf, 2) != 2) break;
-            uint16_t h = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+
+        /* ── Bulk-read via read_run_data() (SAME path as BLE file xfer) ── */
+        static constexpr size_t CHUNK = 128;  /* match BLE chunk size */
+        uint8_t buf[CHUNK + 18];  /* +max frame size for partial frame at boundary */
+        size_t  buf_avail = 0;    /* valid bytes in buf */
+        size_t  buf_pos   = 0;    /* parse cursor (always 0 after chunk top-up) */
+        uint32_t offset   = sizeof(RunHeader);
+        uint32_t end      = offset + data_sz;
+        bool     first    = true;
+        int32_t  baro_recon = 0;
+        uint16_t frame_idx  = 0;
+
+        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","loop_start"); json_kv("remaining",(long)data_sz); json_end();
+
+        while (offset < end || buf_pos < buf_avail) {
+            /* Need more data? */
+            if (buf_pos + 2 > buf_avail && offset < end) {
+                /* Preserve unparsed tail at buf[0..tail-1] */
+                size_t tail = (buf_avail > buf_pos) ? (buf_avail - buf_pos) : 0;
+                if (tail > 0) memmove(buf, buf + buf_pos, tail);
+                size_t to_read = (end - offset > CHUNK) ? CHUNK : (end - offset);
+                if (!g_fs.read_run_data((uint16_t)rid, offset, buf + tail, to_read)) {
+                    json_begin(); json_kv("ev","hex_dbg"); json_kv("at","read_fail"); json_kv("off",(long)offset); json_end();
+                    break;
+                }
+                offset += to_read;
+                buf_avail = tail + to_read;
+                buf_pos = 0;
+            }
+            if (buf_pos + 2 > buf_avail) break;  /* no more data, done */
+
+            /* Decode one frame from buf[buf_pos..] */
+            uint16_t h = (uint16_t)buf[buf_pos] | ((uint16_t)buf[buf_pos+1] << 8);
             uint8_t pkt_type = (h >> 14) & 0x03;
             uint8_t pkt_size = (pkt_type == 0) ? 6 : ((pkt_type == 1) ? 10 : 18);
-            if (pkt_size < 2 || remaining < pkt_size) break;
-            if (f.read(buf + 2, pkt_size - 2) != (ssize_t)(pkt_size - 2)) break;
-            if (pkt_type == 2) {
-                baro_recon = ((uint16_t)buf[16] | ((uint16_t)buf[17] << 8));
-            } else if (pkt_type == 1) {
-                baro_recon += (int32_t)(int8_t)buf[9];
-            } else {
-                baro_recon += (int32_t)(int8_t)((buf[5] & 0x0F) << 4) / 16;
+            if (pkt_size < 2 || buf_pos + pkt_size > buf_avail) {
+                if (offset >= end) break;  /* incomplete frame at EOF */
+                continue;  /* need more data from flash */
             }
+
+            /* Decode baro */
+            if (pkt_type == 2) {
+                baro_recon = ((uint16_t)buf[buf_pos+16] | ((uint16_t)buf[buf_pos+17] << 8));
+            } else if (pkt_type == 1) {
+                baro_recon += (int32_t)(int8_t)buf[buf_pos+9];
+            } else {
+                baro_recon += (int32_t)(int8_t)((buf[buf_pos+5] & 0x0F) << 4) / 16;
+            }
+
             if (has_range) {
                 if (frame_idx >= (uint16_t)from_frame && frame_idx <= (uint16_t)to_frame) {
                     if (!first) Serial.print(',');
@@ -267,14 +265,12 @@ void handle_serial()
                     if (raw_mode) {
                         Serial.print(",\"");
                         for (uint8_t i = 0; i < pkt_size; i++) {
-                            if (buf[i] < 16) Serial.print('0');
-                            Serial.print(buf[i], HEX);
+                            if (buf[buf_pos+i] < 16) Serial.print('0');
+                            Serial.print(buf[buf_pos+i], HEX);
                         }
-                        Serial.print('"');
-                        Serial.print(','); Serial.print(pkt_type);
+                        Serial.print('"'); Serial.print(','); Serial.print(pkt_type);
                     }
-                    Serial.print(','); Serial.print((long)baro_recon);
-                    Serial.print(']');
+                    Serial.print(','); Serial.print((long)baro_recon); Serial.print(']');
                     first = false;
                 }
                 if (frame_idx > (uint16_t)to_frame) break;
@@ -287,11 +283,12 @@ void handle_serial()
                 }
             }
             frame_idx++;
-            remaining -= pkt_size;
+            buf_pos += pkt_size;
         }
+
+        json_begin(); json_kv("ev","hex_dbg"); json_kv("at","loop_end"); json_kv("frames",(long)frame_idx); json_end();
         Serial.print(']');
         Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
-        f.close();
         return;
     }
     case 'y': {
