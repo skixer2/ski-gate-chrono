@@ -787,6 +787,11 @@ class SGCDevice:
                 print(f"     src={e.get('src','?')} type={e.get('type','?')} "
                       f"sz={e.get('sz','?')} qw={e.get('qw','?')} baro={e.get('baro','?')}")
 
+        if ring_dbg_events:
+            print("   ── Ring frame raw bytes ──")
+            for r in ring_dbg_events:
+                print(f"     bytes={r.get('bytes','?')}")
+
         if stream_end:
             se = stream_end[-1]
             received = se.get("frames", 0)
