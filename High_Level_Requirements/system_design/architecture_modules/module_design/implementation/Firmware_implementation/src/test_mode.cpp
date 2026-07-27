@@ -10,11 +10,13 @@
 
 #include "test_mode.h"
 #include "test_json.h"
+#include "storage/flash_ring.h"
 
 #include <Arduino.h>
 
 extern bool     g_stream_active;   /* from main.cpp */
 extern uint32_t g_stream_frames;   /* from main.cpp */
+extern FlashRing g_ring;           /* from main.cpp */
 
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
@@ -176,6 +178,7 @@ bool test_mode_handle_serial(char c)
         g_stream_frames = 0;
         g_stream_eof = false;
         g_stream_had_data = false;
+        g_ring.reset();  /* V4.30: discard hybrid frames from ARM→S gap */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);

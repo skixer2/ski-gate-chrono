@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.29"  /* ring_dbg: raw bytes of first ring frame + run_id fix in test */
+#define FW_VERSION "4.30"  /* g_ring.reset() at S cmd: discard hybrid frames from ARM→S gap */
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
