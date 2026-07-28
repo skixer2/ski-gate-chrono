@@ -583,7 +583,7 @@ class SGCDevice:
         t0 = time.perf_counter()
         sent = 0
         last_report = 0
-        last_request = time.perf_counter()
+        last_request_time = time.perf_counter()
         reset_detected = False
         self.early_events = []
         self._rx_partial = b""
@@ -669,7 +669,7 @@ class SGCDevice:
         # response → timeout → g_stream_eof = true → stops requesting.
         # Wait for 1 second of silence (no 0x3F) = firmware done.
         print(f"\n   All {sent}/{total} frames sent — waiting for firmware to stop requesting...")
-        last_request = time.perf_counter()
+        last_request_time = time.perf_counter()
         end_timeout_s = 2.0  # wait up to 2s for last request, then 1s silence
         deadline = time.perf_counter() + end_timeout_s
         got_last_request = False
@@ -678,13 +678,13 @@ class SGCDevice:
                 raw = self.ser.read(self.ser.in_waiting)
                 for b in raw:
                     if b == REQUEST_BYTE:
-                        last_request = time.perf_counter()
+                        last_request_time = time.perf_counter()
                         got_last_request = True
                     else:
                         self._rx_partial += bytes([b])
             _parse_json_lines()
             # Check for silence: 1s since last request
-            if got_last_request and (time.perf_counter() - last_request) > 1.0:
+            if got_last_request and (time.perf_counter() - last_request_time) > 1.0:
                 print("   Firmware stopped requesting — streaming complete.")
                 break
             time.sleep(0.01)
