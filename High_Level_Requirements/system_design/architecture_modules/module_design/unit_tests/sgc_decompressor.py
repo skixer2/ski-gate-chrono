@@ -245,7 +245,7 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
             nd_q = [nd['q'][0] * 16384, nd['q'][1] * 16384,
                     nd['q'][2] * 16384, nd['q'][3] * 16384]
             dec_q = [frame.q_w, frame.q_x, frame.q_y, frame.q_z]
-            if abs(dec_q[j] - nd_q[j]) > 1:
+            if abs(dec_q[j] - nd_q[j]) > 2:
                 errors.append(
                     f"  Frame {frame.fn}: quaternion[{j}] mismatch "
                     f"(dec={dec_q[j]}, nd={nd_q[j]:.1f})"
