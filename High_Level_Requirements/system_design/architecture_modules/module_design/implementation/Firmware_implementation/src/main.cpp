@@ -765,6 +765,7 @@ void loop()
                 json_end();
                 /* Re-init for next run */
                 g_ring.reset(); g_packer.reset();
+                g_start_det.reset(0.0f);  /* m_p0=0 → auto-init next run */
                 g_page_cursor = 0;
                 g_ring_drained = false;
             }
@@ -773,7 +774,7 @@ void loop()
         }
 
         if (now - g_last_sensor_ms >= 10) {
-            feed_sensors();
+            feed_sensors();  /* stream-mode path */
             g_last_sensor_ms = now;
         }
         return;
@@ -903,6 +904,7 @@ void loop()
             json_end();
             /* Re-init for next run */
             g_ring.reset(); g_packer.reset();
+            g_start_det.reset(0.0f);  /* m_p0=0 → auto-init next run */
             g_page_cursor = 0;
             g_ring_drained = false;
         }
