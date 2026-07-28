@@ -131,7 +131,6 @@ void handle_serial()
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             if (test_mode_active()) {
-                g_stream_active = true;  /* ARM triggers stream pull loop */
                 g_sm.force_state(DeviceState::ARMED);
             } else {
             float qx = rotation.x(), qy = rotation.y();
@@ -861,7 +860,7 @@ void loop()
     if (cur != g_prev_state) {
         json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
         if (cur == DeviceState::ARMED) {
-            g_packer.reset();
+            g_ring.reset(); g_packer.reset();
             g_page_cursor = 0;
             g_run_created = false;
             g_ring_drained = false;
