@@ -744,18 +744,15 @@ void loop()
             }
             if (cur == DeviceState::POST_RUN) {
                 BLE.advertise();
-                /* Natural end-detector transition = stream complete */
                 if (g_stream_active) {
                     g_stream_active = false;
                     json_begin(); json_kv("ev", "stream_end");
                     Serial.print(','); json_kv("frames", (long)g_stream_frames);
                     json_end();
                     g_stream_frames = 0;
-                    /* V4.13: Pull model — no stray binary bytes. PC waits for
-                       0x3F; firmware stops requesting → PC stops sending. */
                 }
                 flush_page_buffer();
-                uint32_t compressed_sz = g_fs.run_bytes(); /* capture before close_run zeroes it */
+                uint32_t compressed_sz = g_fs.run_bytes();
                 uint16_t run_id = g_fs.close_run(g_frame_count);
                 sgc_ble_set_run_count(g_fs.run_count());
                 sgc_ble_set_flash_used(g_fs.flash_used_pct());
@@ -766,6 +763,10 @@ void loop()
                 Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
                 Serial.print(','); json_kv("runs", (long)g_fs.run_count());
                 json_end();
+                /* Re-init for next run */
+                g_ring.reset(); g_packer.reset();
+                g_page_cursor = 0;
+                g_ring_drained = false;
             }
             apply_state_visuals(cur);
             g_prev_state = cur;
@@ -900,6 +901,10 @@ void loop()
             Serial.print(','); json_kv("ec", (long)g_fs.run_count());
             Serial.print(','); json_kv("tc", (long)g_fs.total_run_count());
             json_end();
+            /* Re-init for next run */
+            g_ring.reset(); g_packer.reset();
+            g_page_cursor = 0;
+            g_ring_drained = false;
         }
         apply_state_visuals(cur);
         g_prev_state = cur;
