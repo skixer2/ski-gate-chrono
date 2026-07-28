@@ -766,6 +766,8 @@ void loop()
                 /* Re-init for next run */
                 g_ring.reset(); g_packer.reset();
                 g_start_det.reset(0.0f);  /* m_p0=0 → auto-init next run */
+                g_frame_count = 0;
+                g_run_created = false;
                 g_page_cursor = 0;
                 g_ring_drained = false;
             }
@@ -905,8 +907,12 @@ void loop()
             /* Re-init for next run */
             g_ring.reset(); g_packer.reset();
             g_start_det.reset(0.0f);  /* m_p0=0 → auto-init next run */
+            g_frame_count = 0;
+            g_run_created = false;
             g_page_cursor = 0;
             g_ring_drained = false;
+            if (g_stream_active) { g_stream_active = false; }
+            if (g_stream_frames)  { g_stream_frames  = 0;  }
         }
         apply_state_visuals(cur);
         g_prev_state = cur;
