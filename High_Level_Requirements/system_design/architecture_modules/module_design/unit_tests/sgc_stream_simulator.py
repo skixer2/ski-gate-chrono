@@ -450,6 +450,7 @@ class SGCDevice:
             print(f"  Test mode: {tm}")
 
     def enter_stream_mode(self) -> None:
+        """[DEPRECATED v4.34] ARM alone triggers stream now."""
         print("\n── Enter Stream Mode ──")
         self.ser.reset_input_buffer()
         self.ser.write(b'S\n')

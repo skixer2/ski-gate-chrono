@@ -73,13 +73,40 @@ One JSON object per line (JSONL). No pretty-printing. Numeric values use minimal
 {"ev":"cooldown","from":"POST_RUN","to":"IDLE"}
 ```
 
-### Test mode commands (`-DTEST_MODE` builds only)
+### Test mode commands
+Test mode (T command) enables simulated sensor injection.
+
+**Stream test (v4.34+):** ARM alone triggers pull-model streaming. No S or B commands needed.
+Start detector auto-initializes from first stream frame's pressure.
+
 ```json
-{"ev":"cmd","cmd":"T","tm":1,"p":101325.0,"q":[1.00,0.00,0.00,0.00],"la":[0.00,0.00,0.00]}
+{"ev":"cmd","cmd":"T","tm":1}                        // Enter test mode
+{"ev":"st","from":"IDLE","to":"ARMED"}                // ARM triggers stream
+// Firmware sends 0x3F to request frames; PC responds with 16-byte RawFrame
+{"ev":"sd","p0":79725.0,"pa":79745.0,"drp":0.21}       // Start detector diagnostics
+{"ev":"start","mode":"drop","m":2.3}                    // Start detected
+{"ev":"st","from":"ARMED","to":"LOGGING"}              // Run begins
+```
+
+**Manual mode (B/Q/L commands):** Set individual sensor values on the static test frame.
+
+```json
 {"ev":"cmd","cmd":"B","p":95000.0}
 {"ev":"cmd","cmd":"Q","q":[0.71,0.00,0.71,0.00]}
 {"ev":"cmd","cmd":"L","la":[1000.00,0.00,0.00]}
 {"ev":"echo","p":101325.0,"q":[1.00,0.00,0.00,0.00],"la":[0.00,0.00,0.00]}
+```
+
+### Hex dump (flash readback)
+```json
+// h <run_id> raw  →  chunked hex dump of entire run file (same bytes BLE sends)
+{"ev":"hex_dump","id":0,"sz":33008,"chunks":259}
+{"ev":"raw","id":0,"off":0,"hex":"0200000000004001..."}
+{"ev":"raw","id":0,"off":128,"hex":"840a3f0000220b..."}
+// h <run_id>       →  anchors every 100th frame
+{"ev":"hex_dump","id":0,"sz":33008,"anchors":[[0,39862],[100,39900],...],"frames":2428}
+// h <run_id> <from> <to>  → baro for frame range
+// h <run_id> <from> <to> r → raw hex for frame range
 ```
 
 ### Run lifecycle
