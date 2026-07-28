@@ -42,10 +42,10 @@ class DecompressedFrame:
         return {
             'fn': self.fn,
             'p': round(self.p, 2),
-            'q': [self.q_w / 32768.0,
-                  self.q_x / 32768.0,
-                  self.q_y / 32768.0,
-                  self.q_z / 32768.0],
+            'q': [self.q_w / 16384.0,
+                  self.q_x / 16384.0,
+                  self.q_y / 16384.0,
+                  self.q_z / 16384.0],
             'la': [self.la_x, self.la_y, self.la_z],
         }
 
@@ -240,10 +240,10 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
                 break
             continue
 
-        # Compare quaternion (within ±1 LSB = 1/32768 ≈ 0.00003)
+        # Compare quaternion (within ±1 LSB = 1/16384 ≈ 0.00006)
         for j, comp in enumerate(['q_w', 'q_x', 'q_y', 'q_z']):
-            nd_q = [nd['q'][0] * 32768, nd['q'][1] * 32768,
-                    nd['q'][2] * 32768, nd['q'][3] * 32768]
+            nd_q = [nd['q'][0] * 16384, nd['q'][1] * 16384,
+                    nd['q'][2] * 16384, nd['q'][3] * 16384]
             dec_q = [frame.q_w, frame.q_x, frame.q_y, frame.q_z]
             if abs(dec_q[j] - nd_q[j]) > 1:
                 errors.append(
