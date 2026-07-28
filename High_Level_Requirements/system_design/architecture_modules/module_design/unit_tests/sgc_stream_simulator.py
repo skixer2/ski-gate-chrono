@@ -589,8 +589,8 @@ class SGCDevice:
         self._rx_partial = b""
 
         # ── Send ARM — device starts requesting frames via 0x3F ──
-        self.send_cmd('a', wait_ms=300)
-        time.sleep(0.15)
+        self.ser.write(b'a\n')
+        self.ser.flush()
 
         # Helper: process buffered JSON lines
         def _parse_json_lines():
