@@ -131,7 +131,6 @@ void handle_serial()
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             if (test_mode_active()) {
-                g_stream_active = true;  /* ARM triggers stream pull loop */
                 g_sm.force_state(DeviceState::ARMED);
             } else {
             float qx = rotation.x(), qy = rotation.y();

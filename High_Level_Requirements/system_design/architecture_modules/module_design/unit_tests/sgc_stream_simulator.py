@@ -589,7 +589,10 @@ class SGCDevice:
         self.early_events = []
         self._rx_partial = b""
 
-        # ── Send ARM — device starts requesting frames via 0x3F ──
+        # ── Enter stream mode: S triggers g_stream_active ──
+        self.ser.write(b'S\n')
+        self.ser.flush()
+        # ── Enter pull loop THEN arm — catches first 0x3F immediately ──
         self.ser.write(b'a\n')
         self.ser.flush()
 
