@@ -18,6 +18,7 @@ extern uint32_t g_stream_frames;   /* from main.cpp */
 
 static RawFrame g_test_frame;       /* current test frame — real peripheral format */
 static bool     g_test_mode = false;
+bool     g_manual_frame = false; /* set by B/Q/L — suppress ARM→stream */
 static bool     g_stream_eof = false;     /* stop requesting after PC stops responding */
 static bool     g_stream_had_data = false; /* set after first successful frame */
 
@@ -128,6 +129,7 @@ bool test_mode_handle_serial(char c)
     switch (c) {
     case 'T':
         g_test_mode = !g_test_mode;
+        g_manual_frame = false;  /* reset on test mode toggle */
         if (g_test_mode) init_default_frame();
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "T");
@@ -136,6 +138,7 @@ bool test_mode_handle_serial(char c)
         return true;
 
     case 'B': {
+        g_manual_frame = true;  /* manual injection → no ARM→stream */
         float pa = Serial.parseFloat();
         set_pressure_hpa(pa);
         json_begin(); json_kv("ev", "cmd");
@@ -176,6 +179,7 @@ bool test_mode_handle_serial(char c)
         g_stream_frames = 0;
         g_stream_eof = false;
         g_stream_had_data = false;
+        g_manual_frame = false;  /* stream mode → auto frames, not manual */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);

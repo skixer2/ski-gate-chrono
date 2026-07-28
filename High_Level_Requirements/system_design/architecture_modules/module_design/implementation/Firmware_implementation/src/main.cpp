@@ -71,6 +71,7 @@ static uint32_t g_last_cal_ms     = 0;
 static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
+extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
 static bool g_ring_drained = false;  /* V4.16: true after ring drain in pull-model LOGGING */
 
 /* Stream mode: pull model — firmware requests frames via 0x3F,
@@ -130,7 +131,8 @@ void handle_serial()
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
-            if (test_mode_active()) {
+            if (test_mode_active() && !g_manual_frame) {
+                g_stream_active = true;  /* ARM triggers stream (if no manual frames set) */
                 g_sm.force_state(DeviceState::ARMED);
             } else {
             float qx = rotation.x(), qy = rotation.y();
@@ -860,7 +862,7 @@ void loop()
     if (cur != g_prev_state) {
         json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
         if (cur == DeviceState::ARMED) {
-            g_ring.reset(); g_packer.reset();
+            g_packer.reset();
             g_page_cursor = 0;
             g_run_created = false;
             g_ring_drained = false;
