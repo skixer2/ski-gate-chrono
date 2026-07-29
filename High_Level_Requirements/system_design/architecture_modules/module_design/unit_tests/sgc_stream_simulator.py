@@ -817,6 +817,15 @@ class SGCDevice:
             print(f"   ── Page flushes ({len(pg_flush_events)} total) ──")
             for r in pg_flush_events[:3]:
                 print(f"     csr={r.get('csr','?')} first32={r.get('hex','?')[:40]}...")
+        else:
+            # Dump all event types to see what we're getting
+            ev_counts = {}
+            for r in all_events:
+                ev = r.get('ev', '?')
+                ev_counts[ev] = ev_counts.get(ev, 0) + 1
+            unknown = [(k,v) for k,v in ev_counts.items() if k not in ('st','run_saved','stream_end','timeout','close_trace','cbc','enc_dbg','ring_dbg','ring_diag','sd','start','bc','boot')]
+            if unknown:
+                print(f"   ── Other events: {dict(unknown)}")
 
         if stream_end:
             se = stream_end[-1]
