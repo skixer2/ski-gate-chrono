@@ -93,6 +93,15 @@ void beep_off() { analogWrite(1, 0); }
 void flush_page_buffer()
 {
     if (g_page_cursor == 0) return;
+    json_begin(); json_kv("ev","pg_flush");
+    Serial.print(','); json_kv("csr", (long)g_page_cursor);
+    Serial.print(",\"hex\":\"");
+    for (size_t i = 0; i < g_page_cursor && i < 32; i++) {
+        if (g_page_buf[i] < 16) Serial.print('0');
+        Serial.print(g_page_buf[i], HEX);
+    }
+    Serial.print('"');
+    json_end();
     g_fs.append_data(g_page_buf, g_page_cursor);
     g_page_cursor = 0;
 }

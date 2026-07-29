@@ -812,6 +812,12 @@ class SGCDevice:
                 elif phase == 'done':
                     print(f"     DONE:  frames={r.get('fr','?')} page_cursor={r.get('pg_csr','?')} flushes={r.get('flush','?')}")
 
+        pg_flush_events = [r for r in all_events if r.get('ev') == 'pg_flush']
+        if pg_flush_events:
+            print(f"   ── Page flushes ({len(pg_flush_events)} total) ──")
+            for r in pg_flush_events[:3]:
+                print(f"     csr={r.get('csr','?')} first32={r.get('hex','?')[:40]}...")
+
         if stream_end:
             se = stream_end[-1]
             received = se.get("frames", 0)
