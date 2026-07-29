@@ -589,7 +589,10 @@ class SGCDevice:
         self.early_events = []
         self._rx_partial = b""
 
-        # ── ARM triggers stream mode (v4.34+) — no separate S command needed ──
+        # ── Enter stream mode: S triggers g_stream_active ──
+        self.ser.write(b'S\n')
+        self.ser.flush()
+        # ── Enter pull loop THEN arm — catches first 0x3F immediately ──
         self.ser.write(b'a\n')
         self.ser.flush()
 
