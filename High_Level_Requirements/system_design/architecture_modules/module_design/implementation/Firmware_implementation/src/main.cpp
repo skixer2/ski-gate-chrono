@@ -483,6 +483,12 @@ void feed_sensors()
             if (!g_ring_drained) {
                 /* First LOGGING call: drain all ARM-pre-buffered ring frames */
                 uint8_t count = g_ring.count();
+                json_begin(); json_kv("ev","ring_diag");
+                Serial.print(','); json_kv("phase","start");
+                Serial.print(','); json_kv("ring_cnt", (long)count);
+                Serial.print(','); json_kv("pg_csr", (long)g_page_cursor);
+                json_end();
+                uint8_t flushes = 0;
                 for (uint8_t i = 0; i < count; i++) {
                     RawFrame oldest = g_ring.read();
                     if (i == 0) {
@@ -511,11 +517,18 @@ void feed_sensors()
                     }
                     if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
                         flush_page_buffer();
+                        flushes++;
                     }
                     memcpy(g_page_buf + g_page_cursor, g_packer.buffer(), cf_size);
                     g_page_cursor += cf_size;
                     g_frame_count++;
                 }
+                json_begin(); json_kv("ev","ring_diag");
+                Serial.print(','); json_kv("phase","done");
+                Serial.print(','); json_kv("fr", (long)g_frame_count);
+                Serial.print(','); json_kv("pg_csr", (long)g_page_cursor);
+                Serial.print(','); json_kv("flush", (long)flushes);
+                json_end();
                 g_ring_drained = true;
             }
 
