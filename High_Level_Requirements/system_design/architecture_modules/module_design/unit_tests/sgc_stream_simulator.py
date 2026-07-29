@@ -745,6 +745,7 @@ class SGCDevice:
         close_bc = []  # {"ev":"cbc",...} close_run() step breadcrumbs (V2.13)
         enc_dbg_events = []
         ring_dbg_events = []
+        ring_diag_events = []
         all_events = []
 
         for r in responses:
@@ -766,6 +767,8 @@ class SGCDevice:
                 enc_dbg_events.append(r)
             elif ev == "ring_dbg":
                 ring_dbg_events.append(r)
+            elif ev == "ring_diag":
+                ring_diag_events.append(r)
             elif ev in ("sd", "start"):
                 sd_events.append(r)
             elif ev == "bc":
@@ -799,6 +802,15 @@ class SGCDevice:
             print("   ── Ring frame raw bytes ──")
             for r in ring_dbg_events:
                 print(f"     bytes={r.get('bytes','?')}")
+
+        if ring_diag_events:
+            print("   ── Ring drain diagnostics ──")
+            for r in ring_diag_events:
+                phase = r.get('phase','?')
+                if phase == 'start':
+                    print(f"     START: ring_count={r.get('ring_cnt','?')} page_cursor={r.get('pg_csr','?')}")
+                elif phase == 'done':
+                    print(f"     DONE:  frames={r.get('fr','?')} page_cursor={r.get('pg_csr','?')} flushes={r.get('flush','?')}")
 
         if stream_end:
             se = stream_end[-1]
