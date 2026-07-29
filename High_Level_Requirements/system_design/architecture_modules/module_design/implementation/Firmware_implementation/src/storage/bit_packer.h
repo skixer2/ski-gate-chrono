@@ -51,5 +51,5 @@ private:
     uint8_t  m_last_size;
     uint8_t  m_last_type;
 
-    static constexpr uint16_t ANCHOR_EVERY = 100;
+    static constexpr uint16_t ANCHOR_EVERY = 50;  /* force T3 every 0.5s (50 frames @ 100Hz) */
 };
