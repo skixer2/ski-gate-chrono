@@ -132,8 +132,12 @@ void handle_serial()
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             if (test_mode_active() && !g_manual_frame) {
-                g_stream_active = true;  /* ARM triggers stream (if no manual frames set) */
+                /* ARM triggers stream (if no manual frames set).
+                   Reset stream state — equivalent to 'S' command. */
+                test_stream_reset();
+                g_stream_active = true;
                 g_sm.force_state(DeviceState::ARMED);
+                g_last_baro_ms = now;  /* prevent stale start-detector fire */
             } else {
             float qx = rotation.x(), qy = rotation.y();
             float qz = rotation.z(), qw = rotation.w();

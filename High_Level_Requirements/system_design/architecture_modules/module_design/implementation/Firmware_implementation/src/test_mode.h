@@ -40,6 +40,10 @@ bool test_request_frame(uint32_t timeout_ms = 100);
 /* True after first request timeout — PC has no more frames. */
 bool test_stream_eof();
 
+/* Reset stream state: clear EOF, had_data, frames counter, manual flag.
+   Call before ARM-triggered stream start (equivalent to 'S' command init). */
+void test_stream_reset();
+
 /* Individual getters (derived from g_test_frame) */
 float test_get_pressure();   /* hPa, from baro_pa_div2 */
 float test_get_quat_w();     /* from q_w / 16384.0 */

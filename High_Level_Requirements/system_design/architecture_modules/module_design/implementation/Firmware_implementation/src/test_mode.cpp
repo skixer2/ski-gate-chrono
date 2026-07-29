@@ -86,6 +86,14 @@ static void json_print_values() {
 
 bool test_stream_eof() { return g_stream_eof; }
 
+/* ── Reset stream state (call before ARM-triggered stream) ──── */
+void test_stream_reset() {
+    g_stream_eof = false;
+    g_stream_had_data = false;
+    g_stream_frames = 0;
+    g_manual_frame = false;
+}
+
 /* ── Pull one frame from PC (request-response) ──────────────── */
 bool test_request_frame(uint32_t timeout_ms)
 {
