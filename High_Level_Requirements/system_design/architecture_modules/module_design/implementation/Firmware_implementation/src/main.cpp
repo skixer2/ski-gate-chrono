@@ -436,12 +436,13 @@ void flash_test()
 void feed_sensors()
 {
     RawFrame f;
+    DeviceState st = g_sm.state();  /* captured once for state checks below */
 
-    /* ── Test mode: copy injected frame. In stream mode, pull one
-       frame from PC via request-response (like polling BHY2).
-       In manual mode (B/Q/L commands), use the static test frame. ── */
+    /* ── Test mode: pull request-response only in ARMED/LOGGING.
+       In IDLE, test_request_frame() would consume serial bytes
+       intended for command parsing (e.g. 'a' ARM command). ── */
     if (test_mode_active()) {
-        if (g_stream_active) {
+        if (g_stream_active && (st == DeviceState::ARMED || st == DeviceState::LOGGING)) {
             test_request_frame();  /* updates g_test_frame on success;
                                       leaves it unchanged on timeout */
         }
@@ -457,7 +458,6 @@ void feed_sensors()
         f.baro_pa_div2 = (uint16_t)(pressure.value() * 50.0f);  /* hPa→Pa/2 */
     }
 
-    DeviceState st = g_sm.state();
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
