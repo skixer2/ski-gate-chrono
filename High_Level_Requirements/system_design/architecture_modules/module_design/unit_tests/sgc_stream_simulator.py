@@ -771,6 +771,8 @@ class SGCDevice:
                 ring_diag_events.append(r)
             elif ev in ("sd", "start"):
                 sd_events.append(r)
+            elif ev == "hex_diag":
+                pass  # captured in all_events below
             elif ev == "bc":
                 self.breadcrumbs.append(r)
             elif ev == "boot" and self.reset_event is None:
@@ -823,7 +825,7 @@ class SGCDevice:
             for r in all_events:
                 ev = r.get('ev', '?')
                 ev_counts[ev] = ev_counts.get(ev, 0) + 1
-            unknown = [(k,v) for k,v in ev_counts.items() if k not in ('st','run_saved','stream_end','timeout','close_trace','cbc','enc_dbg','ring_dbg','ring_diag','sd','start','bc','boot')]
+            unknown = [(k,v) for k,v in ev_counts.items() if k not in ('st','run_saved','stream_end','timeout','close_trace','cbc','enc_dbg','ring_dbg','ring_diag','sd','start','bc','boot','hex_diag')]
             if unknown:
                 print(f"   ── Other events: {dict(unknown)}")
 

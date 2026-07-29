@@ -236,6 +236,19 @@ void handle_serial()
             Serial.println("}");
 
             uint8_t rbuf[128];
+            /* ── Diagnostic: log first 32 bytes after header ── */
+            if (!g_fs.read_run_data((uint16_t)rid, sizeof(RunHeader), rbuf, 32)) {
+                Serial.print("{\"ev\":\"hex_diag\",\"err\":\"read_fail\"}");
+            } else {
+                json_begin(); json_kv("ev","hex_diag");
+                Serial.print(",\"hex\":\"");
+                for (size_t i = 0; i < 32; i++) {
+                    if (rbuf[i] < 16) Serial.print('0');
+                    Serial.print(rbuf[i], HEX);
+                }
+                Serial.print('"');
+                json_end();
+            }
             for (uint32_t off = 0; off < file_total; off += sizeof(rbuf)) {
                 size_t chunk = (file_total - off > sizeof(rbuf)) ? sizeof(rbuf) : (file_total - off);
                 if (!g_fs.read_run_data((uint16_t)rid, off, rbuf, chunk)) break;
