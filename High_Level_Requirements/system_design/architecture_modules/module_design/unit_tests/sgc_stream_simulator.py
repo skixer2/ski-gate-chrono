@@ -431,7 +431,9 @@ class SGCDevice:
 
     def enter_test_mode(self) -> None:
         print("\n── Enter Test Mode ──")
-        # 'T' toggles — send once, check state, toggle again if we landed OFF
+        # 'T' toggles. Query first: send 'T' once, check result.
+        # If tm=1 → was OFF, now ON — done.
+        # If tm=0 → was ON, now OFF — send again to get ON.
         self.send_cmd('T', wait_ms=300)
         resp = self.drain_responses(1.0)
         tm = None
@@ -439,14 +441,21 @@ class SGCDevice:
             if r.get("ev") == "cmd" and r.get("cmd") == "T":
                 tm = r.get('tm', 0)
         if tm == 0:
-            # Toggled OFF — send again to get ON
             self.send_cmd('T', wait_ms=300)
             resp2 = self.drain_responses(1.0)
             for r in resp2:
                 if r.get("ev") == "cmd" and r.get("cmd") == "T":
                     tm = r.get('tm', 0)
-            print(f"  Test mode: {tm} (toggled twice — was OFF)")
+            print(f"  Test mode: {tm} (was ON, toggled OFF→ON)")
+        elif tm == 1:
+            print(f"  Test mode: {tm} (was OFF, single toggle)")
         else:
+            print(f"  Test mode: ? (no response — trying again)")
+            self.send_cmd('T', wait_ms=300)
+            resp2 = self.drain_responses(1.0)
+            for r in resp2:
+                if r.get("ev") == "cmd" and r.get("cmd") == "T":
+                    tm = r.get('tm', 0)
             print(f"  Test mode: {tm}")
 
     def enter_stream_mode(self) -> None:
@@ -771,8 +780,6 @@ class SGCDevice:
                 ring_diag_events.append(r)
             elif ev in ("sd", "start"):
                 sd_events.append(r)
-            elif ev == "hex_diag":
-                pass  # captured in all_events below
             elif ev == "bc":
                 self.breadcrumbs.append(r)
             elif ev == "boot" and self.reset_event is None:
@@ -825,7 +832,7 @@ class SGCDevice:
             for r in all_events:
                 ev = r.get('ev', '?')
                 ev_counts[ev] = ev_counts.get(ev, 0) + 1
-            unknown = [(k,v) for k,v in ev_counts.items() if k not in ('st','run_saved','stream_end','timeout','close_trace','cbc','enc_dbg','ring_dbg','ring_diag','sd','start','bc','boot','hex_diag')]
+            unknown = [(k,v) for k,v in ev_counts.items() if k not in ('st','run_saved','stream_end','timeout','close_trace','cbc','enc_dbg','ring_dbg','ring_diag','sd','start','bc','boot')]
             if unknown:
                 print(f"   ── Other events: {dict(unknown)}")
 
