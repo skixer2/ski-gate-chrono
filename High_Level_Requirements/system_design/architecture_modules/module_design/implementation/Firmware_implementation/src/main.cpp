@@ -216,24 +216,31 @@ void handle_serial()
         const char* p = h_args;
         while (*p == ' ' || *p == '\t') p++;
         if (*p == '\0') {
-            json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_args"); json_end(); return;
+            json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","no_args"); json_end(); return;
         }
         char* endp = nullptr;
         long rid = strtol(p, &endp, 10);
         if (endp == p || rid < 0 || rid > 65535) {
-            json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return;
+            json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","bad_id"); json_end(); return;
         }
         p = endp;
         while (*p == ' ' || *p == '\t') p++;
 
         RunHeader hdr;
         if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
-            json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_run"); json_kv("id",rid); json_end(); return;
+            json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","no_run");
+            Serial.print(','); json_kv("id",rid); json_end(); return;
         }
         uint32_t data_sz = hdr.data_size;
+        /* V4.46: append-only header keeps data_size=0 on disk. Prefer RAM
+           index size (authoritative after close_run). */
+        if (data_sz == 0) {
+            const RunEntry* e = g_fs.get_entry_by_id((uint16_t)rid);
+            if (e) data_sz = e->compressed_size;
+        }
         if (data_sz == 0 || data_sz > 200000) {
-            json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size");
-            json_kv("sz",(long)data_sz); json_end(); return;
+            json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","bad_size");
+            Serial.print(','); json_kv("sz",(long)data_sz); json_end(); return;
         }
 
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);

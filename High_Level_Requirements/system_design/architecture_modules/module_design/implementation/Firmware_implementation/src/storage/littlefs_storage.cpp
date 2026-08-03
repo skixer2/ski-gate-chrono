@@ -365,13 +365,23 @@ bool LittleFSStorage::read_run_header(uint16_t run_id, RunHeader& hdr) const {
     File file;
     if (file.open(fs, path, O_RDONLY) != 0) return false;
     bool ok = (file.read(&hdr, sizeof(hdr)) == (ssize_t)sizeof(hdr));
-    /* V2.80: for format_ver>=2 (append-only), compute real data_size
-       from file size. BLE file transfer needs correct data_size for
-       transfer size calculation. */
-    if (ok && hdr.format_ver >= 2) {
-        ssize_t file_sz = file.size();
-        if (file_sz > 0 && (size_t)file_sz > sizeof(RunHeader) + CRC32_TRAILER_SIZE) {
-            hdr.data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
+    /* V2.80/V4.46: format_ver>=2 is append-only — on-disk data_size=0.
+       Prefer RAM index (set at close_run from m_run_bytes). Fall back to
+       file.size() / seek END, because mbed File::size() can return 0. */
+    if (ok && hdr.format_ver >= 2 && hdr.data_size == 0) {
+        const RunEntry* e = get_entry_by_id(run_id);
+        if (e && e->compressed_size > 0) {
+            hdr.data_size = e->compressed_size;
+        } else {
+            ssize_t file_sz = file.size();
+            if (file_sz <= 0) {
+                off_t end = file.seek(0, SEEK_END);
+                if (end > 0) file_sz = (ssize_t)end;
+                file.seek((off_t)sizeof(RunHeader), SEEK_SET); /* restore */
+            }
+            if (file_sz > 0 && (size_t)file_sz > sizeof(RunHeader) + CRC32_TRAILER_SIZE) {
+                hdr.data_size = (uint32_t)file_sz - sizeof(RunHeader) - CRC32_TRAILER_SIZE;
+            }
         }
     }
     file.close(); return ok;
