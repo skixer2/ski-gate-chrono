@@ -72,7 +72,7 @@ static DeviceState g_prev_state = DeviceState::SLEEP;
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
 extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
-static bool g_ring_drained = false;  /* V4.16: true after ring drain in pull-model LOGGING */
+
 
 /* Stream mode: pull model — firmware requests frames via 0x3F,
    PC responds with one 16-byte RawFrame. No parser state needed. */
@@ -478,89 +478,11 @@ void feed_sensors()
 
     if (st == DeviceState::LOGGING) {
 
-        /* ── V4.16: Pull model — encode frame directly (no ring). ── */
-        if (test_mode_active() && g_stream_active) {
-            if (!g_ring_drained) {
-                /* First LOGGING call: drain all ARM-pre-buffered ring frames */
-                uint8_t count = g_ring.count();
-                json_begin(); json_kv("ev","ring_diag");
-                Serial.print(','); json_kv("phase","start");
-                Serial.print(','); json_kv("ring_cnt", (long)count);
-                Serial.print(','); json_kv("pg_csr", (long)g_page_cursor);
-                json_end();
-                uint8_t flushes = 0;
-                for (uint8_t i = 0; i < count; i++) {
-                    RawFrame oldest = g_ring.read();
-                    if (i == 0) {
-                        /* Dump raw bytes of first ring frame */
-                        uint8_t* raw = (uint8_t*)&oldest;
-                        json_begin(); json_kv("ev","ring_dbg");
-                        Serial.print(",\"bytes\":\"");
-                        for (int b = 0; b < 16; b++) {
-                            if (raw[b] < 16) Serial.print('0');
-                            Serial.print(raw[b], HEX);
-                        }
-                        Serial.print('"');
-                        json_end();
-                    }
-                    g_packer.encode(oldest, g_ring.last_read_ts());
-                    uint8_t cf_size = g_packer.last_size();
-                    uint8_t cf_type = g_packer.last_type();
-                    if (i == 0) {
-                        json_begin(); json_kv("ev","enc_dbg");
-                        Serial.print(','); json_kv("src","ring");
-                        Serial.print(','); json_kv("type", (long)cf_type);
-                        Serial.print(','); json_kv("sz", (long)cf_size);
-                        Serial.print(','); json_kv("qw", (long)oldest.q_w);
-                        Serial.print(','); json_kv("baro", (long)oldest.baro_pa_div2);
-                        json_end();
-                    }
-                    if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
-                        flush_page_buffer();
-                        flushes++;
-                    }
-                    memcpy(g_page_buf + g_page_cursor, g_packer.buffer(), cf_size);
-                    g_page_cursor += cf_size;
-                    g_frame_count++;
-                }
-                json_begin(); json_kv("ev","ring_diag");
-                Serial.print(','); json_kv("phase","done");
-                Serial.print(','); json_kv("fr", (long)g_frame_count);
-                Serial.print(','); json_kv("pg_csr", (long)g_page_cursor);
-                Serial.print(','); json_kv("flush", (long)flushes);
-                json_end();
-                g_ring_drained = true;
-            }
-
-            /* Encode the pulled frame directly — no flash ring ops.
-               Timestamp: use millis() directly (no ring to buffer). */
-            g_packer.encode(f, millis());
-            uint8_t cf_size = g_packer.last_size();
-            uint8_t cf_type = g_packer.last_type();
-            if (g_frame_count == 0) {
-                json_begin(); json_kv("ev","enc_dbg");
-                Serial.print(','); json_kv("src","direct");
-                Serial.print(','); json_kv("type", (long)cf_type);
-                Serial.print(','); json_kv("sz", (long)cf_size);
-                Serial.print(','); json_kv("qw", (long)f.q_w);
-                Serial.print(','); json_kv("baro", (long)f.baro_pa_div2);
-                json_end();
-            }
-            if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
-                flush_page_buffer();
-            }
-            memcpy(g_page_buf + g_page_cursor, g_packer.buffer(), cf_size);
-            g_page_cursor += cf_size;
-            g_frame_count++;
-
-            /* End detector */
-            float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
-            if (g_end_det.feed(pa_raw))
-                g_sm.force_state(DeviceState::POST_RUN);
-            return;
-        }
-
-        /* ── Real-sensor path: ring-based (original) ── */
+        /* ── Unified ring-based path (V4.41).
+           Test mode: frames come from serial via test_request_frame().
+           Real mode: frames come from BHY2 IMU.
+           Both modes: pop 2 oldest + encode → write 1 newest to ring.
+           One code path, one behaviour. ── */
         uint8_t count = g_ring.count();
         uint8_t pop_n = count >= 2 ? 2 : count;
 
@@ -581,9 +503,7 @@ void feed_sensors()
         g_ring.write(f);
 
         /* ── End detector (LOGGING→POST_RUN) — Pa ── */
-        float pa_raw = test_mode_active()
-            ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
-            : pressure.value() * 100.0f;                     /* hPa→Pa */
+        float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa, same for test+real */
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
         return;
@@ -813,9 +733,7 @@ void loop()
        data is silently lost via append_data() to a closed file. ── */
     /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-        float pa = test_mode_active()
-            ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
-            : pressure.value() * 100.0f;                     /* hPa→Pa */
+        float pa = (float)test_get_frame().baro_pa_div2 * 2.0f;  /* Pa/2→Pa, same for test+real */
         if (g_start_det.feed(pa))
             g_sm.force_state(DeviceState::LOGGING);
         g_last_baro_ms = now;
@@ -829,7 +747,6 @@ void loop()
             g_packer.reset();
             g_page_cursor = 0;
             g_run_created = false;
-            g_ring_drained = false;
             g_last_baro_ms = now;
         }
         if (cur == DeviceState::SLEEP) {
@@ -880,7 +797,6 @@ void loop()
             g_frame_count = 0;
             g_run_created = false;
             g_page_cursor = 0;
-            g_ring_drained = false;
             if (g_stream_frames) { g_stream_frames = 0; }
             test_stream_reset();  /* clear EOF/had_data for next stream */
         }
