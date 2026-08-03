@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.30.0"  # ARM sent inside stream_frames, no separate arm() call
+SIM_VERSION = "2.40.0"  # ARM triggers stream mode directly, no separate S command
 
 import argparse
 import hashlib
@@ -598,10 +598,8 @@ class SGCDevice:
         self.early_events = []
         self._rx_partial = b""
 
-        # ── Enter stream mode: S triggers g_stream_active ──
-        self.ser.write(b'S\n')
-        self.ser.flush()
-        # ── Enter pull loop THEN arm — catches first 0x3F immediately ──
+        # ── ARM triggers stream mode automatically (test_mode → g_stream_active=true).
+        # No separate 'S' command needed — the ARM handler sets it. ──
         self.ser.write(b'a\n')
         self.ser.flush()
 
