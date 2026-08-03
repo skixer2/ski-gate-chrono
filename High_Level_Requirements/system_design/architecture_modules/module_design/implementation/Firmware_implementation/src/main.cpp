@@ -824,10 +824,12 @@ void loop()
             BLE.stopAdvertise();
             g_end_det.reset();
             g_packer.reset();  /* V4.27: fresh packer at every run start */
+            g_page_cursor = 0;   /* V4.39: must reset here (POST_RUN may be skipped on warm reset) */
             int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
             uint8_t cal = 0;
             g_run_created = g_fs.create_run(0, baro_temp, cal);
             g_frame_count = 0;
+            g_stream_frames = 0; /* V4.39: reset stream frame counter at run start */
             json_begin();
             json_kv("ev", "run_created");
             Serial.print(','); json_kv_bool("ok", g_run_created);
