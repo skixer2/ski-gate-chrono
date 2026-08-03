@@ -68,7 +68,9 @@ static void set_la(float x, float y, float z) {
 static void init_default_frame() {
     set_quat(0.0f, 0.0f, 0.0f, 1.0f);
     set_la(0.0f, 0.0f, -9810.0f);
-    set_pressure_hpa(1013.25f);
+    /* baro=0 → invalid. Start detector auto-init waits for the first
+       real sample written to the ring (serial stream or BHY2). */
+    g_test_frame.baro_pa_div2 = 0;
 }
 
 /* ── JSON echo ──────────────────────────────────────────────── */

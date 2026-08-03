@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.40.0"  # ARM triggers stream mode directly, no separate S command
+SIM_VERSION = "2.44.0"  # ARM triggers stream mode directly, no separate S command
 
 import argparse
 import hashlib
@@ -885,7 +885,11 @@ class SGCDevice:
                     print(f"     Write head: {ct.get('wh_old')} → {ct.get('wh_new')}")
                 elif step == 'done':
                     print(f"     DONE: entry_count={ct.get('entry_count')} "
-                          f"run_count={ct.get('run_count')} final_wh={ct.get('final_wh')}")
+                          f"run_count={ct.get('run_count')} "
+                          f"final_wh={ct.get('final_wh')} "
+                          f"tw={ct.get('tw')} sc={ct.get('sc')} "
+                          f"cc={ct.get('cc')} stat={ct.get('stat')} "
+                          f"fsz={ct.get('fsz')}")
 
         if sd_events:
             for sd in sd_events:

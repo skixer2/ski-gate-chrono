@@ -291,34 +291,36 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     delete f;
     m_file = nullptr; m_file_open = false;
 
-    /* V3.02: Dir::read() bug in littlefs v2.0.2 misses entries after
-       metadata compaction — scan_runs() has a stat-based fallback.
-       Stat-verify here confirms the file is readable without any
-       filesystem-modifying operations (no mkdir, no temp files). */
+    /* V4.44: Single stat after close. Accept the run if the file exists
+       with plausible size even when write/sync/close returned an error
+       code — LittleFS on nRF52 can return non-zero after a good write. */
     Serial.println("{\"ev\":\"cbc\",\"at\":\"stat_verify\"}"); Serial.flush();
-    {
-        auto* fs = static_cast<LittleFileSystem*>(m_fs);
-        char rpath[32]; make_run_path(run_id, rpath, sizeof(rpath));
-        struct stat st;
-        int stat_err = fs->stat(rpath, &st);
-        Serial.print("{\"ev\":\"cbc\",\"at\":\"probe\",\"err\":");
-        Serial.print(stat_err);
-        if (stat_err == 0) {
-            Serial.print(",\"sz\":"); Serial.print((long)st.st_size);
-        }
-        Serial.println("}");
+    auto* fs = static_cast<LittleFileSystem*>(m_fs);
+    char rpath[32]; make_run_path(run_id, rpath, sizeof(rpath));
+    struct stat st;
+    int stat_err = fs->stat(rpath, &st);
+    Serial.print("{\"ev\":\"cbc\",\"at\":\"probe\",\"err\":");
+    Serial.print(stat_err);
+    if (stat_err == 0) {
+        Serial.print(",\"sz\":"); Serial.print((long)st.st_size);
     }
+    Serial.println("}");
 
-    /* V2.94: Verify file operations before adding RAM entry.
-       If write/sync/close failed, file may not be on flash. */
+    bool file_ok = (stat_err == 0 && st.st_size > (off_t)(sizeof(RunHeader) + 6));
     if (tw != 6 || sc != 0 || cc != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",");
-        Serial.print("\"final_wh\":\"CLOSE_ERR\",\"tw\":");
+        Serial.print("\"final_wh\":\"");
+        Serial.print(file_ok ? "CLOSE_WARN" : "CLOSE_ERR");
+        Serial.print("\",\"tw\":");
         Serial.print((long)tw); Serial.print(",\"sc\":");
         Serial.print(sc); Serial.print(",\"cc\":");
-        Serial.print(cc); Serial.println("}");
+        Serial.print(cc); Serial.print(",\"stat\":");
+        Serial.print(stat_err);
+        if (stat_err == 0) { Serial.print(",\"fsz\":"); Serial.print((long)st.st_size); }
+        Serial.println("}");
         Serial.flush();
-        return 0xFFFF;
+        if (!file_ok) return 0xFFFF;
+        /* file exists with data — continue and index it */
     }
 
     int idx = find_entry_idx(run_id);

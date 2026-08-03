@@ -133,9 +133,12 @@ void handle_serial()
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
+            /* Minimal test fork: enable serial frame source. Everything
+               else (start detector, ring, LOGGING) is the real path. */
             if (test_mode_active() && !g_manual_frame) {
+                test_stream_reset();
                 g_stream_active = true;
-            } else {
+            } else if (!test_mode_active()) {
                 float qx = rotation.x(), qy = rotation.y();
                 float qz = rotation.z(), qw = rotation.w();
                 float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
@@ -148,8 +151,7 @@ void handle_serial()
                     break;
                 }
             }
-            g_last_baro_ms = millis();  /* V4.41: prevent immediate start-detector fire */
-            g_sm.force_state(DeviceState::ARMED);
+            g_sm.force_state(DeviceState::ARMED);  /* handler resets start_det + g_last_baro_ms */
         }
         break;
     case 'l':
@@ -444,6 +446,9 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_page_cursor = 0;
         g_run_created = false;
         g_last_baro_ms = now;
+        /* P₀ auto-inits from first valid frame written to the ring.
+           Same for serial ARM, LDC arm, test and real — no special path. */
+        g_start_det.reset(0.0f);
     }
     if (to == DeviceState::SLEEP) {
         if (!g_stream_active) g_ldc.force_recalibrate();
@@ -735,9 +740,7 @@ void loop()
                 json_kv("ev", "prox_arm");
                 Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
                 json_end();
-                float pa = (float)g_cur_frame.baro_pa_div2 * 2.0f;  /* same data as ring */
-                g_start_det.reset(pa);
-                g_sm.force_state(DeviceState::ARMED);
+                g_sm.force_state(DeviceState::ARMED);  /* handler: start_det auto-init */
             }
         }
         /* ── Factory reset with confirmation ── */
@@ -804,9 +807,14 @@ void loop()
        the same data that feed_sensors just wrote to the ring.
        Transition handler runs synchronously inside force_state(). ── */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-        float pa = (float)g_cur_frame.baro_pa_div2 * 2.0f;  /* Pa/2→Pa, same data as ring */
-        if (g_start_det.feed(pa))
-            g_sm.force_state(DeviceState::LOGGING);
+        /* Same data just written to the ring by feed_sensors().
+           Skip invalid/zero frames so default/uninitialized data
+           cannot poison P₀ before the first real sample arrives. */
+        if (g_cur_frame.baro_pa_div2 > 0) {
+            float pa = (float)g_cur_frame.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
+            if (g_start_det.feed(pa))
+                g_sm.force_state(DeviceState::LOGGING);
+        }
         g_last_baro_ms = now;
     }
 
