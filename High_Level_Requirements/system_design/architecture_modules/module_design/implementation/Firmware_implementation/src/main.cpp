@@ -134,6 +134,7 @@ void handle_serial()
             if (test_mode_active() && !g_manual_frame) {
                 /* ARM triggers stream (if no manual frames set). */
                 g_stream_active = true;
+                g_last_baro_ms = millis();  /* V4.41: prevent immediate start-detector fire */
                 g_sm.force_state(DeviceState::ARMED);
             } else {
             float qx = rotation.x(), qy = rotation.y();
