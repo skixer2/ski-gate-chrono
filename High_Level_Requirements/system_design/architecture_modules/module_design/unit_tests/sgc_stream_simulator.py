@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.44.0"  # ARM triggers stream mode directly, no separate S command
+SIM_VERSION = "2.45.0"  # ARM triggers stream mode directly, no separate S command
 
 import argparse
 import hashlib
@@ -992,22 +992,48 @@ class SGCDevice:
 
         print("\n── Data Integrity Check ──")
 
-        # Request raw hex dump (same bytes BLE sends to phone)
-        # Output is chunked into short JSON lines to avoid readline timeout
-        self.send_cmd(f'h {run_id} raw', wait_ms=500)
-        time.sleep(2.0)  # ~240 chunks × 256 hex chars each, fast at 115200 baud
-        resp = self.drain_responses(20.0)
+        def _collect_hex(timeout_s: float):
+            hd, he, chunks, other = None, None, [], []
+            # Stream may still be producing events; poll until quiet or enough chunks
+            t_end = time.time() + timeout_s
+            last_rx = time.time()
+            while time.time() < t_end:
+                batch = self.drain_responses(0.5)
+                if batch:
+                    last_rx = time.time()
+                    for r in batch:
+                        ev = r.get('ev')
+                        if ev == 'hex_dump':
+                            hd = r
+                        elif ev == 'hex_err':
+                            he = r
+                        elif ev == 'raw':
+                            chunks.append(r)
+                        else:
+                            other.append(r)
+                    # If we have header and all chunks, stop early
+                    if hd and hd.get('chunks') and len(chunks) >= int(hd.get('chunks') or 0):
+                        break
+                else:
+                    # quiet for 1.5s after first data → done
+                    if (hd or chunks or he) and (time.time() - last_rx) > 1.5:
+                        break
+            return hd, he, chunks, other
 
-        hex_dump = None
-        hex_err = None
-        raw_chunks = []  # collect {"ev":"raw","off":...,"hex":...} events
-        for r in resp:
-            if r.get('ev') == 'hex_dump':
-                hex_dump = r
-            elif r.get('ev') == 'hex_err':
-                hex_err = r
-            elif r.get('ev') == 'raw':
-                raw_chunks.append(r)
+        # Ensure IDLE and clear any pending RX before dump
+        self.send_cmd('i', wait_ms=300)
+        self.drain_responses(0.5)
+        self.ser.reset_input_buffer()
+
+        # Request raw hex dump (same bytes BLE sends to phone)
+        print(f"   Requesting: h {run_id} raw")
+        self.send_cmd(f'h {run_id} raw', wait_ms=100)
+        hex_dump, hex_err, raw_chunks, other = _collect_hex(25.0)
+        if other:
+            evs = {}
+            for r in other:
+                evs[r.get('ev','?')] = evs.get(r.get('ev','?'), 0) + 1
+            print(f"   (other events during dump: {evs})")
 
         if not hex_dump and not raw_chunks:
             if hex_err:
@@ -1015,16 +1041,15 @@ class SGCDevice:
                 return False
             print("   Retrying h command...")
             self.send_cmd('i', wait_ms=300)
-            self.send_cmd(f'h {run_id} raw', wait_ms=500)
-            time.sleep(2.0)
-            resp2 = self.drain_responses(20.0)
-            for r in resp2:
-                if r.get('ev') == 'hex_dump':
-                    hex_dump = r
-                elif r.get('ev') == 'hex_err':
-                    hex_err = r
-                elif r.get('ev') == 'raw':
-                    raw_chunks.append(r)
+            self.drain_responses(0.3)
+            self.ser.reset_input_buffer()
+            self.send_cmd(f'h {run_id} raw', wait_ms=100)
+            hex_dump, hex_err, raw_chunks, other = _collect_hex(25.0)
+            if other:
+                evs = {}
+                for r in other:
+                    evs[r.get('ev','?')] = evs.get(r.get('ev','?'), 0) + 1
+                print(f"   (retry other events: {evs})")
 
         if hex_err:
             print(f"   ✗ Firmware returned hex_err: {hex_err}")

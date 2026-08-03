@@ -14,6 +14,8 @@
 #include "Arduino_BHY2.h"
 #include <Nicla_System.h>
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
@@ -118,6 +120,24 @@ void apply_state_visuals(DeviceState s)
 }
 
 /* ================================================================== */
+/* Read rest of current command line into buf (excluding the already-consumed
+   first character). Waits up to wait_ms for the terminating newline.
+   Returns length written (0 if timeout / empty). */
+static size_t read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
+{
+    size_t n = 0;
+    uint32_t t0 = millis();
+    while ((int32_t)(millis() - t0) < (int32_t)wait_ms) {
+        if (!Serial.available()) { delay(1); continue; }
+        char c = (char)Serial.read();
+        if (c == '\r') continue;
+        if (c == '\n') { if (n < cap) buf[n] = '\0'; return n; }
+        if (n + 1 < cap) buf[n++] = c;
+    }
+    if (n < cap) buf[n] = '\0';
+    return n;
+}
+
 void handle_serial()
 {
     if (!Serial.available()) return;
@@ -128,6 +148,14 @@ void handle_serial()
        In stream mode, handle_serial() skips the binary path entirely. */
 
     if (test_mode_handle_serial(c)) return;
+
+    /* V4.45: for 'h', buffer the full line first so arg parsing does not
+       race USB CDC delivery (was: parseInt saw empty → no dump). */
+    char h_args[40];
+    h_args[0] = '\0';
+    if (c == 'h') {
+        read_rest_of_line(h_args, sizeof(h_args), 50);
+    }
 
     switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
@@ -178,37 +206,51 @@ void handle_serial()
         /* Hex/baro dump for a specific run.
            Uses same read_run_data() as BLE file transfer — fork at output.
            h <run_id>              → anchors every 100th frame (T3)
+           h <run_id> raw          → full file hex (same bytes BLE→phone)
            h <run_id> <from> <to>  → baro for every frame in range
-           Add trailing 'r' for raw hex: h <id> <from> <to> r */
-        long rid = Serial.parseInt();
-        if (rid < 0 || rid > 65535) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return; }
+           h <id> <from> <to> r    → raw hex for range
+
+           V4.45: args come from h_args (full line buffered above),
+           not live Serial.parseInt — that raced USB CDC and returned
+           no chunks during the integrity check. */
+        const char* p = h_args;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') {
+            json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_args"); json_end(); return;
+        }
+        char* endp = nullptr;
+        long rid = strtol(p, &endp, 10);
+        if (endp == p || rid < 0 || rid > 65535) {
+            json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_id"); json_end(); return;
+        }
+        p = endp;
+        while (*p == ' ' || *p == '\t') p++;
 
         RunHeader hdr;
         if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
             json_begin(); json_kv("ev","hex_err"); json_kv("reason","no_run"); json_kv("id",rid); json_end(); return;
         }
         uint32_t data_sz = hdr.data_size;
-        if (data_sz == 0 || data_sz > 200000) { json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size"); json_kv("sz",(long)data_sz); json_end(); return; }
+        if (data_sz == 0 || data_sz > 200000) {
+            json_begin(); json_kv("ev","hex_err"); json_kv("reason","bad_size");
+            json_kv("sz",(long)data_sz); json_end(); return;
+        }
 
         Serial.print("{\"ev\":\"hex_dump\",\"id\":"); Serial.print(rid);
         Serial.print(",\"sz\":"); Serial.print((long)data_sz);
-        /* Argument parsing:
-           h <id>            → anchors every 100th frame
-           h <id> raw        → hex string of entire file (same bytes as BLE→phone)
-           h <id> <from> <to>  → baro for range
-           h <id> <from> <to> r → raw hex for range */
         long from_frame = -1, to_frame = -1;
         bool raw_mode = false, has_range = false, raw_file_mode = false;
-        while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
-        if (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') {
-            if (Serial.peek() >= '0' && Serial.peek() <= '9') {
-                from_frame = Serial.parseInt(); to_frame = Serial.parseInt();
+        if (*p != '\0') {
+            if (*p >= '0' && *p <= '9') {
+                from_frame = strtol(p, &endp, 10); p = endp;
+                while (*p == ' ' || *p == '\t') p++;
+                to_frame = strtol(p, &endp, 10); p = endp;
                 has_range = (from_frame >= 0 && to_frame >= from_frame && to_frame < 100000);
-                while (Serial.available() && (Serial.peek() == ' ' || Serial.peek() == '\t')) Serial.read();
-                if (Serial.available() && (Serial.peek() == 'r' || Serial.peek() == 'R')) { Serial.read(); raw_mode = true; }
+                while (*p == ' ' || *p == '\t') p++;
+                if (*p == 'r' || *p == 'R') raw_mode = true;
             } else {
+                /* "raw" or any non-numeric token → full file hex dump */
                 raw_file_mode = true;
-                while (Serial.available() && Serial.peek() != '\n' && Serial.peek() != '\r') Serial.read();
             }
         }
         if (raw_file_mode) {
