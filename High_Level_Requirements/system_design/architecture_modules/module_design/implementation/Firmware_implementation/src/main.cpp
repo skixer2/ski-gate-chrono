@@ -132,28 +132,22 @@ void handle_serial()
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             if (test_mode_active() && !g_manual_frame) {
-                /* ARM triggers stream (if no manual frames set). */
                 g_stream_active = true;
-                g_last_baro_ms = millis();  /* V4.41: prevent immediate start-detector fire */
-                g_sm.force_state(DeviceState::ARMED);
             } else {
-            float qx = rotation.x(), qy = rotation.y();
-            float qz = rotation.z(), qw = rotation.w();
-            float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
-            if (mag < 0.8f || mag > 1.2f) {
-                json_begin();
-                json_kv("ev", "arm_refused");
-                Serial.print(','); json_kv("reason", "quat_magnitude");
-                Serial.print(','); json_kv("mag", mag);
-                json_end();
-            } else {
-                float pa = pressure.value() * 100.0f;
-                if (pa > 50000.0f && pa < 110000.0f) { /* plausible */ }
-                else { pa = 101325.0f; }
-                g_start_det.reset(pa);
-                g_sm.force_state(DeviceState::ARMED);
+                float qx = rotation.x(), qy = rotation.y();
+                float qz = rotation.z(), qw = rotation.w();
+                float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+                if (mag < 0.8f || mag > 1.2f) {
+                    json_begin();
+                    json_kv("ev", "arm_refused");
+                    Serial.print(','); json_kv("reason", "quat_magnitude");
+                    Serial.print(','); json_kv("mag", mag);
+                    json_end();
+                    break;
+                }
             }
-            }
+            g_last_baro_ms = millis();  /* V4.41: prevent immediate start-detector fire */
+            g_sm.force_state(DeviceState::ARMED);
         }
         break;
     case 'l':
@@ -734,7 +728,10 @@ void loop()
        data is silently lost via append_data() to a closed file. ── */
     /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
     if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-        float pa = (float)test_get_frame().baro_pa_div2 * 2.0f;  /* Pa/2→Pa, same for test+real */
+        /* Same fork as feed_sensors: test=serial, real=BHY2 */
+        float pa = test_mode_active()
+            ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
+            : pressure.value() * 100.0f;                     /* hPa→Pa */
         if (g_start_det.feed(pa))
             g_sm.force_state(DeviceState::LOGGING);
         g_last_baro_ms = now;
