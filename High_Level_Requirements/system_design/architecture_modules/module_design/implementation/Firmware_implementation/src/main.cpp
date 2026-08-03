@@ -17,6 +17,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Always emit exactly 2 lowercase hex digits (0-padded). */
+static void print_hex2(uint8_t b)
+{
+    static const char* H = "0123456789abcdef";
+    Serial.write(H[(b >> 4) & 0xF]);
+    Serial.write(H[b & 0xF]);
+}
+
+
 extern volatile uint8_t g_bhy2_accuracy[256];
 extern volatile uint8_t g_meta_event_count;
 void bhy2_cal_hook_init();
@@ -271,6 +280,23 @@ void handle_serial()
             Serial.println("}");
             Serial.flush();
 
+            /* V4.48: first emit a tiny header peek so we can tell flash
+               corruption apart from serial/hex encoding bugs. */
+            {
+                uint8_t peek[16];
+                if (g_fs.read_run_data((uint16_t)rid, 0, peek, 16)) {
+                    json_begin(); json_kv("ev","hdr_peek");
+                    Serial.print(','); json_kv("id",rid);
+                    Serial.print(','); json_kv("ver",(long)peek[0]);
+                    Serial.print(','); json_kv("side",(long)peek[1]);
+                    Serial.print(",\"hex\":\"");
+                    for (int i = 0; i < 16; i++) print_hex2(peek[i]);
+                    Serial.print('"');
+                    json_end();
+                    Serial.flush();
+                }
+            }
+
             uint8_t rbuf[128];
             uint8_t pace = 0;
             for (uint32_t off = 0; off < file_total; off += sizeof(rbuf)) {
@@ -281,23 +307,28 @@ void handle_serial()
                     json_kv("off",(long)off); json_end();
                     break;
                 }
+                /* Build hex into a stack buffer, then one Serial.write —
+                   far fewer USB transactions than per-nibble prints. */
+                char hexbuf[128 * 2 + 1];
+                for (size_t i = 0; i < chunk; i++) {
+                    static const char* H = "0123456789abcdef";
+                    hexbuf[i*2]     = H[(rbuf[i] >> 4) & 0xF];
+                    hexbuf[i*2 + 1] = H[rbuf[i] & 0xF];
+                }
+                hexbuf[chunk * 2] = '\0';
+
                 json_begin();
                 json_kv("ev","raw");
                 Serial.print(','); json_kv("id",rid);
                 Serial.print(','); json_kv("off",(long)off);
                 Serial.print(",\"hex\":\"");
-                for (size_t i = 0; i < chunk; i++) {
-                    if (rbuf[i] < 16) Serial.print('0');
-                    Serial.print(rbuf[i], HEX);
-                }
+                Serial.write((const uint8_t*)hexbuf, chunk * 2);
                 Serial.print('"');
                 json_end();
-                /* Every 4 chunks (~1 KB hex text) flush + brief yield so
-                   the host can drain USB. ~2ms is enough at 115200. */
-                if ((++pace & 3) == 0) {
-                    Serial.flush();
-                    delay(2);
-                }
+                /* Every chunk: flush. At 115200, one ~300B JSON line is
+                   fine; host drop was from back-to-back bursts. */
+                Serial.flush();
+                if ((++pace & 1) == 0) delay(1);
             }
             json_begin(); json_kv("ev","hex_done");
             Serial.print(','); json_kv("id",rid);

@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.47.0"  # ARM triggers stream mode directly, no separate S command
+SIM_VERSION = "2.48.0"  # ARM triggers stream mode directly, no separate S command
 
 import argparse
 import hashlib
@@ -1015,6 +1015,9 @@ class SGCDevice:
                                 hd = {'sz': r.get('sz', 0), 'chunks': 0}
                             # force exit after this batch
                             t_end = time.time()
+                        elif ev == 'hdr_peek':
+                            print(f"   hdr_peek: ver={r.get('ver')} side={r.get('side')} "
+                                  f"hex={r.get('hex')}")
                         else:
                             other.append(r)
                     # If we have header and all chunks, stop early
