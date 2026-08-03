@@ -200,6 +200,7 @@ private:
     static constexpr size_t WRITE_BUF_SIZE = 256;
     uint8_t  m_write_buf[WRITE_BUF_SIZE];
     uint16_t m_write_buf_pos;
+    uint32_t m_last_sync_bytes;  /* V4.42: track bytes for periodic sync */
 
     /* Pending run metadata (set in create_run, consumed by close_run
      * for RunEntry population). No longer used for header rewrite

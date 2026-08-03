@@ -208,6 +208,7 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
     }
     m_file = f; m_file_open = true; m_run_bytes = 0; m_run_crc = 0xFFFFFFFF;
     m_write_buf_pos = 0;
+    m_last_sync_bytes = 0;
     m_pending_arm_side = arm_side; m_pending_baro_temp = baro_temp;
     m_pending_cal_accuracy = cal_accuracy;
     Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":true}");
@@ -229,10 +230,21 @@ bool LittleFSStorage::append_data(const uint8_t* data, size_t len) {
 void LittleFSStorage::flush_write_buf() {
     if (m_write_buf_pos == 0) return;
     auto* f = static_cast<File*>(m_file);
-    f->write(m_write_buf, m_write_buf_pos);
-    /* V4.19: No sync() in flush path — it was a 20-40ms SPI flash
-       hit every ~23 frames.  close_run() syncs.  If battery dies
-       mid-run, athlete is responsible — device must be charged. */
+    ssize_t written = f->write(m_write_buf, m_write_buf_pos);
+    if (written != (ssize_t)m_write_buf_pos) {
+        Serial.print("{\"ev\":\"write_err\",\"expected\":");
+        Serial.print((long)m_write_buf_pos);
+        Serial.print(",\"got\":");
+        Serial.print((long)written);
+        Serial.println("}");
+    }
+    /* V4.42: Periodic sync every 4 KB.
+       Without this, close_run() must sync 20-40 KB in one shot which
+       can overwhelm LittleFS on nRF52 (file close returns error). */
+    if (m_run_bytes - m_last_sync_bytes >= 4096) {
+        f->sync();
+        m_last_sync_bytes = m_run_bytes;
+    }
     m_write_buf_pos = 0;
 }
 
