@@ -806,7 +806,22 @@ void loop()
        Same code path for real-world AND stream test.
        ═══════════════════════════════════════════════════════════════ */
 
-    /* ── State transitions FIRST (sets g_last_baro_ms before start detector) ── */
+    /* ── V4.40: Start detector MUST run BEFORE state transitions.
+       When start detector triggers LOGGING, the transition handler
+       (create_run, g_packer.reset, etc.) must execute before
+       feed_sensors enters the LOGGING path — otherwise ring drain
+       data is silently lost via append_data() to a closed file. ── */
+    /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
+    if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
+        float pa = test_mode_active()
+            ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
+            : pressure.value() * 100.0f;                     /* hPa→Pa */
+        if (g_start_det.feed(pa))
+            g_sm.force_state(DeviceState::LOGGING);
+        g_last_baro_ms = now;
+    }
+
+    /* ── State transitions (V4.40: runs AFTER start detector so LOGGING handler fires before feed_sensors) ── */
     DeviceState cur = g_sm.state();
     if (cur != g_prev_state) {
         json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
@@ -873,15 +888,6 @@ void loop()
         g_prev_state = cur;
     }
 
-    /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
-    if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-        float pa = test_mode_active()
-            ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
-            : pressure.value() * 100.0f;                     /* hPa→Pa */
-        if (g_start_det.feed(pa))
-            g_sm.force_state(DeviceState::LOGGING);
-        g_last_baro_ms = now;
-    }
 
     if (now - g_last_sensor_ms >= 10) {
         feed_sensors();
