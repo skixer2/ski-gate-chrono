@@ -200,12 +200,16 @@ def decompress_from_hex(hex_str: str) -> List[DecompressedFrame]:
 
 
 def compare_to_ndjson(frames: List[DecompressedFrame],
-                      ndjson_path: str) -> Tuple[int, int, int, List[str]]:
+                      ndjson_path: str,
+                      align: bool = False):
     """
     Compare decompressed frames to original NDJSON.
 
+    If align=True, find the NDJSON offset whose pressure/quat best matches
+    decompressed frame 0 (firmware starts logging at start-detect, not fn=0).
+
     Returns:
-        (matched, mismatched, missing, errors_list)
+        (matched, mismatched, missing, errors_list[, align_offset if align])
     """
     import json
 
@@ -216,15 +220,30 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
     matched = 0
     mismatched = 0
     missing = 0
+    align_off = 0
 
-    # Build lookup by frame number
-    nd_by_fn = {d['fn']: d for d in ndjson_data}
+    if align and frames and ndjson_data:
+        # Match first decompressed frame to NDJSON by pressure + q_w
+        f0 = frames[0]
+        best = 0
+        best_score = 1e30
+        for i, nd in enumerate(ndjson_data):
+            dp = abs(float(nd['p']) - f0.p)
+            nd_qw = float(nd['q'][0]) * 16384.0
+            dq = abs(nd_qw - f0.q_w)
+            # pressure dominates; allow q to break ties
+            score = dp * 1000.0 + dq
+            if score < best_score:
+                best_score = score
+                best = i
+        align_off = best
 
     for i, frame in enumerate(frames):
-        nd = nd_by_fn.get(frame.fn)
-        if nd is None:
+        nd_idx = align_off + i
+        if nd_idx < 0 or nd_idx >= len(ndjson_data):
             missing += 1
             continue
+        nd = ndjson_data[nd_idx]
 
         frame_dict = frame.to_dict()
 
@@ -232,7 +251,7 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
         p_diff = abs(frame_dict['p'] - nd['p'])
         if p_diff > 0.04:
             errors.append(
-                f"  Frame {frame.fn}: pressure mismatch "
+                f"  Frame {i} (nd#{nd_idx}): pressure mismatch "
                 f"(decompressed={frame_dict['p']:.2f}, ndjson={nd['p']:.2f}, diff={p_diff:.3f})"
             )
             mismatched += 1
@@ -240,38 +259,45 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
                 break
             continue
 
-        # Compare quaternion (within ±1 LSB = 1/16384 ≈ 0.00006)
-        for j, comp in enumerate(['q_w', 'q_x', 'q_y', 'q_z']):
-            nd_q = [nd['q'][0] * 16384, nd['q'][1] * 16384,
-                    nd['q'][2] * 16384, nd['q'][3] * 16384]
-            dec_q = [frame.q_w, frame.q_x, frame.q_y, frame.q_z]
+        # Compare quaternion (within ±2 LSB)
+        nd_q = [nd['q'][0] * 16384, nd['q'][1] * 16384,
+                nd['q'][2] * 16384, nd['q'][3] * 16384]
+        dec_q = [frame.q_w, frame.q_x, frame.q_y, frame.q_z]
+        q_bad = False
+        for j in range(4):
             if abs(dec_q[j] - nd_q[j]) > 2:
                 errors.append(
-                    f"  Frame {frame.fn}: quaternion[{j}] mismatch "
+                    f"  Frame {i} (nd#{nd_idx}): quaternion[{j}] mismatch "
                     f"(dec={dec_q[j]}, nd={nd_q[j]:.1f})"
                 )
                 mismatched += 1
-                if len(errors) >= 20:
-                    break
+                q_bad = True
                 break
-        else:
-            # Compare linear acceleration (within ±1 LSB)
-            nd_la = nd['la']
-            dec_la = [frame.la_x, frame.la_y, frame.la_z]
-            for j in range(3):
-                if abs(dec_la[j] - nd_la[j]) > 1:
-                    errors.append(
-                        f"  Frame {frame.fn}: la[{j}] mismatch "
-                        f"(dec={dec_la[j]}, nd={nd_la[j]})"
-                    )
-                    mismatched += 1
-                    if len(errors) >= 20:
-                        break
-                    break
-            else:
-                matched += 1
+        if q_bad:
+            if len(errors) >= 20:
+                break
+            continue
 
-        if len(errors) >= 20:
-            break
+        # Compare linear acceleration (within ±1 LSB)
+        nd_la = nd['la']
+        dec_la = [frame.la_x, frame.la_y, frame.la_z]
+        la_bad = False
+        for j in range(3):
+            if abs(dec_la[j] - nd_la[j]) > 1:
+                errors.append(
+                    f"  Frame {i} (nd#{nd_idx}): la[{j}] mismatch "
+                    f"(dec={dec_la[j]}, nd={nd_la[j]})"
+                )
+                mismatched += 1
+                la_bad = True
+                break
+        if la_bad:
+            if len(errors) >= 20:
+                break
+            continue
 
+        matched += 1
+
+    if align:
+        return matched, mismatched, missing, errors, align_off
     return matched, mismatched, missing, errors

@@ -261,23 +261,26 @@ void handle_serial()
             }
         }
         if (raw_file_mode) {
-            /* Dump entire file as hex, split into short JSON lines
-               (each line fits within 1s readline timeout at 115200 baud).
-               Format:
-                 {"ev":"hex_dump","id":0,"sz":30420}
-                 {"ev":"raw","off":0,"hex":"A1B2..."}
-                 {"ev":"raw","off":128,"hex":"C3D4..."}
-                 ...
-               Test script concatenates raw[].hex fields, decompresses. */
+            /* Dump entire file as hex, split into short JSON lines.
+               V4.47: throttle TX — blasting ~250 lines without pause
+               overflows the host USB CDC RX and drops early chunks
+               (seen as garbage header bytes / incomplete dump). */
             Serial.print(",\"chunks\":");
             size_t file_total = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
             Serial.print((file_total + 127) / 128);  /* chunk count */
             Serial.println("}");
+            Serial.flush();
 
             uint8_t rbuf[128];
+            uint8_t pace = 0;
             for (uint32_t off = 0; off < file_total; off += sizeof(rbuf)) {
                 size_t chunk = (file_total - off > sizeof(rbuf)) ? sizeof(rbuf) : (file_total - off);
-                if (!g_fs.read_run_data((uint16_t)rid, off, rbuf, chunk)) break;
+                if (!g_fs.read_run_data((uint16_t)rid, off, rbuf, chunk)) {
+                    json_begin(); json_kv("ev","hex_err"); Serial.print(',');
+                    json_kv("reason","read_fail"); Serial.print(',');
+                    json_kv("off",(long)off); json_end();
+                    break;
+                }
                 json_begin();
                 json_kv("ev","raw");
                 Serial.print(','); json_kv("id",rid);
@@ -289,7 +292,17 @@ void handle_serial()
                 }
                 Serial.print('"');
                 json_end();
+                /* Every 4 chunks (~1 KB hex text) flush + brief yield so
+                   the host can drain USB. ~2ms is enough at 115200. */
+                if ((++pace & 3) == 0) {
+                    Serial.flush();
+                    delay(2);
+                }
             }
+            json_begin(); json_kv("ev","hex_done");
+            Serial.print(','); json_kv("id",rid);
+            Serial.print(','); json_kv("sz",(long)file_total);
+            json_end();
             return;
         }
 

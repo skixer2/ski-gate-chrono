@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.45.0"  # ARM triggers stream mode directly, no separate S command
+SIM_VERSION = "2.47.0"  # ARM triggers stream mode directly, no separate S command
 
 import argparse
 import hashlib
@@ -1009,6 +1009,12 @@ class SGCDevice:
                             he = r
                         elif ev == 'raw':
                             chunks.append(r)
+                        elif ev == 'hex_done':
+                            # definitive end marker from firmware
+                            if hd is None:
+                                hd = {'sz': r.get('sz', 0), 'chunks': 0}
+                            # force exit after this batch
+                            t_end = time.time()
                         else:
                             other.append(r)
                     # If we have header and all chunks, stop early
@@ -1058,36 +1064,92 @@ class SGCDevice:
             print("   ✗ No raw data chunks from device")
             return False
 
-        # Assemble hex from chunks (sorted by offset)
-        raw_chunks.sort(key=lambda r: r.get('off', 0))
-        raw_hex = ''.join(r.get('hex', '') for r in raw_chunks)
-        sz = hex_dump.get('sz', 0) if hex_dump else 0
-        expected_chunks = hex_dump.get('chunks', 0) if hex_dump else 0
+        # Assemble by offset into a dense bytearray (detect gaps)
+        sz = int(hex_dump.get('sz', 0) if hex_dump else 0)
+        expected_chunks = int(hex_dump.get('chunks', 0) if hex_dump else 0)
+        # file = header(16) + data_sz + crc(6)
+        file_total = 16 + sz + 6 if sz else 0
 
-        print(f"   Retrieved {len(raw_chunks)}/{expected_chunks} chunks, "
-              f"{len(raw_hex)} hex chars ({sz} bytes compressed)")
+        by_off = {}
+        for r in raw_chunks:
+            off = int(r.get('off', -1))
+            hx = r.get('hex', '')
+            if off < 0 or not hx:
+                continue
+            try:
+                by_off[off] = bytes.fromhex(hx)
+            except ValueError:
+                print(f"   ✗ Bad hex at off={off}")
+                return False
 
-        # Debug: show first 64 raw bytes
-        raw_bytes = bytes.fromhex(raw_hex)
-        print(f"   First 64 raw bytes: {raw_bytes[:64].hex()}")
-        print(f"   Header: ver={raw_bytes[0]} side={raw_bytes[1]} data_sz={struct.unpack_from('<I', raw_bytes, 8)[0]}")
+        print(f"   Retrieved {len(by_off)}/{expected_chunks} unique offsets "
+              f"(raw events={len(raw_chunks)}), data_sz={sz}")
 
-        # Decompress (same algorithm as phone app)
-        frames = decompress_from_hex(raw_hex)
+        if 0 not in by_off:
+            print(f"   ✗ Missing chunk at offset 0 (first offs={sorted(by_off)[:5]})")
+            return False
+
+        # Rebuild contiguous file; fill gaps with None detection
+        if not file_total:
+            # infer from max off + len
+            max_off = max(by_off)
+            file_total = max_off + len(by_off[max_off])
+
+        raw = bytearray(file_total)
+        filled = bytearray(file_total)  # 0/1 mask
+        gaps = []
+        for off, chunk in sorted(by_off.items()):
+            end = off + len(chunk)
+            if off >= file_total:
+                continue
+            if end > file_total:
+                chunk = chunk[:file_total - off]
+                end = file_total
+            raw[off:end] = chunk
+            for i in range(off, end):
+                filled[i] = 1
+        gap_bytes = sum(1 for b in filled if b == 0)
+        if gap_bytes:
+            # list first few gap offsets
+            for i, b in enumerate(filled):
+                if b == 0:
+                    gaps.append(i)
+                    if len(gaps) >= 8:
+                        break
+            print(f"   ✗ Incomplete dump: {gap_bytes} missing bytes "
+                  f"(first gaps at {gaps})")
+            print(f"   First 64 raw bytes: {bytes(raw[:64]).hex()}")
+            return False
+
+        print(f"   First 64 raw bytes: {bytes(raw[:64]).hex()}")
+        print(f"   Header: ver={raw[0]} side={raw[1]} "
+              f"data_sz={struct.unpack_from('<I', raw, 8)[0]}")
+
+        if raw[0] not in (1, 2, 3):
+            print(f"   ✗ Invalid format_ver={raw[0]} — dump still corrupt")
+            return False
+
+        frames = decompress_from_hex(bytes(raw).hex())
         print(f"   Decompressed {len(frames)} frames")
 
         if len(frames) >= 2:
-            print(f"   Frame 0: p={frames[0].p:.3f} q_w={frames[0].q_w} q_y={frames[0].q_y} baro_pa_div2(direct)")
-            print(f"   Frame 1: p={frames[1].p:.3f} q_w={frames[1].q_w} q_y={frames[1].q_y}")
+            print(f"   Frame 0: p={frames[0].p:.3f} q_w={frames[0].q_w} "
+                  f"q_y={frames[0].q_y}")
+            print(f"   Frame 1: p={frames[1].p:.3f} q_w={frames[1].q_w} "
+                  f"q_y={frames[1].q_y}")
 
         if len(frames) == 0:
             print("   ✗ Decompression produced no frames")
             return False
 
-        # Compare to original NDJSON
-        matched, mismatched, missing, errors = compare_to_ndjson(frames, ndjson_path)
+        # Align NDJSON to the logged window: firmware logs from start
+        # detection (ring backlog + live), not from NDJSON frame 0.
+        matched, mismatched, missing, errors, align = compare_to_ndjson(
+            frames, ndjson_path, align=True)
 
-        print(f"   Compare: {matched} matched, {mismatched} mismatched, {missing} missing")
+        print(f"   Align offset in NDJSON: {align}")
+        print(f"   Compare: {matched} matched, {mismatched} mismatched, "
+              f"{missing} missing")
 
         if errors:
             for e in errors:
