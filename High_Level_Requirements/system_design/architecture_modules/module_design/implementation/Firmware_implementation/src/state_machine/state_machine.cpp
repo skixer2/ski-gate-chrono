@@ -15,7 +15,8 @@ StateMachine::StateMachine()
     : m_state(DeviceState::SLEEP),
       m_state_entered_ms(0),
       m_allow_rearm(true),
-      m_cooldown_notified(false)
+      m_cooldown_notified(false),
+      m_on_transition(nullptr)
 {
 }
 
@@ -89,6 +90,7 @@ void StateMachine::force_state(DeviceState s)
 /* ------------------------------------------------------------------ */
 void StateMachine::enter_state(DeviceState s)
 {
+    DeviceState prev = m_state;
     m_state = s;
     m_state_entered_ms = millis();
 
@@ -107,6 +109,11 @@ void StateMachine::enter_state(DeviceState s)
         m_cooldown_notified = false;
         break;
     }
+
+    /* V4.41: synchronous transition callback — handlers run immediately.
+       This eliminates the one-iteration race where feed_sensors enters
+       LOGGING before create_run() has opened the run file. */
+    if (m_on_transition) m_on_transition(prev, s);
 }
 
 /* ------------------------------------------------------------------ */

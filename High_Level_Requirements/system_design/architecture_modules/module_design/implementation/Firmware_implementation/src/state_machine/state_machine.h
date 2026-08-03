@@ -7,6 +7,9 @@
  *     └──timeout───────────┘                    └───timeout──→ IDLE                 └──cooldown──→ IDLE
  *
  * Phase 5: transitions are triggered via serial commands (no real sensors yet).
+ * V4.41: on_transition callback makes state transitions synchronous —
+ *        handlers run immediately inside force_state(), eliminating
+ *        the one-iteration race between state change and handler execution.
  */
 
 #pragma once
@@ -22,15 +25,21 @@ enum class DeviceState : uint8_t
     POST_RUN = 3,
 };
 
+/** Callback type: called synchronously when state changes. */
+typedef void (*TransitionCallback)(DeviceState from, DeviceState to);
+
 class StateMachine
 {
 public:
     StateMachine();
 
-    /* Force a specific state (for serial-command testing) */
+    /** Force a specific state. Calls the on_transition callback if set. */
     void force_state(DeviceState s);
 
-    /* Called every loop iteration — handles timeouts */
+    /** Set the transition callback (called synchronously from force_state). */
+    void on_transition(TransitionCallback cb) { m_on_transition = cb; }
+
+    /** Called every loop iteration — handles timeouts */
     void tick();
 
     /* Accessors */
@@ -48,4 +57,5 @@ private:
     uint32_t    m_state_entered_ms;
     bool        m_allow_rearm;
     bool        m_cooldown_notified;   /* one-shot: avoid cooldown message spam */
+    TransitionCallback m_on_transition;
 };

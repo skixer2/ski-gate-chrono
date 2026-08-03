@@ -68,7 +68,9 @@ static uint32_t g_last_battery_ms = 0;
 static uint32_t g_last_qi_ms      = 0;
 static uint32_t g_last_cal_ms     = 0;
 
-static DeviceState g_prev_state = DeviceState::SLEEP;
+/* ── Current frame (V4.41: file-scope so start detector reads same data as ring) ── */
+static RawFrame g_cur_frame;
+
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode */
 extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
@@ -428,6 +430,74 @@ void flash_test()
 }
 
 /* ================================================================== */
+/* ── Synchronous state transition handler (V4.41).
+   Called immediately by StateMachine::enter_state() — no lazy check,
+   no one-iteration race between force_state and feed_sensors. ── */
+static void on_state_transition(DeviceState from, DeviceState to)
+{
+    uint32_t now = millis();
+
+    json_state_evt(g_sm.state_name_for(from), g_sm.state_name());
+
+    if (to == DeviceState::ARMED) {
+        g_packer.reset();
+        g_page_cursor = 0;
+        g_run_created = false;
+        g_last_baro_ms = now;
+    }
+    if (to == DeviceState::SLEEP) {
+        if (!g_stream_active) g_ldc.force_recalibrate();
+    }
+    if (to == DeviceState::LOGGING) {
+        BLE.stopAdvertise();
+        g_end_det.reset();
+        g_packer.reset();
+        g_page_cursor = 0;
+        int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
+        uint8_t cal = 0;
+        g_run_created = g_fs.create_run(0, baro_temp, cal);
+        g_frame_count = 0;
+        g_stream_frames = 0;
+        json_begin();
+        json_kv("ev", "run_created");
+        Serial.print(','); json_kv_bool("ok", g_run_created);
+        Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
+        json_end();
+    }
+    if (to == DeviceState::POST_RUN) {
+        BLE.advertise();
+        if (g_stream_active) {
+            g_stream_active = false;
+            json_begin(); json_kv("ev", "stream_end");
+            Serial.print(','); json_kv("frames", (long)g_stream_frames);
+            json_end();
+        }
+        flush_page_buffer();
+        uint32_t compressed_sz = g_fs.run_bytes();
+        uint16_t run_id = g_fs.close_run(g_frame_count);
+        sgc_ble_set_run_count(g_fs.run_count());
+        sgc_ble_set_flash_used(g_fs.flash_used_pct());
+        json_begin();
+        json_kv("ev", "run_saved");
+        Serial.print(','); json_kv("id", (long)run_id);
+        Serial.print(','); json_kv("fr", (long)g_frame_count);
+        Serial.print(','); json_kv("sz", (long)compressed_sz);
+        Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
+        Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+        Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
+        json_end();
+        g_ring.reset(); g_packer.reset();
+        g_start_det.reset(0.0f);
+        g_frame_count = 0;
+        g_run_created = false;
+        g_page_cursor = 0;
+        if (g_stream_frames) { g_stream_frames = 0; }
+        test_stream_reset();
+    }
+    apply_state_visuals(to);
+}
+
+/* ================================================================== */
 void feed_sensors()
 {
     RawFrame f;
@@ -452,6 +522,9 @@ void feed_sensors()
         f.la_z = (int16_t)lin_acc.z();
         f.baro_pa_div2 = (uint16_t)(pressure.value() * 50.0f);  /* hPa→Pa/2 */
     }
+
+    /* Store for start detector (same data as ring) */
+    g_cur_frame = f;
 
     if (st == DeviceState::SLEEP) return;
 
@@ -595,8 +668,8 @@ void setup()
     test_mode_init();
     bhy2_cal_hook_init();
 
+    g_sm.on_transition(on_state_transition);  /* V4.41: synchronous handlers */
     g_sm.force_state(DeviceState::IDLE);
-    g_prev_state = g_sm.state();
     /* V4.03: Reset timestamps to current millis(). On nRF52 warm resets
        (NVIC_SystemReset), static variables retain their values. If
        g_last_baro_ms was e.g. 45000 from before reset and millis()
@@ -662,9 +735,7 @@ void loop()
                 json_kv("ev", "prox_arm");
                 Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
                 json_end();
-                float pa = test_mode_active()
-                    ? (float)test_get_frame().baro_pa_div2 * 2.0f
-                    : pressure.value() * 100.0f;
+                float pa = (float)g_cur_frame.baro_pa_div2 * 2.0f;  /* same data as ring */
                 g_start_det.reset(pa);
                 g_sm.force_state(DeviceState::ARMED);
             }
@@ -717,101 +788,32 @@ void loop()
     }
 
     /* ═══════════════════════════════════════════════════════════════
-       Unified state transitions, start detector, sensor feed.
-       Same code path for real-world AND stream test.
+       Feed sensors → Start detector.
+       V4.41: transitions are synchronous (on_state_transition callback),
+       no lazy g_prev_state check. Start detector uses g_cur_frame from
+       feed_sensors — same data that goes into the ring. No fork. 
        ═══════════════════════════════════════════════════════════════ */
 
-    /* ── V4.40: Start detector MUST run BEFORE state transitions.
-       When start detector triggers LOGGING, the transition handler
-       (create_run, g_packer.reset, etc.) must execute before
-       feed_sensors enters the LOGGING path — otherwise ring drain
-       data is silently lost via append_data() to a closed file. ── */
-    /* ── Start detector feed at 10 Hz (ARMED→LOGGING) — Pa ── */
-    if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-        /* Same fork as feed_sensors: test=serial, real=BHY2 */
-        float pa = test_mode_active()
-            ? (float)test_get_frame().baro_pa_div2 * 2.0f   /* Pa/2→Pa */
-            : pressure.value() * 100.0f;                     /* hPa→Pa */
-        if (g_start_det.feed(pa))
-            g_sm.force_state(DeviceState::LOGGING);
-        g_last_baro_ms = now;
-    }
-
-    /* ── State transitions (V4.40: runs AFTER start detector so LOGGING handler fires before feed_sensors) ── */
-    DeviceState cur = g_sm.state();
-    if (cur != g_prev_state) {
-        json_state_evt(g_sm.state_name_for(g_prev_state), g_sm.state_name());
-        if (cur == DeviceState::ARMED) {
-            g_packer.reset();
-            g_page_cursor = 0;
-            g_run_created = false;
-            g_last_baro_ms = now;
-        }
-        if (cur == DeviceState::SLEEP) {
-            if (!g_stream_active) g_ldc.force_recalibrate();
-        }
-        if (cur == DeviceState::LOGGING) {
-            BLE.stopAdvertise();
-            g_end_det.reset();
-            g_packer.reset();  /* V4.27: fresh packer at every run start */
-            g_page_cursor = 0;   /* V4.39: must reset here (POST_RUN may be skipped on warm reset) */
-            int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
-            uint8_t cal = 0;
-            g_run_created = g_fs.create_run(0, baro_temp, cal);
-            g_frame_count = 0;
-            g_stream_frames = 0; /* V4.39: reset stream frame counter at run start */
-            json_begin();
-            json_kv("ev", "run_created");
-            Serial.print(','); json_kv_bool("ok", g_run_created);
-            Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
-            json_end();
-        }
-        if (cur == DeviceState::POST_RUN) {
-            BLE.advertise();
-            /* ── Stream-mode end marker ── */
-            if (g_stream_active) {
-                g_stream_active = false;
-                json_begin(); json_kv("ev", "stream_end");
-                Serial.print(','); json_kv("frames", (long)g_stream_frames);
-                json_end();
-            }
-            flush_page_buffer();
-            uint32_t compressed_sz = g_fs.run_bytes();
-            uint16_t run_id = g_fs.close_run(g_frame_count);
-            sgc_ble_set_run_count(g_fs.run_count());
-            sgc_ble_set_flash_used(g_fs.flash_used_pct());
-            json_begin();
-            json_kv("ev", "run_saved");
-            Serial.print(','); json_kv("id", (long)run_id);
-            Serial.print(','); json_kv("fr", (long)g_frame_count);
-            Serial.print(','); json_kv("sz", (long)compressed_sz);
-            Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
-            Serial.print(','); json_kv("runs", (long)g_fs.run_count());
-            Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
-            json_end();
-            /* Re-init for next run */
-            g_ring.reset(); g_packer.reset();
-            g_start_det.reset(0.0f);  /* m_p0=0 → auto-init next run */
-            g_frame_count = 0;
-            g_run_created = false;
-            g_page_cursor = 0;
-            if (g_stream_frames) { g_stream_frames = 0; }
-            test_stream_reset();  /* clear EOF/had_data for next stream */
-        }
-        apply_state_visuals(cur);
-        g_prev_state = cur;
-    }
-
-
+    /* ── Feed sensors (10 ms) — sets g_cur_frame from serial or BHY2 ── */
     if (now - g_last_sensor_ms >= 10) {
         feed_sensors();
         g_last_sensor_ms = now;
     }
 
+    /* ── Start detector (100 ms) — reads g_cur_frame.baro_pa_div2,
+       the same data that feed_sensors just wrote to the ring.
+       Transition handler runs synchronously inside force_state(). ── */
+    if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
+        float pa = (float)g_cur_frame.baro_pa_div2 * 2.0f;  /* Pa/2→Pa, same data as ring */
+        if (g_start_det.feed(pa))
+            g_sm.force_state(DeviceState::LOGGING);
+        g_last_baro_ms = now;
+    }
+
     if (now - g_last_battery_ms >= 30000) {
         int8_t batt = nicla::getBatteryVoltagePercentage();
         if (batt >= 0) sgc_ble_set_battery((uint8_t)batt);
-        if (batt > 0 && batt < 15 && cur == DeviceState::LOGGING) {
+        if (batt > 0 && batt < 15 && g_sm.state() == DeviceState::LOGGING) {
             json_begin();
             json_kv("ev", "battery_low");
             Serial.print(','); json_kv("bat", (long)batt);
