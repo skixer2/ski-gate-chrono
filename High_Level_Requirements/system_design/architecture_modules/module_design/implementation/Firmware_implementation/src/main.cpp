@@ -133,28 +133,6 @@ static void encode_to_storage(const RawFrame& fr, uint32_t ts_ms)
     g_frame_count++;
 }
 
-/* Encode one frame straight into the page buffer → LittleFS (no ring hop). */
-static void encode_to_storage(const RawFrame& fr, uint32_t ts_ms)
-{
-    g_packer.encode(fr, ts_ms);
-    const uint8_t cf_size = g_packer.last_size();
-    const uint8_t* cf_buf = g_packer.buffer();
-
-    if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
-        json_begin(); json_kv("ev", "enc_baro");
-        Serial.print(','); json_kv("fn", (long)g_frame_count);
-        Serial.print(','); json_kv("p", (long)fr.baro_pa_div2);
-        Serial.print(','); json_kv("typ", (long)g_packer.last_type());
-        json_end();
-    }
-
-    if (g_page_cursor + cf_size > PAGE_BUF_SIZE)
-        flush_page_buffer();
-    memcpy(g_page_buf + g_page_cursor, cf_buf, cf_size);
-    g_page_cursor += cf_size;
-    g_frame_count++;
-}
-
 /* ================================================================== */
 void apply_state_visuals(DeviceState s)
 {
