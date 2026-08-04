@@ -223,19 +223,35 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
     align_off = 0
 
     if align and frames and ndjson_data:
-        # Match first decompressed frame to NDJSON by pressure + q_w
+        # Align using a short multi-metric window.
+        # Prep-phase pressure is almost flat (~same hPa for hundreds of
+        # frames), so p+q alone often picks nd#1 while LA is already a
+        # unique fingerprint. Observed v4.51 false failure:
+        #   dec.la[i] == nd.la[i] but align_off=1 → la looks shifted by 1.
         f0 = frames[0]
+        n_win = min(8, len(frames))
+        # candidate offsets: can't run past end of NDJSON for the window
+        max_off = max(0, len(ndjson_data) - n_win)
         best = 0
         best_score = 1e30
-        for i, nd in enumerate(ndjson_data):
-            dp = abs(float(nd['p']) - f0.p)
-            nd_qw = float(nd['q'][0]) * 16384.0
-            dq = abs(nd_qw - f0.q_w)
-            # pressure dominates; allow q to break ties
-            score = dp * 1000.0 + dq
+        for off in range(0, max_off + 1):
+            score = 0.0
+            for k in range(n_win):
+                fr = frames[k]
+                nd = ndjson_data[off + k]
+                dp = abs(float(nd['p']) - fr.p)
+                nd_q = [float(nd['q'][j]) * 16384.0 for j in range(4)]
+                dec_q = [fr.q_w, fr.q_x, fr.q_y, fr.q_z]
+                dq = sum(abs(dec_q[j] - nd_q[j]) for j in range(4))
+                nd_la = nd['la']
+                dec_la = [fr.la_x, fr.la_y, fr.la_z]
+                dla = sum(abs(dec_la[j] - float(nd_la[j])) for j in range(3))
+                # LA is most discriminative during prep (p flat, q slow).
+                # Pressure still weighted high enough to reject wrong descent phase.
+                score += dp * 500.0 + dq * 0.05 + dla * 2.0
             if score < best_score:
                 best_score = score
-                best = i
+                best = off
         align_off = best
 
     for i, frame in enumerate(frames):
@@ -278,8 +294,9 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
                 break
             continue
 
-        # Compare linear acceleration (within ±1 LSB)
-        nd_la = nd['la']
+        # Compare linear acceleration (within ±1 LSB after int cast —
+        # NDJSON stores float la, wire/firmware store int16 mm/s²)
+        nd_la = [int(round(float(v))) for v in nd['la']]
         dec_la = [frame.la_x, frame.la_y, frame.la_z]
         la_bad = False
         for j in range(3):

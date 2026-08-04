@@ -318,16 +318,22 @@ def pack_frame(frame: GSFrame) -> bytes:
       7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2) = 16 bytes.
       No sync word — dedicated point-to-point link, fixed frame size.
     """
+    def _i16(v: float) -> int:
+        iv = int(round(v))
+        if iv > 32767: return 32767
+        if iv < -32768: return -32768
+        return iv
+
     return struct.pack(
         '<hhhhhhhH',   # 7×int16 LE + 1×uint16 LE = 16 bytes
-        int(frame.qw * 16384),     # quat_w (Q30)
-        int(frame.qx * 16384),     # quat_x
-        int(frame.qy * 16384),     # quat_y
-        int(frame.qz * 16384),     # quat_z
-        int(frame.lax),            # accel_x (mm/s²)
-        int(frame.lay),            # accel_y
-        int(frame.laz),            # accel_z
-        int(frame.pressure_hpa * 50),  # hPa → Pa/2
+        _i16(frame.qw * 16384),    # quat_w (Q14 on wire)
+        _i16(frame.qx * 16384),
+        _i16(frame.qy * 16384),
+        _i16(frame.qz * 16384),
+        _i16(frame.lax),           # accel_x (mm/s²)
+        _i16(frame.lay),
+        _i16(frame.laz),
+        max(0, min(65535, int(round(frame.pressure_hpa * 50)))),  # hPa → Pa/2
     )
 
 
@@ -1152,9 +1158,9 @@ class SGCDevice:
 
         if len(frames) >= 2:
             print(f"   Frame 0: p={frames[0].p:.3f} q_w={frames[0].q_w} "
-                  f"q_y={frames[0].q_y}")
+                  f"q_y={frames[0].q_y} la=[{frames[0].la_x},{frames[0].la_y},{frames[0].la_z}]")
             print(f"   Frame 1: p={frames[1].p:.3f} q_w={frames[1].q_w} "
-                  f"q_y={frames[1].q_y}")
+                  f"q_y={frames[1].q_y} la=[{frames[1].la_x},{frames[1].la_y},{frames[1].la_z}]")
 
         if len(frames) == 0:
             print("   ✗ Decompression produced no frames")
