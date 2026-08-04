@@ -169,6 +169,10 @@ public:
      *  create_run() at LOGGING entry. */
     void delete_oldest_run();
 
+    /** V4.53: ensure room for a new run without factory reset.
+     *  Deletes oldest until entry_count < MAX_ENTRIES-1 (leave 1 free). */
+    void ensure_space_for_new_run();
+
     /* ── CRC32 (stateless helpers) ────────────────────────────── */
 
     static uint32_t crc32_update(uint32_t crc, uint8_t byte);

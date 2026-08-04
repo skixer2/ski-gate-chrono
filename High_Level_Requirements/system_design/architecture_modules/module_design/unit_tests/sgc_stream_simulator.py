@@ -757,6 +757,7 @@ class SGCDevice:
         close_trace = []
         close_bc = []  # {"ev":"cbc",...} close_run() step breadcrumbs (V2.13)
         enc_dbg_events = []
+        enc_baro_events = []
         ring_dbg_events = []
         ring_diag_events = []
         all_events = []
@@ -776,6 +777,8 @@ class SGCDevice:
                 close_trace.append(r)
             elif ev == "cbc":
                 close_bc.append(r)
+            elif ev == "enc_baro":
+                enc_baro_events.append(r)
             elif ev == "enc_dbg":
                 enc_dbg_events.append(r)
             elif ev == "ring_dbg":
@@ -842,20 +845,43 @@ class SGCDevice:
 
         if stream_end:
             se = stream_end[-1]
-            received = se.get("frames", 0)
+            total_pull = int(se.get("frames", 0) or 0)
+            armed_pull = se.get("armed", None)
+            logging_pull = se.get("logging", None)
             sent = getattr(self, "frames_sent", 0)
-            lost = sent - received if sent > 0 else 0
-            if sent > 0:
-                print(f"   Stream end: {received}/{sent} frames received"
-                      f" ({lost} lost, {lost/sent*100:.1f}%)")
+            # V4.53: stop printing fake "lost %".
+            # g_stream_frames used to reset at LOGGING entry, so
+            # sent - received ≈ ARMED pre-fill, not USB drops.
+            if armed_pull is not None and logging_pull is not None:
+                print(f"   Stream pulls: total={total_pull} "
+                      f"ARMED={armed_pull} LOGGING={logging_pull} "
+                      f"(PC answered {sent})")
             else:
-                print(f"   Stream end: {received} frames")
+                print(f"   Stream pulls: fw_total={total_pull} "
+                      f"PC_answered={sent}")
+                if sent and total_pull and sent > total_pull:
+                    print(f"   note: PC_answered - fw_total = {sent - total_pull} "
+                          f"(usually ARMED pre-fill if fw < v4.53)")
 
         if timeout_events:
             print("   Timeout events:")
             for te in timeout_events:
                 elapsed = te.get('elapsed', '?')
                 print(f"     {te.get('from'):>10} → {te.get('to')} (elapsed={elapsed}ms)")
+
+        if enc_baro_events:
+            print(f"   ── Encode baro probes ({len(enc_baro_events)}) ──")
+            for r in enc_baro_events[:12]:
+                # p is Pa/2 on wire
+                p_raw = r.get('p')
+                try:
+                    hpa = int(p_raw) * 2 / 100.0
+                    p_s = f"{hpa:.2f} hPa"
+                except Exception:
+                    p_s = str(p_raw)
+                print(f"     fn={r.get('fn')} typ={r.get('typ')} p={p_s} (pa/2={p_raw})")
+            if len(enc_baro_events) > 12:
+                print(f"     ... +{len(enc_baro_events)-12} more")
 
         if close_bc:
             print("   ── close_run() step breadcrumbs (cbc) ──")

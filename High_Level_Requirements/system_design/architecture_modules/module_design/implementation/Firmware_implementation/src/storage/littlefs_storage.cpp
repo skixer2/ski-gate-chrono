@@ -190,15 +190,20 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
         return false;
     }
 
+    /* V4.53: GC before create — production cannot factory-reset. */
+    ensure_space_for_new_run();
+
     auto* f = new File();
     char path[32]; make_run_path(m_next_run_id, path, sizeof(path));
-    /* V4.51: single writer, pure sequential writes.
-       v4.50 proved: create-time RO verify saw ver=2, but after logging
-       hdr_after_close was ver=0 — writer file position had reset to 0 and
-       frame data overwrote the header. Concurrent RO open + close-time
-       header rewrite then stamped a fresh header ON TOP of frame bytes
-       (peek ver=2 but payload misaligned → 7 garbage frames). */
+    /* V4.51: single writer, pure sequential writes. */
     int err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
+    if (err != 0) {
+        /* One recovery attempt: delete oldest and retry open. */
+        Serial.print("{\"ev\":\"create_retry\",\"err\":");
+        Serial.print(err); Serial.println("}");
+        delete_oldest_run();
+        err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
+    }
     if (err != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_OPEN_ERR_");
         Serial.print(err); Serial.println("\"}");
@@ -418,23 +423,49 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     }
 
     bool file_ok = (stat_err == 0 && st.st_size > (off_t)(sizeof(RunHeader) + 6));
+
+    /* V4.53: close-path recovery without factory reset.
+       LittleFS on nRF52 can return -138 (EILSEQ/corrupt) from sync/close
+       even when the file payload is intact. Prefer keep-if-plausible.
+       If the file is missing/tiny, remove the partial and stay mountable. */
+    if (!file_ok) {
+        /* Re-stat once — metadata may settle after close. */
+        stat_err = fs->stat(rpath, &st);
+        file_ok = (stat_err == 0 && st.st_size > (off_t)(sizeof(RunHeader) + 6));
+    }
+    if (!file_ok) {
+        Serial.print("{\"ev\":\"close_recover\",\"action\":\"purge_partial\",\"id\":");
+        Serial.print((long)run_id);
+        Serial.print(",\"stat\":"); Serial.print(stat_err);
+        Serial.println("}");
+        fs->remove(rpath);
+        m_run_bytes = 0; m_run_crc = 0xFFFFFFFF; m_file_pos = 0;
+        Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"final_wh\":\"CLOSE_ERR\",\"tw\":");
+        Serial.print((long)tw); Serial.print(",\"sc\":");
+        Serial.print(sc); Serial.print(",\"cc\":");
+        Serial.print(cc); Serial.print(",\"stat\":");
+        Serial.print(stat_err); Serial.println("}");
+        Serial.flush();
+        return 0xFFFF;
+    }
+
     if (tw != 6 || sc != 0 || cc != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",");
-        Serial.print("\"final_wh\":\"");
-        Serial.print(file_ok ? "CLOSE_WARN" : "CLOSE_ERR");
-        Serial.print("\",\"tw\":");
+        Serial.print("\"final_wh\":\"CLOSE_WARN\",\"tw\":");
         Serial.print((long)tw); Serial.print(",\"sc\":");
         Serial.print(sc); Serial.print(",\"cc\":");
         Serial.print(cc); Serial.print(",\"stat\":");
         Serial.print(stat_err);
-        if (stat_err == 0) { Serial.print(",\"fsz\":"); Serial.print((long)st.st_size); }
+        Serial.print(",\"fsz\":"); Serial.print((long)st.st_size);
         Serial.println("}");
         Serial.flush();
-        if (!file_ok) return 0xFFFF;
         /* file exists with data — continue and index it */
     }
 
     int idx = find_entry_idx(run_id);
+    if (idx < 0 && m_entry_count >= MAX_ENTRIES) {
+        delete_oldest_run();
+    }
     if (idx < 0 && m_entry_count < MAX_ENTRIES) {
         idx = m_entry_count; m_entries[idx].run_id = run_id; m_entry_count++;
     }
@@ -547,12 +578,32 @@ void LittleFSStorage::delete_oldest_run() {
     if (m_entry_count == 0) return;
     auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) return;
+    /* Prefer lowest run_id when timestamps are all 0 (append-only v2). */
     uint16_t oldest = 0;
-    for (uint16_t i = 1; i < m_entry_count; i++)
-        if (m_entries[i].timestamp < m_entries[oldest].timestamp) oldest = i;
+    for (uint16_t i = 1; i < m_entry_count; i++) {
+        if (m_entries[i].timestamp < m_entries[oldest].timestamp ||
+            (m_entries[i].timestamp == m_entries[oldest].timestamp &&
+             m_entries[i].run_id < m_entries[oldest].run_id)) {
+            oldest = i;
+        }
+    }
     char path[32]; make_run_path(m_entries[oldest].run_id, path, sizeof(path));
-    fs->remove(path);
+    int rc = fs->remove(path);
+    Serial.print("{\"ev\":\"gc\",\"del\":");
+    Serial.print((long)m_entries[oldest].run_id);
+    Serial.print(",\"rc\":"); Serial.print(rc);
+    Serial.print(",\"left\":"); Serial.print((long)(m_entry_count > 0 ? m_entry_count - 1 : 0));
+    Serial.println("}");
     remove_entry_at((int)oldest);
+}
+
+void LittleFSStorage::ensure_space_for_new_run() {
+    /* Keep at least one free slot in the RAM index. Also delete if we are
+       at the hard cap so create never depends on factory reset. */
+    int guard = 0;
+    while (m_entry_count >= (MAX_ENTRIES - 1) && m_entry_count > 0 && guard++ < MAX_ENTRIES) {
+        delete_oldest_run();
+    }
 }
 
 /* ── Factory reset ──────────────────────────────────────────── */

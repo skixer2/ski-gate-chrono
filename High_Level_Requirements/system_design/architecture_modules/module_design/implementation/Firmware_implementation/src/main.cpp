@@ -83,7 +83,8 @@ static uint32_t g_last_cal_ms     = 0;
 static RawFrame g_cur_frame;
 
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
-uint32_t g_stream_frames = 0;   /* frames received in stream mode */
+uint32_t g_stream_frames = 0;   /* frames received in stream mode (total pull) */
+static uint32_t g_stream_frames_pre_log = 0; /* pulls while ARMED before LOGGING */
 extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
 
 
@@ -555,7 +556,10 @@ static void on_state_transition(DeviceState from, DeviceState to)
         uint8_t cal = 0;
         g_run_created = g_fs.create_run(0, baro_temp, cal);
         g_frame_count = 0;
-        g_stream_frames = 0;
+        /* V4.53: do NOT zero g_stream_frames — that made harness report
+           fake "10% lost" (ARMED pre-fill pulls vanished from the counter).
+           Snapshot ARMED pulls; total keeps growing through LOGGING. */
+        g_stream_frames_pre_log = g_stream_frames;
         json_begin();
         json_kv("ev", "run_created");
         Serial.print(','); json_kv_bool("ok", g_run_created);
@@ -568,6 +572,12 @@ static void on_state_transition(DeviceState from, DeviceState to)
             g_stream_active = false;
             json_begin(); json_kv("ev", "stream_end");
             Serial.print(','); json_kv("frames", (long)g_stream_frames);
+            Serial.print(','); json_kv("armed", (long)g_stream_frames_pre_log);
+            {
+                long logf = (long)g_stream_frames - (long)g_stream_frames_pre_log;
+                if (logf < 0) logf = 0;
+                Serial.print(','); json_kv("logging", logf);
+            }
             json_end();
         }
         flush_page_buffer();
@@ -657,6 +667,18 @@ void feed_sensors()
             g_packer.encode(oldest, g_ring.last_read_ts());
             uint8_t cf_size = g_packer.last_size();
             const uint8_t* cf_buf = g_packer.buffer();
+
+            /* V4.53: sparse baro encode probe — every 250 frames + first.
+               If dump freezes at ~P0 after frame 1000, this shows whether
+               encode input already lost the ramp (ring/stream) or only
+               on-disk/decompress path is wrong. */
+            if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
+                json_begin(); json_kv("ev", "enc_baro");
+                Serial.print(','); json_kv("fn", (long)g_frame_count);
+                Serial.print(','); json_kv("p", (long)oldest.baro_pa_div2);
+                Serial.print(','); json_kv("typ", (long)g_packer.last_type());
+                json_end();
+            }
 
             if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
                 flush_page_buffer();
