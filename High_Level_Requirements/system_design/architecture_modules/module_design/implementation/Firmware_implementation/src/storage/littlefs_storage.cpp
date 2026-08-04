@@ -49,7 +49,7 @@ static void make_run_path(uint16_t id, char* buf, size_t sz) {
 LittleFSStorage::LittleFSStorage()
     : m_fs(nullptr), m_bd(nullptr), m_file(nullptr), m_file_open(false)
     , m_run_count(0), m_next_run_id(0), m_run_bytes(0), m_run_crc(0xFFFFFFFF)
-    , m_write_buf_pos(0)
+    , m_write_buf_pos(0), m_file_pos(0)
     , m_entry_count(0)
 {
     memset(m_write_buf, 0, sizeof(m_write_buf));
@@ -192,9 +192,12 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
 
     auto* f = new File();
     char path[32]; make_run_path(m_next_run_id, path, sizeof(path));
-    /* V4.50: pure append handle. NEVER seek/read the write fd.
-       v4.49 verified header in-handle then still dumped ver=0 — LittleFS v1
-       + seek/read on the writer corrupts or confuses the first extent. */
+    /* V4.51: single writer, pure sequential writes.
+       v4.50 proved: create-time RO verify saw ver=2, but after logging
+       hdr_after_close was ver=0 — writer file position had reset to 0 and
+       frame data overwrote the header. Concurrent RO open + close-time
+       header rewrite then stamped a fresh header ON TOP of frame bytes
+       (peek ver=2 but payload misaligned → 7 garbage frames). */
     int err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
     if (err != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_OPEN_ERR_");
@@ -202,10 +205,9 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
         delete f; return false;
     }
 
-    /* Build wire header into the normal write buffer and flush once.
-       Single write path for header + payload (no separate f->write). */
+    /* Explicit 16-byte LE wire header via the normal write buffer. */
     memset(m_write_buf, 0, WRITE_BUF_SIZE);
-    m_write_buf[0] = 2;                      /* format_ver */
+    m_write_buf[0] = 2;
     m_write_buf[1] = arm_side;
     m_write_buf[6] = (uint8_t)(baro_temp & 0xFF);
     m_write_buf[7] = (uint8_t)((baro_temp >> 8) & 0xFF);
@@ -214,15 +216,23 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
 
     m_file = f;
     m_file_open = true;
-    m_run_bytes = 0;          /* header not counted in compressed size */
-    m_run_crc = 0xFFFFFFFF;   /* CRC covers compressed frames only */
+    m_run_bytes = 0;          /* compressed payload only */
+    m_run_crc = 0xFFFFFFFF;
     m_last_sync_bytes = 0;
+    m_file_pos = 0;           /* next write at byte 0 */
     m_pending_arm_side = arm_side;
     m_pending_baro_temp = baro_temp;
     m_pending_cal_accuracy = cal_accuracy;
 
-    /* Force header to media before any frame data. */
-    flush_write_buf();
+    flush_write_buf();        /* advances m_file_pos to 16 */
+    if (m_file_pos != 16) {
+        Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_POS_");
+        Serial.print((long)m_file_pos); Serial.println("\"}");
+        f->close(); delete f;
+        m_file = nullptr; m_file_open = false;
+        fs->remove(path);
+        return false;
+    }
     int sc = f->sync();
     if (sc != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SYNC_ERR_");
@@ -233,81 +243,28 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
         return false;
     }
 
-    /* Verify on a SEPARATE read-only handle — never touch writer position. */
-    uint8_t chk[16];
-    memset(chk, 0xFF, sizeof(chk));
-    ssize_t nr = -1;
-    {
-        File rf;
-        if (rf.open(fs, path, O_RDONLY) == 0) {
-            nr = rf.read(chk, sizeof(chk));
-            rf.close();
-        }
-    }
-
-    Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":");
-    bool ok = (nr == 16 && chk[0] == 2 && chk[1] == arm_side);
-    Serial.print(ok ? "true" : "false");
-    Serial.print(",\"nr\":"); Serial.print((long)nr);
-    Serial.print(",\"ver\":"); Serial.print((long)chk[0]);
-    Serial.print(",\"side\":"); Serial.print((long)chk[1]);
+    /* Do NOT open a second handle while the writer is live.
+       Emit the intended wire image only (no live read-back). */
+    Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":true");
+    Serial.print(",\"ver\":2,\"side\":"); Serial.print((long)arm_side);
     Serial.print(",\"bt\":"); Serial.print((long)baro_temp);
-    Serial.print(",\"hex\":\"");
-    for (int i = 0; i < 16; i++) {
+    Serial.print(",\"pos\":"); Serial.print((long)m_file_pos);
+    Serial.print(",\"hex\":\"0200");
+    /* print rest of intended header for log parity */
+    {
+        uint8_t wire[16];
+        memset(wire, 0, sizeof(wire));
+        wire[0]=2; wire[1]=arm_side;
+        wire[6]=(uint8_t)(baro_temp & 0xFF);
+        wire[7]=(uint8_t)((baro_temp >> 8) & 0xFF);
+        wire[14]=cal_accuracy;
         static const char* H = "0123456789abcdef";
-        Serial.print(H[(chk[i] >> 4) & 0xF]);
-        Serial.print(H[chk[i] & 0xF]);
+        for (int i = 2; i < 16; i++) {
+            Serial.print(H[(wire[i] >> 4) & 0xF]);
+            Serial.print(H[wire[i] & 0xF]);
+        }
     }
     Serial.println("\"}");
-
-    if (!ok) {
-        /* Last-resort: close writer, rewrite file head via fresh RDWR, reopen append. */
-        f->close();
-        File wf;
-        bool repaired = false;
-        if (wf.open(fs, path, O_RDWR) == 0) {
-            uint8_t wire[16];
-            memset(wire, 0, sizeof(wire));
-            wire[0] = 2; wire[1] = arm_side;
-            wire[6] = (uint8_t)(baro_temp & 0xFF);
-            wire[7] = (uint8_t)((baro_temp >> 8) & 0xFF);
-            wire[14] = cal_accuracy;
-            if (wf.seek(0, SEEK_SET) == 0 &&
-                wf.write(wire, 16) == 16 &&
-                wf.sync() == 0) {
-                memset(chk, 0xFF, sizeof(chk));
-                if (wf.seek(0, SEEK_SET) == 0)
-                    nr = wf.read(chk, 16);
-                if (nr == 16 && chk[0] == 2) repaired = true;
-            }
-            wf.close();
-        }
-        if (!repaired) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_HDR_BAD\"}");
-            fs->remove(path);
-            delete f;
-            m_file = nullptr; m_file_open = false;
-            return false;
-        }
-        Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_repair\",\"ok\":true}");
-        /* Reopen append writer at EOF */
-        if (f->open(fs, path, O_WRONLY) != 0) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_REOPEN_W_ERR\"}");
-            fs->remove(path);
-            delete f;
-            m_file = nullptr; m_file_open = false;
-            return false;
-        }
-        off_t end = f->seek(0, SEEK_END);
-        if (end < 16) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK_END_ERR\"}");
-            f->close(); fs->remove(path); delete f;
-            m_file = nullptr; m_file_open = false;
-            return false;
-        }
-        m_file = f; m_file_open = true;
-    }
-
     return true;
 }
 
@@ -326,17 +283,34 @@ bool LittleFSStorage::append_data(const uint8_t* data, size_t len) {
 void LittleFSStorage::flush_write_buf() {
     if (m_write_buf_pos == 0) return;
     auto* f = static_cast<File*>(m_file);
+    /* V4.51: force absolute append position before every media write.
+       Defends against LittleFS/mbed silently resetting the fd offset to 0
+       (observed: header ver=2 at create, ver=0 after logging). */
+    off_t want = (off_t)m_file_pos;
+    off_t got = f->seek(want, SEEK_SET);
+    if (got != want) {
+        Serial.print("{\"ev\":\"write_seek_err\",\"want\":");
+        Serial.print((long)want);
+        Serial.print(",\"got\":");
+        Serial.print((long)got);
+        Serial.println("}");
+        /* last resort: try END */
+        got = f->seek(0, SEEK_END);
+        if (got >= 0) m_file_pos = (uint32_t)got;
+    }
     ssize_t written = f->write(m_write_buf, m_write_buf_pos);
     if (written != (ssize_t)m_write_buf_pos) {
         Serial.print("{\"ev\":\"write_err\",\"expected\":");
         Serial.print((long)m_write_buf_pos);
         Serial.print(",\"got\":");
         Serial.print((long)written);
+        Serial.print(",\"pos\":");
+        Serial.print((long)m_file_pos);
         Serial.println("}");
+    } else {
+        m_file_pos += (uint32_t)written;
     }
-    /* V4.42: Periodic sync every 4 KB.
-       Without this, close_run() must sync 20-40 KB in one shot which
-       can overwhelm LittleFS on nRF52 (file close returns error). */
+    /* V4.42: Periodic sync every 4 KB. */
     if (m_run_bytes - m_last_sync_bytes >= 4096) {
         f->sync();
         m_last_sync_bytes = m_run_bytes;
@@ -379,7 +353,20 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     flush_write_buf();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"post_flush\"}"); Serial.flush();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"trailer_write\"}"); Serial.flush();
+    /* trailer via same absolute-position write path */
+    {
+        off_t want = (off_t)m_file_pos;
+        off_t got = f->seek(want, SEEK_SET);
+        if (got != want) {
+            Serial.print("{\"ev\":\"cbc\",\"at\":\"trailer_seek\",\"want\":");
+            Serial.print((long)want); Serial.print(",\"got\":");
+            Serial.print((long)got); Serial.println("}");
+            got = f->seek(0, SEEK_END);
+            if (got >= 0) m_file_pos = (uint32_t)got;
+        }
+    }
     ssize_t tw = f->write(trailer, 6);
+    if (tw == 6) m_file_pos += 6;
     Serial.println("{\"ev\":\"cbc\",\"at\":\"trailer_sync\"}"); Serial.flush();
     int sc = f->sync();
     Serial.println("{\"ev\":\"cbc\",\"at\":\"close\"}"); Serial.flush();
@@ -402,10 +389,9 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     }
     Serial.println("}");
 
-    /* V4.50: after close, read header on a fresh fd. If format_ver!=2,
-       rewrite the 16-byte head with the authoritative RAM metadata.
-       LittleFS v1 tolerates this short in-place head rewrite; v2 COW
-       was the old danger, and we are on v1. */
+        /* V4.51: read-only header report after close. NEVER rewrite the head
+       here — v4.50 rewrite fixed ver=2 in peek but destroyed the first
+       frame bytes that had already overwritten a lost header. */
     if (stat_err == 0) {
         uint8_t hb[16];
         memset(hb, 0xFF, sizeof(hb));
@@ -421,6 +407,7 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
         Serial.print((long)hr);
         Serial.print(",\"ver\":"); Serial.print((long)(hr > 0 ? hb[0] : -1));
         Serial.print(",\"side\":"); Serial.print((long)(hr > 1 ? hb[1] : -1));
+        Serial.print(",\"pos\":"); Serial.print((long)m_file_pos);
         Serial.print(",\"hex\":\"");
         for (int i = 0; i < 16; i++) {
             static const char* H = "0123456789abcdef";
@@ -428,45 +415,6 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
             Serial.print(H[hb[i] & 0xF]);
         }
         Serial.println("\"}");
-
-        /* Always rewrite the 16-byte head on close (LittleFS v1).
-           Keeps data_size/frame_count = 0 (append-only size via file size),
-           but forces format_ver=2 even if create-time head was lost. */
-        {
-            long pre_ver = (hr > 0) ? (long)hb[0] : -1L;
-            uint8_t wire[16];
-            memset(wire, 0, sizeof(wire));
-            wire[0] = 2;
-            wire[1] = m_pending_arm_side;
-            wire[6] = (uint8_t)(m_pending_baro_temp & 0xFF);
-            wire[7] = (uint8_t)((m_pending_baro_temp >> 8) & 0xFF);
-            wire[14] = m_pending_cal_accuracy;
-
-            File wf;
-            bool fixed = false;
-            if (wf.open(fs, rpath, O_RDWR) == 0) {
-                if (wf.seek(0, SEEK_SET) == 0 &&
-                    wf.write(wire, 16) == 16 &&
-                    wf.sync() == 0) {
-                    memset(hb, 0xFF, sizeof(hb));
-                    if (wf.seek(0, SEEK_SET) == 0)
-                        hr = wf.read(hb, 16);
-                    fixed = (hr == 16 && hb[0] == 2);
-                }
-                wf.close();
-            }
-            Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_fix\",\"ok\":");
-            Serial.print(fixed ? "true" : "false");
-            Serial.print(",\"pre_ver\":"); Serial.print(pre_ver);
-            Serial.print(",\"ver\":"); Serial.print((long)hb[0]);
-            Serial.print(",\"hex\":\"");
-            for (int i = 0; i < 16; i++) {
-                static const char* H = "0123456789abcdef";
-                Serial.print(H[(hb[i] >> 4) & 0xF]);
-                Serial.print(H[hb[i] & 0xF]);
-            }
-            Serial.println("\"}");
-        }
     }
 
     bool file_ok = (stat_err == 0 && st.st_size > (off_t)(sizeof(RunHeader) + 6));

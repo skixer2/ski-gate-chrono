@@ -201,6 +201,7 @@ private:
     uint8_t  m_write_buf[WRITE_BUF_SIZE];
     uint16_t m_write_buf_pos;
     uint32_t m_last_sync_bytes;  /* V4.42: track bytes for periodic sync */
+    uint32_t m_file_pos;         /* V4.51: logical write offset (header+data+trailer) */
 
     /* Pending run metadata (set in create_run, consumed by close_run
      * for RunEntry population). No longer used for header rewrite
