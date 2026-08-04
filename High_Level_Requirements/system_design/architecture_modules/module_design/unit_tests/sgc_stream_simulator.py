@@ -877,7 +877,20 @@ class SGCDevice:
                     print(f"     START: run_start={ct.get('run_start')} sz={ct.get('sz')} "
                           f"fr={ct.get('fr')} wh_before={ct.get('wh_before')}")
                 elif step == 'hdr_write':
-                    print(f"     {'✓' if ct.get('ok') else '✗'} Header write: ok={ct.get('ok')}")
+                    print(f"     {'✓' if ct.get('ok') else '✗'} Header write: ok={ct.get('ok')} "
+                          f"ver={ct.get('ver')} side={ct.get('side')} "
+                          f"bt={ct.get('bt')} hex={ct.get('hex')} nr={ct.get('nr')}")
+                elif step == 'hdr_after_close':
+                    print(f"     hdr_after_close: ver={ct.get('ver')} side={ct.get('side')} "
+                          f"hex={ct.get('hex')} nr={ct.get('nr')}")
+                elif step == 'hdr_fix':
+                    print(f"     {'✓' if ct.get('ok') else '✗'} hdr_fix: ok={ct.get('ok')} "
+                          f"pre_ver={ct.get('pre_ver')} ver={ct.get('ver')} hex={ct.get('hex')}")
+                elif step == 'hdr_repair':
+                    print(f"     {'✓' if ct.get('ok') else '✗'} hdr_repair: ok={ct.get('ok')}")
+                elif step == 'hdr_verify':
+                    print(f"     hdr_verify: ok={ct.get('ok')} hex={ct.get('hex')} "
+                          f"nr={ct.get('nr')} rdwr={ct.get('rdwr')}")
                 elif step == 'trailer_erase':
                     print(f"     {'✓' if ct.get('ok') else '✗'} Trailer erase: ok={ct.get('ok')} "
                           f"addr={ct.get('trailer_addr')}")
@@ -890,6 +903,8 @@ class SGCDevice:
                           f"tw={ct.get('tw')} sc={ct.get('sc')} "
                           f"cc={ct.get('cc')} stat={ct.get('stat')} "
                           f"fsz={ct.get('fsz')}")
+                else:
+                    print(f"     {step}: { {k:v for k,v in ct.items() if k!='ev'} }")
 
         if sd_events:
             for sd in sd_events:

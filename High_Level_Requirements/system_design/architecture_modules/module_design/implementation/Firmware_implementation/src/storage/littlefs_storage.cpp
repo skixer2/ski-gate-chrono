@@ -179,6 +179,7 @@ void LittleFSStorage::scan_runs() {
 /* ── create_run() ────────────────────────────────────────────── */
 bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy) {
     static_assert(sizeof(RunHeader) == 16, "RunHeader must be 16 bytes packed");
+    static_assert(WRITE_BUF_SIZE >= 16, "write buf must hold RunHeader");
     auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) {
         Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_NO_FS\"}");
@@ -188,136 +189,125 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
         Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_ALREADY_OPEN\"}");
         return false;
     }
+
     auto* f = new File();
     char path[32]; make_run_path(m_next_run_id, path, sizeof(path));
-    /* V4.49: prefer O_RDWR so we can read-back-verify on the same handle.
-       Fall back to O_WRONLY if RDWR is rejected by the FS. */
-    int err = f->open(fs, path, O_RDWR | O_CREAT | O_TRUNC);
-    bool rdwr = (err == 0);
-    if (err != 0) {
-        err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
-    }
+    /* V4.50: pure append handle. NEVER seek/read the write fd.
+       v4.49 verified header in-handle then still dumped ver=0 — LittleFS v1
+       + seek/read on the writer corrupts or confuses the first extent. */
+    int err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
     if (err != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_OPEN_ERR_");
         Serial.print(err); Serial.println("\"}");
         delete f; return false;
     }
 
-    /* V4.49: write an explicit little-endian wire image. Do NOT depend on
-       struct packing/assignment for the only bytes that identify the file.
-       Observed v4.48 on-disk header:
-         00 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00
-       i.e. format_ver=0, baro_temp=1 — layout OK, byte0 lost/zeroed. */
-    uint8_t wire[16];
-    memset(wire, 0, sizeof(wire));
-    wire[0] = 2;                 /* format_ver = 2 (append-only) */
-    wire[1] = arm_side;          /* 0=left, 1=right */
-    /* bytes 2..5 ts_utc = 0 */
-    wire[6] = (uint8_t)(baro_temp & 0xFF);
-    wire[7] = (uint8_t)((baro_temp >> 8) & 0xFF);
-    /* bytes 8..13 data_size=0, frame_count=0 */
-    wire[14] = cal_accuracy;
-    /* byte 15 _pad = 0 */
+    /* Build wire header into the normal write buffer and flush once.
+       Single write path for header + payload (no separate f->write). */
+    memset(m_write_buf, 0, WRITE_BUF_SIZE);
+    m_write_buf[0] = 2;                      /* format_ver */
+    m_write_buf[1] = arm_side;
+    m_write_buf[6] = (uint8_t)(baro_temp & 0xFF);
+    m_write_buf[7] = (uint8_t)((baro_temp >> 8) & 0xFF);
+    m_write_buf[14] = cal_accuracy;
+    m_write_buf_pos = 16;
 
-    ssize_t nw = f->write(wire, sizeof(wire));
-    if (nw != (ssize_t)sizeof(wire)) {
-        Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SHORT_WR_");
-        Serial.print((long)nw); Serial.println("\"}");
-        f->close(); fs->remove(path); delete f; return false;
-    }
+    m_file = f;
+    m_file_open = true;
+    m_run_bytes = 0;          /* header not counted in compressed size */
+    m_run_crc = 0xFFFFFFFF;   /* CRC covers compressed frames only */
+    m_last_sync_bytes = 0;
+    m_pending_arm_side = arm_side;
+    m_pending_baro_temp = baro_temp;
+    m_pending_cal_accuracy = cal_accuracy;
+
+    /* Force header to media before any frame data. */
+    flush_write_buf();
     int sc = f->sync();
     if (sc != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SYNC_ERR_");
         Serial.print(sc); Serial.println("\"}");
-        f->close(); fs->remove(path); delete f; return false;
+        f->close(); delete f;
+        m_file = nullptr; m_file_open = false;
+        fs->remove(path);
+        return false;
     }
 
-    /* Read-back verify via same handle (RDWR) or reopen (WRONLY). */
+    /* Verify on a SEPARATE read-only handle — never touch writer position. */
     uint8_t chk[16];
     memset(chk, 0xFF, sizeof(chk));
     ssize_t nr = -1;
-    if (rdwr) {
-        if (f->seek(0, SEEK_SET) != 0) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK0_ERR\"}");
-            f->close(); fs->remove(path); delete f; return false;
-        }
-        nr = f->read(chk, sizeof(chk));
-    } else {
-        f->close();
+    {
         File rf;
-        if (rf.open(fs, path, O_RDONLY) != 0) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_REOPEN_ERR\"}");
-            fs->remove(path); delete f; return false;
-        }
-        nr = rf.read(chk, sizeof(chk));
-        rf.close();
-        /* Re-open append handle and seek to EOF. */
-        if (f->open(fs, path, O_WRONLY) != 0) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_REOPEN_W_ERR\"}");
-            fs->remove(path); delete f; return false;
-        }
-        if (f->seek(0, SEEK_END) < (off_t)sizeof(wire)) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK_END_ERR\"}");
-            f->close(); fs->remove(path); delete f; return false;
+        if (rf.open(fs, path, O_RDONLY) == 0) {
+            nr = rf.read(chk, sizeof(chk));
+            rf.close();
         }
     }
 
-    if (nr != (ssize_t)sizeof(chk) || chk[0] != 2 || chk[1] != arm_side) {
-        Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_verify\",\"ok\":false");
-        Serial.print(",\"nr\":"); Serial.print((long)nr);
-        Serial.print(",\"rdwr\":"); Serial.print(rdwr ? 1 : 0);
-        Serial.print(",\"hex\":\"");
-        for (int i = 0; i < 16; i++) {
-            static const char* H = "0123456789abcdef";
-            Serial.print(H[(chk[i] >> 4) & 0xF]);
-            Serial.print(H[chk[i] & 0xF]);
-        }
-        Serial.println("\"}");
-        /* One repair attempt. */
-        bool repaired = false;
-        if (f->seek(0, SEEK_SET) == 0 &&
-            f->write(wire, sizeof(wire)) == (ssize_t)sizeof(wire) &&
-            f->sync() == 0) {
-            memset(chk, 0xFF, sizeof(chk));
-            if (rdwr) {
-                if (f->seek(0, SEEK_SET) == 0)
-                    nr = f->read(chk, sizeof(chk));
-            } else {
-                f->close();
-                File rf;
-                if (rf.open(fs, path, O_RDONLY) == 0) {
-                    nr = rf.read(chk, sizeof(chk));
-                    rf.close();
-                }
-                f->open(fs, path, O_WRONLY);
-            }
-            if (nr == (ssize_t)sizeof(chk) && chk[0] == 2) {
-                repaired = true;
-                Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_repair\",\"ok\":true}");
-            }
-        }
-        if (!repaired) {
-            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_HDR_BAD\"}");
-            f->close(); fs->remove(path); delete f; return false;
-        }
-    }
-
-    /* Ensure append position is past the 16-byte header. */
-    if (f->seek(0, SEEK_END) < (off_t)sizeof(wire)) {
-        Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK_END_ERR\"}");
-        f->close(); fs->remove(path); delete f; return false;
-    }
-
-    m_file = f; m_file_open = true; m_run_bytes = 0; m_run_crc = 0xFFFFFFFF;
-    m_write_buf_pos = 0;
-    m_last_sync_bytes = 0;
-    m_pending_arm_side = arm_side; m_pending_baro_temp = baro_temp;
-    m_pending_cal_accuracy = cal_accuracy;
-    Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":true");
+    Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":");
+    bool ok = (nr == 16 && chk[0] == 2 && chk[1] == arm_side);
+    Serial.print(ok ? "true" : "false");
+    Serial.print(",\"nr\":"); Serial.print((long)nr);
     Serial.print(",\"ver\":"); Serial.print((long)chk[0]);
     Serial.print(",\"side\":"); Serial.print((long)chk[1]);
     Serial.print(",\"bt\":"); Serial.print((long)baro_temp);
-    Serial.println("}");
+    Serial.print(",\"hex\":\"");
+    for (int i = 0; i < 16; i++) {
+        static const char* H = "0123456789abcdef";
+        Serial.print(H[(chk[i] >> 4) & 0xF]);
+        Serial.print(H[chk[i] & 0xF]);
+    }
+    Serial.println("\"}");
+
+    if (!ok) {
+        /* Last-resort: close writer, rewrite file head via fresh RDWR, reopen append. */
+        f->close();
+        File wf;
+        bool repaired = false;
+        if (wf.open(fs, path, O_RDWR) == 0) {
+            uint8_t wire[16];
+            memset(wire, 0, sizeof(wire));
+            wire[0] = 2; wire[1] = arm_side;
+            wire[6] = (uint8_t)(baro_temp & 0xFF);
+            wire[7] = (uint8_t)((baro_temp >> 8) & 0xFF);
+            wire[14] = cal_accuracy;
+            if (wf.seek(0, SEEK_SET) == 0 &&
+                wf.write(wire, 16) == 16 &&
+                wf.sync() == 0) {
+                memset(chk, 0xFF, sizeof(chk));
+                if (wf.seek(0, SEEK_SET) == 0)
+                    nr = wf.read(chk, 16);
+                if (nr == 16 && chk[0] == 2) repaired = true;
+            }
+            wf.close();
+        }
+        if (!repaired) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_HDR_BAD\"}");
+            fs->remove(path);
+            delete f;
+            m_file = nullptr; m_file_open = false;
+            return false;
+        }
+        Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_repair\",\"ok\":true}");
+        /* Reopen append writer at EOF */
+        if (f->open(fs, path, O_WRONLY) != 0) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_REOPEN_W_ERR\"}");
+            fs->remove(path);
+            delete f;
+            m_file = nullptr; m_file_open = false;
+            return false;
+        }
+        off_t end = f->seek(0, SEEK_END);
+        if (end < 16) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK_END_ERR\"}");
+            f->close(); fs->remove(path); delete f;
+            m_file = nullptr; m_file_open = false;
+            return false;
+        }
+        m_file = f; m_file_open = true;
+    }
+
     return true;
 }
 
@@ -412,19 +402,63 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
     }
     Serial.println("}");
 
-    /* V4.49: after close, independently re-open and dump header bytes.
-       Catches any post-create corruption of format_ver. */
+    /* V4.50: after close, read header on a fresh fd. If format_ver!=2,
+       rewrite the 16-byte head with the authoritative RAM metadata.
+       LittleFS v1 tolerates this short in-place head rewrite; v2 COW
+       was the old danger, and we are on v1. */
     if (stat_err == 0) {
-        File rf;
-        if (rf.open(fs, rpath, O_RDONLY) == 0) {
-            uint8_t hb[16];
-            memset(hb, 0xFF, sizeof(hb));
-            ssize_t hr = rf.read(hb, sizeof(hb));
-            rf.close();
-            Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_after_close\",\"nr\":");
-            Serial.print((long)hr);
+        uint8_t hb[16];
+        memset(hb, 0xFF, sizeof(hb));
+        ssize_t hr = -1;
+        {
+            File rf;
+            if (rf.open(fs, rpath, O_RDONLY) == 0) {
+                hr = rf.read(hb, sizeof(hb));
+                rf.close();
+            }
+        }
+        Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_after_close\",\"nr\":");
+        Serial.print((long)hr);
+        Serial.print(",\"ver\":"); Serial.print((long)(hr > 0 ? hb[0] : -1));
+        Serial.print(",\"side\":"); Serial.print((long)(hr > 1 ? hb[1] : -1));
+        Serial.print(",\"hex\":\"");
+        for (int i = 0; i < 16; i++) {
+            static const char* H = "0123456789abcdef";
+            Serial.print(H[(hb[i] >> 4) & 0xF]);
+            Serial.print(H[hb[i] & 0xF]);
+        }
+        Serial.println("\"}");
+
+        /* Always rewrite the 16-byte head on close (LittleFS v1).
+           Keeps data_size/frame_count = 0 (append-only size via file size),
+           but forces format_ver=2 even if create-time head was lost. */
+        {
+            long pre_ver = (hr > 0) ? (long)hb[0] : -1L;
+            uint8_t wire[16];
+            memset(wire, 0, sizeof(wire));
+            wire[0] = 2;
+            wire[1] = m_pending_arm_side;
+            wire[6] = (uint8_t)(m_pending_baro_temp & 0xFF);
+            wire[7] = (uint8_t)((m_pending_baro_temp >> 8) & 0xFF);
+            wire[14] = m_pending_cal_accuracy;
+
+            File wf;
+            bool fixed = false;
+            if (wf.open(fs, rpath, O_RDWR) == 0) {
+                if (wf.seek(0, SEEK_SET) == 0 &&
+                    wf.write(wire, 16) == 16 &&
+                    wf.sync() == 0) {
+                    memset(hb, 0xFF, sizeof(hb));
+                    if (wf.seek(0, SEEK_SET) == 0)
+                        hr = wf.read(hb, 16);
+                    fixed = (hr == 16 && hb[0] == 2);
+                }
+                wf.close();
+            }
+            Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_fix\",\"ok\":");
+            Serial.print(fixed ? "true" : "false");
+            Serial.print(",\"pre_ver\":"); Serial.print(pre_ver);
             Serial.print(",\"ver\":"); Serial.print((long)hb[0]);
-            Serial.print(",\"side\":"); Serial.print((long)hb[1]);
             Serial.print(",\"hex\":\"");
             for (int i = 0; i < 16; i++) {
                 static const char* H = "0123456789abcdef";
