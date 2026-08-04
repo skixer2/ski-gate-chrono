@@ -205,8 +205,10 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
     """
     Compare decompressed frames to original NDJSON.
 
-    If align=True, find the NDJSON offset whose pressure/quat best matches
-    decompressed frame 0 (firmware starts logging at start-detect, not fn=0).
+    Stream injection is lossy (~10% PC→device drops). Logged frames are a
+    subsequence of NDJSON, not a contiguous slice. Match with a monotonic
+    pointer and a forward search window; accept only if metrics are within
+    absolute thresholds (not merely "best of a bad window").
 
     Returns:
         (matched, mismatched, missing, errors_list[, align_offset if align])
@@ -222,99 +224,125 @@ def compare_to_ndjson(frames: List[DecompressedFrame],
     missing = 0
     align_off = 0
 
-    if align and frames and ndjson_data:
-        # Align using a short multi-metric window.
-        # Prep-phase pressure is almost flat (~same hPa for hundreds of
-        # frames), so p+q alone often picks nd#1 while LA is already a
-        # unique fingerprint. Observed v4.51 false failure:
-        #   dec.la[i] == nd.la[i] but align_off=1 → la looks shifted by 1.
-        f0 = frames[0]
-        n_win = min(8, len(frames))
-        # candidate offsets: can't run past end of NDJSON for the window
-        max_off = max(0, len(ndjson_data) - n_win)
-        best = 0
-        best_score = 1e30
-        for off in range(0, max_off + 1):
-            score = 0.0
-            for k in range(n_win):
-                fr = frames[k]
-                nd = ndjson_data[off + k]
-                dp = abs(float(nd['p']) - fr.p)
-                nd_q = [float(nd['q'][j]) * 16384.0 for j in range(4)]
-                dec_q = [fr.q_w, fr.q_x, fr.q_y, fr.q_z]
-                dq = sum(abs(dec_q[j] - nd_q[j]) for j in range(4))
-                nd_la = nd['la']
-                dec_la = [fr.la_x, fr.la_y, fr.la_z]
-                dla = sum(abs(dec_la[j] - float(nd_la[j])) for j in range(3))
-                # LA is most discriminative during prep (p flat, q slow).
-                # Pressure still weighted high enough to reject wrong descent phase.
-                score += dp * 500.0 + dq * 0.05 + dla * 2.0
-            if score < best_score:
-                best_score = score
-                best = off
-        align_off = best
+    if not frames or not ndjson_data:
+        if align:
+            return 0, 0, len(frames), ["empty input"], 0
+        return 0, 0, len(frames), ["empty input"]
 
-    for i, frame in enumerate(frames):
-        nd_idx = align_off + i
-        if nd_idx < 0 or nd_idx >= len(ndjson_data):
+    def _nd_parts(nd):
+        nq = [float(nd['q'][k]) * 16384.0 for k in range(4)]
+        nla = [int(round(float(v))) for v in nd['la']]
+        return float(nd['p']), nq, nla
+
+    def _metrics(fr, nd):
+        np, nq, nla = _nd_parts(nd)
+        dp = abs(np - fr.p)
+        dqs = [abs([fr.q_w, fr.q_x, fr.q_y, fr.q_z][a] - nq[a]) for a in range(4)]
+        dlas = [abs([fr.la_x, fr.la_y, fr.la_z][a] - nla[a]) for a in range(3)]
+        return dp, dqs, dlas, np, nq, nla
+
+    def _is_match(dp, dqs, dlas):
+        if dp > 0.04:
+            return False
+        if any(x > 2.0 for x in dqs):
+            return False
+        if any(x > 1.0 for x in dlas):
+            return False
+        return True
+
+    def _score(dp, dqs, dlas):
+        # Lower is better. Prefer true matches strongly.
+        return dp * 1000.0 + sum(dqs) * 0.5 + sum(dlas) * 2.0
+
+    # Seed: single-frame exact-ish match for frames[0] over whole NDJSON.
+    # Contiguous multi-frame windows break under stream drops.
+    j = 0
+    if align:
+        best_j = 0
+        best_sc = 1e30
+        for cand in range(len(ndjson_data)):
+            dp, dqs, dlas, _, _, _ = _metrics(frames[0], ndjson_data[cand])
+            sc = _score(dp, dqs, dlas)
+            if sc < best_sc:
+                best_sc = sc
+                best_j = cand
+            # early exit on perfect match
+            if _is_match(dp, dqs, dlas) and sc < 1e-6:
+                best_j = cand
+                break
+        j = best_j
+        align_off = best_j
+
+    SEARCH = 120  # max NDJSON frames to look ahead for one logged frame
+
+    for i, fr in enumerate(frames):
+        if j >= len(ndjson_data):
+            missing += len(frames) - i
+            break
+
+        found_j = None
+        found_m = None
+        lim = min(len(ndjson_data), j + SEARCH)
+        # Prefer first absolute match (monotonic, earliest NDJSON index)
+        for cand in range(j, lim):
+            dp, dqs, dlas, np, nq, nla = _metrics(fr, ndjson_data[cand])
+            if _is_match(dp, dqs, dlas):
+                found_j = cand
+                found_m = (dp, dqs, dlas, np, nq, nla)
+                break
+
+        if found_j is not None:
+            matched += 1
+            j = found_j + 1
+            continue
+
+        # No absolute match in window — report best candidate for diagnostics
+        best_j = j
+        best_sc = 1e30
+        best_m = None
+        for cand in range(j, lim):
+            dp, dqs, dlas, np, nq, nla = _metrics(fr, ndjson_data[cand])
+            sc = _score(dp, dqs, dlas)
+            if sc < best_sc:
+                best_sc = sc
+                best_j = cand
+                best_m = (dp, dqs, dlas, np, nq, nla)
+
+        if best_m is None:
             missing += 1
             continue
-        nd = ndjson_data[nd_idx]
 
-        frame_dict = frame.to_dict()
-
-        # Compare pressure (within ±0.04 hPa for Pa/2 quantization: 2 Pa/LSB)
-        p_diff = abs(frame_dict['p'] - nd['p'])
-        if p_diff > 0.04:
+        dp, dqs, dlas, np, nq, nla = best_m
+        if dp > 0.04:
             errors.append(
-                f"  Frame {i} (nd#{nd_idx}): pressure mismatch "
-                f"(decompressed={frame_dict['p']:.2f}, ndjson={nd['p']:.2f}, diff={p_diff:.3f})"
+                f"  Frame {i} (nd#{best_j}): pressure mismatch "
+                f"(decompressed={fr.p:.2f}, ndjson={np:.2f}, diff={dp:.3f})"
             )
-            mismatched += 1
-            if len(errors) >= 20:
-                break
-            continue
-
-        # Compare quaternion (within ±2 LSB)
-        nd_q = [nd['q'][0] * 16384, nd['q'][1] * 16384,
-                nd['q'][2] * 16384, nd['q'][3] * 16384]
-        dec_q = [frame.q_w, frame.q_x, frame.q_y, frame.q_z]
-        q_bad = False
-        for j in range(4):
-            if abs(dec_q[j] - nd_q[j]) > 2:
+        else:
+            q_bad = next((a for a in range(4) if dqs[a] > 2.0), None)
+            if q_bad is not None:
+                dec_q = [fr.q_w, fr.q_x, fr.q_y, fr.q_z]
                 errors.append(
-                    f"  Frame {i} (nd#{nd_idx}): quaternion[{j}] mismatch "
-                    f"(dec={dec_q[j]}, nd={nd_q[j]:.1f})"
+                    f"  Frame {i} (nd#{best_j}): quaternion[{q_bad}] mismatch "
+                    f"(dec={dec_q[q_bad]}, nd={nq[q_bad]:.1f})"
                 )
-                mismatched += 1
-                q_bad = True
-                break
-        if q_bad:
-            if len(errors) >= 20:
-                break
-            continue
-
-        # Compare linear acceleration (within ±1 LSB after int cast —
-        # NDJSON stores float la, wire/firmware store int16 mm/s²)
-        nd_la = [int(round(float(v))) for v in nd['la']]
-        dec_la = [frame.la_x, frame.la_y, frame.la_z]
-        la_bad = False
-        for j in range(3):
-            if abs(dec_la[j] - nd_la[j]) > 1:
+            else:
+                la_bad = next((a for a in range(3) if dlas[a] > 1.0), 0)
+                dec_la = [fr.la_x, fr.la_y, fr.la_z]
                 errors.append(
-                    f"  Frame {i} (nd#{nd_idx}): la[{j}] mismatch "
-                    f"(dec={dec_la[j]}, nd={nd_la[j]})"
+                    f"  Frame {i} (nd#{best_j}): la[{la_bad}] mismatch "
+                    f"(dec={dec_la[la_bad]}, nd={nla[la_bad]})"
                 )
-                mismatched += 1
-                la_bad = True
-                break
-        if la_bad:
-            if len(errors) >= 20:
-                break
-            continue
-
-        matched += 1
+        mismatched += 1
+        # Do not advance j on hard mismatch — next dec frame may match here.
+        # Only skip one slot if we're clearly stuck (same j forever risk):
+        # advance by 1 after reporting to keep progress.
+        j = best_j + 1
+        if len(errors) >= 20:
+            mismatched += len(frames) - (i + 1)
+            break
 
     if align:
         return matched, mismatched, missing, errors, align_off
     return matched, mismatched, missing, errors
+

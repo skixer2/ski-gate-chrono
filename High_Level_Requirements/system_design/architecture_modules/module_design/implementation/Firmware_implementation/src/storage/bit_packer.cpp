@@ -177,16 +177,18 @@ void BitPacker::write_t2_payload(const int32_t* deltas, int32_t baro_delta)
 
 void BitPacker::write_t3_payload(const RawFrame& cur)
 {
-    auto put16 = [this](uint8_t off, int16_t val) {
+    /* Use uint16_t so baro_pa_div2 (0..65535) is never narrowed through
+       signed int16 before the shift — safer and identical for IMU int16. */
+    auto put16 = [this](uint8_t off, uint16_t val) {
         m_buf[off]     = (uint8_t)(val & 0xFF);
         m_buf[off + 1] = (uint8_t)((val >> 8) & 0xFF);
     };
-    put16(2,  cur.q_w);
-    put16(4,  cur.q_x);
-    put16(6,  cur.q_y);
-    put16(8,  cur.q_z);
-    put16(10, cur.la_x);
-    put16(12, cur.la_y);
-    put16(14, cur.la_z);
+    put16(2,  (uint16_t)cur.q_w);
+    put16(4,  (uint16_t)cur.q_x);
+    put16(6,  (uint16_t)cur.q_y);
+    put16(8,  (uint16_t)cur.q_z);
+    put16(10, (uint16_t)cur.la_x);
+    put16(12, (uint16_t)cur.la_y);
+    put16(14, (uint16_t)cur.la_z);
     put16(16, cur.baro_pa_div2);
 }
