@@ -7,12 +7,18 @@ Purpose:
     BHY2 sensors → packer → page buffer → LittleFS
   without the USB pull-model bottleneck (~25 fps in stream tests).
 
-Flow (production-like):
-  IDLE → (optional) leave test mode OFF
-  force LOGGING via serial 'l'  (bypasses start detector)
-  wait --duration seconds while device samples BHY2 at 100 Hz tick
-  force POST_RUN via 'p'
-  read run_saved {fr, dur_ms, fps10}
+IMPORTANT state machine rule (firmware):
+  LOGGING may only be entered from ARMED.
+  POST_RUN may only be entered from LOGGING.
+  So the bench sequence is: IDLE → a(ARMED) → l(LOGGING) → … → p(POST_RUN)
+
+Flow:
+  - factory reset optional (-R)
+  - ensure test mode OFF (real BHY2 path, g_stream_active stays false)
+  - arm with 'a'  → expect green LED / st ARMED
+  - force LOGGING with 'l' → expect red LED / run_created
+  - wait --duration seconds
+  - force POST_RUN with 'p' → expect run_saved {fr, dur_ms, fps10}
 
 Pass criteria (defaults):
   fps >= 90  (target 100 Hz with headroom for flash sync)
@@ -29,7 +35,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 
@@ -58,7 +63,8 @@ def read_json_lines(ser: serial.Serial, timeout_s: float) -> list[dict]:
     return out
 
 
-def wait_event(ser: serial.Serial, ev: str, timeout_s: float) -> dict | None:
+def wait_event(ser: serial.Serial, ev: str, timeout_s: float,
+               extra_keys: dict | None = None) -> dict | None:
     end = time.time() + timeout_s
     buf = b""
     while time.time() < end:
@@ -74,17 +80,55 @@ def wait_event(ser: serial.Serial, ev: str, timeout_s: float) -> dict | None:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if obj.get("ev") == ev:
-                    return obj
+                if obj.get("ev") != ev:
+                    continue
+                if extra_keys:
+                    ok = all(obj.get(k) == v for k, v in extra_keys.items())
+                    if not ok:
+                        continue
+                return obj
         else:
             time.sleep(0.02)
     return None
 
 
-def send(ser: serial.Serial, cmd: str, wait_s: float = 0.2) -> list[dict]:
+def send(ser: serial.Serial, cmd: str, wait_s: float = 0.25) -> list[dict]:
+    ser.reset_input_buffer()
     ser.write((cmd + "\n").encode("ascii"))
     ser.flush()
     return read_json_lines(ser, wait_s)
+
+
+def ensure_test_mode_off(ser: serial.Serial) -> bool:
+    """Return True if test mode is OFF."""
+    # Status does not always expose tm; use T toggle responses.
+    # Query by toggling only if needed: send Z/T carefully.
+    # Protocol: 'T' toggles and replies {"ev":"cmd","cmd":"T","tm":bool}
+    r = send(ser, "T", 0.4)
+    tm = None
+    for o in r:
+        if o.get("ev") == "cmd" and o.get("cmd") == "T":
+            tm = o.get("tm")
+    if tm is None:
+        print("  ⚠ could not read test-mode flag from T response:", r[:5])
+        return False
+    if tm is True or tm == 1:
+        r2 = send(ser, "T", 0.4)
+        for o in r2:
+            if o.get("ev") == "cmd" and o.get("cmd") == "T":
+                tm = o.get("tm")
+                break
+    print(f"  Test mode OFF: {tm is False or tm == 0} (tm={tm})")
+    return tm is False or tm == 0
+
+
+def find_state(events: list[dict]) -> str | None:
+    for o in reversed(events):
+        if o.get("ev") == "st" and o.get("to"):
+            return o.get("to")
+        if o.get("ev") == "status" and o.get("st"):
+            return o.get("st")
+    return None
 
 
 def main() -> int:
@@ -95,6 +139,8 @@ def main() -> int:
     ap.add_argument("--min-fps", type=float, default=90.0, help="Pass threshold")
     ap.add_argument("-R", "--factory-reset", action="store_true",
                     help="Factory reset before test")
+    ap.add_argument("--arm-wait", type=float, default=2.0,
+                    help="Seconds to wait after boot for BHY2 quat settle before arm")
     args = ap.parse_args()
 
     print("=" * 50)
@@ -105,74 +151,132 @@ def main() -> int:
     print("=" * 50)
 
     ser = serial.Serial(args.port, args.baud, timeout=0.05)
-    time.sleep(0.4)
+    time.sleep(0.5)
     ser.reset_input_buffer()
 
-    # Wake / status
+    # Wake
     send(ser, "i", 0.3)
     st = send(ser, "?", 0.5)
     ver = None
     for r in st:
         if r.get("ev") == "status":
             ver = r.get("ver")
-            print(f"  State: {r.get('st')} batt={r.get('batt')} runs={r.get('runs')} ver={ver}")
-        if r.get("ev") == "version" or "ver" in r:
-            ver = r.get("ver", ver)
+            print(f"  State: {r.get('st')} batt={r.get('batt')} "
+                  f"runs={r.get('runs')} ver={ver}")
     if ver is None:
-        # try V command
         for r in send(ser, "V", 0.3):
-            if "ver" in r:
+            if r.get("ver") is not None:
                 ver = r.get("ver")
                 print(f"  Firmware: v{ver}")
-
-    # Ensure NOT in test mode — real BHY2 path
-    # Toggle T until tm is false (best-effort)
-    for r in send(ser, "T", 0.3):
-        if r.get("ev") == "cmd" and r.get("cmd") == "T":
-            tm = r.get("tm")
-            print(f"  Test mode after T: {tm}")
-            if tm is True:
-                for r2 in send(ser, "T", 0.3):
-                    if r2.get("ev") == "cmd":
-                        print(f"  Test mode toggled to: {r2.get('tm')}")
 
     if args.factory_reset:
         print("  Factory reset…")
         send(ser, "R", 0.5)
-        boot = wait_event(ser, "boot", 8.0)
+        boot = wait_event(ser, "boot", 10.0)
         print(f"  boot: {boot}")
+        if boot and boot.get("ver"):
+            ver = boot.get("ver")
         time.sleep(1.0)
         send(ser, "i", 0.3)
 
-    # Force LOGGING (bypasses start detector / arm quat checks)
-    print(f"\n── Force LOGGING for {args.duration:.1f}s (BHY2 live) ──")
+    # Real BHY2 path — must NOT be in test/stream mode
+    if not ensure_test_mode_off(ser):
+        print("  ✗ Could not ensure test mode OFF")
+        ser.close()
+        return 1
+
+    # Give BHY2 a moment so arm quat check can pass
+    if args.arm_wait > 0:
+        print(f"  Waiting {args.arm_wait:.1f}s for BHY2 settle…")
+        time.sleep(args.arm_wait)
+        read_json_lines(ser, 0.2)
+
+    # ── IDLE → ARMED ───────────────────────────────────────────
+    print("\n── ARM (required before LOGGING) ──")
     send(ser, "i", 0.2)
-    evs = send(ser, "l", 0.5)
-    for r in evs:
-        if r.get("ev") in ("st", "run_created"):
+    arm_evs = send(ser, "a", 0.8)
+    for r in arm_evs:
+        ev = r.get("ev")
+        if ev in ("st", "arm_refused", "arm_blocked", "state_blocked", "run_created"):
             print(f"  {r}")
 
-    t0 = time.perf_counter()
-    # Let it run; drain occasionally so USB buffer doesn't fill with noise
-    while time.perf_counter() - t0 < args.duration:
-        read_json_lines(ser, 0.2)
-        elapsed = time.perf_counter() - t0
-        if int(elapsed) % 5 == 0 and abs(elapsed - int(elapsed)) < 0.25:
-            print(f"  … {elapsed:.0f}s")
+    st_after_arm = find_state(arm_evs)
+    # Confirm with ?
+    for r in send(ser, "?", 0.4):
+        if r.get("ev") == "status":
+            st_after_arm = r.get("st", st_after_arm)
+            print(f"  status: st={st_after_arm}")
 
-    print("── Force POST_RUN ──")
-    send(ser, "p", 0.2)
-    saved = wait_event(ser, "run_saved", 30.0)
-    # collect a bit more
-    more = read_json_lines(ser, 2.0)
+    if st_after_arm != "ARMED":
+        print(f"  ✗ Not ARMED (st={st_after_arm}). "
+              f"Cannot enter LOGGING from IDLE — SM requires ARMED.")
+        print("  Tip: if arm_refused quat_magnitude, wait longer / check BHY2.")
+        ser.close()
+        return 1
+    print("  ✓ ARMED (expect green LED)")
+
+    # ── ARMED → LOGGING ────────────────────────────────────────
+    print(f"\n── LOGGING for {args.duration:.1f}s (BHY2 live) ──")
+    log_evs = send(ser, "l", 0.8)
+    for r in log_evs:
+        ev = r.get("ev")
+        if ev in ("st", "run_created", "state_blocked", "enc_baro"):
+            print(f"  {r}")
+
+    st_log = find_state(log_evs)
+    for r in send(ser, "?", 0.4):
+        if r.get("ev") == "status":
+            st_log = r.get("st", st_log)
+            print(f"  status: st={st_log}")
+
+    if st_log != "LOGGING":
+        print(f"  ✗ Not LOGGING (st={st_log})")
+        ser.close()
+        return 1
+    print("  ✓ LOGGING (expect red LED)")
+
+    t0 = time.perf_counter()
+    last_print = -1
+    while time.perf_counter() - t0 < args.duration:
+        batch = read_json_lines(ser, 0.25)
+        # surface unexpected blocks / ends early
+        for r in batch:
+            if r.get("ev") in ("state_blocked", "run_saved", "timeout", "end"):
+                print(f"  evt: {r}")
+        elapsed = int(time.perf_counter() - t0)
+        if elapsed != last_print and elapsed % 5 == 0:
+            print(f"  … {elapsed}s")
+            last_print = elapsed
+
+    # ── LOGGING → POST_RUN ─────────────────────────────────────
+    print("── POST_RUN ──")
+    post_evs = send(ser, "p", 0.5)
+    for r in post_evs:
+        if r.get("ev") in ("st", "run_saved", "state_blocked", "stream_end"):
+            print(f"  {r}")
+
+    saved = None
+    for r in post_evs:
+        if r.get("ev") == "run_saved":
+            saved = r
+            break
     if saved is None:
+        saved = wait_event(ser, "run_saved", 30.0)
+    if saved is None:
+        more = read_json_lines(ser, 3.0)
         for r in more:
             if r.get("ev") == "run_saved":
                 saved = r
                 break
+            if r.get("ev") in ("st", "state_blocked"):
+                print(f"  late: {r}")
 
     print("\n── Result ──")
     if not saved:
+        # Final status for diagnosis
+        for r in send(ser, "?", 0.5):
+            if r.get("ev") == "status":
+                print(f"  final status: {r}")
         print("  ✗ No run_saved event")
         ser.close()
         return 1
