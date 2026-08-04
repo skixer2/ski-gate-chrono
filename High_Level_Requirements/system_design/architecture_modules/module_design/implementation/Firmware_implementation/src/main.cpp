@@ -111,6 +111,50 @@ void flush_page_buffer()
     g_page_cursor = 0;
 }
 
+/* Encode one frame straight into the page buffer → LittleFS (no ring hop). */
+static void encode_to_storage(const RawFrame& fr, uint32_t ts_ms)
+{
+    g_packer.encode(fr, ts_ms);
+    const uint8_t cf_size = g_packer.last_size();
+    const uint8_t* cf_buf = g_packer.buffer();
+
+    if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
+        json_begin(); json_kv("ev", "enc_baro");
+        Serial.print(','); json_kv("fn", (long)g_frame_count);
+        Serial.print(','); json_kv("p", (long)fr.baro_pa_div2);
+        Serial.print(','); json_kv("typ", (long)g_packer.last_type());
+        json_end();
+    }
+
+    if (g_page_cursor + cf_size > PAGE_BUF_SIZE)
+        flush_page_buffer();
+    memcpy(g_page_buf + g_page_cursor, cf_buf, cf_size);
+    g_page_cursor += cf_size;
+    g_frame_count++;
+}
+
+/* Encode one frame straight into the page buffer → LittleFS (no ring hop). */
+static void encode_to_storage(const RawFrame& fr, uint32_t ts_ms)
+{
+    g_packer.encode(fr, ts_ms);
+    const uint8_t cf_size = g_packer.last_size();
+    const uint8_t* cf_buf = g_packer.buffer();
+
+    if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
+        json_begin(); json_kv("ev", "enc_baro");
+        Serial.print(','); json_kv("fn", (long)g_frame_count);
+        Serial.print(','); json_kv("p", (long)fr.baro_pa_div2);
+        Serial.print(','); json_kv("typ", (long)g_packer.last_type());
+        json_end();
+    }
+
+    if (g_page_cursor + cf_size > PAGE_BUF_SIZE)
+        flush_page_buffer();
+    memcpy(g_page_buf + g_page_cursor, cf_buf, cf_size);
+    g_page_cursor += cf_size;
+    g_frame_count++;
+}
+
 /* ================================================================== */
 void apply_state_visuals(DeviceState s)
 {
@@ -650,37 +694,23 @@ void feed_sensors()
     }
 
     if (st == DeviceState::LOGGING) {
-        /* V4.54 simplified FIFO path:
-             1) push newest sample into ring
-             2) pop+encode up to 2 oldest (drains ARMED pre-roll, then 1:1)
-           Ring itself is the single ordering source. */
-        g_ring.write(f);
-
+        /* V4.55 path (rationalized):
+             Ring = ARMED pre-roll ONLY.
+             While ring has backlog: pop+encode (up to 2/loop to catch up).
+             Live sample: encode straight to page/LittleFS — never ring→LFS
+             double write. That was pure overhead and stress on NOR.
+         */
+        /* 1) Drain ARMED pre-roll from flash ring (no new ring writes). */
         uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
         for (uint8_t i = 0; i < pop_n; i++) {
             RawFrame oldest = g_ring.read();
-            g_packer.encode(oldest, g_ring.last_read_ts());
-            const uint8_t cf_size = g_packer.last_size();
-            const uint8_t* cf_buf = g_packer.buffer();
-
-            /* Sparse probe: must climb monotonically in a real descent.
-               V4.53 showed period-1000 repeat → ring head wrap bug. */
-            if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
-                json_begin(); json_kv("ev", "enc_baro");
-                Serial.print(','); json_kv("fn", (long)g_frame_count);
-                Serial.print(','); json_kv("p", (long)oldest.baro_pa_div2);
-                Serial.print(','); json_kv("typ", (long)g_packer.last_type());
-                json_end();
-            }
-
-            if (g_page_cursor + cf_size > PAGE_BUF_SIZE)
-                flush_page_buffer();
-            memcpy(g_page_buf + g_page_cursor, cf_buf, cf_size);
-            g_page_cursor += cf_size;
-            g_frame_count++;
+            encode_to_storage(oldest, g_ring.last_read_ts());
         }
 
-        /* End detector uses the live sample (not the delayed ring pop). */
+        /* 2) Live frame → LittleFS path directly. */
+        encode_to_storage(f, millis());
+
+        /* End detector on live sample. */
         float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
