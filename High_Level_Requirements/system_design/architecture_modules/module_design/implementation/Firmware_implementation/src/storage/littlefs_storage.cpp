@@ -178,6 +178,7 @@ void LittleFSStorage::scan_runs() {
 
 /* ── create_run() ────────────────────────────────────────────── */
 bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy) {
+    static_assert(sizeof(RunHeader) == 16, "RunHeader must be 16 bytes packed");
     auto* fs = static_cast<LittleFileSystem*>(m_fs);
     if (!fs) {
         Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_NO_FS\"}");
@@ -189,29 +190,134 @@ bool LittleFSStorage::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t ca
     }
     auto* f = new File();
     char path[32]; make_run_path(m_next_run_id, path, sizeof(path));
-    int err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
+    /* V4.49: prefer O_RDWR so we can read-back-verify on the same handle.
+       Fall back to O_WRONLY if RDWR is rejected by the FS. */
+    int err = f->open(fs, path, O_RDWR | O_CREAT | O_TRUNC);
+    bool rdwr = (err == 0);
+    if (err != 0) {
+        err = f->open(fs, path, O_WRONLY | O_CREAT | O_TRUNC);
+    }
     if (err != 0) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_OPEN_ERR_");
         Serial.print(err); Serial.println("\"}");
         delete f; return false;
     }
-    /* V2.80: format_ver=2 — append-only, data_size/frame_count stay 0.
-       Real values computed from file.size() at scan time. */
-    RunHeader hdr; memset(&hdr, 0, sizeof(hdr));
-    hdr.format_ver = 2; hdr.arm_side = arm_side; hdr.ts_utc = 0;
-    hdr.baro_temp = baro_temp; hdr.data_size = 0; hdr.frame_count = 0;
-    hdr.cal_accuracy = cal_accuracy; hdr._pad = 0;
-    if (f->write(&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) {
+
+    /* V4.49: write an explicit little-endian wire image. Do NOT depend on
+       struct packing/assignment for the only bytes that identify the file.
+       Observed v4.48 on-disk header:
+         00 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00
+       i.e. format_ver=0, baro_temp=1 — layout OK, byte0 lost/zeroed. */
+    uint8_t wire[16];
+    memset(wire, 0, sizeof(wire));
+    wire[0] = 2;                 /* format_ver = 2 (append-only) */
+    wire[1] = arm_side;          /* 0=left, 1=right */
+    /* bytes 2..5 ts_utc = 0 */
+    wire[6] = (uint8_t)(baro_temp & 0xFF);
+    wire[7] = (uint8_t)((baro_temp >> 8) & 0xFF);
+    /* bytes 8..13 data_size=0, frame_count=0 */
+    wire[14] = cal_accuracy;
+    /* byte 15 _pad = 0 */
+
+    ssize_t nw = f->write(wire, sizeof(wire));
+    if (nw != (ssize_t)sizeof(wire)) {
         Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SHORT_WR_");
-        Serial.print((long)sizeof(hdr)); Serial.println("\"}");
+        Serial.print((long)nw); Serial.println("\"}");
         f->close(); fs->remove(path); delete f; return false;
     }
+    int sc = f->sync();
+    if (sc != 0) {
+        Serial.print("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SYNC_ERR_");
+        Serial.print(sc); Serial.println("\"}");
+        f->close(); fs->remove(path); delete f; return false;
+    }
+
+    /* Read-back verify via same handle (RDWR) or reopen (WRONLY). */
+    uint8_t chk[16];
+    memset(chk, 0xFF, sizeof(chk));
+    ssize_t nr = -1;
+    if (rdwr) {
+        if (f->seek(0, SEEK_SET) != 0) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK0_ERR\"}");
+            f->close(); fs->remove(path); delete f; return false;
+        }
+        nr = f->read(chk, sizeof(chk));
+    } else {
+        f->close();
+        File rf;
+        if (rf.open(fs, path, O_RDONLY) != 0) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_REOPEN_ERR\"}");
+            fs->remove(path); delete f; return false;
+        }
+        nr = rf.read(chk, sizeof(chk));
+        rf.close();
+        /* Re-open append handle and seek to EOF. */
+        if (f->open(fs, path, O_WRONLY) != 0) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_REOPEN_W_ERR\"}");
+            fs->remove(path); delete f; return false;
+        }
+        if (f->seek(0, SEEK_END) < (off_t)sizeof(wire)) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK_END_ERR\"}");
+            f->close(); fs->remove(path); delete f; return false;
+        }
+    }
+
+    if (nr != (ssize_t)sizeof(chk) || chk[0] != 2 || chk[1] != arm_side) {
+        Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_verify\",\"ok\":false");
+        Serial.print(",\"nr\":"); Serial.print((long)nr);
+        Serial.print(",\"rdwr\":"); Serial.print(rdwr ? 1 : 0);
+        Serial.print(",\"hex\":\"");
+        for (int i = 0; i < 16; i++) {
+            static const char* H = "0123456789abcdef";
+            Serial.print(H[(chk[i] >> 4) & 0xF]);
+            Serial.print(H[chk[i] & 0xF]);
+        }
+        Serial.println("\"}");
+        /* One repair attempt. */
+        bool repaired = false;
+        if (f->seek(0, SEEK_SET) == 0 &&
+            f->write(wire, sizeof(wire)) == (ssize_t)sizeof(wire) &&
+            f->sync() == 0) {
+            memset(chk, 0xFF, sizeof(chk));
+            if (rdwr) {
+                if (f->seek(0, SEEK_SET) == 0)
+                    nr = f->read(chk, sizeof(chk));
+            } else {
+                f->close();
+                File rf;
+                if (rf.open(fs, path, O_RDONLY) == 0) {
+                    nr = rf.read(chk, sizeof(chk));
+                    rf.close();
+                }
+                f->open(fs, path, O_WRONLY);
+            }
+            if (nr == (ssize_t)sizeof(chk) && chk[0] == 2) {
+                repaired = true;
+                Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_repair\",\"ok\":true}");
+            }
+        }
+        if (!repaired) {
+            Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_HDR_BAD\"}");
+            f->close(); fs->remove(path); delete f; return false;
+        }
+    }
+
+    /* Ensure append position is past the 16-byte header. */
+    if (f->seek(0, SEEK_END) < (off_t)sizeof(wire)) {
+        Serial.println("{\"ev\":\"close_trace\",\"step\":\"done\",\"entry_count\":-1,\"run_count\":-1,\"final_wh\":\"CR_SEEK_END_ERR\"}");
+        f->close(); fs->remove(path); delete f; return false;
+    }
+
     m_file = f; m_file_open = true; m_run_bytes = 0; m_run_crc = 0xFFFFFFFF;
     m_write_buf_pos = 0;
     m_last_sync_bytes = 0;
     m_pending_arm_side = arm_side; m_pending_baro_temp = baro_temp;
     m_pending_cal_accuracy = cal_accuracy;
-    Serial.println("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":true}");
+    Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_write\",\"ok\":true");
+    Serial.print(",\"ver\":"); Serial.print((long)chk[0]);
+    Serial.print(",\"side\":"); Serial.print((long)chk[1]);
+    Serial.print(",\"bt\":"); Serial.print((long)baro_temp);
+    Serial.println("}");
     return true;
 }
 
@@ -305,6 +411,29 @@ uint16_t LittleFSStorage::close_run(uint32_t frame_count) {
         Serial.print(",\"sz\":"); Serial.print((long)st.st_size);
     }
     Serial.println("}");
+
+    /* V4.49: after close, independently re-open and dump header bytes.
+       Catches any post-create corruption of format_ver. */
+    if (stat_err == 0) {
+        File rf;
+        if (rf.open(fs, rpath, O_RDONLY) == 0) {
+            uint8_t hb[16];
+            memset(hb, 0xFF, sizeof(hb));
+            ssize_t hr = rf.read(hb, sizeof(hb));
+            rf.close();
+            Serial.print("{\"ev\":\"close_trace\",\"step\":\"hdr_after_close\",\"nr\":");
+            Serial.print((long)hr);
+            Serial.print(",\"ver\":"); Serial.print((long)hb[0]);
+            Serial.print(",\"side\":"); Serial.print((long)hb[1]);
+            Serial.print(",\"hex\":\"");
+            for (int i = 0; i < 16; i++) {
+                static const char* H = "0123456789abcdef";
+                Serial.print(H[(hb[i] >> 4) & 0xF]);
+                Serial.print(H[hb[i] & 0xF]);
+            }
+            Serial.println("\"}");
+        }
+    }
 
     bool file_ok = (stat_err == 0 && st.st_size > (off_t)(sizeof(RunHeader) + 6));
     if (tw != 6 || sc != 0 || cc != 0) {
