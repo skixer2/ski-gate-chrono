@@ -694,21 +694,25 @@ void feed_sensors()
     }
 
     if (st == DeviceState::LOGGING) {
-        /* V4.55 path (rationalized):
-             Ring = ARMED pre-roll ONLY.
-             While ring has backlog: pop+encode (up to 2/loop to catch up).
-             Live sample: encode straight to page/LittleFS — never ring→LFS
-             double write. That was pure overhead and stress on NOR.
+        /* V4.55 path (corrected):
+             Ring holds ordered backlog (ARMED pre-roll + any live samples
+             that arrived while still draining).
+             - If ring not empty: push live into ring (FIFO), pop+encode
+               up to 2 oldest → LittleFS. Net drain ≈ 1 frame/loop.
+             - If ring empty: encode live straight to LittleFS.
+               No ring hop in steady state.
+             Never encode live before older ring frames (would reorder).
          */
-        /* 1) Drain ARMED pre-roll from flash ring (no new ring writes). */
-        uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
-        for (uint8_t i = 0; i < pop_n; i++) {
-            RawFrame oldest = g_ring.read();
-            encode_to_storage(oldest, g_ring.last_read_ts());
+        if (!g_ring.is_empty()) {
+            g_ring.write(f);  /* new data stays ordered behind pre-roll */
+            uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
+            for (uint8_t i = 0; i < pop_n; i++) {
+                RawFrame oldest = g_ring.read();
+                encode_to_storage(oldest, g_ring.last_read_ts());
+            }
+        } else {
+            encode_to_storage(f, millis());
         }
-
-        /* 2) Live frame → LittleFS path directly. */
-        encode_to_storage(f, millis());
 
         /* End detector on live sample. */
         float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
