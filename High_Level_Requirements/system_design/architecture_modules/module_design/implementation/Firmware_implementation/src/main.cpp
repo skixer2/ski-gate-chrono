@@ -65,6 +65,7 @@ EndDetector    g_end_det;
 /* ================================================================== */
 /* ── Run state during LOGGING ─────────────────────────────────── */
 static uint32_t g_frame_count    = 0;   /* frames written this run */
+static uint32_t g_logging_start_ms = 0; /* millis() at LOGGING entry */
 static bool     g_run_created    = false;
 
 /* ── Page buffer for compressed frames ────────────────────────── */
@@ -578,6 +579,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
         uint8_t cal = 0;
         g_run_created = g_fs.create_run(0, baro_temp, cal);
         g_frame_count = 0;
+        g_logging_start_ms = millis();
         /* V4.53: do NOT zero g_stream_frames — that made harness report
            fake "10% lost" (ARMED pre-fill pulls vanished from the counter).
            Snapshot ARMED pulls; total keeps growing through LOGGING. */
@@ -607,15 +609,28 @@ static void on_state_transition(DeviceState from, DeviceState to)
         uint16_t run_id = g_fs.close_run(g_frame_count);
         sgc_ble_set_run_count(g_fs.run_count());
         sgc_ble_set_flash_used(g_fs.flash_used_pct());
-        json_begin();
-        json_kv("ev", "run_saved");
-        Serial.print(','); json_kv("id", (long)run_id);
-        Serial.print(','); json_kv("fr", (long)g_frame_count);
-        Serial.print(','); json_kv("sz", (long)compressed_sz);
-        Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
-        Serial.print(','); json_kv("runs", (long)g_fs.run_count());
-        Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
-        json_end();
+        {
+            uint32_t dur_ms = 0;
+            if (g_logging_start_ms != 0) {
+                dur_ms = millis() - g_logging_start_ms;
+            }
+            json_begin();
+            json_kv("ev", "run_saved");
+            Serial.print(','); json_kv("id", (long)run_id);
+            Serial.print(','); json_kv("fr", (long)g_frame_count);
+            Serial.print(','); json_kv("sz", (long)compressed_sz);
+            Serial.print(','); json_kv("dur_ms", (long)dur_ms);
+            if (dur_ms > 0) {
+                /* integer fps * 10 for one decimal without float print */
+                long fps10 = ((long)g_frame_count * 10000L) / (long)dur_ms;
+                Serial.print(','); json_kv("fps10", fps10);
+            }
+            Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
+            Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+            Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
+            json_end();
+            g_logging_start_ms = 0;
+        }
         g_ring.reset(); g_packer.reset();
         g_start_det.reset(0.0f);
         g_frame_count = 0;
@@ -830,7 +845,9 @@ void loop()
        loop rate, but share the same state machine below. ── */
     if (g_stream_active) {
         handle_serial();
-        /* Skip g_led.update(), BHY2, BLE, LDC — I2C/SPI slow the loop. */
+        /* Stream/test pull path: skip BHY2/BLE/LDC (heavy SPI/I2C).
+           ALWAYS keep LED animation — athlete must see ARMED/LOGGING. */
+        g_led.update();
     } else {
         BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
         g_led.update(); g_ldc.tick();

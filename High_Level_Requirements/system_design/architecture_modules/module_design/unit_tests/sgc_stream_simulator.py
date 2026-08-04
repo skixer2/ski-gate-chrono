@@ -959,6 +959,17 @@ class SGCDevice:
                 ratio = sz / rs['fr'] if rs['fr'] > 0 else 0
                 print(f"     Compression: {sz} bytes / {rs['fr']} frames = "
                       f"{ratio:.1f} bytes/frame")
+            # V4.57: firmware reports LOGGING wall time + fps
+            if rs.get('dur_ms') is not None or rs.get('fps10') is not None:
+                dur_ms = rs.get('dur_ms')
+                fps10 = rs.get('fps10')
+                if fps10 is not None:
+                    fps_s = f"{float(fps10)/10.0:.1f}"
+                elif dur_ms and rs.get('fr'):
+                    fps_s = f"{float(rs['fr'])*1000.0/float(dur_ms):.1f}"
+                else:
+                    fps_s = "?"
+                print(f"     LOGGING rate: {fps_s} fps over {dur_ms} ms")
 
             # ── Verify run count persisted (mirrors BLE ABC8 read) ──
             print("\n   ── Run count check (BLE-equivalent) ──")
