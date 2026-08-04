@@ -637,41 +637,34 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        if (!g_ring.is_full()) {
-            g_ring.write(f);
-            if (g_ring.is_full()) {
-                json_begin();
-                json_kv("ev", "ring_full");
-                Serial.print(','); json_kv("r", (long)RING_SIZE);
-                json_end();
-            }
-        } else {
-            g_ring.read();
-            g_ring.write(f);
+        /* write() drops oldest when full — no manual read/write dance. */
+        bool was_full = g_ring.is_full();
+        g_ring.write(f);
+        if (!was_full && g_ring.is_full()) {
+            json_begin();
+            json_kv("ev", "ring_full");
+            Serial.print(','); json_kv("r", (long)RING_SIZE);
+            json_end();
         }
         return;
     }
 
     if (st == DeviceState::LOGGING) {
+        /* V4.54 simplified FIFO path:
+             1) push newest sample into ring
+             2) pop+encode up to 2 oldest (drains ARMED pre-roll, then 1:1)
+           Ring itself is the single ordering source. */
+        g_ring.write(f);
 
-        /* ── Unified ring-based path (V4.41).
-           Test mode: frames come from serial via test_request_frame().
-           Real mode: frames come from BHY2 IMU.
-           Both modes: pop 2 oldest + encode → write 1 newest to ring.
-           One code path, one behaviour. ── */
-        uint8_t count = g_ring.count();
-        uint8_t pop_n = count >= 2 ? 2 : count;
-
+        uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
         for (uint8_t i = 0; i < pop_n; i++) {
             RawFrame oldest = g_ring.read();
             g_packer.encode(oldest, g_ring.last_read_ts());
-            uint8_t cf_size = g_packer.last_size();
+            const uint8_t cf_size = g_packer.last_size();
             const uint8_t* cf_buf = g_packer.buffer();
 
-            /* V4.53: sparse baro encode probe — every 250 frames + first.
-               If dump freezes at ~P0 after frame 1000, this shows whether
-               encode input already lost the ramp (ring/stream) or only
-               on-disk/decompress path is wrong. */
+            /* Sparse probe: must climb monotonically in a real descent.
+               V4.53 showed period-1000 repeat → ring head wrap bug. */
             if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
                 json_begin(); json_kv("ev", "enc_baro");
                 Serial.print(','); json_kv("fn", (long)g_frame_count);
@@ -680,18 +673,15 @@ void feed_sensors()
                 json_end();
             }
 
-            if (g_page_cursor + cf_size > PAGE_BUF_SIZE) {
+            if (g_page_cursor + cf_size > PAGE_BUF_SIZE)
                 flush_page_buffer();
-            }
             memcpy(g_page_buf + g_page_cursor, cf_buf, cf_size);
             g_page_cursor += cf_size;
             g_frame_count++;
         }
 
-        g_ring.write(f);
-
-        /* ── End detector (LOGGING→POST_RUN) — Pa ── */
-        float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2→Pa, same for test+real */
+        /* End detector uses the live sample (not the delayed ring pop). */
+        float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
         if (g_end_det.feed(pa_raw))
             g_sm.force_state(DeviceState::POST_RUN);
         return;
