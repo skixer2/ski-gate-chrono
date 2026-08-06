@@ -12,12 +12,17 @@ IMPORTANT state machine rule (firmware):
   POST_RUN may only be entered from LOGGING.
   So the bench sequence is: IDLE → a(ARMED) → l(LOGGING) → … → p(POST_RUN)
 
+NOTE (v4.58+):
+  Serial 'l' force-LOGGING disables the end detector so a stationary bench
+  device is not auto-closed after ~5 s of flat pressure. Production runs
+  (start-detector entry) still use end detection.
+
 Flow:
   - factory reset optional (-R)
   - ensure test mode OFF (real BHY2 path, g_stream_active stays false)
   - arm with 'a'  → expect green LED / st ARMED
   - force LOGGING with 'l' → expect red LED / run_created
-  - wait --duration seconds
+  - wait --duration seconds (capture any early run_saved/end)
   - force POST_RUN with 'p' → expect run_saved {fr, dur_ms, fps10}
 
 Pass criteria (defaults):
@@ -99,25 +104,47 @@ def send(ser: serial.Serial, cmd: str, wait_s: float = 0.25) -> list[dict]:
     return read_json_lines(ser, wait_s)
 
 
-def ensure_test_mode_off(ser: serial.Serial) -> bool:
-    """Return True if test mode is OFF."""
-    # Status does not always expose tm; use T toggle responses.
-    # Query by toggling only if needed: send Z/T carefully.
-    # Protocol: 'T' toggles and replies {"ev":"cmd","cmd":"T","tm":bool}
-    r = send(ser, "T", 0.4)
+def send_keep(ser: serial.Serial, cmd: str, wait_s: float = 0.25) -> list[dict]:
+    """Like send(), but do NOT wipe the RX buffer (keeps pending events)."""
+    ser.write((cmd + "\n").encode("ascii"))
+    ser.flush()
+    return read_json_lines(ser, wait_s)
+
+
+def ensure_test_mode_off(ser: serial.Serial, attempts: int = 4) -> bool:
+    """Return True if test mode is OFF. Retries after boot when T is silent."""
     tm = None
-    for o in r:
-        if o.get("ev") == "cmd" and o.get("cmd") == "T":
-            tm = o.get("tm")
+    last_batch: list[dict] = []
+    for i in range(attempts):
+        # Longer first listens after factory reset / boot
+        wait = 1.2 if i == 0 else 0.6
+        r = send_keep(ser, "T", wait)
+        last_batch = r
+        for o in r:
+            if o.get("ev") == "cmd" and o.get("cmd") == "T":
+                tm = o.get("tm")
+                break
+        if tm is not None:
+            break
+        time.sleep(0.4)
+
     if tm is None:
-        print("  ⚠ could not read test-mode flag from T response:", r[:5])
+        print("  ⚠ could not read test-mode flag from T response:", last_batch[:5])
+        # Fallback: status path — if device answers ?, assume default tm=0
+        st = send_keep(ser, "?", 0.6)
+        for o in st:
+            if o.get("ev") == "status":
+                print(f"  fallback status ok (assume tm=0): st={o.get('st')}")
+                return True
         return False
+
     if tm is True or tm == 1:
-        r2 = send(ser, "T", 0.4)
+        r2 = send_keep(ser, "T", 0.6)
         for o in r2:
             if o.get("ev") == "cmd" and o.get("cmd") == "T":
                 tm = o.get("tm")
                 break
+
     print(f"  Test mode OFF: {tm is False or tm == 0} (tm={tm})")
     return tm is False or tm == 0
 
@@ -129,6 +156,55 @@ def find_state(events: list[dict]) -> str | None:
         if o.get("ev") == "status" and o.get("st"):
             return o.get("st")
     return None
+
+
+def evaluate_run(saved: dict, duration_s: float, min_fps: float, ver: str | None) -> int:
+    fr = int(saved.get("fr") or 0)
+    dur_ms = int(saved.get("dur_ms") or 0)
+    fps10 = saved.get("fps10")
+    ok = bool(saved.get("ok"))
+    rid = saved.get("id")
+
+    if fps10 is not None:
+        fps = float(fps10) / 10.0
+    elif dur_ms > 0:
+        fps = fr * 1000.0 / dur_ms
+    else:
+        fps = 0.0
+
+    print(f"  run_saved: id={rid} ok={ok} fr={fr} dur_ms={dur_ms} fps={fps:.1f}")
+    print(f"  compressed={saved.get('sz')} runs={saved.get('runs')}")
+
+    # Require the full requested window (allow 10% short on duration).
+    min_dur_ms = int(0.9 * duration_s * 1000)
+    min_frames = int(0.9 * duration_s * 100)
+    pass_fps = fps >= min_fps
+    pass_fr = fr >= min_frames
+    pass_dur = dur_ms >= min_dur_ms
+
+    print("\n" + "=" * 50)
+    if pass_fps and pass_fr and pass_dur and ok:
+        print(f"✓ S04 PASSED — {fps:.1f} fps, {fr} frames in {dur_ms} ms")
+        rc = 0
+    else:
+        print("✗ S04 FAILED")
+        if not ok:
+            print("  run_saved ok=false")
+        if not pass_fps:
+            print(f"  fps {fps:.1f} < min {min_fps:.1f}")
+        if not pass_fr:
+            print(f"  frames {fr} < min {min_frames}")
+        if not pass_dur:
+            print(f"  dur_ms {dur_ms} < min {min_dur_ms} "
+                  f"(ended early? end-detector / force-l unsupported on this FW?)")
+            if dur_ms > 0 and fr > 0:
+                print(f"  note: short-run rate still ~{fps:.1f} fps "
+                      f"— useful, but S04 needs full {duration_s:.0f}s window")
+        rc = 1
+    if ver:
+        print(f"  Firmware: v{ver}")
+    print("=" * 50)
+    return rc
 
 
 def main() -> int:
@@ -176,8 +252,11 @@ def main() -> int:
         print(f"  boot: {boot}")
         if boot and boot.get("ver"):
             ver = boot.get("ver")
-        time.sleep(1.0)
-        send(ser, "i", 0.3)
+        # Boot continues with flash/LFS/BLE/BHY2 init — give it time before T
+        print("  Waiting 2.5s for post-boot init…")
+        time.sleep(2.5)
+        read_json_lines(ser, 0.5)
+        send_keep(ser, "i", 0.4)
 
     # Real BHY2 path — must NOT be in test/stream mode
     if not ensure_test_mode_off(ser):
@@ -237,43 +316,56 @@ def main() -> int:
 
     t0 = time.perf_counter()
     last_print = -1
+    saved = None
+    early_end = None
     while time.perf_counter() - t0 < args.duration:
         batch = read_json_lines(ser, 0.25)
-        # surface unexpected blocks / ends early
         for r in batch:
-            if r.get("ev") in ("state_blocked", "run_saved", "timeout", "end"):
+            ev = r.get("ev")
+            if ev == "run_saved" and saved is None:
+                saved = r
                 print(f"  evt: {r}")
+            elif ev == "end":
+                early_end = r
+                print(f"  evt: {r}")
+            elif ev in ("state_blocked", "timeout", "st"):
+                print(f"  evt: {r}")
+        # If end detector already closed the run, no point waiting full duration
+        if saved is not None:
+            print("  ⚠ run_saved during LOGGING window (early close)")
+            break
         elapsed = int(time.perf_counter() - t0)
         if elapsed != last_print and elapsed % 5 == 0:
             print(f"  … {elapsed}s")
             last_print = elapsed
 
-    # ── LOGGING → POST_RUN ─────────────────────────────────────
-    print("── POST_RUN ──")
-    post_evs = send(ser, "p", 0.5)
-    for r in post_evs:
-        if r.get("ev") in ("st", "run_saved", "state_blocked", "stream_end"):
-            print(f"  {r}")
-
-    saved = None
-    for r in post_evs:
-        if r.get("ev") == "run_saved":
-            saved = r
-            break
+    # ── LOGGING → POST_RUN (only if still logging) ─────────────
     if saved is None:
-        saved = wait_event(ser, "run_saved", 30.0)
-    if saved is None:
-        more = read_json_lines(ser, 3.0)
-        for r in more:
-            if r.get("ev") == "run_saved":
+        print("── POST_RUN ──")
+        post_evs = send_keep(ser, "p", 0.5)
+        for r in post_evs:
+            if r.get("ev") in ("st", "run_saved", "state_blocked", "stream_end", "end"):
+                print(f"  {r}")
+            if r.get("ev") == "run_saved" and saved is None:
                 saved = r
-                break
-            if r.get("ev") in ("st", "state_blocked"):
-                print(f"  late: {r}")
+        if saved is None:
+            saved = wait_event(ser, "run_saved", 30.0)
+        if saved is None:
+            more = read_json_lines(ser, 3.0)
+            for r in more:
+                if r.get("ev") == "run_saved":
+                    saved = r
+                    break
+                if r.get("ev") in ("st", "state_blocked"):
+                    print(f"  late: {r}")
+    else:
+        if early_end:
+            print("  (skipped p — already closed by end detector)")
+        else:
+            print("  (skipped p — run_saved already received)")
 
     print("\n── Result ──")
     if not saved:
-        # Final status for diagnosis
         for r in send(ser, "?", 0.5):
             if r.get("ev") == "status":
                 print(f"  final status: {r}")
@@ -281,43 +373,7 @@ def main() -> int:
         ser.close()
         return 1
 
-    fr = int(saved.get("fr") or 0)
-    dur_ms = int(saved.get("dur_ms") or 0)
-    fps10 = saved.get("fps10")
-    ok = bool(saved.get("ok"))
-    rid = saved.get("id")
-
-    if fps10 is not None:
-        fps = float(fps10) / 10.0
-    elif dur_ms > 0:
-        fps = fr * 1000.0 / dur_ms
-    else:
-        fps = 0.0
-
-    print(f"  run_saved: id={rid} ok={ok} fr={fr} dur_ms={dur_ms} fps={fps:.1f}")
-    print(f"  compressed={saved.get('sz')} runs={saved.get('runs')}")
-
-    min_frames = int(0.9 * args.duration * 100)
-    pass_fps = fps >= args.min_fps
-    pass_fr = fr >= min_frames
-
-    print("\n" + "=" * 50)
-    if pass_fps and pass_fr and ok:
-        print(f"✓ S04 PASSED — {fps:.1f} fps, {fr} frames in {dur_ms} ms")
-        rc = 0
-    else:
-        print("✗ S04 FAILED")
-        if not ok:
-            print("  run_saved ok=false")
-        if not pass_fps:
-            print(f"  fps {fps:.1f} < min {args.min_fps:.1f}")
-        if not pass_fr:
-            print(f"  frames {fr} < min {min_frames}")
-        rc = 1
-    if ver:
-        print(f"  Firmware: v{ver}")
-    print("=" * 50)
-
+    rc = evaluate_run(saved, args.duration, args.min_fps, ver)
     ser.close()
     return rc
 

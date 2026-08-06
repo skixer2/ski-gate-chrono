@@ -86,6 +86,10 @@ static RawFrame g_cur_frame;
 bool g_stream_active = false;  /* 'S' command — pull model frame ingestion */
 uint32_t g_stream_frames = 0;   /* frames received in stream mode (total pull) */
 static uint32_t g_stream_frames_pre_log = 0; /* pulls while ARMED before LOGGING */
+/* Force-LOGGING via serial 'l' (bench/S04): skip end detector so a stationary
+   device is not auto-closed after ~5s flat pressure. Production path enters
+   LOGGING via start detector with this flag false. Cleared on POST_RUN. */
+static bool g_force_logging = false;
 extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
 
 
@@ -216,6 +220,8 @@ void handle_serial()
         }
         break;
     case 'l':
+        /* Bench force-LOGGING: do not auto-end on flat pressure. */
+        g_force_logging = true;
         g_end_det.reset();
         g_sm.force_state(DeviceState::LOGGING);
         break;
@@ -573,6 +579,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
     if (to == DeviceState::LOGGING) {
         BLE.stopAdvertise();
         g_end_det.reset();
+        /* Natural LOGGING (start detector) keeps end-detect on.
+           Serial 'l' sets g_force_logging so bench/S04 can run full duration. */
         g_packer.reset();
         g_page_cursor = 0;
         int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
@@ -592,6 +600,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
     }
     if (to == DeviceState::POST_RUN) {
         BLE.advertise();
+        g_force_logging = false;  /* re-enable end-detect for next natural run */
         if (g_stream_active) {
             g_stream_active = false;
             json_begin(); json_kv("ev", "stream_end");
@@ -707,10 +716,13 @@ void feed_sensors()
             encode_to_storage(f, millis());
         }
 
-        /* End detector on live sample. */
-        float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
-        if (g_end_det.feed(pa_raw))
-            g_sm.force_state(DeviceState::POST_RUN);
+        /* End detector on live sample — skipped for force-'l' bench runs
+           (S04 BHY2 rate) so stationary pressure does not end at ~5s. */
+        if (!g_force_logging) {
+            float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
+            if (g_end_det.feed(pa_raw))
+                g_sm.force_state(DeviceState::POST_RUN);
+        }
         return;
     }
 }
