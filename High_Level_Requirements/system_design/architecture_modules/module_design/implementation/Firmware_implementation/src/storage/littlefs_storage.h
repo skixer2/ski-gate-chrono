@@ -201,11 +201,11 @@ private:
     /* Write buffer: accumulate compressed data in RAM and flush to flash
      * in batches to avoid blocking the 100 Hz feed_sensors() loop during
      * LOGGING. Each LittleFS f->write() can take 1-10ms+.
-     * V4.60: 1 KB buffer — fewer SPI/LFS commits per second at 100 Hz. */
-    static constexpr size_t WRITE_BUF_SIZE = 1024;
+     * Keep 256B — larger static buffers fragment heap → Cordio OOM. */
+    static constexpr size_t WRITE_BUF_SIZE = 256;
     uint8_t  m_write_buf[WRITE_BUF_SIZE];
     uint16_t m_write_buf_pos;
-    uint32_t m_last_sync_bytes;  /* retained for close path; mid-run sync off */
+    uint32_t m_last_sync_bytes;  /* close path; mid-run sync disabled (V4.60+) */
     uint32_t m_file_pos;         /* V4.51: logical write offset (header+data+trailer) */
 
     /* Pending run metadata (set in create_run, consumed by close_run

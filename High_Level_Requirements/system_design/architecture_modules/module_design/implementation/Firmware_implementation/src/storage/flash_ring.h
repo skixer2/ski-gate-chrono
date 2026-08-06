@@ -48,7 +48,8 @@ class FlashRing
 public:
     explicit FlashRing(class SPIFlash& flash);
 
-    void reset();                  /* erase both halves, clear pointers */
+    void reset();                  /* erase both halves, clear pointers (boot) */
+    void clear();                  /* drop live count only — no erase (POST_RUN) */
     void write(const RawFrame& f); /* push; drops oldest if full */
     RawFrame read();               /* pop oldest; empty → zeroed frame */
     uint32_t last_read_ts() const { return m_last_ts; }

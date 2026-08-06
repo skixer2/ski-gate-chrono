@@ -36,6 +36,16 @@ void FlashRing::reset()
     m_last_ts = 0;
 }
 
+void FlashRing::clear()
+{
+    /* Soft discard of live window — no SPI. Next write() will erase the
+       half it enters before programming. Used on POST_RUN so we do not
+       block with 6 sector erases mid-session. */
+    m_count   = 0;
+    m_last_ts = 0;
+    /* keep m_head so next write continues into already-erased space when possible */
+}
+
 void FlashRing::write(const RawFrame& f)
 {
     /*

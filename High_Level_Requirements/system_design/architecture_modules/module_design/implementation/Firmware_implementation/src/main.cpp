@@ -56,8 +56,9 @@ LED            g_led(0, 0);
 LDC1612        g_ldc;
 StateMachine   g_sm;
 SPIFlash       g_flash;
-/* FlashRing retained for optional long pre-roll / future use; ARMED/LOGGING
-   pre-roll is RAM (V4.60) — SPI page-program per sample capped feed at ~42 Hz. */
+/* FlashRing is the ARMED pre-roll only (on MX25R). Do NOT add a large RAM
+   ring — BSS growth → Cordio HCI stack alloc fails (0x80FF0144). Documented
+   MEMORY.md: "RAM ring buffer abandoned". S04 force-l bypasses the ring. */
 FlashRing      g_ring(g_flash);
 LittleFSStorage g_fs;
 BitPacker      g_packer;
@@ -74,55 +75,6 @@ static bool     g_run_created    = false;
 static constexpr size_t PAGE_BUF_SIZE = 256;
 static uint8_t  g_page_buf[PAGE_BUF_SIZE];
 static size_t   g_page_cursor = 0;
-
-/* ── RAM pre-roll ring (V4.60) ──────────────────────────────────
-   200 frames × (16B frame + 4B ts) ≈ 4 KB. Covers 2 s @ 100 Hz so
-   start-detector descent is still in the saved run, without SPI on
-   the ARMED hot path. FlashRing (MX25R) stays available for reset/
-   diagnostics but is not in the 100 Hz path. */
-static constexpr uint16_t RAM_RING_CAP = 200;
-struct RamRingEntry {
-    RawFrame frame;
-    uint32_t arrival_ms;
-};
-static RamRingEntry g_ram_ring[RAM_RING_CAP];
-static uint16_t g_ram_head = 0;   /* next write index */
-static uint16_t g_ram_count = 0;
-static uint32_t g_ram_last_ts = 0;
-
-static void ram_ring_reset()
-{
-    g_ram_head = 0;
-    g_ram_count = 0;
-    g_ram_last_ts = 0;
-}
-
-static void ram_ring_write(const RawFrame& f)
-{
-    g_ram_ring[g_ram_head].frame = f;
-    g_ram_ring[g_ram_head].arrival_ms = millis();
-    g_ram_head = (uint16_t)((g_ram_head + 1u) % RAM_RING_CAP);
-    if (g_ram_count < RAM_RING_CAP)
-        g_ram_count++;
-}
-
-static bool ram_ring_is_empty() { return g_ram_count == 0; }
-static bool ram_ring_is_full()  { return g_ram_count >= RAM_RING_CAP; }
-static uint16_t ram_ring_count() { return g_ram_count; }
-
-static RawFrame ram_ring_read()
-{
-    RawFrame z;
-    memset(&z, 0, sizeof(z));
-    if (g_ram_count == 0) return z;
-    uint16_t tail = (uint16_t)((g_ram_head + RAM_RING_CAP - g_ram_count) % RAM_RING_CAP);
-    z = g_ram_ring[tail].frame;
-    g_ram_last_ts = g_ram_ring[tail].arrival_ms;
-    g_ram_count--;
-    return z;
-}
-
-static uint32_t ram_ring_last_ts() { return g_ram_last_ts; }
 
 /* ================================================================== */
 static uint32_t g_last_sensor_ms  = 0;
@@ -576,8 +528,8 @@ void handle_serial()
            during operation (close_run adds entries, delete_oldest_run
            removes them). scan_runs() is for boot-time initialization only. */
         Serial.print(','); json_kv("st", g_sm.state_name());
-        Serial.print(','); json_kv("r", (long)ram_ring_count());
-        Serial.print(','); json_kv("rm", (long)RAM_RING_CAP);
+        Serial.print(','); json_kv("r", (long)g_ring.count());
+        Serial.print(','); json_kv("rm", (long)RING_SIZE);
         Serial.print(','); json_kv("p", (long)(pressure.value() * 100));   /* hPa→Pa for display */
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
@@ -626,7 +578,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_page_cursor = 0;
         g_run_created = false;
         g_last_baro_ms = now;
-        ram_ring_reset();  /* V4.60: RAM pre-roll, no SPI */
+        g_ring.clear();  /* soft clear — no 6-sector erase */
         /* P₀ auto-inits from first valid frame written to the ring.
            Same for serial ARM, LDC arm, test and real — no special path. */
         g_start_det.reset(0.0f);
@@ -639,6 +591,10 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_end_det.reset();
         /* Natural LOGGING (start detector) keeps end-detect on.
            Serial 'l' sets g_force_logging so bench/S04 can run full duration. */
+        if (g_force_logging) {
+            /* Drop ARMED flash pre-roll — S04 measures live encode only. */
+            g_ring.clear();
+        }
         g_packer.reset();
         g_page_cursor = 0;
         int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
@@ -698,9 +654,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
             json_end();
             g_logging_start_ms = 0;
         }
-        ram_ring_reset(); g_packer.reset();
-        /* Do NOT g_ring.reset() here — 6 sector erases (~hundreds of ms).
-           FlashRing only reset at boot; LOGGING no longer uses it. */
+        g_ring.clear(); g_packer.reset();  /* soft clear — erase only at boot */
         g_start_det.reset(0.0f);
         g_frame_count = 0;
         g_run_created = false;
@@ -743,32 +697,40 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        /* V4.60: RAM pre-roll — no MX25R page program per sample. */
-        bool was_full = ram_ring_is_full();
-        ram_ring_write(f);
-        if (!was_full && ram_ring_is_full()) {
+        /* Flash pre-roll (MX25R). SPI cost is OK while waiting at the gate;
+           LOGGING path avoids ring write (see below). */
+        bool was_full = g_ring.is_full();
+        g_ring.write(f);
+        if (!was_full && g_ring.is_full()) {
             json_begin();
             json_kv("ev", "ring_full");
-            Serial.print(','); json_kv("r", (long)RAM_RING_CAP);
+            Serial.print(','); json_kv("r", (long)RING_SIZE);
             json_end();
         }
         return;
     }
 
     if (st == DeviceState::LOGGING) {
-        /* V4.60: RAM pre-roll drain, then direct encode.
-           - While ram ring has backlog: push live, pop+encode up to 4
-             oldest/loop (catch-up after start-det trigger).
-           - Ring empty: encode live straight to page buf → LittleFS.
-           Never encode live before older pre-roll frames (order). */
-        if (!ram_ring_is_empty()) {
-            ram_ring_write(f);
-            uint8_t pop_n = ram_ring_count() >= 4 ? 4
-                          : (uint8_t)ram_ring_count();
+        /* V4.61 rate path:
+           - force-'l' (S04): NEVER touch FlashRing — encode live only.
+             Measures pure BHY2→packer→LFS without SPI ring hop.
+           - natural start-det: drain ARMED pre-roll with READ-only pops
+             (no ring.write of live samples while draining — that was
+             SPI program+possible erase every sample and capped ~42 Hz).
+             After ring empty, encode live direct. */
+        if (g_force_logging) {
+            encode_to_storage(f, millis());
+        } else if (!g_ring.is_empty()) {
+            /* Drain only — do not push live into flash ring mid-LOGGING. */
+            uint8_t pop_n = g_ring.count() >= 4 ? 4 : (uint8_t)g_ring.count();
             for (uint8_t i = 0; i < pop_n; i++) {
-                RawFrame oldest = ram_ring_read();
-                encode_to_storage(oldest, ram_ring_last_ts());
+                RawFrame oldest = g_ring.read();
+                encode_to_storage(oldest, g_ring.last_read_ts());
             }
+            /* Live sample of this tick is not stored while draining.
+               Pre-roll already covers the start window; after empty we
+               take live every tick. Accept tiny gap at transition. */
+            (void)f;
         } else {
             encode_to_storage(f, millis());
         }
@@ -814,9 +776,8 @@ void setup()
     json_end();
     if (!flash_ok) { while(1) { g_led.set_pattern(LedPattern::OFF); delay(1000); } }
 
-    /* ── Flash ring buffer (boot-only erase; not on 100 Hz path) ── */
+    /* ── Flash ring buffer (full erase at boot only) ── */
     g_ring.reset();
-    ram_ring_reset();
 
     /* ── LDC1612 proximity ── */
     json_begin();
