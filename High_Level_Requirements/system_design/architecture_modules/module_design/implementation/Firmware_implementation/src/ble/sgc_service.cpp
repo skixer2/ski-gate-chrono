@@ -199,8 +199,8 @@ void sgc_ble_set_sensor_status(uint8_t bf) {
 
 void sgc_ble_set_run_count(uint16_t count)
 {
-    extern LittleFSStorage g_fs;
-    uint32_t age = g_fs.oldest_run_age();
+    extern class RawRunStore g_runs;
+    uint32_t age = g_runs.oldest_run_age();
     uint8_t buf[6];
     buf[0] = (uint8_t)(count & 0xFF);
     buf[1] = (uint8_t)((count >> 8) & 0xFF);
