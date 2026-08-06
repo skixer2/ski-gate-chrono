@@ -56,6 +56,8 @@ LED            g_led(0, 0);
 LDC1612        g_ldc;
 StateMachine   g_sm;
 SPIFlash       g_flash;
+/* FlashRing retained for optional long pre-roll / future use; ARMED/LOGGING
+   pre-roll is RAM (V4.60) — SPI page-program per sample capped feed at ~42 Hz. */
 FlashRing      g_ring(g_flash);
 LittleFSStorage g_fs;
 BitPacker      g_packer;
@@ -72,6 +74,55 @@ static bool     g_run_created    = false;
 static constexpr size_t PAGE_BUF_SIZE = 256;
 static uint8_t  g_page_buf[PAGE_BUF_SIZE];
 static size_t   g_page_cursor = 0;
+
+/* ── RAM pre-roll ring (V4.60) ──────────────────────────────────
+   200 frames × (16B frame + 4B ts) ≈ 4 KB. Covers 2 s @ 100 Hz so
+   start-detector descent is still in the saved run, without SPI on
+   the ARMED hot path. FlashRing (MX25R) stays available for reset/
+   diagnostics but is not in the 100 Hz path. */
+static constexpr uint16_t RAM_RING_CAP = 200;
+struct RamRingEntry {
+    RawFrame frame;
+    uint32_t arrival_ms;
+};
+static RamRingEntry g_ram_ring[RAM_RING_CAP];
+static uint16_t g_ram_head = 0;   /* next write index */
+static uint16_t g_ram_count = 0;
+static uint32_t g_ram_last_ts = 0;
+
+static void ram_ring_reset()
+{
+    g_ram_head = 0;
+    g_ram_count = 0;
+    g_ram_last_ts = 0;
+}
+
+static void ram_ring_write(const RawFrame& f)
+{
+    g_ram_ring[g_ram_head].frame = f;
+    g_ram_ring[g_ram_head].arrival_ms = millis();
+    g_ram_head = (uint16_t)((g_ram_head + 1u) % RAM_RING_CAP);
+    if (g_ram_count < RAM_RING_CAP)
+        g_ram_count++;
+}
+
+static bool ram_ring_is_empty() { return g_ram_count == 0; }
+static bool ram_ring_is_full()  { return g_ram_count >= RAM_RING_CAP; }
+static uint16_t ram_ring_count() { return g_ram_count; }
+
+static RawFrame ram_ring_read()
+{
+    RawFrame z;
+    memset(&z, 0, sizeof(z));
+    if (g_ram_count == 0) return z;
+    uint16_t tail = (uint16_t)((g_ram_head + RAM_RING_CAP - g_ram_count) % RAM_RING_CAP);
+    z = g_ram_ring[tail].frame;
+    g_ram_last_ts = g_ram_ring[tail].arrival_ms;
+    g_ram_count--;
+    return z;
+}
+
+static uint32_t ram_ring_last_ts() { return g_ram_last_ts; }
 
 /* ================================================================== */
 static uint32_t g_last_sensor_ms  = 0;
@@ -123,7 +174,8 @@ static void encode_to_storage(const RawFrame& fr, uint32_t ts_ms)
     const uint8_t cf_size = g_packer.last_size();
     const uint8_t* cf_buf = g_packer.buffer();
 
-    if (g_frame_count == 0 || (g_frame_count % 250) == 0) {
+    /* Rare telemetry only — Serial.print mid-run costs ms and was not free. */
+    if (g_frame_count == 0 || (g_frame_count % 500) == 0) {
         json_begin(); json_kv("ev", "enc_baro");
         Serial.print(','); json_kv("fn", (long)g_frame_count);
         Serial.print(','); json_kv("p", (long)fr.baro_pa_div2);
@@ -149,7 +201,12 @@ void apply_state_visuals(DeviceState s)
     case DeviceState::ARMED:
         g_led.set_pattern(LedPattern::GREEN_CHASE); beep_on(); break;
     case DeviceState::LOGGING:
-        g_led.set_pattern(LedPattern::RED_CHASE); beep_off(); break;
+        /* Solid red once at entry — LOGGING loop skips g_led.update()
+           (V4.60) so chase animation would freeze anyway. */
+        g_led.set_pattern(LedPattern::RED_CHASE);
+        nicla::leds.setColor(60, 0, 0);
+        beep_off();
+        break;
     case DeviceState::POST_RUN:
         g_led.set_pattern(LedPattern::BLUE_SLOW_FLOW_POST); break;
     }
@@ -519,8 +576,8 @@ void handle_serial()
            during operation (close_run adds entries, delete_oldest_run
            removes them). scan_runs() is for boot-time initialization only. */
         Serial.print(','); json_kv("st", g_sm.state_name());
-        Serial.print(','); json_kv("r", (long)g_ring.count());
-        Serial.print(','); json_kv("rm", (long)RING_SIZE);
+        Serial.print(','); json_kv("r", (long)ram_ring_count());
+        Serial.print(','); json_kv("rm", (long)RAM_RING_CAP);
         Serial.print(','); json_kv("p", (long)(pressure.value() * 100));   /* hPa→Pa for display */
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
@@ -569,6 +626,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_page_cursor = 0;
         g_run_created = false;
         g_last_baro_ms = now;
+        ram_ring_reset();  /* V4.60: RAM pre-roll, no SPI */
         /* P₀ auto-inits from first valid frame written to the ring.
            Same for serial ARM, LDC arm, test and real — no special path. */
         g_start_det.reset(0.0f);
@@ -640,7 +698,9 @@ static void on_state_transition(DeviceState from, DeviceState to)
             json_end();
             g_logging_start_ms = 0;
         }
-        g_ring.reset(); g_packer.reset();
+        ram_ring_reset(); g_packer.reset();
+        /* Do NOT g_ring.reset() here — 6 sector erases (~hundreds of ms).
+           FlashRing only reset at boot; LOGGING no longer uses it. */
         g_start_det.reset(0.0f);
         g_frame_count = 0;
         g_run_created = false;
@@ -683,34 +743,31 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        /* write() drops oldest when full — no manual read/write dance. */
-        bool was_full = g_ring.is_full();
-        g_ring.write(f);
-        if (!was_full && g_ring.is_full()) {
+        /* V4.60: RAM pre-roll — no MX25R page program per sample. */
+        bool was_full = ram_ring_is_full();
+        ram_ring_write(f);
+        if (!was_full && ram_ring_is_full()) {
             json_begin();
             json_kv("ev", "ring_full");
-            Serial.print(','); json_kv("r", (long)RING_SIZE);
+            Serial.print(','); json_kv("r", (long)RAM_RING_CAP);
             json_end();
         }
         return;
     }
 
     if (st == DeviceState::LOGGING) {
-        /* V4.55 path (corrected):
-             Ring holds ordered backlog (ARMED pre-roll + any live samples
-             that arrived while still draining).
-             - If ring not empty: push live into ring (FIFO), pop+encode
-               up to 2 oldest → LittleFS. Net drain ≈ 1 frame/loop.
-             - If ring empty: encode live straight to LittleFS.
-               No ring hop in steady state.
-             Never encode live before older ring frames (would reorder).
-         */
-        if (!g_ring.is_empty()) {
-            g_ring.write(f);  /* new data stays ordered behind pre-roll */
-            uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
+        /* V4.60: RAM pre-roll drain, then direct encode.
+           - While ram ring has backlog: push live, pop+encode up to 4
+             oldest/loop (catch-up after start-det trigger).
+           - Ring empty: encode live straight to page buf → LittleFS.
+           Never encode live before older pre-roll frames (order). */
+        if (!ram_ring_is_empty()) {
+            ram_ring_write(f);
+            uint8_t pop_n = ram_ring_count() >= 4 ? 4
+                          : (uint8_t)ram_ring_count();
             for (uint8_t i = 0; i < pop_n; i++) {
-                RawFrame oldest = g_ring.read();
-                encode_to_storage(oldest, g_ring.last_read_ts());
+                RawFrame oldest = ram_ring_read();
+                encode_to_storage(oldest, ram_ring_last_ts());
             }
         } else {
             encode_to_storage(f, millis());
@@ -757,8 +814,9 @@ void setup()
     json_end();
     if (!flash_ok) { while(1) { g_led.set_pattern(LedPattern::OFF); delay(1000); } }
 
-    /* ── Flash ring buffer ── */
+    /* ── Flash ring buffer (boot-only erase; not on 100 Hz path) ── */
     g_ring.reset();
+    ram_ring_reset();
 
     /* ── LDC1612 proximity ── */
     json_begin();
@@ -870,8 +928,10 @@ void loop()
         handle_serial();
         g_led.update();  /* athlete must see ARMED/LOGGING */
     } else if (loop_st == DeviceState::LOGGING) {
+        /* V4.60: no LED.update (I2C setColor), no BLE, no LDC.
+           Pattern already set solid/blink on transition; mid-run I2C
+           was pure overhead on the 100 Hz path. */
         BHY2.update();
-        g_led.update();
         handle_serial();  /* 'p' / status still needed */
     } else {
         BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
@@ -956,10 +1016,15 @@ void loop()
        feed_sensors — same data that goes into the ring. No fork. 
        ═══════════════════════════════════════════════════════════════ */
 
-    /* ── Feed sensors (10 ms) — sets g_cur_frame from serial or BHY2 ── */
+    /* ── Feed sensors (10 ms) — sets g_cur_frame from serial or BHY2.
+       Advance by +10 from previous tick (not wall 'now') so a late loop
+       does not permanently phase-shift the 100 Hz grid. Cap catch-up at
+       1 frame/loop to avoid a flash-stall burst. ── */
     if (now - g_last_sensor_ms >= 10) {
         feed_sensors();
-        g_last_sensor_ms = now;
+        g_last_sensor_ms += 10;
+        if ((int32_t)(now - g_last_sensor_ms) > 50)
+            g_last_sensor_ms = now;  /* resync after long stall */
     }
 
     /* ── Start detector (100 ms) — reads g_cur_frame.baro_pa_div2,

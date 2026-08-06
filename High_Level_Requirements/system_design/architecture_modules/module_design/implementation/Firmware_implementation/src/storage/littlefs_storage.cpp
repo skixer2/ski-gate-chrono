@@ -315,11 +315,11 @@ void LittleFSStorage::flush_write_buf() {
     } else {
         m_file_pos += (uint32_t)written;
     }
-    /* V4.42: Periodic sync every 4 KB. */
-    if (m_run_bytes - m_last_sync_bytes >= 4096) {
-        f->sync();
-        m_last_sync_bytes = m_run_bytes;
-    }
+    /* V4.60: NO mid-run sync. f->sync() on LittleFS can stall tens of ms
+       (COW metadata) and was a major contributor to S04 ~42 fps. Durability
+       is still provided by close_run() final sync + power-fail risk accepted
+       for the last unsynced buffer (≤ WRITE_BUF_SIZE). */
+    (void)m_last_sync_bytes;
     m_write_buf_pos = 0;
 }
 
