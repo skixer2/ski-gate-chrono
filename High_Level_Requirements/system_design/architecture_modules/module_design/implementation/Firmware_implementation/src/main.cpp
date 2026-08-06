@@ -121,9 +121,10 @@ void flush_page_buffer()
        (POST_RUN may clear the flag before the final flush). */
     if (g_raw_run.active()) {
         if (!g_raw_run.program(g_page_buf, g_page_cursor)) {
-            static uint8_t once;
-            if (!once) {
-                once = 1;
+            /* Nicla RGBled.h #define once — do not use that name. */
+            static uint8_t raw_err_reported;
+            if (!raw_err_reported) {
+                raw_err_reported = 1;
                 json_begin(); json_kv("ev", "raw_prog_err");
                 Serial.print(','); json_kv("we", (long)g_raw_run.write_err());
                 Serial.print(','); json_kv("sz", (long)g_raw_run.bytes());
