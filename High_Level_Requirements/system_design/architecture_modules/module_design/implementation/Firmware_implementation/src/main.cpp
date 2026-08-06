@@ -810,8 +810,15 @@ void setup()
     Serial.print(','); json_kv_bool("ok", bhy2_ok);
     json_end();
     if (bhy2_ok) {
-        rotation.begin(); lin_acc.begin();
-        pressure.begin(); temperature.begin();
+        /* CRITICAL (v4.59): SensorClass::begin() defaults to rate=1000 Hz,
+           latency=1 ms. That floods the BHI260 FIFO; BHY2.update() then
+           dominates the main loop and feed_sensors collapses to ~40 Hz
+           (S04 measured 41.9 fps @ v4.58). Request the rates we actually
+           consume at 10 ms feed ticks. */
+        rotation.begin(100.0f, 0);     /* RV @ 100 Hz */
+        lin_acc.begin(100.0f, 0);     /* linear accel @ 100 Hz */
+        pressure.begin(100.0f, 0);    /* baro virtual @ 100 Hz */
+        temperature.begin(1.0f, 0);   /* header only — not per-frame */
     }
 
     test_mode_init();
@@ -853,24 +860,30 @@ void loop()
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
     static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
 
-    /* ── Stream mode: pull model — skip heavy peripherals for max
-       loop rate, but share the same state machine below. ── */
+    /* ── Path split by mode/state for max LOGGING sample rate ──
+       Stream: skip BHY2/BLE/LDC (USB pull path).
+       LOGGING: BHY2 + LED + serial only — advertise already off,
+                LDC arming irrelevant mid-run, BLE transfer idle.
+       Else: full peripheral service. */
+    DeviceState loop_st = g_sm.state();
     if (g_stream_active) {
         handle_serial();
-        /* Stream/test pull path: skip BHY2/BLE/LDC (heavy SPI/I2C).
-           ALWAYS keep LED animation — athlete must see ARMED/LOGGING. */
+        g_led.update();  /* athlete must see ARMED/LOGGING */
+    } else if (loop_st == DeviceState::LOGGING) {
+        BHY2.update();
         g_led.update();
+        handle_serial();  /* 'p' / status still needed */
     } else {
         BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
         g_led.update(); g_ldc.tick();
-        handle_serial();  /* normal command parsing */
+        handle_serial();
     }
 
     /* ── Unified state machine (runs regardless of stream mode) ── */
     g_sm.tick();
 
-    /* ── LDC1612 wake from SLEEP (F13) — real-world only ── */
-    if (!g_stream_active) {
+    /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ── */
+    if (!g_stream_active && loop_st != DeviceState::LOGGING) {
         if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP) {
             json_begin();
             json_kv("ev", "wake");
