@@ -1,10 +1,10 @@
 /**
  * @file    file_transfer.cpp
- * @brief   BLE file transfer — LittleFSStorage API.
+ * @brief   BLE file transfer — RawRunStore API (Opt A, v4.63).
  */
 
 #include "file_transfer.h"
-#include "../storage/littlefs_storage.h"
+#include "../storage/raw_run_store.h"
 #include "../test_json.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
@@ -15,7 +15,7 @@ extern "C" {
     BLEUnsignedIntCharacteristic*   sgc_ble_ft_crc_char();
 }
 
-extern LittleFSStorage g_fs;
+extern RawRunStore g_runs;
 
 enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_DONE = 2, FT_ERROR = 3 };
 
@@ -43,7 +43,7 @@ void sgc_ble_transfer_poll()
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
-        uint32_t final_crc = LittleFSStorage::crc32_finalize(g_ft_crc);
+        uint32_t final_crc = RawRunStore::crc32_finalize(g_ft_crc);
         sgc_ble_ft_crc_char()->writeValue(final_crc);
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_DONE);
         json_begin();
@@ -53,14 +53,14 @@ void sgc_ble_transfer_poll()
         return;
     }
 
-    if (!g_fs.read_run_data(g_ft_run_id, g_ft_offset, buf, send_len)) {
+    if (!g_runs.read_run_data(g_ft_run_id, g_ft_offset, buf, send_len)) {
         g_ft_state = FT_ERROR;
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
         return;
     }
 
     for (size_t i = 0; i < send_len; i++)
-        g_ft_crc = LittleFSStorage::crc32_update(g_ft_crc, buf[i]);
+        g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[i]);
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
     g_ft_offset += send_len;
 }
@@ -73,8 +73,8 @@ void sgc_ble_ft_on_request(uint16_t run_id)
     json_end();
 
     const RunEntry* entry = nullptr;
-    for (uint16_t i = 0; i < g_fs.run_count(); i++) {
-        const RunEntry* e = g_fs.get_entry(i);
+    for (uint16_t i = 0; i < g_runs.run_count(); i++) {
+        const RunEntry* e = g_runs.get_entry(i);
         if (e && e->run_id == run_id) {
             entry = e;
             break;
@@ -88,7 +88,7 @@ void sgc_ble_ft_on_request(uint16_t run_id)
 
     RunHeader hdr;
     memset(&hdr, 0xFF, sizeof(hdr));
-    bool read_ok = g_fs.read_run_header(run_id, hdr);
+    bool read_ok = g_runs.read_run_header(run_id, hdr);
     if (!read_ok || hdr.format_ver < 1 || hdr.format_ver > 3) {
         json_begin();
         json_kv("ev", "ft_error");
@@ -119,5 +119,5 @@ void sgc_ble_ft_on_request(uint16_t run_id)
 const char* sgc_ble_build_run_list()
 {
     static char json_buf[512];
-    return g_fs.build_run_list(json_buf, sizeof(json_buf));
+    return g_runs.build_run_list(json_buf, sizeof(json_buf));
 }

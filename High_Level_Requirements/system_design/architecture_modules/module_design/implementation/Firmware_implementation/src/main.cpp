@@ -41,8 +41,7 @@ void bhy2_cal_hook_init();
 #include "state_machine/end_detector.h"
 #include "storage/spi_flash.h"
 #include "storage/flash_ring.h"
-#include "storage/littlefs_storage.h"
-#include "storage/raw_run_writer.h"
+#include "storage/raw_run_store.h"
 #include "storage/ring_buffer.h"
 #include "storage/bit_packer.h"
 
@@ -61,8 +60,7 @@ SPIFlash       g_flash;
    ring — BSS growth → Cordio HCI stack alloc fails (0x80FF0144). Documented
    MEMORY.md: "RAM ring buffer abandoned". S04 force-l bypasses the ring. */
 FlashRing      g_ring(g_flash);
-LittleFSStorage g_fs;
-RawRunWriter   g_raw_run;   /* Opt-A spike: force-l / S04 only */
+RawRunStore    g_runs;      /* Opt-A production: pre-erased raw slots */
 BitPacker      g_packer;
 StartDetector  g_start_det;
 EndDetector    g_end_det;
@@ -117,22 +115,16 @@ void beep_off() { analogWrite(1, 0); }
 void flush_page_buffer()
 {
     if (g_page_cursor == 0) return;
-    /* Prefer raw slab if active — do not depend on g_force_logging
-       (POST_RUN may clear the flag before the final flush). */
-    if (g_raw_run.active()) {
-        if (!g_raw_run.program(g_page_buf, g_page_cursor)) {
-            /* Nicla RGBled.h #define once — do not use that name. */
-            static uint8_t raw_err_reported;
-            if (!raw_err_reported) {
-                raw_err_reported = 1;
-                json_begin(); json_kv("ev", "raw_prog_err");
-                Serial.print(','); json_kv("we", (long)g_raw_run.write_err());
-                Serial.print(','); json_kv("sz", (long)g_raw_run.bytes());
-                json_end();
-            }
+    if (!g_runs.append_data(g_page_buf, g_page_cursor)) {
+        /* Nicla RGBled.h #define once — do not use that name. */
+        static uint8_t raw_err_reported;
+        if (!raw_err_reported) {
+            raw_err_reported = 1;
+            json_begin(); json_kv("ev", "raw_prog_err");
+            Serial.print(','); json_kv("we", (long)g_runs.write_err());
+            Serial.print(','); json_kv("sz", (long)g_runs.run_bytes());
+            json_end();
         }
-    } else {
-        g_fs.append_data(g_page_buf, g_page_cursor);
     }
     g_page_cursor = 0;
 }
@@ -267,7 +259,7 @@ void handle_serial()
         json_end();
         return;
     }
-    case 'd': g_fs.list_files(); return;
+    case 'd': g_runs.list_files(); return;
     case 'h': {
         /* Hex/baro dump for a specific run.
            Uses same read_run_data() as BLE file transfer — fork at output.
@@ -293,7 +285,7 @@ void handle_serial()
         while (*p == ' ' || *p == '\t') p++;
 
         RunHeader hdr;
-        if (!g_fs.read_run_header((uint16_t)rid, hdr)) {
+        if (!g_runs.read_run_header((uint16_t)rid, hdr)) {
             json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","no_run");
             Serial.print(','); json_kv("id",rid); json_end(); return;
         }
@@ -301,7 +293,7 @@ void handle_serial()
         /* V4.46: append-only header keeps data_size=0 on disk. Prefer RAM
            index size (authoritative after close_run). */
         if (data_sz == 0) {
-            const RunEntry* e = g_fs.get_entry_by_id((uint16_t)rid);
+            const RunEntry* e = g_runs.get_entry_by_id((uint16_t)rid);
             if (e) data_sz = e->compressed_size;
         }
         if (data_sz == 0 || data_sz > 200000) {
@@ -341,7 +333,7 @@ void handle_serial()
                corruption apart from serial/hex encoding bugs. */
             {
                 uint8_t peek[16];
-                if (g_fs.read_run_data((uint16_t)rid, 0, peek, 16)) {
+                if (g_runs.read_run_data((uint16_t)rid, 0, peek, 16)) {
                     json_begin(); json_kv("ev","hdr_peek");
                     Serial.print(','); json_kv("id",rid);
                     Serial.print(','); json_kv("ver",(long)peek[0]);
@@ -358,7 +350,7 @@ void handle_serial()
             uint8_t pace = 0;
             for (uint32_t off = 0; off < file_total; off += sizeof(rbuf)) {
                 size_t chunk = (file_total - off > sizeof(rbuf)) ? sizeof(rbuf) : (file_total - off);
-                if (!g_fs.read_run_data((uint16_t)rid, off, rbuf, chunk)) {
+                if (!g_runs.read_run_data((uint16_t)rid, off, rbuf, chunk)) {
                     json_begin(); json_kv("ev","hex_err"); Serial.print(',');
                     json_kv("reason","read_fail"); Serial.print(',');
                     json_kv("off",(long)off); json_end();
@@ -416,7 +408,7 @@ void handle_serial()
                 size_t tail = (buf_avail > buf_pos) ? (buf_avail - buf_pos) : 0;
                 if (tail > 0) memmove(buf, buf + buf_pos, tail);
                 size_t to_read = (end - offset > CHUNK) ? CHUNK : (end - offset);
-                if (!g_fs.read_run_data((uint16_t)rid, offset, buf + tail, to_read)) {
+                if (!g_runs.read_run_data((uint16_t)rid, offset, buf + tail, to_read)) {
                     break;
                 }
                 offset += to_read;
@@ -515,7 +507,7 @@ void handle_serial()
            flash through reset. On Nicla dev board (no CS pull-up),
            NVIC_SystemReset still floats CS → possible corruption.
            On custom PCB with CS pull-up, this guarantees persistence. */
-        g_fs.metadata_sync();
+        g_runs.metadata_sync();
         g_flash.enter_deep_powerdown();
         delay(50);
         NVIC_SystemReset();
@@ -529,9 +521,9 @@ void handle_serial()
     case 'R':
         json_begin(); json_kv("ev", "factory_reset"); json_end();
         Serial.flush();
-        g_fs.erase_all();
+        g_runs.erase_all();
         json_begin(); json_kv("ev", "reboot"); json_end();
-        g_fs.metadata_sync();
+        g_runs.metadata_sync();
         g_flash.enter_deep_powerdown();
         delay(50);
         NVIC_SystemReset();
@@ -540,7 +532,7 @@ void handle_serial()
         int8_t batt = nicla::getBatteryVoltagePercentage();
         json_begin();
         json_kv("ev", "status");
-        g_fs.metadata_sync();  /* flush pending directory commits */
+        g_runs.metadata_sync();  /* flush pending directory commits */
         /* V4.03: Do NOT call scan_runs() here — it wipes the RAM cache
            that close_run() just populated. The RAM cache is authoritative
            during operation (close_run adds entries, delete_oldest_run
@@ -552,12 +544,12 @@ void handle_serial()
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
         Serial.print(','); json_kv_bool("qi", !digitalRead(10));
-        Serial.print(','); json_kv("runs", (long)g_fs.run_count());
-        Serial.print(','); json_kv("total_runs", (long)g_fs.total_run_count());
-        Serial.print(','); json_kv("oldest_age", (long)g_fs.oldest_run_age());
+        Serial.print(','); json_kv("runs", (long)g_runs.run_count());
+        Serial.print(','); json_kv("total_runs", (long)g_runs.total_run_count());
+        Serial.print(','); json_kv("oldest_age", (long)g_runs.oldest_run_age());
         Serial.print(','); json_kv_bool("ldc", g_ldc.is_connected());
         Serial.print(','); json_kv("ldc_raw", (long)g_ldc.data());
-        Serial.print(','); json_kv("flash_pct", (long)g_fs.flash_used_pct());
+        Serial.print(','); json_kv("flash_pct", (long)g_runs.flash_used_pct());
         Serial.print(','); json_kv("ver", FW_VERSION);
         json_end();
         return;
@@ -597,8 +589,10 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_run_created = false;
         g_last_baro_ms = now;
         g_ring.clear();  /* soft clear — no 6-sector erase */
-        /* P₀ auto-inits from first valid frame written to the ring.
-           Same for serial ARM, LDC arm, test and real — no special path. */
+        /* Opt A: pre-erase next run slot while stationary (gate / bench). */
+        g_runs.ensure_space_for_new_run();
+        g_runs.prepare_next_run();
+        /* P₀ auto-inits from first valid frame written to the ring. */
         g_start_det.reset(0.0f);
     }
     if (to == DeviceState::SLEEP) {
@@ -607,8 +601,6 @@ static void on_state_transition(DeviceState from, DeviceState to)
     if (to == DeviceState::LOGGING) {
         BLE.stopAdvertise();
         g_end_det.reset();
-        /* Natural LOGGING (start detector) keeps end-detect on.
-           Serial 'l' sets g_force_logging so bench/S04 can run full duration. */
         g_packer.reset();
         g_page_cursor = 0;
         g_frame_count = 0;
@@ -616,35 +608,25 @@ static void on_state_transition(DeviceState from, DeviceState to)
         uint8_t cal = 0;
 
         if (g_force_logging) {
-            /* Opt A S04 path: drop pre-roll, pre-erase raw slab, NO LittleFS. */
+            /* S04: no pre-roll needed; slot may already be prepared at ARM. */
             g_ring.clear();
-            g_run_created = g_raw_run.begin(g_flash);
-            /* Start rate clock AFTER pre-erase so fps is encode+program only. */
-            g_logging_start_ms = millis();
-            json_begin();
-            json_kv("ev", "run_created");
-            Serial.print(','); json_kv_bool("ok", g_run_created);
-            Serial.print(','); json_kv("id", (long)0);
-            Serial.print(','); json_kv("store", "raw");
-            json_end();
-        } else {
-            g_run_created = g_fs.create_run(0, baro_temp, cal);
-            g_logging_start_ms = millis();
-            /* V4.53: do NOT zero g_stream_frames — that made harness report
-               fake "10% lost" (ARMED pre-fill pulls vanished from the counter).
-               Snapshot ARMED pulls; total keeps growing through LOGGING. */
-            g_stream_frames_pre_log = g_stream_frames;
-            json_begin();
-            json_kv("ev", "run_created");
-            Serial.print(','); json_kv_bool("ok", g_run_created);
-            Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
-            Serial.print(','); json_kv("store", "lfs");
-            json_end();
         }
+
+        /* Both production and force-l use raw store (Opt A). */
+        g_run_created = g_runs.create_run(0, baro_temp, cal);
+        /* Rate clock starts after create (header program); ARM already
+           paid the sector-erase cost via prepare_next_run(). */
+        g_logging_start_ms = millis();
+        g_stream_frames_pre_log = g_stream_frames;
+        json_begin();
+        json_kv("ev", "run_created");
+        Serial.print(','); json_kv_bool("ok", g_run_created);
+        Serial.print(','); json_kv("id", (long)g_runs.total_run_count());
+        Serial.print(','); json_kv("store", "raw");
+        json_end();
     }
     if (to == DeviceState::POST_RUN) {
         BLE.advertise();
-        const bool was_raw = g_raw_run.active() || g_force_logging;
         if (g_stream_active) {
             g_stream_active = false;
             json_begin(); json_kv("ev", "stream_end");
@@ -659,22 +641,13 @@ static void on_state_transition(DeviceState from, DeviceState to)
         }
         flush_page_buffer();
 
-        uint32_t compressed_sz = 0;
-        uint16_t run_id = 0xFFFF;
-        bool ok = false;
-        if (was_raw) {
-            compressed_sz = g_raw_run.close();
-            run_id = 0;  /* synthetic id for S04 */
-            ok = (g_raw_run.write_err() == 0) && (g_frame_count > 0);
-        } else {
-            compressed_sz = g_fs.run_bytes();
-            run_id = g_fs.close_run(g_frame_count);
-            ok = (run_id != 0xFFFF);
-            sgc_ble_set_run_count(g_fs.run_count());
-            sgc_ble_set_flash_used(g_fs.flash_used_pct());
-        }
+        uint32_t compressed_sz = g_runs.run_bytes();
+        uint16_t run_id = g_runs.close_run(g_frame_count);
+        bool ok = (run_id != 0xFFFF) && (g_runs.write_err() == 0);
+        sgc_ble_set_run_count(g_runs.run_count());
+        sgc_ble_set_flash_used(g_runs.flash_used_pct());
 
-        g_force_logging = false;  /* re-enable end-detect for next natural run */
+        g_force_logging = false;
 
         {
             uint32_t dur_ms = 0;
@@ -692,16 +665,14 @@ static void on_state_transition(DeviceState from, DeviceState to)
                 Serial.print(','); json_kv("fps10", fps10);
             }
             Serial.print(','); json_kv_bool("ok", ok);
-            Serial.print(','); json_kv("store", was_raw ? "raw" : "lfs");
-            if (was_raw) {
-                Serial.print(','); json_kv("we", (long)g_raw_run.write_err());
-            }
-            Serial.print(','); json_kv("runs", (long)g_fs.run_count());
-            Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
+            Serial.print(','); json_kv("store", "raw");
+            Serial.print(','); json_kv("we", (long)g_runs.write_err());
+            Serial.print(','); json_kv("runs", (long)g_runs.run_count());
+            Serial.print(','); json_kv("total", (long)g_runs.total_run_count());
             json_end();
             g_logging_start_ms = 0;
         }
-        g_ring.clear(); g_packer.reset();  /* soft clear — erase only at boot */
+        g_ring.clear(); g_packer.reset();
         g_start_det.reset(0.0f);
         g_frame_count = 0;
         g_run_created = false;
@@ -851,19 +822,16 @@ void setup()
     sgc_ble_init();
     sgc_ble_transfer_init();
 
-    /* ── LittleFS (after BD init, before BHY2 for heap) ── */
+    /* ── Raw run store (Opt A) — after BD init, before BHY2 ── */
     json_begin();
     json_kv("ev", "init");
-    Serial.print(','); json_kv("sub", "littlefs");
+    Serial.print(','); json_kv("sub", "raw_store");
     json_end();
-    Serial.flush();   /* ensure init line is complete before begin() prints */
-    bool fs_ok = g_fs.begin();
-    Serial.print("{\"ev\":\"init\",\"sub\":\"littlefs_res\",\"ok\":");
+    Serial.flush();
+    bool fs_ok = g_runs.begin(g_flash);
+    Serial.print("{\"ev\":\"init\",\"sub\":\"raw_store_res\",\"ok\":");
     Serial.print(fs_ok ? "1" : "0");
     Serial.println("}");
-
-    /* fs_ok false means catastrophic failure (heap, flash dead).
-       Halt — device cannot operate without storage. */
     if (!fs_ok) {
         while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
     }
@@ -904,15 +872,15 @@ void setup()
 
     int8_t batt = nicla::getBatteryVoltagePercentage();
     sgc_ble_set_battery(batt >= 0 ? (uint8_t)batt : 0);
-    sgc_ble_set_run_count(g_fs.run_count());
-    sgc_ble_set_flash_used(g_fs.flash_used_pct());
+    sgc_ble_set_run_count(g_runs.run_count());
+    sgc_ble_set_flash_used(g_runs.flash_used_pct());
 
     json_begin();
     json_kv("ev", "ready");
     Serial.print(','); json_kv("st", g_sm.state_name());
-    Serial.print(','); json_kv("runs", (long)g_fs.run_count());
+    Serial.print(','); json_kv("runs", (long)g_runs.run_count());
     Serial.print(','); json_kv("ver", FW_VERSION);
-    Serial.print(','); json_kv("used_pct", (long)g_fs.flash_used_pct());
+    Serial.print(','); json_kv("used_pct", (long)g_runs.flash_used_pct());
     json_end();
 }
 
@@ -1002,8 +970,8 @@ void loop()
             json_kv("ev", "factory_reset");
             Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
             json_end();
-            g_fs.erase_all();
-            g_fs.metadata_sync();
+            g_runs.erase_all();
+            g_runs.metadata_sync();
             json_begin(); json_kv("ev", "reboot"); json_end();
             g_flash.enter_deep_powerdown();
             delay(50);

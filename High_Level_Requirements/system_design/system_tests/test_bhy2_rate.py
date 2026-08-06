@@ -5,11 +5,10 @@ S04 — BHY2 real-sensor LOGGING rate test (no USB frame injection).
 Purpose:
   Measure real BHY2 LOGGING sample rate (encode + flash write).
 
-  v4.62+ force-'l' Opt-A spike path:
-    BHY2 → packer → page buf → raw SPI program (pre-erased 48 KB slab)
-    NO LittleFS on the hot path. run_saved.store == "raw".
-
-  Production (start-detector) still uses LittleFS (store == "lfs").
+  v4.63+ Opt-A production path (force-'l' and start-detector):
+    ARM: prepare_next_run() pre-erases first 16 KB of a raw slot
+    LOGGING: BHY2 → packer → page buf → SPI program (+ lazy sector erase ahead)
+    NO LittleFS on run payload. run_saved.store == "raw".
 
 IMPORTANT state machine rule (firmware):
   LOGGING may only be entered from ARMED.

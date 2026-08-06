@@ -1,83 +1,49 @@
-# ADR-003: LittleFS + Flash Ring Storage Architecture
+# ADR-003: Run Storage Architecture
 
-**Status:** ACCEPTED (2026-07-11), AMENDED (2026-07-22)
-**Replaces:** FlashManager (Phase 10 circular raw flash)
-**Rationale:** Wear-leveling, power-loss resilience, simplify code (900→250 lines).
+**Status:** SUPERSEDED in part (2026-08-06) by Opt A raw slots  
+**Original:** ACCEPTED (2026-07-11), AMENDED LittleFS v1 (2026-07-22)  
+**v4.63:** Run **payload** moved off LittleFS to pre-erased raw SPI slots.
 
-## ⚠️ 2026-07-22 Amendment: LittleFS v1 (NOT v2)
+## Why the change
 
-**LittleFileSystem2 (v2.0.2) is BROKEN on Arduino-mbed for nRF52832.**
-Root-directory metadata-pair compaction corrupts the filesystem after any write.
-Switched to `LittleFileSystem` (v1) — same API, stable, matches Arduino Nicla example.
+S04 (BHY2 real LOGGING rate) measured:
 
-- Include: `<LittleFileSystem.h>` (NOT LittleFileSystem2)
-- Constructor: `LittleFileSystem("littlefs")` — name only, BD passed to mount()
-- All File/Dir/stat API is identical — drop-in replacement
+| Path | FPS |
+|------|-----|
+| LittleFS append on hot path | ~42–47 |
+| Raw SPI program, pre-erased (v4.62 spike) | **99.4** |
 
-## Architecture
+Design timing budget (`sgc_system_design.md`) assumed raw page program, not LittleFS COW.
+
+Constraints that remain:
+
+1. **No large RAM ring** — Cordio BLE OOM (MEMORY.md).
+2. **Do not return to full FlashManager-only** — recovery/list bugs led to LittleFS.
+3. **Erases off the descent path** — pre-erase at ARM (stationary); lazy 4 KB erase ahead of write cursor only when needed.
+
+## Architecture (v4.63)
 
 ```
-┌──────────────────────┬─────────────────────────────────────────┐
-│ Sectors 0-3 (16KB)   │ Sectors 4-511 (~1.98MB)                │
-│                      │                                        │
-│ FlashRing buffer     │ LittleFileSystem (mbed) [← was v2]    │
-│ Raw SPI, zero RAM BSS│ SlicingBlockDevice(0x4000, 0x200000)   │
-│ write_page() @ 100Hz │ mount/reformat, file create/append     │
-│ erase_block() halves │ wear-leveled, COW atomic, journal      │
-│ (6 bytes RAM: head   │                                        │
-│  + count + drain_buf)│ Runs stored as files: /run_NNNNN.dat   │
-│                      │ [RunHeader 16B][frames…][CRC32 6B]     │
-└──────────────────────┴─────────────────────────────────────────┘
+┌──────────────────┬────────────────────────────────────┬────────────┐
+│ 0x0000–0x5FFF    │ 0x6000–0x1FBFFF                    │ 0x1FC000+  │
+│ FlashRing        │ 8 × ~249 KB raw run SLOTS          │ config     │
+│ (ARMED pre-roll) │ [RunHeader][frames…][CRC trailer]  │ index@1FD  │
+└──────────────────┴────────────────────────────────────┴────────────┘
 ```
 
-## Key Decisions
+- **prepare_next_run() @ ARMED:** erase first 16 KB of free/oldest slot (~fast).
+- **LOGGING:** `program()` only; `ensure_erased()` erases next sector when cursor approaches.
+- **Index:** sector `0x1FD000` — RunEntry table + slot mask (RAM cache, persist on close).
+- **BLE FT / hex dump:** same byte layout as before (header + payload + CRC).
 
-### 1. LittleFS v1 over v2 (2026-07-22)
-v2.0.2 has metadata-pair compaction bug on this platform. v1 is stable (3+ consecutive runs, BLE file transfer verified). v1 is deprecated upstream but works correctly — matches official Arduino Nicla example.
+LittleFS code retained as `.disabled` reference only — not linked.
 
-### 2. Flash ring (not RAM ring)
-RAM ring cost 5.6KB BSS → 76.3% RAM → Cordio BLE OOM. Flash ring at 63.5% RAM (below 64.1% threshold). One-frame RAM drain cache (16 bytes) covers SPI bus busy period.
+## Tests
 
-### 3. SlicingBlockDevice partitioning
-LittleFS must NOT own sectors 0-3 (flash ring). `SlicingBlockDevice(raw_bd, 0x4000, 0x1FC000)` creates a 1.98MB view for LittleFS starting at sector 4.
+- **S04** `test_bhy2_rate.py`: force-l, expect `store=raw`, fps ≥ 90, `we=0`.
+- **S03** stream (when available): natural start-det → LOGGING must also `store=raw`.
+- Multi-run: 2× S04 without `-R` between → `runs` increments; 9th overwrites oldest.
 
-### 3. bd->init() called exactly once
-Only `LittleFSStorage::begin()` → `mount(sliced)` calls `bd->init()`. `SPIFlash::begin()` must NOT call it. Double init leaves MX25R1635F in bad state (reads work, writes fail silently → LFS2_ERR_CORRUPT → -138/EILSEQ).
+## Version
 
-### 4. Incremental CRC32
-CRC accumulated byte-by-byte in `append_data()`. Finalized in `close_run()`. No seek/read on open file.
-
-### 5. Crash-safe factory reset
-`erase_all()` does raw sector erases (0x4000-0x14000) — no `fs->unmount()` or `fs->reformat()`. These can HardFault on corrupt metadata. Boot init handles fresh format+mount via auto-reformat.
-
-### 6. POSIX flag values
-System defines may be wrong. Undef + redefine in .cpp: `O_RDONLY=0, O_WRONLY=1, O_RDWR=2`.
-
-## Init Order (critical)
-```
-1. nicla::begin()
-2. BLE.begin()              ← Cordio heap first
-3. g_flash.begin()          ← BlockDevice handle (no init)
-4. g_ldc.begin()            ← LDC1612 proximity
-5. g_fs.begin()             ← bd->init() + mount/reformat
-6. g_ring.reset()           ← erase sectors 0-3 (BD now initialized)
-7. BHY2.begin(STANDALONE)   ← sensor hub last
-```
-
-## Build
-- RAM: 63.5% (40816/64288)
-- Flash: 65.5%
-- MAX_ENTRIES=8, cache_size=64, lookahead=8
-
-### 8. O_WRONLY file mode (not O_RDWR)
-RunHeader fields saved in RAM at `create_run()` time and used in `close_run()` — no read-back needed.
-
-## Error Codes
-- `-138 / EILSEQ` = LittleFS ERR_CORRUPT (corrupted metadata — factory reset needed)
-- `CR_OPEN_ERR_XXX` = create_run failed with f->open() error code
-- `CR_NO_FS` = filesystem not initialized
-- `CR_ALREADY_OPEN` = previous run never closed
-- `NOT_OPEN` = close_run called without open file
-
-## Version Bumping
-Bump `FW_VERSION` in `src/config.h` at EVERY code change. Boot JSON and `V` command confirm binary.
+Bump `FW_VERSION` on every storage change. Confirm `ver` in boot / `?`.
