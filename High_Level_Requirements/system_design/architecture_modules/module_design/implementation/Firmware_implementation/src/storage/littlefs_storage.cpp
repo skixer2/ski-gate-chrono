@@ -80,10 +80,12 @@ bool LittleFSStorage::begin() {
        init/deinit are ref-counted — a second init() from mount() just
        bumps the count.  No deinit needed. */
 
-    /* Slice sectors 6–507 (reserve 508–511 for config).
-       Flash ring uses sectors 0-5 (v4.07: 20-byte RingEntry).
-       For MX25R1635F (2MB): 502 sectors × 4096 bytes = 0x1F6000. */
-    uint32_t stop = 0x1FC000;
+    /* Slice sectors 6–end.
+       Flash ring: sectors 0-5 (0x0000–0x5FFF).
+       V4.62 Opt-A spike: stop at 0x1F0000 so sectors 496–507
+       (0x1F0000–0x1FBFFF, 48 KB) are a raw pre-erased run slab
+       (raw_run_writer). Config remains at 0x1FC000+. */
+    uint32_t stop = 0x1F0000;
     auto* sliced = new SlicingBlockDevice(raw, 0x6000, stop);
 
     /* LittleFS v1 — Arduino example baseline, no v2 metadata-pair bug. */

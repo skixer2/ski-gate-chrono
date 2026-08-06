@@ -42,6 +42,7 @@ void bhy2_cal_hook_init();
 #include "storage/spi_flash.h"
 #include "storage/flash_ring.h"
 #include "storage/littlefs_storage.h"
+#include "storage/raw_run_writer.h"
 #include "storage/ring_buffer.h"
 #include "storage/bit_packer.h"
 
@@ -61,6 +62,7 @@ SPIFlash       g_flash;
    MEMORY.md: "RAM ring buffer abandoned". S04 force-l bypasses the ring. */
 FlashRing      g_ring(g_flash);
 LittleFSStorage g_fs;
+RawRunWriter   g_raw_run;   /* Opt-A spike: force-l / S04 only */
 BitPacker      g_packer;
 StartDetector  g_start_det;
 EndDetector    g_end_det;
@@ -115,7 +117,22 @@ void beep_off() { analogWrite(1, 0); }
 void flush_page_buffer()
 {
     if (g_page_cursor == 0) return;
-    g_fs.append_data(g_page_buf, g_page_cursor);
+    /* Prefer raw slab if active — do not depend on g_force_logging
+       (POST_RUN may clear the flag before the final flush). */
+    if (g_raw_run.active()) {
+        if (!g_raw_run.program(g_page_buf, g_page_cursor)) {
+            static uint8_t once;
+            if (!once) {
+                once = 1;
+                json_begin(); json_kv("ev", "raw_prog_err");
+                Serial.print(','); json_kv("we", (long)g_raw_run.write_err());
+                Serial.print(','); json_kv("sz", (long)g_raw_run.bytes());
+                json_end();
+            }
+        }
+    } else {
+        g_fs.append_data(g_page_buf, g_page_cursor);
+    }
     g_page_cursor = 0;
 }
 
@@ -591,30 +608,42 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_end_det.reset();
         /* Natural LOGGING (start detector) keeps end-detect on.
            Serial 'l' sets g_force_logging so bench/S04 can run full duration. */
-        if (g_force_logging) {
-            /* Drop ARMED flash pre-roll — S04 measures live encode only. */
-            g_ring.clear();
-        }
         g_packer.reset();
         g_page_cursor = 0;
+        g_frame_count = 0;
         int16_t baro_temp = (int16_t)(temperature.value() * 10.0f);
         uint8_t cal = 0;
-        g_run_created = g_fs.create_run(0, baro_temp, cal);
-        g_frame_count = 0;
-        g_logging_start_ms = millis();
-        /* V4.53: do NOT zero g_stream_frames — that made harness report
-           fake "10% lost" (ARMED pre-fill pulls vanished from the counter).
-           Snapshot ARMED pulls; total keeps growing through LOGGING. */
-        g_stream_frames_pre_log = g_stream_frames;
-        json_begin();
-        json_kv("ev", "run_created");
-        Serial.print(','); json_kv_bool("ok", g_run_created);
-        Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
-        json_end();
+
+        if (g_force_logging) {
+            /* Opt A S04 path: drop pre-roll, pre-erase raw slab, NO LittleFS. */
+            g_ring.clear();
+            g_run_created = g_raw_run.begin(g_flash);
+            /* Start rate clock AFTER pre-erase so fps is encode+program only. */
+            g_logging_start_ms = millis();
+            json_begin();
+            json_kv("ev", "run_created");
+            Serial.print(','); json_kv_bool("ok", g_run_created);
+            Serial.print(','); json_kv("id", (long)0);
+            Serial.print(','); json_kv("store", "raw");
+            json_end();
+        } else {
+            g_run_created = g_fs.create_run(0, baro_temp, cal);
+            g_logging_start_ms = millis();
+            /* V4.53: do NOT zero g_stream_frames — that made harness report
+               fake "10% lost" (ARMED pre-fill pulls vanished from the counter).
+               Snapshot ARMED pulls; total keeps growing through LOGGING. */
+            g_stream_frames_pre_log = g_stream_frames;
+            json_begin();
+            json_kv("ev", "run_created");
+            Serial.print(','); json_kv_bool("ok", g_run_created);
+            Serial.print(','); json_kv("id", (long)g_fs.total_run_count());
+            Serial.print(','); json_kv("store", "lfs");
+            json_end();
+        }
     }
     if (to == DeviceState::POST_RUN) {
         BLE.advertise();
-        g_force_logging = false;  /* re-enable end-detect for next natural run */
+        const bool was_raw = g_raw_run.active() || g_force_logging;
         if (g_stream_active) {
             g_stream_active = false;
             json_begin(); json_kv("ev", "stream_end");
@@ -628,10 +657,24 @@ static void on_state_transition(DeviceState from, DeviceState to)
             json_end();
         }
         flush_page_buffer();
-        uint32_t compressed_sz = g_fs.run_bytes();
-        uint16_t run_id = g_fs.close_run(g_frame_count);
-        sgc_ble_set_run_count(g_fs.run_count());
-        sgc_ble_set_flash_used(g_fs.flash_used_pct());
+
+        uint32_t compressed_sz = 0;
+        uint16_t run_id = 0xFFFF;
+        bool ok = false;
+        if (was_raw) {
+            compressed_sz = g_raw_run.close();
+            run_id = 0;  /* synthetic id for S04 */
+            ok = (g_raw_run.write_err() == 0) && (g_frame_count > 0);
+        } else {
+            compressed_sz = g_fs.run_bytes();
+            run_id = g_fs.close_run(g_frame_count);
+            ok = (run_id != 0xFFFF);
+            sgc_ble_set_run_count(g_fs.run_count());
+            sgc_ble_set_flash_used(g_fs.flash_used_pct());
+        }
+
+        g_force_logging = false;  /* re-enable end-detect for next natural run */
+
         {
             uint32_t dur_ms = 0;
             if (g_logging_start_ms != 0) {
@@ -644,11 +687,14 @@ static void on_state_transition(DeviceState from, DeviceState to)
             Serial.print(','); json_kv("sz", (long)compressed_sz);
             Serial.print(','); json_kv("dur_ms", (long)dur_ms);
             if (dur_ms > 0) {
-                /* integer fps * 10 for one decimal without float print */
                 long fps10 = ((long)g_frame_count * 10000L) / (long)dur_ms;
                 Serial.print(','); json_kv("fps10", fps10);
             }
-            Serial.print(','); json_kv_bool("ok", run_id != 0xFFFF);
+            Serial.print(','); json_kv_bool("ok", ok);
+            Serial.print(','); json_kv("store", was_raw ? "raw" : "lfs");
+            if (was_raw) {
+                Serial.print(','); json_kv("we", (long)g_raw_run.write_err());
+            }
             Serial.print(','); json_kv("runs", (long)g_fs.run_count());
             Serial.print(','); json_kv("total", (long)g_fs.total_run_count());
             json_end();

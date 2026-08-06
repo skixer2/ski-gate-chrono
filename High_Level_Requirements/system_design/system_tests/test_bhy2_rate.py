@@ -3,9 +3,13 @@
 S04 — BHY2 real-sensor LOGGING rate test (no USB frame injection).
 
 Purpose:
-  Measure encode+LittleFS write rate under real conditions:
-    BHY2 sensors → packer → page buffer → LittleFS
-  without the USB pull-model bottleneck (~25 fps in stream tests).
+  Measure real BHY2 LOGGING sample rate (encode + flash write).
+
+  v4.62+ force-'l' Opt-A spike path:
+    BHY2 → packer → page buf → raw SPI program (pre-erased 48 KB slab)
+    NO LittleFS on the hot path. run_saved.store == "raw".
+
+  Production (start-detector) still uses LittleFS (store == "lfs").
 
 IMPORTANT state machine rule (firmware):
   LOGGING may only be entered from ARMED.
@@ -172,8 +176,13 @@ def evaluate_run(saved: dict, duration_s: float, min_fps: float, ver: str | None
     else:
         fps = 0.0
 
+    store = saved.get("store", "?")
     print(f"  run_saved: id={rid} ok={ok} fr={fr} dur_ms={dur_ms} fps={fps:.1f}")
-    print(f"  compressed={saved.get('sz')} runs={saved.get('runs')}")
+    print(f"  store={store} compressed={saved.get('sz')} runs={saved.get('runs')} "
+          f"we={saved.get('we')}")
+    if store != "raw":
+        print("  ⚠ expected store=raw on force-l (v4.62+ Opt-A spike); "
+              "got LFS path — flash may be old firmware")
 
     # Require the full requested window (allow 10% short on duration).
     min_dur_ms = int(0.9 * duration_s * 1000)
