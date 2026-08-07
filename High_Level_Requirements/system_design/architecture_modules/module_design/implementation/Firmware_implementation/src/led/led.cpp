@@ -194,10 +194,19 @@ void LED::begin_strip()
     memset(m_grb, 0, sizeof(m_grb));
     if (!m_timing_only && m_pin > 0) {
         pinMode(m_pin, OUTPUT);
-#if defined(NRF_GPIO)
-        /* Prefer direct GPIO if pin maps 1:1 — Arduino pinMode still OK */
-#endif
         digitalWrite(m_pin, LOW);
+#if defined(NRF_P0)
+        if (m_pin == 12) {
+            /* Nicla: Arduino 12 = P0.19 (ESLOV INT / LED_STRIP). Drive low. */
+            NRF_P0->PIN_CNF[19] =
+                (GPIO_PIN_CNF_DIR_Output << GPIO_PIN_CNF_DIR_Pos) |
+                (GPIO_PIN_CNF_INPUT_Disconnect << GPIO_PIN_CNF_INPUT_Pos) |
+                (GPIO_PIN_CNF_PULL_Disabled << GPIO_PIN_CNF_PULL_Pos) |
+                (GPIO_PIN_CNF_DRIVE_S0S1 << GPIO_PIN_CNF_DRIVE_Pos) |
+                (GPIO_PIN_CNF_SENSE_Disabled << GPIO_PIN_CNF_SENSE_Pos);
+            NRF_P0->OUTCLR = (1u << 19);
+        }
+#endif
     }
     strip_show(); /* initial dark / timing baseline */
 }
@@ -236,20 +245,45 @@ void LED::strip_show()
             }
         }
     } else {
+        /* Real NZR on GPIO. digitalWrite is slower than NRF_P0->OUTSET but
+           matches portable Arduino path; still valid worst-ish cost for S04. */
         const uint8_t pin = m_pin;
+#if defined(NRF_P0)
+        /* Fast path: ESLOV INT = P0.19 when pin==12 on Nicla mbed map */
+        const bool use_p019 = (pin == 12);
+        const uint32_t mask = (1u << 19);
+#endif
         for (uint16_t i = 0; i < nbytes; i++) {
             uint8_t v = m_grb[i];
             for (uint8_t b = 0; b < 8; b++) {
-                if (v & 0x80) {
-                    digitalWrite(pin, HIGH);
-                    delay_cycles(T1H_CYCLES);
-                    digitalWrite(pin, LOW);
-                    delay_cycles(T1L_CYCLES);
-                } else {
-                    digitalWrite(pin, HIGH);
-                    delay_cycles(T0H_CYCLES);
-                    digitalWrite(pin, LOW);
-                    delay_cycles(T0L_CYCLES);
+                const bool one = (v & 0x80) != 0;
+#if defined(NRF_P0)
+                if (use_p019) {
+                    if (one) {
+                        NRF_P0->OUTSET = mask;
+                        delay_cycles(T1H_CYCLES);
+                        NRF_P0->OUTCLR = mask;
+                        delay_cycles(T1L_CYCLES);
+                    } else {
+                        NRF_P0->OUTSET = mask;
+                        delay_cycles(T0H_CYCLES);
+                        NRF_P0->OUTCLR = mask;
+                        delay_cycles(T0L_CYCLES);
+                    }
+                } else
+#endif
+                {
+                    if (one) {
+                        digitalWrite(pin, HIGH);
+                        delay_cycles(T1H_CYCLES);
+                        digitalWrite(pin, LOW);
+                        delay_cycles(T1L_CYCLES);
+                    } else {
+                        digitalWrite(pin, HIGH);
+                        delay_cycles(T0H_CYCLES);
+                        digitalWrite(pin, LOW);
+                        delay_cycles(T0L_CYCLES);
+                    }
                 }
                 v <<= 1;
             }
