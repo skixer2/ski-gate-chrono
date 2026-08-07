@@ -210,12 +210,21 @@ def main() -> int:
     print("  ✓ LOGGING (drain path, force_logging=0)")
 
     # Wait for drain + a bit of live; poll r via ?
+    # Also catch run_saved if end-det auto-closes (old FW) or we send p.
     last = -1
     drained_at = None
-    while time.perf_counter() - t_l0 < args.fill_s + args.log_s + 15.0:
+    saved = None
+    while time.perf_counter() - t_l0 < args.fill_s + args.log_s + 20.0:
+        batch = read_json_lines(ser, 0.15)
+        for o in batch:
+            if o.get("ev") == "run_saved" and saved is None:
+                saved = o
+                print(f"  evt: {o}", flush=True)
+            if o.get("ev") == "st":
+                print(f"  evt: {o}", flush=True)
         st = status(ser)
         if not st:
-            time.sleep(0.2)
+            time.sleep(0.15)
             continue
         r = int(st.get("r") or 0)
         sec = int(time.perf_counter() - t_l0)
@@ -225,26 +234,36 @@ def main() -> int:
         if drained_at is None and r == 0 and st.get("st") == "LOGGING":
             drained_at = time.perf_counter() - t_l0
             print(f"  ring empty after {drained_at:.2f}s LOGGING")
-            # continue for log_s live
             live_end = time.perf_counter() + args.log_s
             while time.perf_counter() < live_end:
-                time.sleep(0.2)
+                for o in read_json_lines(ser, 0.2):
+                    if o.get("ev") == "run_saved" and saved is None:
+                        saved = o
+                        print(f"  evt: {o}", flush=True)
             break
-        if st.get("st") != "LOGGING":
+        if st.get("st") == "POST_RUN":
+            # Auto end-det closed — run_saved may already be out or coming
+            print("  note: already POST_RUN (end det or other)")
             break
-        time.sleep(0.15)
+        if st.get("st") not in ("LOGGING", "POST_RUN"):
+            break
+        if saved is not None:
+            break
+        time.sleep(0.1)
 
-    print("── POST_RUN ──")
-    post = send_keep(ser, "p", 0.5)
-    saved = None
-    for o in post:
-        if o.get("ev") in ("st", "run_saved"):
-            print(f"  {o}")
-        if o.get("ev") == "run_saved":
-            saved = o
     if saved is None:
-        saved = wait_event(ser, "run_saved", 20.0)
-        print(f"  run_saved: {saved}")
+        print("── POST_RUN (send p) ──")
+        post = send_keep(ser, "p", 0.8)
+        for o in post:
+            if o.get("ev") in ("st", "run_saved"):
+                print(f"  {o}")
+            if o.get("ev") == "run_saved":
+                saved = o
+        if saved is None:
+            saved = wait_event(ser, "run_saved", 25.0)
+            print(f"  run_saved: {saved}")
+    else:
+        print("── POST_RUN (already have run_saved) ──")
 
     print("\n── Result ──")
     if not saved:

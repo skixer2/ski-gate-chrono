@@ -105,6 +105,9 @@ static uint32_t g_stream_frames_pre_log = 0; /* pulls while ARMED before LOGGING
    device is not auto-closed after ~5s flat pressure. Production path enters
    LOGGING via start detector with this flag false. Cleared on POST_RUN. */
 static bool g_force_logging = false;
+/* Serial 'L' bench drain path: natural ring drain + live, but skip end det on
+   desk (flat pressure). Production start-det entry leaves both flags false. */
+static bool g_bench_drain = false;
 extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
 
 
@@ -252,14 +255,16 @@ void handle_serial()
     case 'l':
         /* Bench force-LOGGING: skip ring drain + skip end det (S04 rate). */
         g_force_logging = true;
+        g_bench_drain = false;
         g_end_det.reset();
         g_sm.force_state(DeviceState::LOGGING);
         break;
     case 'L':
-        /* Natural LOGGING path for bench (S06): drain FlashRing then live.
-           Does NOT set g_force_logging — end det still active (use 'p' on desk).
-           Only reaches here when tm=0 (test_mode 'L'=set_la when tm=1). */
+        /* Bench drain LOGGING (S06): drain pre-roll then live encode.
+           g_force_logging=false → ring drain path; g_bench_drain=true → no
+           end det on flat desk (close with 'p'). tm must be 0. */
         g_force_logging = false;
+        g_bench_drain = true;
         g_end_det.reset();
         {
             bool from_armed = (g_sm.state() == DeviceState::ARMED);
@@ -717,6 +722,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
         sgc_ble_set_flash_used(g_runs.flash_used_pct());
 
         g_force_logging = false;
+        g_bench_drain = false;
 
         {
             uint32_t dur_ms = 0;
@@ -828,9 +834,9 @@ void feed_sensors()
             encode_to_storage(f, millis());
         }
 
-        /* End detector on live sample — skipped for force-'l' bench runs
-           (S04 BHY2 rate) so stationary pressure does not end at ~5s. */
-        if (!g_force_logging) {
+        /* End detector on live sample — skipped for force-'l' (S04) and
+           bench drain 'L' (S06). Production start-det entry uses end det. */
+        if (!g_force_logging && !g_bench_drain) {
             float pa_raw = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
             if (g_end_det.feed(pa_raw))
                 g_sm.force_state(DeviceState::POST_RUN);
