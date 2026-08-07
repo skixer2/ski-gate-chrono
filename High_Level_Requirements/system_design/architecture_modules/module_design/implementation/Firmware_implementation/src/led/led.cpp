@@ -49,7 +49,9 @@ LED::LED(uint8_t pin, uint8_t count)
       m_count(count > kMaxLeds ? kMaxLeds : count),
       m_is_strip(count > 0),
       m_timing_only(count > 0 && pin == 0),
-      m_mirror_onboard(count == 0 || (count > 0 && pin == 0)),
+      /* Always drive Nicla onboard RGB too when strip path is active — strip may
+         be unplugged (bench) so athlete/dev still sees ARMED/LOGGING. */
+      m_mirror_onboard(true),
       m_pattern(LedPattern::OFF),
       m_last_ms(0), m_step(0), m_substep(0),
       m_loop_done(false), m_brightness(0), m_dir(1),

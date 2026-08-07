@@ -391,26 +391,45 @@ def main() -> int:
     last_print = -1
     saved = None
     early_end = None
-    while time.perf_counter() - t0 < args.duration:
-        batch = read_json_lines(ser, 0.25)
+    # Line-buffer progress so Windows/PowerShell does not look "stuck" at 5s
+    try:
+        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    while True:
+        elapsed = time.perf_counter() - t0
+        if elapsed >= args.duration:
+            break
+        # Short polls; never block longer than ~0.3s even if RX is quiet/noisy
+        batch = read_json_lines(ser, min(0.3, args.duration - elapsed + 0.05))
         for r in batch:
             ev = r.get("ev")
             if ev == "run_saved" and saved is None:
                 saved = r
-                print(f"  evt: {r}")
+                print(f"  evt: {r}", flush=True)
             elif ev == "end":
                 early_end = r
-                print(f"  evt: {r}")
+                print(f"  evt: {r}", flush=True)
             elif ev in ("state_blocked", "timeout", "st"):
-                print(f"  evt: {r}")
-        # If end detector already closed the run, no point waiting full duration
+                print(f"  evt: {r}", flush=True)
         if saved is not None:
-            print("  ⚠ run_saved during LOGGING window (early close)")
+            print("  ⚠ run_saved during LOGGING window (early close)", flush=True)
             break
-        elapsed = int(time.perf_counter() - t0)
-        if elapsed != last_print and elapsed % 5 == 0:
-            print(f"  … {elapsed}s")
-            last_print = elapsed
+        sec = int(time.perf_counter() - t0)
+        if sec != last_print and sec > 0 and sec % 5 == 0:
+            # Heartbeat status (non-destructive) so a frozen UI still shows life
+            st_hb = None
+            shows = None
+            show_us = None
+            for o in send_keep(ser, "?", 0.35):
+                if o.get("ev") == "status":
+                    st_hb = o.get("st")
+                    shows = o.get("shows")
+                    show_us = o.get("show_us")
+            print(f"  … {sec}s  st={st_hb} shows={shows} show_us={show_us}",
+                  flush=True)
+            last_print = sec
 
     # ── LOGGING → POST_RUN (only if still logging) ─────────────
     if saved is None:
