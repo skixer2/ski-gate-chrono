@@ -256,6 +256,22 @@ void handle_serial()
         break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
     case 's': g_sm.force_state(DeviceState::SLEEP); break;
+    case 'O': {
+        /* Toggle Nicla onboard RGB (I2C). Default OFF when strip path is built-in.
+           Use during bench if you want visible ARMED/LOGGING without a strip. */
+        bool en = !g_led.onboard_enabled();
+        /* Optional arg: O 0 / O 1 */
+        if (Serial.available()) {
+            int v = Serial.parseInt();
+            if (v == 0 || v == 1) en = (v != 0);
+        }
+        g_led.set_onboard_enabled(en);
+        json_begin(); json_kv("ev", "cmd");
+        Serial.print(','); json_kv("cmd", "O");
+        Serial.print(','); json_kv_bool("onboard", en);
+        json_end();
+        return;
+    }
     case 'f': if (g_sm.state() != DeviceState::ARMED && g_sm.state() != DeviceState::LOGGING) flash_test(); return;
     case 'z': {
         json_begin();
@@ -565,6 +581,7 @@ void handle_serial()
         Serial.print(','); json_kv_bool("tm", test_mode_active());
         Serial.print(','); json_kv("strip_n", (long)g_led.strip_count());
         Serial.print(','); json_kv_bool("strip_to", g_led.timing_only());
+        Serial.print(','); json_kv_bool("onboard", g_led.onboard_enabled());
         Serial.print(','); json_kv("show_us", (long)g_led.last_show_us());
         Serial.print(','); json_kv("shows", (long)g_led.show_count());
         json_end();

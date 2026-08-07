@@ -49,9 +49,9 @@ LED::LED(uint8_t pin, uint8_t count)
       m_count(count > kMaxLeds ? kMaxLeds : count),
       m_is_strip(count > 0),
       m_timing_only(count > 0 && pin == 0),
-      /* Always drive Nicla onboard RGB too when strip path is active — strip may
-         be unplugged (bench) so athlete/dev still sees ARMED/LOGGING. */
-      m_mirror_onboard(true),
+      /* Default: onboard RGB only when there is no strip path. Strip+onboard
+         I2C both during LOGGING costs rate — enable onboard with serial 'O'. */
+      m_onboard_en(count == 0),
       m_pattern(LedPattern::OFF),
       m_last_ms(0), m_step(0), m_substep(0),
       m_loop_done(false), m_brightness(0), m_dir(1),
@@ -64,10 +64,22 @@ LED::LED(uint8_t pin, uint8_t count)
 
 void LED::begin()
 {
-    if (m_mirror_onboard)
-        begin_onboard();
+    /* Always init onboard driver so 'O' can enable later without reboot. */
+    begin_onboard();
     if (m_is_strip)
         begin_strip();
+    if (!m_onboard_en)
+        nicla::leds.setColor(0, 0, 0);
+}
+
+void LED::set_onboard_enabled(bool en)
+{
+    if (m_onboard_en == en) return;
+    m_onboard_en = en;
+    if (!en)
+        nicla::leds.setColor(0, 0, 0);
+    /* Force pattern re-apply path on next update via last_ms reset */
+    m_last_ms = 0;
 }
 
 void LED::set_pattern(LedPattern p)
@@ -78,7 +90,7 @@ void LED::set_pattern(LedPattern p)
         strip_clear_buf();
         strip_show();
     }
-    if (m_mirror_onboard)
+    if (m_onboard_en)
         nicla::leds.setColor(0, 0, 0);
 
     m_pattern    = p;
@@ -99,22 +111,22 @@ void LED::update()
     case LedPattern::BLUE_SLOW_FLOW:
     case LedPattern::BLUE_SLOW_FLOW_POST:
         if (m_is_strip) show_strip_blue_flow();
-        if (m_mirror_onboard) show_onboard_breathing();
+        if (m_onboard_en) show_onboard_breathing();
         return;
 
     case LedPattern::GREEN_CHASE:
         if (m_is_strip) show_strip_chase(0, 60, 0);
-        if (m_mirror_onboard) show_onboard_blink(0, 60, 0);
+        if (m_onboard_en) show_onboard_blink(0, 60, 0);
         return;
 
     case LedPattern::RED_CHASE:
         if (m_is_strip) show_strip_chase(60, 0, 0);
-        if (m_mirror_onboard) show_onboard_blink(60, 0, 0);
+        if (m_onboard_en) show_onboard_blink(60, 0, 0);
         return;
 
     case LedPattern::RED_FLASH_3:
         if (m_is_strip) show_strip_flash3();
-        if (m_mirror_onboard) show_onboard_flash3();
+        if (m_onboard_en) show_onboard_flash3();
         return;
     }
 }

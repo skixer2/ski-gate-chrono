@@ -271,6 +271,9 @@ def main() -> int:
                     help="Factory reset before test")
     ap.add_argument("--arm-wait", type=float, default=2.0,
                     help="Seconds to wait after boot for BHY2 quat settle before arm")
+    ap.add_argument("--onboard-led", action="store_true",
+                    help="Enable Nicla onboard RGB (serial O 1). Default OFF when "
+                         "strip path active — I2C costs LOGGING rate.")
     args = ap.parse_args()
 
     print("=" * 50)
@@ -336,6 +339,20 @@ def main() -> int:
         print("  ✗ Could not ensure test mode OFF")
         ser.close()
         return 1
+
+    # Onboard RGB optional (v4.70+). Default firmware: OFF if strip path built-in.
+    if args.onboard_led:
+        r = send_keep(ser, "O 1", 0.5)
+        for o in r:
+            if o.get("ev") == "cmd" and o.get("cmd") == "O":
+                print(f"  Onboard LED: ON (onboard={o.get('onboard')})")
+                break
+        else:
+            print("  ⚠ O 1 sent (enable onboard LED) — no ack (old FW?)")
+    else:
+        # Ensure off for rate bench if previous session left it on
+        send_keep(ser, "O 0", 0.4)
+        print("  Onboard LED: OFF (use --onboard-led to enable)")
 
     # Give BHY2 a moment so arm quat check can pass
     if args.arm_wait > 0:

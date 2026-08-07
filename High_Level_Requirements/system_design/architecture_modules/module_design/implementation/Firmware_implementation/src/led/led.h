@@ -41,6 +41,10 @@ public:
     void set_pattern(LedPattern p);
     void update();
 
+    /** Nicla onboard RGB (I2C). Default OFF when strip path active; ON if onboard-only. */
+    void set_onboard_enabled(bool en);
+    bool onboard_enabled() const { return m_onboard_en; }
+
     bool     strip_active() const { return m_is_strip; }
     bool     timing_only()  const { return m_timing_only; }
     uint8_t  strip_count()  const { return m_is_strip ? m_count : 0; }
@@ -65,7 +69,7 @@ private:
     uint8_t     m_count;
     bool        m_is_strip;
     bool        m_timing_only;
-    bool        m_mirror_onboard; /* true when timing-only: keep Nicla RGB visible */
+    bool        m_onboard_en;   /* Nicla RGB I2C — optional, serial 'O' / S04 flag */
 
     LedPattern  m_pattern;
     uint32_t    m_last_ms;
