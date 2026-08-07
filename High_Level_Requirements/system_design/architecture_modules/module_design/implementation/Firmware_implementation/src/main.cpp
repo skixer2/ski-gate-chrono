@@ -218,12 +218,13 @@ void handle_serial()
 
     if (test_mode_handle_serial(c)) return;
 
-    /* V4.45: for 'h', buffer the full line first so arg parsing does not
-       race USB CDC delivery (was: parseInt saw empty → no dump). */
+    /* V4.45/v4.79: for 'h', buffer the full line first so arg parsing does
+       not race USB CDC (partial packet with only 'h'). Wait up to 500 ms
+       for " <id> raw\n" — 50 ms was too short after long stream + preroll. */
     char h_args[40];
     h_args[0] = '\0';
     if (c == 'h') {
-        read_rest_of_line(h_args, sizeof(h_args), 50);
+        read_rest_of_line(h_args, sizeof(h_args), 500);
     }
 
     switch (c) {

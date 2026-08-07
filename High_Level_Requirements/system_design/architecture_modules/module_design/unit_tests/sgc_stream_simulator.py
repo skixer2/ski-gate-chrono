@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.48.0"  # ARM triggers stream mode directly, no separate S command
+SIM_VERSION = "2.49.0"  # integrity h-cmd: flush + wait ready after preroll_prep
 
 import argparse
 import hashlib
@@ -365,9 +365,16 @@ class SGCDevice:
         print("Disconnected.")
 
     def send_cmd(self, cmd: str, wait_ms: int = 200) -> None:
-        """Send a text command and wait briefly."""
+        """Send a text command and wait briefly.
+
+        Always flush after write. For multi-token commands (e.g. 'h 0 raw'),
+        do NOT reset_input_buffer mid-flight in a way that races the device;
+        still clear stale RX before the command so replies are clean.
+        """
         self.ser.reset_input_buffer()
-        self.ser.write((cmd + '\n').encode('ascii'))
+        payload = (cmd + '\n').encode('ascii')
+        self.ser.write(payload)
+        self.ser.flush()
         time.sleep(wait_ms / 1000.0)
 
     def read_json_lines(self, timeout_s: float = 2.0) -> List[dict]:
@@ -1087,14 +1094,26 @@ class SGCDevice:
                         break
             return hd, he, chunks, other
 
-        # Ensure IDLE and clear any pending RX before dump
+        # Ensure IDLE and let POST_RUN→IDLE prepare_preroll finish (can take
+        # several seconds for full pre-roll erase). Then clear RX and dump.
         self.send_cmd('i', wait_ms=300)
         self.drain_responses(0.5)
+        # Wait until device answers ? (main loop free — not stuck in erase)
+        t_wait0 = time.time()
+        while time.time() - t_wait0 < 20.0:
+            self.send_cmd('?', wait_ms=50)
+            st_batch = self.drain_responses(0.6)
+            if any(r.get('ev') == 'status' for r in st_batch):
+                break
+            time.sleep(0.3)
+        self.drain_responses(0.3)
         self.ser.reset_input_buffer()
+        time.sleep(0.05)
 
         # Request raw hex dump (same bytes BLE sends to phone)
         print(f"   Requesting: h {run_id} raw")
-        self.send_cmd(f'h {run_id} raw', wait_ms=100)
+        # Longer post-write wait so FW can finish reading the full line (v4.79+)
+        self.send_cmd(f'h {run_id} raw', wait_ms=400)
         hex_dump, hex_err, raw_chunks, other = _collect_hex(25.0)
         if other:
             evs = {}
@@ -1110,7 +1129,8 @@ class SGCDevice:
             self.send_cmd('i', wait_ms=300)
             self.drain_responses(0.3)
             self.ser.reset_input_buffer()
-            self.send_cmd(f'h {run_id} raw', wait_ms=100)
+            time.sleep(0.1)
+            self.send_cmd(f'h {run_id} raw', wait_ms=400)
             hex_dump, hex_err, raw_chunks, other = _collect_hex(25.0)
             if other:
                 evs = {}
