@@ -4,11 +4,11 @@
  *
  * Replaces LittleFS for run payloads. Proven by S04 @ 99.4 fps (v4.62 spike).
  *
- * Flash map (MX25R 2 MB, v4.75+):
- *   0x0000–0xEFFF     Linear pre-roll 3000×20B (FlashRing)
- *   0xF000–0x1FBFFF   Run slots (8 × sector-aligned)
- *   0x1FC000          Config (BLE name etc. — sgc_service)
- *   0x1FD000          Run index (this module)
+ * Flash map (MX25R 2 MB, v4.77+):
+ *   0x0000–0x13FFF    Linear pre-roll 4000×20B (3000 ARM + 1000 drain)
+ *   0x14000–0x1FBFFF  Run slots (8 × sector-aligned)
+ *   0x1FC000          Config
+ *   0x1FD000          Index
  *   0x1FE000–0x1FFFFF reserved
  *
  * On-disk run (BLE-compatible):
@@ -25,13 +25,13 @@
 #include <stddef.h>
 #include "littlefs_storage.h"  /* RunHeader, RunEntry, CRC32_* */
 
-static constexpr uint32_t RRS_DATA_BASE   = 0xF000u;  /* after linear pre-roll 0x0000–0xEFFF */
+static constexpr uint32_t RRS_DATA_BASE   = 0x14000u; /* after pre-roll 0x0000–0x13FFF */
 static constexpr uint32_t RRS_DATA_END    = 0x1FC000u;
 static constexpr uint32_t RRS_INDEX_ADDR  = 0x1FD000u;  /* sector 509 */
 static constexpr uint32_t RRS_SECTOR      = 4096u;
 static constexpr uint16_t RRS_MAX_SLOTS   = 8;
 
-/* (0x1FC000-0xF000)/8 → floor to sector multiple */
+/* (0x1FC000-0x14000)/8 → floor to sector multiple */
 static constexpr uint32_t RRS_SLOT_SIZE   =
     ((RRS_DATA_END - RRS_DATA_BASE) / RRS_MAX_SLOTS / RRS_SECTOR) * RRS_SECTOR;
 

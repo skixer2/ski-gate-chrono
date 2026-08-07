@@ -1,6 +1,6 @@
 /**
  * @file    flash_ring.cpp
- * @brief   Linear pre-roll — prepare_preroll on IDLE, program-only ARMED (v4.75).
+ * @brief   Linear pre-roll + drain headroom (v4.77).
  */
 
 #include "flash_ring.h"
@@ -16,7 +16,6 @@ FlashRing::FlashRing(SPIFlash& flash)
 
 void FlashRing::prepare_preroll()
 {
-    /* Full buffer erase while athlete is not filling (IDLE / boot). */
     for (uint32_t s = 0; s < RING_SECTORS; s++) {
         m_flash.erase_block(RING_FLASH_BASE + s * 4096u);
     }
@@ -40,10 +39,12 @@ void FlashRing::clear()
     m_last_ts = 0;
 }
 
-void FlashRing::write(const RawFrame& f)
+bool FlashRing::write(const RawFrame& f, bool arm_limit)
 {
-    if (m_count >= TOTAL_SLOTS)
-        return; /* forward-only: stop at 30 s capacity */
+    if (m_head >= TOTAL_SLOTS)
+        return false;
+    if (arm_limit && m_count >= ARM_FILL_CAP)
+        return false;
 
     RingEntry entry;
     memcpy(&entry.frame, &f, sizeof(RawFrame));
@@ -56,6 +57,7 @@ void FlashRing::write(const RawFrame& f)
     m_head++;
     m_count++;
     m_prepared = false;
+    return true;
 }
 
 RawFrame FlashRing::read()
@@ -95,4 +97,5 @@ void FlashRing::trim_to_newest(uint16_t keep)
     uint16_t drop = (uint16_t)(m_count - keep);
     m_tail  = (uint16_t)(m_tail + drop);
     m_count = keep;
+    /* head unchanged — free space [head, TOTAL_SLOTS) is drain headroom */
 }

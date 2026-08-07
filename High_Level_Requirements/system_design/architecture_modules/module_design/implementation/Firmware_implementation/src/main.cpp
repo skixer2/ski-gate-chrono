@@ -4,13 +4,12 @@
  * JSON-lines is the only serial output format (ADR-001, AD-009).
  * Test commands always compiled in, test mode starts OFF.
  *
- * Flash layout (MX25R 2 MB, v4.75):
- *   0x0000–0xEFFF     Linear pre-roll 3000 slots (~30 s ARM, program-only)
- *   0xF000–0x1FBFFF   8 × raw run slots (RawRunStore)
- *   0x1FC000          Config (BLE name etc.)
- *   0x1FD000          Run index (RRS1)
- *   0x1FE000–0x1FFFFF reserved
- * prepare_preroll() on enter IDLE (from ARMED/POST_RUN) + boot.
+ * Flash layout (MX25R 2 MB, v4.77):
+ *   0x0000–0x13FFF    Linear pre-roll 4000 slots (3000 ARM + 1000 drain)
+ *   0x14000–0x1FBFFF  8 × raw run slots (RawRunStore)
+ *   0x1FC000          Config
+ *   0x1FD000          Index (RRS1)
+ * prepare_preroll on enter IDLE; LOGGING drain = pop2 + push1 live.
  *
  * prepare_next_run(): full-slot erase at POST_RUN cooldown + boot (not ARM).
  * LOGGING: program-only into prepared slot; run_saved.store == "raw".
@@ -795,41 +794,34 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        /* Linear pre-roll: program only (erased on enter IDLE). */
+        /* Linear pre-roll: program only up to ARM_FILL_CAP (3000). */
         bool was_full = g_ring.is_full();
-        g_ring.write(f);
+        g_ring.write(f, true);
         if (!was_full && g_ring.is_full()) {
             json_begin();
             json_kv("ev", "ring_full");
             Serial.print(','); json_kv("r", (long)g_ring.max_count());
-            Serial.print(','); json_kv("cap_s", 30L); /* ARM window capacity */
+            Serial.print(','); json_kv("cap_s", 30L);
             json_end();
         }
         return;
     }
 
     if (st == DeviceState::LOGGING) {
-        /* V4.61 rate path:
-           - force-'l' (S04): NEVER touch FlashRing — encode live only.
-             Measures pure BHY2→packer→LFS without SPI ring hop.
-           - natural start-det: drain ARMED pre-roll with READ-only pops
-             (no ring.write of live samples while draining — that was
-             SPI program+possible erase every sample and capped ~42 Hz).
-             After ring empty, encode live direct. */
+        /* force-'l' (S04): live encode only, no ring.
+           Natural / bench L: pop-2 encode + push-1 live (design drain).
+           Net −1/tick → ~10 s to empty 1000 pre-roll; live stored in
+           +1000 headroom after ARM_FILL_CAP. Then live encode direct. */
         if (g_force_logging) {
             encode_to_storage(f, millis());
         } else if (!g_ring.is_empty()) {
-            /* Drain only — do not push live into flash ring mid-LOGGING.
-               pop min(2, count): original 2× design (was briefly 4). */
             uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
             for (uint8_t i = 0; i < pop_n; i++) {
                 RawFrame oldest = g_ring.read();
                 encode_to_storage(oldest, g_ring.last_read_ts());
             }
-            /* Live sample of this tick is not stored while draining.
-               Pre-roll already covers the start window; after empty we
-               take live every tick. Accept tiny gap at transition. */
-            (void)f;
+            /* Push live into pre-roll tail (drain headroom, no arm_limit). */
+            g_ring.write(f, false);
         } else {
             encode_to_storage(f, millis());
         }
