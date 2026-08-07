@@ -1,3 +1,5 @@
+> **SUPERSEDED for production storage (2026-08-07):** Run payloads no longer use LittleFS. Opt-A `RawRunStore` (v4.63+) eliminates LFS mount/-138 payload path. This document remains useful history of the LittleFS retention investigation. Current map/ADR: `adr_003_littlefs_storage.md`, AD-015, MEMORY.md 2026-08-07.
+
 # SGC Flash Data Retention After Reset — Gemini Context v3
 
 ## The Problem (1 sentence)

@@ -1,12 +1,18 @@
 /**
- * Phase 12: LittleFS storage — LittleFSStorage replaces FlashManager.
+ * Opt-A production storage — RawRunStore (v4.63+), not LittleFS payloads.
  *
  * JSON-lines is the only serial output format (ADR-001, AD-009).
  * Test commands always compiled in, test mode starts OFF.
  *
- * Flash layout:
- *   Sectors 0-5:    Flash ring buffer (flash_ring.cpp) — 20-byte RingEntry
- *   Sectors 6-507:  LittleFS run storage (littlefs_storage.cpp)
+ * Flash layout (MX25R 2 MB, v4.64):
+ *   0x0000–0x5FFF     FlashRing ARMED pre-roll (sectors 0–5, 20B RingEntry)
+ *   0x6000–0x1FBFFF   8 × ~249 KB raw run slots (RawRunStore)
+ *   0x1FC000          Config (BLE name etc.)
+ *   0x1FD000          Run index (RRS1)
+ *   0x1FE000–0x1FFFFF reserved
+ *
+ * prepare_next_run(): full-slot erase at POST_RUN cooldown + boot (not ARM).
+ * LOGGING: program-only into prepared slot; run_saved.store == "raw".
  */
 
 #include <ArduinoBLE.h>

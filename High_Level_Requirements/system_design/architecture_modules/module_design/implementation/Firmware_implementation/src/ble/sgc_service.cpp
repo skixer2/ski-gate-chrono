@@ -55,7 +55,7 @@ static BLEByteCharacteristic    char_cal       (SGC_UUID("ABD0"), BLERead | BLEN
 static char    g_dev_name[21] = "SGC";
 static uint8_t g_arm_side    = 0;
 static uint8_t g_discipline  = 1;
-/* Sector 508 — reserved, outside LittleFS slice (4–507). */
+/* Sector 508 / 0x1FC000 — config; outside RawRunStore slots (ends 0x1FC000). */
 static constexpr uint32_t CONFIG_FLASH_ADDR = 508 * 4096;
 
 struct __attribute__((packed)) FlashConfig {

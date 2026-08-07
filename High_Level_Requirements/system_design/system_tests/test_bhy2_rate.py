@@ -6,9 +6,9 @@ Purpose:
   Measure real BHY2 LOGGING sample rate (encode + flash write).
 
   v4.63+ Opt-A production path (force-'l' and start-detector):
-    ARM: prepare_next_run() pre-erases first 16 KB of a raw slot
-    LOGGING: BHY2 → packer → page buf → SPI program (+ lazy sector erase ahead)
-    NO LittleFS on run payload. run_saved.store == "raw".
+    POST_RUN / boot: prepare_next_run() full-slot erase (~249 KB) — not ARM
+    LOGGING: BHY2 → packer → page buf → SPI program (program-only if prepared)
+    NO LittleFS on run payload. run_saved.store == "raw" (v4.64).
 
 IMPORTANT state machine rule (firmware):
   LOGGING may only be entered from ARMED.

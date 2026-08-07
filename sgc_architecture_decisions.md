@@ -345,3 +345,32 @@ injection are also always compiled in — no `-DTEST_MODE` flag exists.
 - Removing `#ifdef` eliminates the "production path is never tested" problem
 
 **Full ADR:** `unit_tests/adr_001_always_json.md`
+
+---
+
+## AD-015: Opt-A Raw Run Store (no LittleFS payloads)
+
+**Date:** 2026-08-06 (spike/production), amended 2026-08-07 (v4.64 prep timing)  
+**Status:** Accepted — **current production storage**  
+**Supersedes for run payloads:** AD-014 FlashManager circular layout; LittleFS Phase 12 path (ADR-003 original)
+
+**Decision:** Store compressed run payloads in **pre-erased raw SPI slots** (`RawRunStore`), not LittleFS and not FlashManager-only. Keep on-disk run format BLE-compatible: `[RunHeader 16B][frames…][0xC3 0x32 CRC32_LE]`.
+
+**Rationale:**
+- S04 measured LittleFS append on LOGGING at ~42–47 fps vs design target 100 Hz
+- v4.62 raw pre-erased spike: **99.4 fps**, `we=0`
+- Large RAM pre-roll rejected (Cordio OOM, v4.60)
+- Full drop of structured storage rejected earlier for list/recovery; Opt A keeps index + multi-slot overwrite without LFS COW on the hot path
+
+**Implementation (v4.63/v4.64):**
+- 8 slots × ~249 KB from `0x6000`–`0x1FBFFF`; index sector `0x1FD000` (magic `RRS1`)
+- FlashRing remains ARMED pre-roll only (`0x0000`–`0x5FFF`)
+- **`prepare_next_run()`:** full-slot erase during **POST_RUN** (10 s cooldown) and **boot** — not at ARM (v4.64, JP)
+- LOGGING: `program()` only when prepared; `run_saved.store == "raw"`
+- LittleFS / FlashManager / spike writer: `.disabled`, not linked
+- BLE FT + run_count use `g_runs`
+
+**Tests:** S04 `test_bhy2_rate.py` — fps ≥ 90, store=raw. Multi-run and S03 stream smoke still to confirm on device.
+
+**Full ADR:** `unit_tests/device/adr_003_littlefs_storage.md`
+

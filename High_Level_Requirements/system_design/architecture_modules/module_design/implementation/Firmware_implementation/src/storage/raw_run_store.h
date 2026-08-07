@@ -1,6 +1,6 @@
 /**
  * @file    raw_run_store.h
- * @brief   Opt-A production run storage — pre-erased raw SPI slots (v4.63).
+ * @brief   Opt-A production run storage — pre-erased raw SPI slots (v4.63/v4.64).
  *
  * Replaces LittleFS for run payloads. Proven by S04 @ 99.4 fps (v4.62 spike).
  *
@@ -14,7 +14,8 @@
  * On-disk run (BLE-compatible):
  *   [RunHeader 16B][compressed frames…][0xC3 0x32 CRC32_LE 4B]
  *
- * Hot path: program() only. Erases at prepare_next_run() (ARM / force-l entry).
+ * Hot path: program() only.
+ * Erases: prepare_next_run() full-slot erase at POST_RUN (10 s) or boot — NOT ARM.
  * Extra BSS: 8×RunEntry + scalars (~300 B). No large RAM ring.
  */
 

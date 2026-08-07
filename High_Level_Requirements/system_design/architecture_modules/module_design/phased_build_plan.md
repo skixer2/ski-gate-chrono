@@ -1,5 +1,5 @@
 # SGC Nicla Sense ME — Phased Build Plan
-## 2026-06-16 · updated 2026-06-25 21:00
+## 2026-06-16 · updated 2026-08-07 (Opt-A v4.64)
 
 Goal: incrementally validate each hardware subsystem in isolation before combining.
 Each phase: write → build → upload → power-cycle → test → confirm → NEXT.
@@ -73,7 +73,7 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [ ] 9c: Battery selection (2× 300 mAh Li-Po parallel)
 - [ ] 9d: On-slope field test
 
-### Phase 10: Circular Flash Storage ✅ DONE (06-25 21:00)
+### Phase 10: Circular Flash Storage ✅ DONE (06-25 21:00) — later superseded for payloads
 - [x] FlashManager class — read_head/write_head, auto-overwrite (F08)
 - [x] Index sector at end of flash (sectors 510-511)
 - [x] CRC32 per run with magic bytes (R05)
@@ -90,19 +90,38 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 - [x] BHY2 heap fix: `BHY2.begin(NICLA_STANDALONE)` — skips bleHandler/eslovHandler/dfuManager, saves ~several KB heap
 - [x] Init ordering: BLE.begin() before BHY2.begin() (BLE gets thread allocation first)
 
+### Phase 11–12: LittleFS era + stream tests ✅ DONE (historical)
+- [x] LittleFS v1 run files (v2 broken on nRF52832 Arduino-mbed)
+- [x] Append-only close, stream mode simplification, hex dump / integrity path
+- [x] S03 stream reliability (v4.02–v4.34+)
+- ⚠️ **Superseded for run payloads by Phase 13 Opt A** — LFS code kept as `.disabled`
+
+### Phase 13: Opt-A Raw Run Store ✅ DONE (2026-08-06/07) — CURRENT
+- [x] S04 BHY2 rate test (`system_tests/test_bhy2_rate.py`)
+- [x] Root cause: LittleFS hot path ~42–47 fps; design budget assumed raw program
+- [x] BHY2 ODR fixed to 100 Hz (v4.59); no large RAM ring (Cordio OOM v4.60/61)
+- [x] Spike raw writer 99.4 fps (v4.62)
+- [x] Production `RawRunStore`: 8×~249 KB slots, index @ 0x1FD000 (v4.63)
+- [x] BLE file transfer + run_count wired to `g_runs`
+- [x] Full-slot `prepare_next_run()` at POST_RUN cooldown + boot, **not ARM** (v4.64)
+- [x] ADR-003 amended; `FW_VERSION` 4.64
+- [ ] JP hardware confirm S04 on v4.64 (in progress)
+- [ ] S03 stream smoke on Opt-A path
+- [ ] Multi-run without `-R` + 9th-slot overwrite
+
 ---
 
 ## Version Tags
 
 | Tag | Date | Description |
 |-----|------|-------------|
-| v3.0 | 06-30 12:45 | End detector v4: 5s elevation delta, 0.5Hz sampling, 40B RAM ring. Altitude-adaptive PA_PER_M (start + end). Start detector noise-gated sd diagnostics. Decoupled from FlashRing (drain bug fixed) |
-| v2.4 | 06-27 22:50 | Start detector: drop-only (speed removed — BMP390 noise). Drain: data-driven pop N=min(2,count). Threshold 2.0m |
-| v2.3 | 06-25 21:00 | FlashManager, CRC32, drain interleaving, Start/End detector fixes |
-| v0.8.1 | 06-18 18:11 | Quaternion magnitude sensor check + clean cal display |
-| v0.8.0 | 06-18 17:56 | Removed calibration arming gate; kept meta-event hook |
-| v0.7.9 | 06-18 17:50 | Disabled BHY2 delegate mode (callback table active) |
-| v0.7.6 | 06-18 16:28 | Start detector fix; cal gate deferred |
-| v0.7.5 | 06-18 16:19 | Calibration scaling fix + start detector drift fix |
-| v0.7.4 | 06-18 15:44 | Calibration gate (broken — removed in v0.7.6) |
-| v0.7.3 | 06-18 15:25 | Phase 7c complete. Repo init at ski_gate_chrono/ |
+| **v4.64** | **08-07** | **Full-slot erase in prepare_next_run (POST_RUN/boot); BLE RawRunStore include fix** |
+| v4.63 | 08-06 | Opt-A production RawRunStore multi-slot; LFS unlinked; S04 99.4 fps proven on spike |
+| v4.62 | 08-06 | Opt-A spike raw pre-erased SPI run |
+| v4.59–61 | 08-06 | BHY2 100 Hz ODR; RAM ring abort; force-l FlashRing bypass |
+| v4.34 | 07-28 | Stream simplification: ARM-only stream, start-det auto-init |
+| v4.07 | 07-23 | Stream reliability; arrival_ms on FlashRing |
+| v3.0 | 06-30 | End detector v4 elevation delta |
+| v2.4 | 06-27 | Start detector drop-only |
+| v2.3 | 06-25 | FlashManager, CRC32, drain interleaving |
+| v0.8.1 | 06-18 | Quaternion magnitude sensor check |

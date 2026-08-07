@@ -1,8 +1,8 @@
 # ADR-003: Run Storage Architecture
 
-**Status:** SUPERSEDED in part (2026-08-06) by Opt A raw slots  
+**Status:** SUPERSEDED for run payloads (2026-08-06/07) by Opt A raw slots  
 **Original:** ACCEPTED (2026-07-11), AMENDED LittleFS v1 (2026-07-22)  
-**v4.63:** Run **payload** moved off LittleFS to pre-erased raw SPI slots.
+**Current production:** `RawRunStore` (v4.63 multi-slot, v4.64 full-slot prep)
 
 ## Why the change
 
@@ -17,33 +17,50 @@ Design timing budget (`sgc_system_design.md`) assumed raw page program, not Litt
 
 Constraints that remain:
 
-1. **No large RAM ring** — Cordio BLE OOM (MEMORY.md).
-2. **Do not return to full FlashManager-only** — recovery/list bugs led to LittleFS.
-3. **Erases off the descent path** — pre-erase at ARM (stationary); lazy 4 KB erase ahead of write cursor only when needed.
+1. **No large RAM ring** — Cordio BLE OOM (MEMORY.md / v4.60→v4.61).
+2. **Do not return to full FlashManager-only** — recovery/list bugs led to LittleFS era.
+3. **Erases off the descent path** — full-slot erase during POST_RUN cooldown (10 s) or boot; LOGGING is program-only when prepared.
 
-## Architecture (v4.63)
+## Architecture (v4.63 → v4.64)
 
 ```
-┌──────────────────┬────────────────────────────────────┬────────────┐
-│ 0x0000–0x5FFF    │ 0x6000–0x1FBFFF                    │ 0x1FC000+  │
-│ FlashRing        │ 8 × ~249 KB raw run SLOTS          │ config     │
-│ (ARMED pre-roll) │ [RunHeader][frames…][CRC trailer]  │ index@1FD  │
-└──────────────────┴────────────────────────────────────┴────────────┘
+┌──────────────────┬────────────────────────────────────┬────────────────┐
+│ 0x0000–0x5FFF    │ 0x6000–0x1FBFFF                    │ 0x1FC000+      │
+│ FlashRing        │ 8 × ~249 KB raw run SLOTS          │ config @1FC    │
+│ (ARMED pre-roll) │ [RunHeader][frames…][CRC trailer]  │ index  @1FD    │
+│ sectors 0–5      │                                    │ reserved 1FE–  │
+└──────────────────┴────────────────────────────────────┴────────────────┘
 ```
 
-- **prepare_next_run() @ ARMED:** erase first 16 KB of free/oldest slot (~fast).
-- **LOGGING:** `program()` only; `ensure_erased()` erases next sector when cursor approaches.
-- **Index:** sector `0x1FD000` — RunEntry table + slot mask (RAM cache, persist on close).
-- **BLE FT / hex dump:** same byte layout as before (header + payload + CRC).
+| API | When | What |
+|-----|------|------|
+| `prepare_next_run()` | **POST_RUN** (10 s cooldown) and **boot** | Full-slot erase (`RRS_SLOT_SIZE`, ~60×4 KB). **Not ARM.** |
+| `create_run()` | LOGGING entry | Write RunHeader on prepared slot; if none prepared, prepares now (force-l / first run). |
+| `append_data()` | LOGGING hot path | `program()` only; `ensure_erased()` is belt-and-suspenders if prep incomplete. |
+| `close_run()` | POST_RUN | CRC trailer + index commit (sector `0x1FD000`). |
 
-LittleFS code retained as `.disabled` reference only — not linked.
+- **Index:** sector `0x1FD000` — RunEntry table + slot mask (RAM cache, persist on close). Magic `RRS1`.
+- **BLE FT / hex dump:** same byte layout as LittleFS era (header + payload + CRC).
+- **`run_saved.store`:** always `"raw"`.
+- **LittleFS / FlashManager / raw_run_writer spike:** retained as `.disabled` reference only — not linked.
+
+### Why full-slot erase moved to POST_RUN (v4.64)
+
+JP: erase the next run during the 10 s POST_RUN cooldown, not at ARM.
+
+- Athlete is stopped → multi-sector erase cost is free.
+- ARM stays fast (no ~60 sector erase before green LED / start window).
+- LOGGING becomes pure page program when prep succeeded → S04 ~100 Hz path.
 
 ## Tests
 
-- **S04** `test_bhy2_rate.py`: force-l, expect `store=raw`, fps ≥ 90, `we=0`.
+- **S04** `system_tests/test_bhy2_rate.py`: force-l after arm, expect `store=raw`, fps ≥ 90, `we=0`, runs increment.
+  - With `-R`: clean index; first create may pay erase if prep not yet done.
+  - Without `-R` after a completed run: next slot already full-erased in prior POST_RUN.
 - **S03** stream (when available): natural start-det → LOGGING must also `store=raw`.
 - Multi-run: 2× S04 without `-R` between → `runs` increments; 9th overwrites oldest.
 
 ## Version
 
-Bump `FW_VERSION` on every storage change. Confirm `ver` in boot / `?`.
+Bump `FW_VERSION` in `src/config.h` on every storage change. Confirm `ver` in boot / `?` / `V`.
+Current: **4.64**.

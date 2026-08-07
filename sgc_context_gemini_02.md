@@ -1,4 +1,9 @@
-# SGC — Context Summary (2026-06-09)
+# SGC — Context Summary
+
+> **CURRENT (2026-08-07):** Firmware **v4.64** Opt-A production. Run payloads in `RawRunStore` (8 raw SPI slots). LittleFS **not** used for payloads. `prepare_next_run()` full-slot erase at **POST_RUN/boot**, not ARM. S04 target ≥90 fps `store=raw`. See ADR-003 (amended) + AD-015 + MEMORY.md top section. Historical architecture pivot notes below are still valid for product decisions (no RFID, dumb logger, etc.).
+
+---
+
 
 ## Architecture Pivot — v2 Decisions
 

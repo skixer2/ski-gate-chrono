@@ -1,6 +1,7 @@
 /**
  * @file    raw_run_store.cpp
- * @brief   Multi-slot pre-erased raw run storage (Opt A production, v4.63).
+ * @brief   Multi-slot pre-erased raw run storage (Opt A production, v4.63/v4.64).
+ *          prepare_next_run(): full-slot erase at POST_RUN/boot (not ARM).
  */
 
 #include "raw_run_store.h"
