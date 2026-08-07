@@ -2,11 +2,13 @@
 """
 S05 — ARMED FlashRing fill rate (BHY2, no USB stream).
 
-Measures how fast the pre-roll ring fills to max_count (v4.73: 1000 ≈ 10 s).
+Measures how fast the linear pre-roll fills (v4.75: rm=3000 ≈ 30 s ARM cap).
+
+ARMED is program-only (prepare_preroll erased buffer on enter IDLE).
 
 Pass (defaults):
   fill fps >= 90
-  ring reaches rm (full)
+  ring reaches rm (full) OR use --target to stop earlier
   time to full roughly rm/100 s (±40%)
 
 Usage:
@@ -96,8 +98,11 @@ def main() -> int:
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("-R", "--factory-reset", action="store_true")
     ap.add_argument("--min-fps", type=float, default=90.0)
-    ap.add_argument("--timeout", type=float, default=25.0,
-                    help="Max seconds to wait for ring_full")
+    ap.add_argument("--timeout", type=float, default=40.0,
+                    help="Max seconds to wait for ring_full (v4.75 cap≈30s)")
+    ap.add_argument("--target", type=int, default=1000,
+                    help="Stop when r>=target (default 1000 ≈10s; "
+                         "use --target 0 for full rm=3000, needs >30s ARM)")
     args = ap.parse_args()
 
     print("=" * 50)
@@ -147,12 +152,15 @@ def main() -> int:
         ser.close()
         return 1
 
-    rm = int(st.get("rm") or 1000)
-    print(f"  ✓ ARMED  target rm={rm}")
+    rm = int(st.get("rm") or 3000)
+    target = rm if args.target == 0 else args.target
+    if target > rm:
+        target = rm
+    print(f"  ✓ ARMED  rm={rm}  measure_target={target}")
 
     t_arm = time.perf_counter()
     full = None
-    # Also accept early ring_full from arm batch
+    hit_target = False
     for o in evs:
         if o.get("ev") == "ring_full":
             full = o
@@ -160,7 +168,8 @@ def main() -> int:
 
     last_r = int(st.get("r") or 0)
     last_print = -1
-    while full is None and (time.perf_counter() - t_arm) < args.timeout:
+    while (not hit_target and full is None and
+           (time.perf_counter() - t_arm) < args.timeout):
         batch = read_json_lines(ser, 0.25)
         for o in batch:
             if o.get("ev") == "ring_full":
@@ -175,30 +184,32 @@ def main() -> int:
             print(f"  … {sec}s  r={r}/{rm}", flush=True)
             last_r = r
             last_print = sec
+            if r >= target:
+                hit_target = True
+                break
             if st and st.get("st") != "ARMED":
                 print(f"  ✗ state={st.get('st')}")
                 break
 
     t_full = time.perf_counter() - t_arm
     st = status(ser)
-    r_end = int(st.get("r") or 0) if st else 0
+    r_end = int(st.get("r") or 0) if st else last_r
     rh = st.get("rh") if st else None
+    if r_end >= target:
+        hit_target = True
 
     print("\n── Result ──")
     if full:
         print(f"  ring_full event: {full}")
-    print(f"  time_to_full≈{t_full:.2f}s  r={r_end} rm={rm} rh={rh}")
+    print(f"  time≈{t_full:.2f}s  r={r_end} rm={rm} target={target} rh={rh}")
 
-    # Prefer event timing; if missed event but full, use wall time
-    ok_full = (full is not None) or (r_end >= rm)
-    # fps from fill: rm frames in t_full seconds
-    fps = (rm / t_full) if t_full > 0.05 else 0.0
-    # Expected ~ rm/100 seconds at 100 Hz
-    t_exp = rm / 100.0
-    print(f"  fill_fps≈{fps:.1f}  expected_time≈{t_exp:.1f}s")
+    ok_full = hit_target or (full is not None) or (r_end >= target)
+    n_for_fps = min(r_end, target) if r_end > 0 else target
+    fps = (n_for_fps / t_full) if t_full > 0.05 else 0.0
+    t_exp = target / 100.0
+    print(f"  fill_fps≈{fps:.1f}  expected_time≈{t_exp:.1f}s for target={target}")
 
     pass_fps = fps >= args.min_fps
-    # allow slow erase spikes: full within 1.6× expected
     pass_time = t_full <= t_exp * 1.6
     pass_ok = ok_full and pass_fps and pass_time
 

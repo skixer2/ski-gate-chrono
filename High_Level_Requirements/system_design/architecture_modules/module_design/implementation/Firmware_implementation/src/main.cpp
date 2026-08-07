@@ -4,12 +4,13 @@
  * JSON-lines is the only serial output format (ADR-001, AD-009).
  * Test commands always compiled in, test mode starts OFF.
  *
- * Flash layout (MX25R 2 MB, v4.73):
- *   0x0000–0x8FFF     FlashRing 3×500 pre-roll (live MAX_COUNT=1000 ≈10 s)
- *   0x9000–0x1FBFFF   8 × raw run slots (RawRunStore)
+ * Flash layout (MX25R 2 MB, v4.75):
+ *   0x0000–0xEFFF     Linear pre-roll 3000 slots (~30 s ARM, program-only)
+ *   0xF000–0x1FBFFF   8 × raw run slots (RawRunStore)
  *   0x1FC000          Config (BLE name etc.)
  *   0x1FD000          Run index (RRS1)
  *   0x1FE000–0x1FFFFF reserved
+ * prepare_preroll() on enter IDLE (from ARMED/POST_RUN) + boot.
  *
  * prepare_next_run(): full-slot erase at POST_RUN cooldown + boot (not ARM).
  * LOGGING: program-only into prepared slot; run_saved.store == "raw".
@@ -634,14 +635,27 @@ static void on_state_transition(DeviceState from, DeviceState to)
 
     json_state_evt(g_sm.state_name_for(from), g_sm.state_name());
 
+    if (to == DeviceState::IDLE) {
+        /* JP: prepare_preroll on enter IDLE from ARMED (timeout/cancel) or
+           POST_RUN (after run). Erase 3000-slot buffer off the fill path so
+           next ARMED is program-only for up to 30 s. */
+        if (from == DeviceState::ARMED || from == DeviceState::POST_RUN) {
+            g_ring.prepare_preroll();
+            json_begin(); json_kv("ev", "preroll_prep");
+            Serial.print(','); json_kv("slots", (long)g_ring.max_count());
+            Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
+            json_end();
+        }
+    }
     if (to == DeviceState::ARMED) {
         g_packer.reset();
         g_page_cursor = 0;
         g_run_created = false;
         g_last_baro_ms = now;
-        g_ring.clear();  /* soft clear — no 6-sector erase */
-        /* Pre-erase is done in POST_RUN (10 s cooldown) or boot — not here.
-           ARM must stay fast (S04 arm window, athlete at gate). */
+        /* Buffer already erased on enter IDLE — do not erase here.
+           Soft clear only if somehow dirty (should be prepared). */
+        if (!g_ring.prepared())
+            g_ring.clear();
         /* P₀ auto-inits from first valid frame written to the ring. */
         g_start_det.reset(0.0f);
     }
@@ -658,8 +672,11 @@ static void on_state_transition(DeviceState from, DeviceState to)
         uint8_t cal = 0;
 
         if (g_force_logging) {
-            /* S04: no pre-roll needed; slot may already be prepared at ARM. */
+            /* S04: no pre-roll needed */
             g_ring.clear();
+        } else {
+            /* Keep only newest ~10 s for encode/phone (may have up to 30 s). */
+            g_ring.trim_to_newest(PREROLL_KEEP);
         }
 
         /* Both production and force-l use raw store (Opt A).
@@ -732,9 +749,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
         if (g_stream_frames) { g_stream_frames = 0; }
         test_stream_reset();
 
-        /* Opt A (JP): pre-erase NEXT run during POST_RUN cooldown (10 s).
-           Athlete is stopped; 1 s of sector erase is free here and keeps
-           ARM + LOGGING free of bulk erase. */
+        /* Opt A: pre-erase NEXT run slot during POST_RUN cooldown.
+           Pre-roll erase happens on enter IDLE (after cooldown → IDLE). */
         g_runs.ensure_space_for_new_run();
         g_runs.prepare_next_run();
     }
@@ -773,14 +789,14 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
-        /* Flash pre-roll (MX25R). SPI cost is OK while waiting at the gate;
-           LOGGING path avoids ring write (see below). */
+        /* Linear pre-roll: program only (erased on enter IDLE). */
         bool was_full = g_ring.is_full();
         g_ring.write(f);
         if (!was_full && g_ring.is_full()) {
             json_begin();
             json_kv("ev", "ring_full");
             Serial.print(','); json_kv("r", (long)g_ring.max_count());
+            Serial.print(','); json_kv("cap_s", 30L); /* ARM window capacity */
             json_end();
         }
         return;
@@ -859,8 +875,13 @@ void setup()
     json_end();
     if (!flash_ok) { while(1) { g_led.set_pattern(LedPattern::OFF); delay(1000); } }
 
-    /* ── Flash ring buffer (full erase at boot only) ── */
-    g_ring.reset();
+    /* ── Linear pre-roll: full erase at boot (same as enter IDLE) ── */
+    g_ring.prepare_preroll();
+    json_begin(); json_kv("ev", "preroll_prep");
+    Serial.print(','); json_kv("slots", (long)g_ring.max_count());
+    Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
+    Serial.print(','); json_kv("why", "boot");
+    json_end();
 
     /* ── LDC1612 proximity ── */
     json_begin();

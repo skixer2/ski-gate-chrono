@@ -60,7 +60,25 @@ JP: erase the next run during the 10 s POST_RUN cooldown, not at ARM.
 - **S03** stream (when available): natural start-det → LOGGING must also `store=raw`.
 - Multi-run: 2× S04 without `-R` between → `runs` increments; 9th overwrites oldest.
 
+## Pre-roll buffer (v4.75) — linear, not circular
+
+ARMED pre-roll is a **forward-only** flash buffer (not 2/3-region circular):
+
+```
+0x0000–0xEFFF   3000 × 20 B slots  (~30 s @ 100 Hz = full ARM_TIMEOUT)
+0xF000+         RawRunStore
+```
+
+| API | When |
+|-----|------|
+| `prepare_preroll()` | **enter IDLE** (from ARMED / POST_RUN) + **boot** — full erase |
+| `write()` | ARMED only — **program only**, no erase, stop at 3000 |
+| `trim_to_newest(1000)` | LOGGING entry (natural) — keep last ~10 s for encode/phone |
+| drain pop 2 | LOGGING until empty, then live Opt-A |
+
+S04 force-`l` still skips ring. S05 fill / S06 drain bench the pre-roll path.
+
 ## Version
 
 Bump `FW_VERSION` in `src/config.h` on every storage change. Confirm `ver` in boot / `?` / `V`.
-Current: **4.64**.
+Current production baseline tag: **v4.71-best-s04** (rate). Pre-roll geometry: **4.75**.

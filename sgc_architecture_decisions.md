@@ -374,3 +374,22 @@ injection are also always compiled in — no `-DTEST_MODE` flag exists.
 
 **Full ADR:** `unit_tests/device/adr_003_littlefs_storage.md`
 
+---
+
+## AD-016: Linear ARMED pre-roll (prepare on enter IDLE)
+
+**Date:** 2026-08-07  
+**Status:** Accepted (v4.75)  
+**Supersedes for pre-roll geometry:** circular 2-half / 3-region FlashRing
+
+**Decision:** ARMED pre-roll is a **forward-only** flash buffer of **3000** frames (~30 s @ 100 Hz = `ARM_TIMEOUT`). Erase the entire buffer in `prepare_preroll()` when entering **IDLE** (from ARMED timeout/cancel or POST_RUN) and at boot. ARMED fill is **SPI program only** (no mid-fill erase). At LOGGING start, keep only the newest **1000** frames (~10 s) for encode/BLE/phone.
+
+**Rationale:**
+- Circular designs either limited live history to one half (5 s) or required erase-on-wrap during fill (FPS dips)
+- Full ARM window can be recorded without wrap; product only needs ~10 s before start
+- Same Opt-A idea as run slots: pay erase when athlete is stopped
+
+**Flash:** `0x0000–0xEFFF` pre-roll; RawRunStore from `0xF000`.
+
+**Tests:** S05 fill, S06 drain (`L` with tm=0), S04 live rate unchanged.
+

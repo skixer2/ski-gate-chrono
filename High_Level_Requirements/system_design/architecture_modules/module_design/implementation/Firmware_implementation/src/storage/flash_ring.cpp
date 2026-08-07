@@ -1,6 +1,6 @@
 /**
  * @file    flash_ring.cpp
- * @brief   3-region flash FIFO — live window 1000, erase region on entry (v4.73).
+ * @brief   Linear pre-roll — prepare_preroll on IDLE, program-only ARMED (v4.75).
  */
 
 #include "flash_ring.h"
@@ -9,44 +9,41 @@
 #include <Arduino.h>
 
 FlashRing::FlashRing(SPIFlash& flash)
-    : m_flash(flash), m_head(0), m_count(0), m_last_ts(0)
+    : m_flash(flash), m_head(0), m_tail(0), m_count(0),
+      m_last_ts(0), m_prepared(false)
 {
 }
 
-void FlashRing::erase_region(uint16_t reg)
+void FlashRing::prepare_preroll()
 {
-    if (reg >= NUM_REGIONS) return;
-    uint32_t base = RING_FLASH_BASE + (uint32_t)reg * REGION_STRIDE;
-    /* 3 sectors per region */
-    m_flash.erase_block(base + 0x0000);
-    m_flash.erase_block(base + 0x1000);
-    m_flash.erase_block(base + 0x2000);
+    /* Full buffer erase while athlete is not filling (IDLE / boot). */
+    for (uint32_t s = 0; s < RING_SECTORS; s++) {
+        m_flash.erase_block(RING_FLASH_BASE + s * 4096u);
+    }
+    m_head     = 0;
+    m_tail     = 0;
+    m_count    = 0;
+    m_last_ts  = 0;
+    m_prepared = true;
 }
 
 void FlashRing::reset()
 {
-    for (uint16_t r = 0; r < NUM_REGIONS; r++)
-        erase_region(r);
-    m_head    = 0;
-    m_count   = 0;
-    m_last_ts = 0;
+    prepare_preroll();
 }
 
 void FlashRing::clear()
 {
-    /* Soft discard — no SPI. Next write() erases the region it enters. */
+    m_head    = 0;
+    m_tail    = 0;
     m_count   = 0;
     m_last_ts = 0;
 }
 
 void FlashRing::write(const RawFrame& f)
 {
-    /*
-     * Entering a region: live window ≤ MAX_COUNT (= 2 regions), so the
-     * region we enter cannot hold live frames. Safe to erase, then program.
-     */
-    if ((m_head % REGION_SIZE) == 0)
-        erase_region((uint16_t)(m_head / REGION_SIZE));
+    if (m_count >= TOTAL_SLOTS)
+        return; /* forward-only: stop at 30 s capacity */
 
     RingEntry entry;
     memcpy(&entry.frame, &f, sizeof(RawFrame));
@@ -56,11 +53,9 @@ void FlashRing::write(const RawFrame& f)
                        reinterpret_cast<const uint8_t*>(&entry),
                        sizeof(RingEntry));
 
-    m_head = (uint16_t)((m_head + 1u) % TOTAL_SLOTS);
-
-    if (m_count < MAX_COUNT)
-        m_count++;
-    /* else full: oldest drops out (tail advances as head moves). */
+    m_head++;
+    m_count++;
+    m_prepared = false;
 }
 
 RawFrame FlashRing::read()
@@ -70,13 +65,13 @@ RawFrame FlashRing::read()
     if (m_count == 0)
         return f;
 
-    const uint16_t t = tail();
     RingEntry entry;
-    m_flash.read_data(slot_addr(t),
+    m_flash.read_data(slot_addr(m_tail),
                       reinterpret_cast<uint8_t*>(&entry),
                       sizeof(RingEntry));
     memcpy(&f, &entry.frame, sizeof(RawFrame));
     m_last_ts = entry.arrival_ms;
+    m_tail++;
     m_count--;
     return f;
 }
@@ -85,12 +80,19 @@ bool FlashRing::peek(RawFrame& f) const
 {
     if (m_count == 0)
         return false;
-
-    const uint16_t t = tail();
     RingEntry entry;
-    m_flash.read_data(slot_addr(t),
+    m_flash.read_data(slot_addr(m_tail),
                       reinterpret_cast<uint8_t*>(&entry),
                       sizeof(RingEntry));
     memcpy(&f, &entry.frame, sizeof(RawFrame));
     return true;
+}
+
+void FlashRing::trim_to_newest(uint16_t keep)
+{
+    if (keep >= m_count)
+        return;
+    uint16_t drop = (uint16_t)(m_count - keep);
+    m_tail  = (uint16_t)(m_tail + drop);
+    m_count = keep;
 }

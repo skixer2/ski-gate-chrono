@@ -1,23 +1,16 @@
 /**
  * @file    flash_ring.h
- * @brief   Flash FIFO pre-roll — 3 regions × 500 slots, live window 1000 (v4.73).
+ * @brief   Linear ARMED pre-roll buffer (v4.75) — forward program only.
  *
- * Layout (MX25R1635F, 20 B/slot RingEntry):
- *   Region 0  slots    0..499   @ 0x0000  sectors 0-2
- *   Region 1  slots  500..999   @ 0x3000  sectors 3-5
- *   Region 2  slots 1000..1499  @ 0x6000  sectors 6-8
- *   RawRunStore starts at 0x9000
+ * Design (JP):
+ *   - Capacity TOTAL_SLOTS = 3000 ≈ full ARM_TIMEOUT (30 s @ 100 Hz)
+ *   - No wrap, no erase during ARMED fill (stable ~100 Hz)
+ *   - prepare_preroll(): erase entire buffer on enter IDLE (+ boot)
+ *   - On start: keep only newest PREROLL_KEEP (1000 ≈ 10 s) for encode/phone
  *
- * Why three regions:
- *   NOR cannot rewrite without erase. Live window = 1000 (≈10 s @ 100 Hz).
- *   With only 2×500, live would span both halves at wrap → erase kills history.
- *   With 3×500, live ≤ 1000 always leaves ≥1 region with no live frames to erase.
- *
- * Rules:
- *   1. m_head always in [0, TOTAL_SLOTS)
- *   2. m_count always in [0, MAX_COUNT]
- *   3. Before write at head == k*REGION_SIZE, erase region k
- *   4. tail = (head - count) mod TOTAL_SLOTS
+ * Flash map (MX25R 2 MB):
+ *   0x0000–0xEFFF   Pre-roll 3000 × 20 B RingEntry (15 × 4 KB sectors)
+ *   0xF000+         RawRunStore (see raw_run_store.h)
  */
 
 #pragma once
@@ -26,18 +19,16 @@
 #include <stddef.h>
 #include "ring_buffer.h"
 
-static constexpr uint16_t REGION_SIZE  = 500;
-static constexpr uint16_t NUM_REGIONS  = 3;
-static constexpr uint16_t MAX_COUNT    = 1000;  /* ≈10 s @ 100 Hz */
-static constexpr uint16_t TOTAL_SLOTS = REGION_SIZE * NUM_REGIONS; /* 1500 */
-
-static constexpr uint32_t REGION_BYTES =
-    (uint32_t)REGION_SIZE * 20u; /* RingEntry size; keep in sync with struct */
-/* 500*20=10000 → use 3 sectors (12288) per region */
-static constexpr uint32_t REGION_STRIDE = 0x3000u; /* 3 × 4096 */
+static constexpr uint16_t PREROLL_KEEP  = 1000;  /* frames delivered at start (~10 s) */
+static constexpr uint16_t TOTAL_SLOTS = 3000;  /* max ARMED fill (~30 s @ 100 Hz) */
+static constexpr uint16_t MAX_COUNT     = TOTAL_SLOTS;
 
 static constexpr uint32_t RING_FLASH_BASE = 0x0000u;
-static constexpr uint32_t RING_FLASH_END  = RING_FLASH_BASE + NUM_REGIONS * REGION_STRIDE; /* 0x9000 */
+static constexpr uint32_t RING_ENTRY_SIZE = 20u;
+/* 3000*20 = 60000 → ceil to 15 sectors */
+static constexpr uint32_t RING_SECTORS    = 15u;
+static constexpr uint32_t RING_FLASH_END  =
+    RING_FLASH_BASE + RING_SECTORS * 4096u; /* 0xF000 */
 
 struct __attribute__((packed)) RingEntry {
     RawFrame frame;      /* 16 B */
@@ -51,35 +42,36 @@ class FlashRing
 public:
     explicit FlashRing(class SPIFlash& flash);
 
-    void reset();                  /* erase all regions, clear pointers (boot) */
-    void clear();                  /* drop live count only — no erase (POST_RUN) */
-    void write(const RawFrame& f); /* push; drops oldest if full */
-    RawFrame read();               /* pop oldest; empty → zeroed frame */
+    /** Erase all pre-roll sectors + reset pointers. Call on enter IDLE / boot. */
+    void prepare_preroll();
+
+    void reset();   /* alias prepare_preroll for boot */
+    void clear();   /* soft: drop count/head without erase (rare) */
+
+    void write(const RawFrame& f); /* forward program only; no-op if full */
+    RawFrame read();               /* pop oldest */
     uint32_t last_read_ts() const { return m_last_ts; }
     bool peek(RawFrame& f) const;
 
-    bool   is_full()  const { return m_count >= MAX_COUNT; }
+    /** Drop oldest until count <= keep (before drain encode). */
+    void trim_to_newest(uint16_t keep);
+
+    bool   is_full()  const { return m_count >= TOTAL_SLOTS; }
     bool   is_empty() const { return m_count == 0; }
     size_t count()    const { return m_count; }
-    uint16_t head()   const { return m_head; }
-    uint16_t max_count() const { return MAX_COUNT; }
+    uint16_t head()   const { return m_head; }      /* next write index */
+    uint16_t max_count() const { return TOTAL_SLOTS; }
+    bool     prepared() const { return m_prepared; }
 
 private:
     SPIFlash& m_flash;
-    uint16_t  m_head;    /* next write slot ∈ [0, TOTAL_SLOTS) */
-    uint16_t  m_count;   /* live frames ∈ [0, MAX_COUNT] */
-    uint32_t  m_last_ts; /* arrival_ms of last read() */
-
-    uint16_t tail() const {
-        return (uint16_t)((m_head + TOTAL_SLOTS - m_count) % TOTAL_SLOTS);
-    }
+    uint16_t  m_head;     /* next write index ∈ [0, TOTAL_SLOTS] */
+    uint16_t  m_tail;     /* oldest live index */
+    uint16_t  m_count;
+    uint32_t  m_last_ts;
+    bool      m_prepared; /* true after prepare_preroll until dirtied */
 
     static uint32_t slot_addr(uint16_t slot) {
-        uint16_t reg = (uint16_t)(slot / REGION_SIZE);
-        uint16_t off = (uint16_t)(slot % REGION_SIZE);
-        return RING_FLASH_BASE + (uint32_t)reg * REGION_STRIDE
-             + (uint32_t)off * (uint32_t)sizeof(RingEntry);
+        return RING_FLASH_BASE + (uint32_t)slot * RING_ENTRY_SIZE;
     }
-
-    void erase_region(uint16_t reg);
 };
