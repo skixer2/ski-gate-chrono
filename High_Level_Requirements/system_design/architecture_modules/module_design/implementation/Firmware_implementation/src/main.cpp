@@ -558,11 +558,11 @@ void handle_serial()
         int8_t batt = nicla::getBatteryVoltagePercentage();
         json_begin();
         json_kv("ev", "status");
-        g_runs.metadata_sync();  /* flush pending directory commits */
-        /* V4.03: Do NOT call scan_runs() here — it wipes the RAM cache
-           that close_run() just populated. The RAM cache is authoritative
-           during operation (close_run adds entries, delete_oldest_run
-           removes them). scan_runs() is for boot-time initialization only. */
+        /* Opt-A: do NOT metadata_sync()/persist_index() here.
+           persist_index() erases+rewrites a full 4 KB sector — fatal on the
+           LOGGING hot path. S04 v4.69 heartbeats called '?' every 5 s and
+           dropped 99.4 → ~97 fps. Index is persisted on close_run/boot only.
+           RAM cache is authoritative during a run (same as V4.03 scan rule). */
         Serial.print(','); json_kv("st", g_sm.state_name());
         Serial.print(','); json_kv("r", (long)g_ring.count());
         Serial.print(','); json_kv("rm", (long)RING_SIZE);

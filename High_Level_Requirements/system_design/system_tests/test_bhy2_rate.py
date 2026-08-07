@@ -435,17 +435,10 @@ def main() -> int:
             break
         sec = int(time.perf_counter() - t0)
         if sec != last_print and sec > 0 and sec % 5 == 0:
-            # Heartbeat status (non-destructive) so a frozen UI still shows life
-            st_hb = None
-            shows = None
-            show_us = None
-            for o in send_keep(ser, "?", 0.35):
-                if o.get("ev") == "status":
-                    st_hb = o.get("st")
-                    shows = o.get("shows")
-                    show_us = o.get("show_us")
-            print(f"  … {sec}s  st={st_hb} shows={shows} show_us={show_us}",
-                  flush=True)
+            # Progress only — do NOT query '?' during LOGGING for rate benches.
+            # (Older FW ? called persist_index erase; even fixed, serial work
+            # steals loop time. Final ? after run_saved is enough for show_us.)
+            print(f"  … {sec}s", flush=True)
             last_print = sec
 
     # ── LOGGING → POST_RUN (only if still logging) ─────────────
