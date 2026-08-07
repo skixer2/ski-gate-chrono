@@ -233,9 +233,10 @@ def main() -> int:
             last = sec
         if drained_at is None and r == 0 and st.get("st") == "LOGGING":
             drained_at = time.perf_counter() - t_l0
-            # pop2+push1: ~10 s to empty 1000 (not ~5 s pop2-only)
+            # pop2+push1 while backlog>0; last frame pops without push.
+            # ~10–14 s typical for keep=1000 (SPI slower than ideal 10 ms).
             print(f"  ring empty after {drained_at:.2f}s LOGGING "
-                  f"(expect ~10s for 1000 keep @ pop2/push1)")
+                  f"(expect ~10–14s for 1000 keep; fail if >>20s = r=1 deadlock)")
             live_end = time.perf_counter() + args.log_s
             while time.perf_counter() < live_end:
                 for o in read_json_lines(ser, 0.2):
@@ -274,16 +275,22 @@ def main() -> int:
         return 1
 
     fr = int(saved.get("fr") or 0)
-    need = int(args.min_pre_roll_frac * r_at)
-    # frames should include pre-roll + some live
+    need = int(args.min_pre_roll_frac * min(r_at, 1000))  # keep window
     ok_fr = fr >= need
+    # Drain should finish in ~ keep/100 … keep/60 s (100–60 Hz effective)
+    keep_est = min(r_at, 1000)
+    drain_ok = True
+    if drained_at is not None:
+        drain_ok = drained_at <= max(18.0, keep_est / 50.0)  # fail hung r=1
     print(f"  fr={fr}  r_at_L={r_at}  need>={need}  "
           f"drain_s={drained_at} store={saved.get('store')} "
           f"fps10={saved.get('fps10')}")
 
     print("=" * 50)
-    if ok_fr and saved.get("ok"):
-        print(f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at})")
+    if ok_fr and saved.get("ok") and drain_ok:
+        print(f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at}), "
+              f"drain {drained_at:.2f}s" if drained_at else
+              f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at})")
         rc = 0
     else:
         print("✗ S06 FAILED")
@@ -291,6 +298,8 @@ def main() -> int:
             print(f"  fr {fr} < {need} (pre-roll not fully encoded?)")
         if not saved.get("ok"):
             print("  run_saved ok=false")
+        if not drain_ok:
+            print(f"  drain_s={drained_at:.2f} too long — likely r=1 pop1/push1 deadlock")
         rc = 1
     if ver:
         print(f"  Firmware: v{ver}")

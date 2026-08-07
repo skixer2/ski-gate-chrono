@@ -810,9 +810,10 @@ void feed_sensors()
 
     if (st == DeviceState::LOGGING) {
         /* force-'l' (S04): live encode only, no ring.
-           Natural / bench L: pop-2 encode + push-1 live (design drain).
-           Net −1/tick → ~10 s to empty 1000 pre-roll; live stored in
-           +1000 headroom after ARM_FILL_CAP. Then live encode direct. */
+           Natural / bench L: pop-2 + push-1 while backlog remains after pop.
+           CRITICAL: if count was 1, pop-1 then push-1 would deadlock at r=1
+           forever (S06 v4.77 saw ~16 s stuck). So only push live when the
+           ring is STILL non-empty after pops; otherwise encode live direct. */
         if (g_force_logging) {
             encode_to_storage(f, millis());
         } else if (!g_ring.is_empty()) {
@@ -821,8 +822,13 @@ void feed_sensors()
                 RawFrame oldest = g_ring.read();
                 encode_to_storage(oldest, g_ring.last_read_ts());
             }
-            /* Push live into pre-roll tail (drain headroom, no arm_limit). */
-            g_ring.write(f, false);
+            if (!g_ring.is_empty()) {
+                /* Still draining — park live in headroom (net −1 if pop2). */
+                g_ring.write(f, false);
+            } else {
+                /* Just emptied — take this tick's live sample now. */
+                encode_to_storage(f, millis());
+            }
         } else {
             encode_to_storage(f, millis());
         }
