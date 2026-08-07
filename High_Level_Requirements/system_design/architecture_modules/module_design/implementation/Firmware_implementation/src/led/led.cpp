@@ -12,8 +12,11 @@
 #include <Nicla_System.h>
 #include <string.h>
 
-#if defined(NRF_GPIO)
+/* nRF52832 PORT registers for fast NZR on P0.19 */
+#if __has_include("nrf.h")
 #include "nrf.h"
+#elif __has_include("nrf52.h")
+#include "nrf52.h"
 #endif
 
 /* ------------------------------------------------------------------ */
