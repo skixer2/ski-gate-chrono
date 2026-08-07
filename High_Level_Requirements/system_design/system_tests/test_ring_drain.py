@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-S06 — Natural LOGGING drain of FlashRing pre-roll (BHY2).
+S06 — LOGGING drain of pre-roll (pop-2 + push-1 live, v4.77+).
 
 Flow:
   IDLE → ARM → wait until ring fairly full (or ring_full)
@@ -233,7 +233,9 @@ def main() -> int:
             last = sec
         if drained_at is None and r == 0 and st.get("st") == "LOGGING":
             drained_at = time.perf_counter() - t_l0
-            print(f"  ring empty after {drained_at:.2f}s LOGGING")
+            # pop2+push1: ~10 s to empty 1000 (not ~5 s pop2-only)
+            print(f"  ring empty after {drained_at:.2f}s LOGGING "
+                  f"(expect ~10s for 1000 keep @ pop2/push1)")
             live_end = time.perf_counter() + args.log_s
             while time.perf_counter() < live_end:
                 for o in read_json_lines(ser, 0.2):

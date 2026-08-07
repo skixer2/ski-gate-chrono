@@ -646,7 +646,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
         if (from == DeviceState::ARMED || from == DeviceState::POST_RUN) {
             g_ring.prepare_preroll();
             json_begin(); json_kv("ev", "preroll_prep");
-            Serial.print(','); json_kv("slots", (long)g_ring.max_count());
+            Serial.print(','); json_kv("arm_cap", (long)ARM_FILL_CAP);
+            Serial.print(','); json_kv("total", (long)TOTAL_SLOTS);
             Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
             json_end();
         }
@@ -876,7 +877,8 @@ void setup()
     /* ── Linear pre-roll: full erase at boot (same as enter IDLE) ── */
     g_ring.prepare_preroll();
     json_begin(); json_kv("ev", "preroll_prep");
-    Serial.print(','); json_kv("slots", (long)g_ring.max_count());
+    Serial.print(','); json_kv("arm_cap", (long)ARM_FILL_CAP);
+    Serial.print(','); json_kv("total", (long)TOTAL_SLOTS);
     Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
     Serial.print(','); json_kv("why", "boot");
     json_end();
