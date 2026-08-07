@@ -114,42 +114,88 @@ def send_keep(ser: serial.Serial, cmd: str, wait_s: float = 0.25) -> list[dict]:
     return read_json_lines(ser, wait_s)
 
 
-def ensure_test_mode_off(ser: serial.Serial, attempts: int = 4) -> bool:
-    """Return True if test mode is OFF. Retries after boot when T is silent."""
-    tm = None
-    last_batch: list[dict] = []
+def _tm_from_obj(o: dict):
+    """Normalize tm from status (v4.65+) or T cmd response."""
+    if "tm" not in o:
+        return None
+    tm = o.get("tm")
+    if tm is True or tm == 1 or tm == "1":
+        return 1
+    if tm is False or tm == 0 or tm == "0":
+        return 0
+    return None
+
+
+def read_test_mode(ser: serial.Serial, wait_s: float = 1.0) -> int | None:
+    """Non-destructive tm read via '?' (v4.65+). None if field absent/no status."""
+    r = send_keep(ser, "?", wait_s)
+    for o in r:
+        if o.get("ev") == "status":
+            tm = _tm_from_obj(o)
+            if tm is not None:
+                return tm
+            # Old FW: status without tm — unknown
+            return None
+    return None
+
+
+def ensure_test_mode_off(ser: serial.Serial, attempts: int = 6) -> bool:
+    """Ensure test mode OFF without leaving it ON.
+
+    'T' is a *toggle* (not a query). Querying via T after boot turns tm ON.
+    Prefer status.tm (v4.65+). Only send T when we know tm==1.
+    """
+    tm: int | None = None
+
     for i in range(attempts):
-        # Longer first listens after factory reset / boot
-        wait = 1.2 if i == 0 else 0.6
-        r = send_keep(ser, "T", wait)
-        last_batch = r
-        for o in r:
-            if o.get("ev") == "cmd" and o.get("cmd") == "T":
-                tm = o.get("tm")
-                break
-        if tm is not None:
-            break
-        time.sleep(0.4)
+        wait = 1.5 if i == 0 else 1.0
+        tm = read_test_mode(ser, wait)
 
-    if tm is None:
-        print("  ⚠ could not read test-mode flag from T response:", last_batch[:5])
-        # Fallback: status path — if device answers ?, assume default tm=0
-        st = send_keep(ser, "?", 0.6)
-        for o in st:
-            if o.get("ev") == "status":
-                print(f"  fallback status ok (assume tm=0): st={o.get('st')}")
+        if tm == 0:
+            print(f"  Test mode OFF: True (tm=0 via status)")
+            return True
+
+        if tm == 1:
+            # Toggle once to OFF, then re-read via status (never trust toggle alone)
+            print("  tm=1 — sending T once to turn OFF…")
+            send_keep(ser, "T", 0.8)
+            time.sleep(0.2)
+            tm2 = read_test_mode(ser, 1.0)
+            if tm2 == 0:
+                print("  Test mode OFF: True (tm=0 after toggle)")
                 return True
-        return False
+            if tm2 == 1:
+                print("  ⚠ still tm=1 after toggle; retry…")
+                time.sleep(0.5)
+                continue
+            # status lost tm field mid-run — fall through
 
-    if tm is True or tm == 1:
-        r2 = send_keep(ser, "T", 0.6)
-        for o in r2:
-            if o.get("ev") == "cmd" and o.get("cmd") == "T":
-                tm = o.get("tm")
-                break
+        # status silent or pre-4.65 (no tm field): wait for loop, do NOT toggle yet
+        if tm is None:
+            # Device may still be in setup() full-slot erase after boot
+            print(f"  … waiting for status (attempt {i+1}/{attempts})")
+            time.sleep(1.0)
 
-    print(f"  Test mode OFF: {tm is False or tm == 0} (tm={tm})")
-    return tm is False or tm == 0
+    # Last resort for old FW without status.tm: one carefully paired toggle cycle
+    # Only if we never got status — after cold boot tm defaults OFF, so skip T.
+    st = send_keep(ser, "?", 1.5)
+    for o in st:
+        if o.get("ev") == "status":
+            tm = _tm_from_obj(o)
+            if tm == 0:
+                print("  Test mode OFF: True (tm=0)")
+                return True
+            if tm == 1:
+                send_keep(ser, "T", 0.8)
+                tm = read_test_mode(ser, 1.0)
+                print(f"  Test mode OFF: {tm == 0} (tm={tm})")
+                return tm == 0
+            # No tm field: boot default is OFF — safe for S04 real BHY2 path
+            print(f"  fallback status ok (no tm field, assume OFF): st={o.get('st')} ver={o.get('ver')}")
+            return True
+
+    print("  ✗ no status response — device not in main loop yet?")
+    return False
 
 
 def find_state(events: list[dict]) -> str | None:
@@ -260,13 +306,32 @@ def main() -> int:
         print(f"  boot: {boot}")
         if boot and boot.get("ver"):
             ver = boot.get("ver")
-        # Boot continues with flash/LFS/BLE/BHY2 init — give it time before T
-        print("  Waiting 2.5s for post-boot init…")
-        time.sleep(2.5)
-        read_json_lines(ser, 0.5)
+        # Boot line prints early; setup() still runs BLE + full-slot prepare_next_run
+        # (~60 sector erases). Wait until main loop answers '?' — up to ~15 s.
+        print("  Waiting for post-boot init (full-slot prep can take several s)…")
+        ready = False
+        t_wait0 = time.perf_counter()
+        while time.perf_counter() - t_wait0 < 15.0:
+            time.sleep(0.8)
+            read_json_lines(ser, 0.3)  # drain init events
+            st = send_keep(ser, "?", 0.8)
+            for o in st:
+                if o.get("ev") == "status":
+                    print(f"  ready: st={o.get('st')} ver={o.get('ver')} "
+                          f"tm={o.get('tm')} runs={o.get('runs')} "
+                          f"({time.perf_counter()-t_wait0:.1f}s)")
+                    if o.get("ver"):
+                        ver = o.get("ver")
+                    ready = True
+                    break
+            if ready:
+                break
+        if not ready:
+            print("  ⚠ status not seen within 15s — continuing anyway")
         send_keep(ser, "i", 0.4)
 
     # Real BHY2 path — must NOT be in test/stream mode
+    # NOTE: serial 'T' *toggles* test mode — never use it as a query.
     if not ensure_test_mode_off(ser):
         print("  ✗ Could not ensure test mode OFF")
         ser.close()

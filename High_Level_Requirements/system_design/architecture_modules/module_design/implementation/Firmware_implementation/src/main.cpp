@@ -557,6 +557,8 @@ void handle_serial()
         Serial.print(','); json_kv("ldc_raw", (long)g_ldc.data());
         Serial.print(','); json_kv("flash_pct", (long)g_runs.flash_used_pct());
         Serial.print(','); json_kv("ver", FW_VERSION);
+        /* Non-destructive test-mode read — S04 must not toggle 'T' to query. */
+        Serial.print(','); json_kv_bool("tm", test_mode_active());
         json_end();
         return;
     }
