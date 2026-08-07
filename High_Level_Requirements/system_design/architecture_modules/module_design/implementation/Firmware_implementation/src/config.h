@@ -7,19 +7,21 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.71"
+#define FW_VERSION "4.72"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
- * LED_STRIP_COUNT 5   = design length (full-chain show cost)
- * LED_STRIP_COUNT 10  = stress
+ * LED_STRIP_COUNT 5   = design length (tagged v4.71-best-s04 @ ~99.5 fps)
+ * LED_STRIP_COUNT 10  = stress / alternate BOM length
  * LED_STRIP_PIN   0   = timing-only (IRQ-mask + delays, no GPIO)
  * LED_STRIP_PIN  12   = Nicla ESLOV INT = P0.19 (production LED_STRIP net)
- *                       Real digitalWrite NZR bit-bang — open pin OK, no strip needed
+ *                       Real NZR bit-bang — open pin OK, no strip needed
  * Override: -DLED_STRIP_COUNT=5 -DLED_STRIP_PIN=12
+ *
+ * Baseline tag: v4.71-best-s04 (5 LEDs). v4.72 defaults to 10 for stress.
  */
 #ifndef LED_STRIP_COUNT
-#define LED_STRIP_COUNT 5
+#define LED_STRIP_COUNT 10
 #endif
 #ifndef LED_STRIP_PIN
 /* Default: real GPIO on ESLOV INT (P0.19) — measures full digitalWrite path */
