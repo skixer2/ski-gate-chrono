@@ -498,8 +498,10 @@ def main():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     scenarios = getattr(mod, 'SCENARIOS', [])
-    if not scenarios:
-        print(f"ERROR: No SCENARIOS list found in {args.scenario}")
+    # Device system tests (S04–S06): define run_device_test(h) -> bool instead of SCENARIOS
+    run_device_test = getattr(mod, 'run_device_test', None)
+    if not scenarios and run_device_test is None:
+        print(f"ERROR: No SCENARIOS list or run_device_test() in {args.scenario}")
         return
 
     harness = SGCTestHarness(args.port, args.baud, args.verbose)
@@ -557,12 +559,36 @@ def main():
     scenario_results = []
 
     try:
-        for s in scenarios:
-            results = harness.run_scenario(s)
-            ok = harness.all_passed()
-            if not ok:
-                all_ok = False
-            scenario_results.append((s.name, sum(1 for r in results if r.passed), len(results), ok))
+        if run_device_test is not None and not scenarios:
+            # Standalone device system test (S04/S05/S06 wrappers).
+            # run_device_test owns the port for the duration — release harness first.
+            port = harness.port
+            harness.disconnect()
+            print(f"\n{'='*60}")
+            print(f"DEVICE SYSTEM TEST: {os.path.basename(args.scenario)}")
+            print(f"{'='*60}")
+            try:
+                ok = bool(run_device_test(port))
+            except Exception as e:
+                print(f"EXCEPTION in run_device_test: {e}")
+                traceback.print_exc()
+                ok = False
+            all_ok = ok
+            name = getattr(mod, 'TEST_NAME', os.path.basename(args.scenario))
+            scenario_results.append((name, 1 if ok else 0, 1, ok))
+            # Reconnect only if needed for clean exit messaging
+            try:
+                harness.connect()
+            except Exception:
+                pass
+        else:
+            for s in scenarios:
+                results = harness.run_scenario(s)
+                ok = harness.all_passed()
+                if not ok:
+                    all_ok = False
+                scenario_results.append(
+                    (s.name, sum(1 for r in results if r.passed), len(results), ok))
 
         overall_msg = 'ALL TESTS PASSED ✅' if all_ok else 'SOME TESTS FAILED ❌'
         print(f"\n{'='*60}")
@@ -588,7 +614,8 @@ def main():
                 total_p = sum(p for _, p, _, _ in scenario_results)
                 total_t = sum(t for _, _, t, _ in scenario_results)
                 f.write(f"| {test_label} | {icon} {total_p}/{total_t} |\n")
-            verb = 'Saved to' if (args.ts and not args.run_id) else ('appended to' if not is_new else 'saved to')
+            verb = 'Saved to' if (args.ts and not args.run_id) else (
+                'appended to' if not is_new else 'saved to')
             print(f"Results {verb} {out_path}")
 
         sys.exit(0 if all_ok else 1)
@@ -596,7 +623,10 @@ def main():
         if log_file:
             sys.stdout = original_stdout
             log_file.close()
-        harness.disconnect()
+        try:
+            harness.disconnect()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

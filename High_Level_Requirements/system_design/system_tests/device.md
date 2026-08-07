@@ -10,7 +10,21 @@ Hardware: Nicla Sense ME on COM port (e.g. `COM8`). Prefer **`-R`** after flash 
 
 ---
 
-## Quick suite (bench rate + pre-roll)
+## Included in unit_tests harness loop
+
+From `module_design/unit_tests/` the usual:
+
+```powershell
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
+Get-ChildItem test_*.py | ForEach-Object {
+  py sgc_test_harness.py --port COM8 $_ --run-id $runId
+}
+```
+
+now also runs **`test_s04_bhy2_rate.py`**, **`test_s05_ring_fill.py`**, **`test_s06_ring_drain.py`**
+(wrappers → these scripts). One `$runId.md` + per-file `.log`.
+
+## Quick suite (bench rate + pre-roll only)
 
 From `system_tests/`:
 
