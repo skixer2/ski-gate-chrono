@@ -136,17 +136,24 @@ bool test_request_frame(uint32_t timeout_ms)
 /* ── Serial command handler ─────────────────────────────────── */
 bool test_mode_handle_serial(char c)
 {
-    switch (c) {
-    case 'T':
+    /* 'T' always available (toggle). Injection/stream cmds only when tm ON.
+       Critical: bare 'L' was always stolen as set_la — blocked S06 drain
+       LOGGING command in main.cpp (v4.73). */
+    if (c == 'T') {
         g_test_mode = !g_test_mode;
-        g_manual_frame = false;  /* reset on test mode toggle */
+        g_manual_frame = false;
         if (g_test_mode) init_default_frame();
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "T");
         Serial.print(','); json_kv_bool("tm", g_test_mode);
         json_end();
         return true;
+    }
 
+    if (!g_test_mode)
+        return false;
+
+    switch (c) {
     case 'B': {
         g_manual_frame = true;  /* manual injection → no ARM→stream */
         float pa = Serial.parseFloat();
@@ -169,6 +176,8 @@ bool test_mode_handle_serial(char c)
         return true;
     }
     case 'L': {
+        /* set lin-acc — only in test mode (tm=1). When tm=0, main 'L' =
+           natural LOGGING drain path (S06). */
         float x = Serial.parseFloat(), y = Serial.parseFloat(), z = Serial.parseFloat();
         set_la(x, y, z);
         json_begin(); json_kv("ev", "cmd");

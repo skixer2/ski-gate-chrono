@@ -180,18 +180,30 @@ def main() -> int:
         ser.close()
         return 1
 
-    print("\n── LOGGING drain path (serial L, not l) ──")
+    print("\n── LOGGING drain path (serial L, not l; tm must be 0) ──")
+    # Ensure test mode OFF — when tm=1, 'L' is set_la not drain LOGGING
+    for o in send_keep(ser, "?", 0.4):
+        if o.get("ev") == "status" and o.get("tm") in (1, True, "1"):
+            print("  tm=1 — toggling T to OFF before L")
+            send_keep(ser, "T", 0.4)
+
     t_l0 = time.perf_counter()
-    evs = send_keep(ser, "L", 0.8)
+    evs = send_keep(ser, "L", 1.0)
+    saw_drain_cmd = False
     for o in evs:
         if o.get("ev") in ("st", "run_created", "state_blocked", "cmd"):
             print(f"  {o}")
+        if o.get("ev") == "cmd" and o.get("cmd") == "L" and o.get("mode") == "drain":
+            saw_drain_cmd = True
+        if o.get("ev") == "cmd" and o.get("cmd") == "L" and "la" in o:
+            print("  ✗ 'L' handled as test-mode set_la — flash v4.74+ or turn tm OFF")
+            ser.close()
+            return 1
 
     st = status(ser)
     if not st or st.get("st") != "LOGGING":
-        # Capital L may be unsupported on old FW
-        print(f"  ✗ not LOGGING after 'L' (need FW ≥4.73 with drain cmd). st={st}")
-        print("  tip: flash v4.73+")
+        print(f"  ✗ not LOGGING after 'L'. st={st} drain_ack={saw_drain_cmd}")
+        print("  tip: flash v4.74+ (test_mode no longer steals L when tm=0)")
         send(ser, "i", 0.3)
         ser.close()
         return 1

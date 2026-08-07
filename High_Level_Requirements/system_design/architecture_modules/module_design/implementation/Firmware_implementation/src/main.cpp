@@ -256,10 +256,20 @@ void handle_serial()
         break;
     case 'L':
         /* Natural LOGGING path for bench (S06): drain FlashRing then live.
-           Does NOT set g_force_logging — end det still active (use 'p' on desk). */
+           Does NOT set g_force_logging — end det still active (use 'p' on desk).
+           Only reaches here when tm=0 (test_mode 'L'=set_la when tm=1). */
         g_force_logging = false;
         g_end_det.reset();
-        g_sm.force_state(DeviceState::LOGGING);
+        {
+            bool from_armed = (g_sm.state() == DeviceState::ARMED);
+            g_sm.force_state(DeviceState::LOGGING);
+            json_begin(); json_kv("ev", "cmd");
+            Serial.print(','); json_kv("cmd", "L");
+            Serial.print(','); json_kv("mode", "drain");
+            Serial.print(','); json_kv_bool("armed", from_armed);
+            Serial.print(','); json_kv("st", g_sm.state_name());
+            json_end();
+        }
         break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
     case 's': g_sm.force_state(DeviceState::SLEEP); break;
