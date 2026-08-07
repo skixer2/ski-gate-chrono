@@ -4,9 +4,9 @@
  * JSON-lines is the only serial output format (ADR-001, AD-009).
  * Test commands always compiled in, test mode starts OFF.
  *
- * Flash layout (MX25R 2 MB, v4.64):
- *   0x0000–0x5FFF     FlashRing ARMED pre-roll (sectors 0–5, 20B RingEntry)
- *   0x6000–0x1FBFFF   8 × ~249 KB raw run slots (RawRunStore)
+ * Flash layout (MX25R 2 MB, v4.73):
+ *   0x0000–0x8FFF     FlashRing 3×500 pre-roll (live MAX_COUNT=1000 ≈10 s)
+ *   0x9000–0x1FBFFF   8 × raw run slots (RawRunStore)
  *   0x1FC000          Config (BLE name etc.)
  *   0x1FD000          Run index (RRS1)
  *   0x1FE000–0x1FFFFF reserved
@@ -249,8 +249,15 @@ void handle_serial()
         }
         break;
     case 'l':
-        /* Bench force-LOGGING: do not auto-end on flat pressure. */
+        /* Bench force-LOGGING: skip ring drain + skip end det (S04 rate). */
         g_force_logging = true;
+        g_end_det.reset();
+        g_sm.force_state(DeviceState::LOGGING);
+        break;
+    case 'L':
+        /* Natural LOGGING path for bench (S06): drain FlashRing then live.
+           Does NOT set g_force_logging — end det still active (use 'p' on desk). */
+        g_force_logging = false;
         g_end_det.reset();
         g_sm.force_state(DeviceState::LOGGING);
         break;
@@ -565,7 +572,8 @@ void handle_serial()
            RAM cache is authoritative during a run (same as V4.03 scan rule). */
         Serial.print(','); json_kv("st", g_sm.state_name());
         Serial.print(','); json_kv("r", (long)g_ring.count());
-        Serial.print(','); json_kv("rm", (long)RING_SIZE);
+        Serial.print(','); json_kv("rm", (long)g_ring.max_count());
+        Serial.print(','); json_kv("rh", (long)g_ring.head());
         Serial.print(','); json_kv("p", (long)(pressure.value() * 100));   /* hPa→Pa for display */
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
@@ -762,7 +770,7 @@ void feed_sensors()
         if (!was_full && g_ring.is_full()) {
             json_begin();
             json_kv("ev", "ring_full");
-            Serial.print(','); json_kv("r", (long)RING_SIZE);
+            Serial.print(','); json_kv("r", (long)g_ring.max_count());
             json_end();
         }
         return;
@@ -779,8 +787,9 @@ void feed_sensors()
         if (g_force_logging) {
             encode_to_storage(f, millis());
         } else if (!g_ring.is_empty()) {
-            /* Drain only — do not push live into flash ring mid-LOGGING. */
-            uint8_t pop_n = g_ring.count() >= 4 ? 4 : (uint8_t)g_ring.count();
+            /* Drain only — do not push live into flash ring mid-LOGGING.
+               pop min(2, count): original 2× design (was briefly 4). */
+            uint8_t pop_n = g_ring.count() >= 2 ? 2 : (uint8_t)g_ring.count();
             for (uint8_t i = 0; i < pop_n; i++) {
                 RawFrame oldest = g_ring.read();
                 encode_to_storage(oldest, g_ring.last_read_ts());

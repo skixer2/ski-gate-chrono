@@ -1,6 +1,6 @@
 /**
  * @file    flash_ring.cpp
- * @brief   Two-half flash FIFO — wrap always, erase half on entry (V4.54).
+ * @brief   3-region flash FIFO — live window 1000, erase region on entry (v4.73).
  */
 
 #include "flash_ring.h"
@@ -13,24 +13,20 @@ FlashRing::FlashRing(SPIFlash& flash)
 {
 }
 
-void FlashRing::erase_half_a()
+void FlashRing::erase_region(uint16_t reg)
 {
-    m_flash.erase_block(0x0000);
-    m_flash.erase_block(0x1000);
-    m_flash.erase_block(0x2000);
-}
-
-void FlashRing::erase_half_b()
-{
-    m_flash.erase_block(0x3000);
-    m_flash.erase_block(0x4000);
-    m_flash.erase_block(0x5000);
+    if (reg >= NUM_REGIONS) return;
+    uint32_t base = RING_FLASH_BASE + (uint32_t)reg * REGION_STRIDE;
+    /* 3 sectors per region */
+    m_flash.erase_block(base + 0x0000);
+    m_flash.erase_block(base + 0x1000);
+    m_flash.erase_block(base + 0x2000);
 }
 
 void FlashRing::reset()
 {
-    erase_half_a();
-    erase_half_b();
+    for (uint16_t r = 0; r < NUM_REGIONS; r++)
+        erase_region(r);
     m_head    = 0;
     m_count   = 0;
     m_last_ts = 0;
@@ -38,25 +34,19 @@ void FlashRing::reset()
 
 void FlashRing::clear()
 {
-    /* Soft discard of live window — no SPI. Next write() will erase the
-       half it enters before programming. Used on POST_RUN so we do not
-       block with 6 sector erases mid-session. */
+    /* Soft discard — no SPI. Next write() erases the region it enters. */
     m_count   = 0;
     m_last_ts = 0;
-    /* keep m_head so next write continues into already-erased space when possible */
 }
 
 void FlashRing::write(const RawFrame& f)
 {
     /*
-     * Entering a half: live window is ≤ MAX_COUNT, so the half we are
-     * about to fill cannot contain live frames. Erase it, then program.
-     * This covers both first fill and every wrap — no separate "full" path.
+     * Entering a region: live window ≤ MAX_COUNT (= 2 regions), so the
+     * region we enter cannot hold live frames. Safe to erase, then program.
      */
-    if (m_head == 0)
-        erase_half_a();
-    else if (m_head == HALF_SIZE)
-        erase_half_b();
+    if ((m_head % REGION_SIZE) == 0)
+        erase_region((uint16_t)(m_head / REGION_SIZE));
 
     RingEntry entry;
     memcpy(&entry.frame, &f, sizeof(RawFrame));
@@ -66,13 +56,11 @@ void FlashRing::write(const RawFrame& f)
                        reinterpret_cast<const uint8_t*>(&entry),
                        sizeof(RingEntry));
 
-    /* ALWAYS wrap. V4.53 bug: non-full path did bare m_head++. */
     m_head = (uint16_t)((m_head + 1u) % TOTAL_SLOTS);
 
     if (m_count < MAX_COUNT)
         m_count++;
-    /* else full: oldest slot was outside the new live window (tail advanced
-       implicitly because head moved and count stayed MAX_COUNT). */
+    /* else full: oldest drops out (tail advances as head moves). */
 }
 
 RawFrame FlashRing::read()

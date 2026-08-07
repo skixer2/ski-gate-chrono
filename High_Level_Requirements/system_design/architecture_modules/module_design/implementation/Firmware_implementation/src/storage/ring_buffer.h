@@ -10,7 +10,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-static constexpr size_t RING_SIZE = 500;
+/* Live pre-roll window length — keep equal to FlashRing::MAX_COUNT (v4.73 = 1000). */
+static constexpr size_t RING_SIZE = 1000;
 
 struct __attribute__((packed)) RawFrame {
     int16_t  q_w, q_x, q_y, q_z;   /* quaternion, Q30 fixed-point — 8 bytes */
