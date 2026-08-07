@@ -1,11 +1,11 @@
 # System Tests — Device
 
-*Updated 2026-08-07 — Opt-A storage + linear pre-roll (FW **v4.78**, tag `v4.78-best-preroll`).*
+*Updated 2026-08-07 — Opt-A storage + linear pre-roll (FW **v4.79**, tag `v4.79-best-s03`).*
 
 System tests verify end-to-end device behavior over **serial** (JSON-lines).  
 Hardware: Nicla Sense ME on COM port (e.g. `COM8`). Prefer **`-R`** after flash map changes.
 
-> 📋 **Also:** unit harness under `module_design/unit_tests/` · [ADR-003](../architecture_modules/module_design/unit_tests/device/adr_003_littlefs_storage.md) · tag **`v4.78-best-preroll`**  
+> 📋 **Also:** unit harness under `module_design/unit_tests/` · [ADR-003](../architecture_modules/module_design/unit_tests/device/adr_003_littlefs_storage.md) · tag **`v4.79-best-s03`**  
 > **Sibling:** `phone.md`
 
 ---
@@ -21,32 +21,34 @@ Get-ChildItem test_*.py | ForEach-Object {
 }
 ```
 
-now also runs **`test_s04_bhy2_rate.py`**, **`test_s05_ring_fill.py`**, **`test_s06_ring_drain.py`**
+now also runs **`test_s03_stream_run.py`**, **`test_s04_bhy2_rate.py`**, **`test_s05_ring_fill.py`**, **`test_s06_ring_drain.py`**
 (wrappers → these scripts). One `$runId.md` + per-file `.log`.
+
+**Note:** bare `py test_stream_run.py …` from `system_tests/` is the same S03 body as the harness wrapper (defaults: duration 25, gates 10, seed 45, `-R`).
 
 ## Quick suite (bench rate + pre-roll only)
 
 From `system_tests/`:
 
 ```powershell
-# After flash of matching FW (v4.78+):
-py run_device_suite.py COM8 -R
+# After flash of matching FW (v4.79+):
+py run_device_suite.py COM8 -R --with-s03
 # or individually:
 py test_bhy2_rate.py COM8 --duration 20 -R          # S04
 py test_ring_fill.py COM8 -R                        # S05 (target 1000)
 py test_ring_drain.py COM8 -R --fill-s 12           # S06
-py test_stream_run.py COM8 --duration 25 --gates 10 # S03 (optional integrity)
+py test_stream_run.py COM8 --duration 25 --gates 10 --seed 45 -R  # S03
 ```
 
-| ID | Script | What it proves | Pass (v4.78) |
+| ID | Script | What it proves | Pass (v4.79) |
 |----|--------|----------------|--------------|
 | **S03** | `test_stream_run.py` | USB stream SM + integrity | 100% frame match (USB fps ~40–55 is OK) |
 | **S04** | `test_bhy2_rate.py` | Live BHY2 → encode → RawRunStore | **fps ≥ 90**, `store=raw`, `we=0` (~**99.5**) |
 | **S05** | `test_ring_fill.py` | ARMED linear fill program-only | fill **≥ 90 fps** to target (default 1000) |
 | **S06** | `test_ring_drain.py` | LOGGING pop2+push1 drain | drain **~10–14 s** for keep=1000; `fr` ≳ keep; no r=1 hang |
 
-**Tag:** `v4.78-best-preroll` — freeze of this baseline.  
-Earlier rate-only tag: `v4.71-best-s04`.
+**Tag:** `v4.79-best-s03` — current best (S03 integrity race fix + skip redundant preroll prep).  
+Prior: `v4.78-best-preroll`, `v4.71-best-s04`.
 
 ---
 
@@ -87,7 +89,7 @@ Serial of note:
 |----|----------|--------|--------|
 | **S01** | Full run pipeline (harness / stream) | unit harness / S03 | ✅ |
 | **S02** | Factory reset | serial `R` | ✅ |
-| **S03** | Stream injection + integrity | `test_stream_run.py` | ✅ |
+| **S03** | Stream injection + integrity | `test_stream_run.py` | ✅ **suite / harness** |
 | **S04** | BHY2 LOGGING rate (Opt-A) | `test_bhy2_rate.py` | ✅ **suite** |
 | **S05** | ARMED pre-roll fill rate | `test_ring_fill.py` | ✅ **suite** |
 | **S06** | LOGGING pre-roll drain | `test_ring_drain.py` | ✅ **suite** |
@@ -98,7 +100,8 @@ USB pull model; **not** a 100 Hz rate gate (host-bound ~40–55 fps).
 Pass: state transitions + decompressor match ≥95% (typically 100%).
 
 ```powershell
-py test_stream_run.py COM8 --duration 25 --gates 10 --save run.ndjson --seed 45
+py test_stream_run.py COM8 --duration 25 --gates 10 --save run.ndjson --seed 45 -R
+# Proven v4.79: 2406 frames, 100% integrity, LOGGING ~54.5 fps USB (not a rate gate)
 ```
 
 ### S04 — BHY2 real LOGGING rate
@@ -167,4 +170,4 @@ Serial `R` → boot → runs=0. Used as `-R` preamble on S04–S06.
 | S04 | fps ≥ 90, store=raw, we=0, full duration window |
 | S05 | fill_fps ≥ 90 to target (or peak under ARM timeout for target=0) |
 | S06 | drain_s ≤ ~18 s for keep=1000; fr sufficient; run_saved ok |
-| S03 | integrity ≥95% (optional in quick suite) |
+| S03 | integrity ≥95% (default in harness loop; `--with-s03` in run_device_suite) |
