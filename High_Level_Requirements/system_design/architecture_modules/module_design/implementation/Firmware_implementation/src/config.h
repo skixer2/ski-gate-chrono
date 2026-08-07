@@ -7,7 +7,22 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.66"
+#define FW_VERSION "4.67"
+
+/* --- SK6812 strip / bench (no physical strip required) ---
+ * LED_STRIP_COUNT 0  = onboard Nicla RGB only
+ * LED_STRIP_COUNT 5  = design strip length (timing cost of full show)
+ * LED_STRIP_COUNT 10 = stress
+ * LED_STRIP_PIN   0  = TIMING-ONLY (IRQ-mask + bit delays, no GPIO) — safe on Nicla
+ * LED_STRIP_PIN  >0  = real NZR on that Arduino pin (custom PCB: 19 / P0.19)
+ * Override in platformio build_flags: -DLED_STRIP_COUNT=5 -DLED_STRIP_PIN=0
+ */
+#ifndef LED_STRIP_COUNT
+#define LED_STRIP_COUNT 5
+#endif
+#ifndef LED_STRIP_PIN
+#define LED_STRIP_PIN 0
+#endif
 
 /* --- State timeouts (milliseconds) --- */
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */

@@ -58,7 +58,12 @@ Sensor           pressure(SENSOR_ID_BARO);
 Sensor           temperature(SENSOR_ID_TEMP);
 
 /* ================================================================== */
+/* Strip bench: count>0 enables SK6812 path; pin=0 → timing-only (no HW). */
+#if LED_STRIP_COUNT > 0
+LED            g_led(LED_STRIP_PIN, LED_STRIP_COUNT);
+#else
 LED            g_led(0, 0);
+#endif
 LDC1612        g_ldc;
 StateMachine   g_sm;
 SPIFlash       g_flash;
@@ -558,6 +563,10 @@ void handle_serial()
         Serial.print(','); json_kv("ver", FW_VERSION);
         /* Non-destructive test-mode read — S04 must not toggle 'T' to query. */
         Serial.print(','); json_kv_bool("tm", test_mode_active());
+        Serial.print(','); json_kv("strip_n", (long)g_led.strip_count());
+        Serial.print(','); json_kv_bool("strip_to", g_led.timing_only());
+        Serial.print(','); json_kv("show_us", (long)g_led.last_show_us());
+        Serial.print(','); json_kv("shows", (long)g_led.show_count());
         json_end();
         return;
     }
@@ -796,8 +805,14 @@ void setup()
     Serial.flush();
     delay(50);
 
-    /* ── LED ── */
+    /* ── LED (onboard and/or SK6812 bench/production strip) ── */
     g_led.begin();
+    json_begin();
+    json_kv("ev", "led");
+    Serial.print(','); json_kv("strip", (long)g_led.strip_count());
+    Serial.print(','); json_kv_bool("timing_only", g_led.timing_only());
+    Serial.print(','); json_kv("pin", (long)LED_STRIP_PIN);
+    json_end();
 
     /* ── SPI Flash (MX25R1635F on SPI0, CS_FLASH=p26) ── */
     json_begin();
