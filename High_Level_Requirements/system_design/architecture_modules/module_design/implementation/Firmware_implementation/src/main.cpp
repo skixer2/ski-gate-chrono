@@ -842,6 +842,9 @@ void setup()
     if (!fs_ok) {
         while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
     }
+    /* First-run slot ready before any ARM (S04 -R / cold boot). */
+    g_runs.ensure_space_for_new_run();
+    g_runs.prepare_next_run();
 
     /* ── BHY2 init (standalone — only sensor hub, no BLE/I2C/DFU handlers) ── */
     json_begin();

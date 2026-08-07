@@ -256,18 +256,16 @@ bool RawRunStore::prepare_next_run()
     }
     if (s < 0) return false;
 
-    /* Fast ARM prep: erase first 16 KB only (~4 sectors, ~100-200 ms).
-       Remaining sectors erased lazily just ahead of the write cursor. */
-    static constexpr uint32_t PREP_BYTES = 16u * 1024u;
+    /* Full-slot erase — intended for POST_RUN cooldown (~10 s) or boot.
+       ~60 sectors × erase; athlete is stopped. LOGGING then is program-only. */
     uint32_t base = slot_addr((uint8_t)s);
-    if (!erase_range(base, PREP_BYTES)) return false;
+    if (!erase_range(base, RRS_SLOT_SIZE)) return false;
     m_prep_slot = (uint8_t)s;
     m_prepared = true;
-    /* stash prep erased end via m_erased_end when create starts */
     Serial.print("{\"ev\":\"raw_prep\",\"slot\":");
     Serial.print((int)m_prep_slot);
     Serial.print(",\"prep_kb\":");
-    Serial.print((long)(PREP_BYTES / 1024));
+    Serial.print((long)(RRS_SLOT_SIZE / 1024));
     Serial.print(",\"slot_kb\":");
     Serial.print((long)(RRS_SLOT_SIZE / 1024));
     Serial.println("}");
@@ -286,7 +284,7 @@ bool RawRunStore::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_ac
     m_slot_base = slot_addr(m_write_slot);
     m_slot_end = m_slot_base + RRS_SLOT_SIZE;
     m_cursor = m_slot_base;
-    m_erased_end = m_slot_base + 16u * 1024u; /* matches prepare_next_run */
+    m_erased_end = m_slot_end; /* full slot erased in prepare_next_run */
     m_payload_bytes = 0;
     m_run_crc = 0xFFFFFFFFu;
     m_write_run_id = m_next_run_id;

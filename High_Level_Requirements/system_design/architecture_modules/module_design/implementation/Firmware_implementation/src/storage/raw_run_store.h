@@ -43,7 +43,8 @@ public:
     bool begin(class SPIFlash& flash);
 
     /**
-     * Pick free/oldest slot and pre-erase it (ARM time — device still).
+     * Pick free/oldest slot and pre-erase the FULL slot.
+     * Call from POST_RUN (10 s cooldown) or boot — NOT from ARM.
      * Safe to call multiple times; no-op if already prepared and unused.
      */
     bool prepare_next_run();
