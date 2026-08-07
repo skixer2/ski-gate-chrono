@@ -447,6 +447,16 @@ def main() -> int:
         return 1
 
     rc = evaluate_run(saved, args.duration, args.min_fps, ver)
+
+    # LED strip bench metrics (v4.67+): show_us / shows from status
+    for r in send(ser, "?", 0.5):
+        if r.get("ev") == "status":
+            sn = r.get("strip_n")
+            if sn is not None:
+                print(f"  LED strip bench: n={sn} timing_only={r.get('strip_to')} "
+                      f"last_show_us={r.get('show_us')} shows={r.get('shows')}")
+            break
+
     ser.close()
     return rc
 
