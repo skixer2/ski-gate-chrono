@@ -389,7 +389,11 @@ injection are also always compiled in — no `-DTEST_MODE` flag exists.
 - Full ARM window can be recorded without wrap; product only needs ~10 s before start
 - Same Opt-A idea as run slots: pay erase when athlete is stopped
 
-**Flash:** `0x0000–0xEFFF` pre-roll; RawRunStore from `0xF000`.
+**Flash (v4.77+):** `0x0000–0x13FFF` pre-roll **4000** slots (3000 ARM + 1000 drain headroom); RawRunStore from `0x14000`.
+
+**Drain:** pop 2 + push 1 live while backlog remains; if pop empties ring, encode live direct (never pop1+push1 at r=1).
+
+**Baseline tag:** `v4.78-best-preroll`. Suite: `system_tests/run_device_suite.py` (S04–S06).
 
 **Tests:** S05 fill, S06 drain (`L` with tm=0), S04 live rate unchanged.
 

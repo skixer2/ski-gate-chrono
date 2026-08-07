@@ -1,6 +1,6 @@
 # SGC — Context Summary
 
-> **CURRENT (2026-08-07):** Firmware **v4.75**. Opt-A `RawRunStore` run payloads (`store=raw`, S04 ~99.5 fps). Linear ARMED pre-roll **3000** slots @ `0x0000–0xEFFF`: `prepare_preroll()` on **enter IDLE** (from ARMED/POST_RUN) + boot; ARMED **program-only**; keep last **1000** at start for phone. Tag `v4.71-best-s04` = best rate snapshot. See AD-015/016, ADR-003, MEMORY.md.
+> **CURRENT (2026-08-07):** Firmware **v4.78** tag **`v4.78-best-preroll`**. Opt-A `RawRunStore` run payloads (`store=raw`, S04 ~99.5 fps). Linear ARMED pre-roll **3000** slots @ `0x0000–0xEFFF`: `prepare_preroll()` on **enter IDLE** (from ARMED/POST_RUN) + boot; ARMED **program-only**; keep last **1000** at start for phone. Tag `v4.71-best-s04` = best rate snapshot. See AD-015/016, ADR-003, MEMORY.md.
 
 ---
 

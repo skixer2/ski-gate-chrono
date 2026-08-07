@@ -1,5 +1,24 @@
 # SGC CI Strategy
 
+## Device system suite (2026-08-07, FW v4.78+)
+
+Primary hardware gate after flash map / storage / pre-roll changes:
+
+```powershell
+cd ...\system_design\system_tests
+py run_device_suite.py COM8 -R              # S04 + S05 + S06
+py run_device_suite.py COM8 -R --with-s03   # + stream integrity
+```
+
+Docs: `system_tests/device.md`. Baseline tag: **`v4.78-best-preroll`**.
+
+| ID | Script | Gate |
+|----|--------|------|
+| S04 | test_bhy2_rate.py | live encode ≥90 fps store=raw |
+| S05 | test_ring_fill.py | ARMED fill ≥90 fps |
+| S06 | test_ring_drain.py | drain ~10–14s keep=1000, no r=1 hang |
+| S03 | test_stream_run.py | integrity (optional; USB fps not rate) |
+
 ## Phase 1: Cron Script (Week 1)
 
 **Setup:** PowerShell scheduled task on JP's Windows machine (where the Nicla is physically connected).
@@ -10,7 +29,13 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $logDir = "F:\Projects\sgc_test_logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-Set-Location "F:\Projects\...\unit_tests"
+# --- Preferred: device system suite (needs flashed production FW) ---
+Set-Location "...\system_design\system_tests"
+py run_device_suite.py COM8 -R
+if ($LASTEXITCODE -ne 0) { Write-Host "DEVICE SUITE FAILED" }
+
+# --- Unit harness (module tests; separate from S04–S06) ---
+Set-Location "...\unit_tests"
 
 $testFiles = @(
     "test_state_machine.py", "test_start_detector.py",
