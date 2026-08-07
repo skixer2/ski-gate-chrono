@@ -169,10 +169,9 @@ void apply_state_visuals(DeviceState s)
     case DeviceState::ARMED:
         g_led.set_pattern(LedPattern::GREEN_CHASE); beep_on(); break;
     case DeviceState::LOGGING:
-        /* Solid red once at entry — LOGGING loop skips g_led.update()
-           (V4.60) so chase animation would freeze anyway. */
+        /* Red blink (RED_CHASE). Real BHY2 LOGGING also calls g_led.update()
+           in loop (v4.66) — same visual as stream/test path. */
         g_led.set_pattern(LedPattern::RED_CHASE);
-        nicla::leds.setColor(60, 0, 0);
         beep_off();
         break;
     case DeviceState::POST_RUN:
@@ -922,10 +921,12 @@ void loop()
         handle_serial();
         g_led.update();  /* athlete must see ARMED/LOGGING */
     } else if (loop_st == DeviceState::LOGGING) {
-        /* V4.60: no LED.update (I2C setColor), no BLE, no LDC.
-           Pattern already set solid/blink on transition; mid-run I2C
-           was pure overhead on the 100 Hz path. */
+        /* Real BHY2 LOGGING: keep LED blink (RED_CHASE). show_onboard_blink
+           only hits I2C on on/off edges (~few Hz), not every sample.
+           Still skip BLE poll + LDC (advertise already off mid-run).
+           S04 @ v4.65 was 99.1 fps without LED; v4.66 re-enables blink. */
         BHY2.update();
+        g_led.update();
         handle_serial();  /* 'p' / status still needed */
     } else {
         BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
