@@ -288,9 +288,10 @@ def main() -> int:
 
     print("=" * 50)
     if ok_fr and saved.get("ok") and drain_ok:
-        print(f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at}), "
-              f"drain {drained_at:.2f}s" if drained_at else
-              f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at})")
+        msg = f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at})"
+        if drained_at is not None:
+            msg += f", drain {drained_at:.2f}s"
+        print(msg)
         rc = 0
     else:
         print("✗ S06 FAILED")
