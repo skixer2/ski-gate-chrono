@@ -15,9 +15,11 @@
 #include "sgc_service.h"
 #include "../state_machine/state_machine.h"
 #include "../storage/spi_flash.h"
-#include "../storage/littlefs_storage.h"
+#include "../storage/raw_run_store.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
+
+extern RawRunStore g_runs;
 
 #define SGC_UUID(base16) "5347" base16 "-0000-1000-8000-00805F9B34FB"
 static BLEService svc(SGC_UUID("0000"));
@@ -199,7 +201,6 @@ void sgc_ble_set_sensor_status(uint8_t bf) {
 
 void sgc_ble_set_run_count(uint16_t count)
 {
-    extern class RawRunStore g_runs;
     uint32_t age = g_runs.oldest_run_age();
     uint8_t buf[6];
     buf[0] = (uint8_t)(count & 0xFF);

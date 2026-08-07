@@ -589,9 +589,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_run_created = false;
         g_last_baro_ms = now;
         g_ring.clear();  /* soft clear — no 6-sector erase */
-        /* Opt A: pre-erase next run slot while stationary (gate / bench). */
-        g_runs.ensure_space_for_new_run();
-        g_runs.prepare_next_run();
+        /* Pre-erase is done in POST_RUN (10 s cooldown) or boot — not here.
+           ARM must stay fast (S04 arm window, athlete at gate). */
         /* P₀ auto-inits from first valid frame written to the ring. */
         g_start_det.reset(0.0f);
     }
@@ -612,10 +611,12 @@ static void on_state_transition(DeviceState from, DeviceState to)
             g_ring.clear();
         }
 
-        /* Both production and force-l use raw store (Opt A). */
+        /* Both production and force-l use raw store (Opt A).
+           create_run() uses slot prepared in POST_RUN; if none (first boot
+           / S04 -R), it prepares now (full or partial erase). */
         g_run_created = g_runs.create_run(0, baro_temp, cal);
-        /* Rate clock starts after create (header program); ARM already
-           paid the sector-erase cost via prepare_next_run(). */
+        /* Rate clock after create — prefer POST_RUN-paid erase so this is
+           header program only (~ms). */
         g_logging_start_ms = millis();
         g_stream_frames_pre_log = g_stream_frames;
         json_begin();
@@ -679,6 +680,12 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_page_cursor = 0;
         if (g_stream_frames) { g_stream_frames = 0; }
         test_stream_reset();
+
+        /* Opt A (JP): pre-erase NEXT run during POST_RUN cooldown (10 s).
+           Athlete is stopped; 1 s of sector erase is free here and keeps
+           ARM + LOGGING free of bulk erase. */
+        g_runs.ensure_space_for_new_run();
+        g_runs.prepare_next_run();
     }
     apply_state_visuals(to);
 }
