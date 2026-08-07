@@ -645,12 +645,15 @@ static void on_state_transition(DeviceState from, DeviceState to)
            POST_RUN (after run). Erase 3000-slot buffer off the fill path so
            next ARMED is program-only for up to 30 s. */
         if (from == DeviceState::ARMED || from == DeviceState::POST_RUN) {
-            g_ring.prepare_preroll();
-            json_begin(); json_kv("ev", "preroll_prep");
-            Serial.print(','); json_kv("arm_cap", (long)ARM_FILL_CAP);
-            Serial.print(','); json_kv("total", (long)TOTAL_SLOTS);
-            Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
-            json_end();
+            /* Skip if already prepared (e.g. soft clear left prepared=true). */
+            if (!g_ring.prepared()) {
+                g_ring.prepare_preroll();
+                json_begin(); json_kv("ev", "preroll_prep");
+                Serial.print(','); json_kv("arm_cap", (long)ARM_FILL_CAP);
+                Serial.print(','); json_kv("total", (long)TOTAL_SLOTS);
+                Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
+                json_end();
+            }
         }
     }
     if (to == DeviceState::ARMED) {
