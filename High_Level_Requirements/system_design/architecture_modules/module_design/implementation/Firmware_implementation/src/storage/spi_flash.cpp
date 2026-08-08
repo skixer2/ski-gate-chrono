@@ -75,7 +75,8 @@ bool SPIFlash::write_safe(uint32_t addr, const uint8_t* data, size_t len) {
 bool SPIFlash::self_test()
 {
     if (!m_ok) return false;
-    const uint32_t TEST_ADDR = 0;
+    /* Reserved sector — never pre-roll @ 0x0000 (see raw_run_store layout). */
+    const uint32_t TEST_ADDR = 0x1FE000u;
     const uint32_t TEST_LEN  = 256;
     if (!erase_block(TEST_ADDR)) return false;
     uint8_t wr[256];

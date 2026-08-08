@@ -69,7 +69,19 @@ Same `--run-id` summary `.md` + per-file `.log` behavior.
 
 - System tests detail: `../../system_tests/device.md`
 - Storage/pre-roll: `device/adr_003_littlefs_storage.md`
-- Baseline tag: **`v4.79-best-s03`** (prior: `v4.78-best-preroll`)
+- JSON protocol: `device/json_protocol.md` (rm=3000, B/echo in **Pa**)
+- Baseline device tag: **`v4.79-best-s03`**; unit-test alignment FW **4.80** + harness **2.20**
+
+## Unit vs device contracts (do not regress)
+
+| Topic | Working code (keep) | Unit harness must |
+|-------|---------------------|-------------------|
+| Pre-roll | linear 3000 + keep 1000 | use `wait_for_ring_count`, not `r==500` / short `ring_full` |
+| force `l` | skips end detector (S04) | enter LOGGING via start det for U03/U07/U08 |
+| `B` / echo `p` | Pascals | expect Pa (not hPa) |
+| Manual B/Q/L | suppresses ARM→stream | call `enable_test_mode()` before unit inject |
+| Stream S03 | ARM + 0x3F pull | do not send B/Q/L before ARM |
+| `f` flash test | reserved `0x1FE000` | allow ≥2 s for response |
 
 ## Hierarchy
 

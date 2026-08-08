@@ -1,10 +1,18 @@
 """
-Unit test: State Machine (v2 — JSON protocol)
+Unit test: State Machine (v2.20 — Opt-A)
     U01 — SLEEP ↔ IDLE
     U02 — IDLE → ARMED → IDLE
-    U03 — Full state cycle: IDLE→ARMED→LOGGING→POST_RUN→IDLE
+    U03 — Full state cycle via natural start + end detectors
+
+force-'l' skips end det (S04). U03 uses start/end detectors so the
+full production path IDLE→ARMED→LOGGING→POST_RUN→IDLE is covered.
 """
-from sgc_test_harness import TestStep, TestScenario, force_state, enable_test_mode
+from sgc_test_harness import (
+    TestStep, TestScenario, enable_test_mode,
+    wait_for_ring_count, inject_pressure_ramp, UNIT_RING_READY,
+)
+
+TEST_VERSION = "2.21.0"
 
 SCENARIOS = []
 
@@ -46,10 +54,7 @@ SCENARIOS.append(TestScenario(
     ]
 ))
 
-# ── U03: Full state cycle ────────────────────────────────────────
-# Polls for state transitions instead of fixed waits.
-# Postsynthetic (0,0,0) LA + test mode → end detector fires ~10s.
-# POST_RUN → IDLE: auto after cooldown.
+# ── U03: Full state cycle (natural detectors) ────────────────────
 SCENARIOS.append(TestScenario(
     name="U03 — Full state cycle",
     setup_commands=['i'],
@@ -63,18 +68,24 @@ SCENARIOS.append(TestScenario(
             expect_json={"st": "IDLE"}),
         TestStep("Arm → wait for state transition", 'a', 500,
             expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
-        TestStep("Force LOGGING", 'l', 500,
-            expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
+        TestStep("Wait ring samples for P0", None, 100,
+            on_response=lambda h, _: wait_for_ring_count(
+                h, min_r=UNIT_RING_READY, timeout_ms=12000)),
+        TestStep("Descent → LOGGING via start det", None, 100,
+            on_response=lambda h, _: (
+                inject_pressure_ramp(h, 101325, 101361, 12, 100)
+                and h.wait_for_state('LOGGING', timeout_ms=8000)
+            )),
         TestStep("Verify LOGGING", '?', 300,
             expect_json={"st": "LOGGING"}),
-        # Wait for end detector (10s stillness) → POST_RUN
+        # Flat pressure → end detector (~5 s window) → POST_RUN
+        TestStep("Hold flat for end detector", 'B 101361', 200),
         TestStep("Wait stillness → POST_RUN",
             poll_state='POST_RUN', poll_interval_ms=300, timeout_ms=25000),
         TestStep("Verify POST_RUN", '?', 200,
             expect_json={"st": "POST_RUN"}),
-        # Wait cooldown → IDLE
         TestStep("Wait cooldown → IDLE",
-            poll_state='IDLE', poll_interval_ms=300, timeout_ms=25000),
+            poll_state='IDLE', poll_interval_ms=300, timeout_ms=20000),
         TestStep("Verify back to IDLE", '?', 300,
             expect_json={"st": "IDLE"}),
     ]

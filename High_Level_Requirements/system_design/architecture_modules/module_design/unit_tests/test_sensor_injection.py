@@ -1,15 +1,15 @@
 """
-Unit test: Sensor Injection (v2 — JSON protocol)
+Unit test: Sensor Injection (v2.20 — Pa units)
     U16 — Toggle test mode
-    U17 — Inject pressure values
-    U18 — Inject quaternion (NOW VALIDATES ALL 4 COMPONENTS)
+    U17 — Inject pressure values (Pascals; echo p matches B)
+    U18 — Inject quaternion
     U19 — Inject linear acceleration
 
-    JSON protocol eliminates the format-sensitivity that caused
-    U18 flakiness in v1 (Arduino float precision variability).
-    All assertions use numeric tolerance ±0.01 on float values.
+FW ≥4.80: B takes Pa; echo returns Pa (not hPa). Matches status.p.
 """
 from sgc_test_harness import TestStep, TestScenario, enable_test_mode
+
+TEST_VERSION = "2.21.0"
 
 SCENARIOS = []
 
@@ -30,8 +30,7 @@ SCENARIOS.append(TestScenario(
     ]
 ))
 
-# ── U17: Inject pressure ─────────────────────────────────────────
-# Now validates exact numeric values instead of string matching.
+# ── U17: Inject pressure (Pascals) ───────────────────────────────
 SCENARIOS.append(TestScenario(
     name="U17 — Inject pressure values",
     setup_commands=['i'],
@@ -41,22 +40,20 @@ SCENARIOS.append(TestScenario(
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Set 95000 Pa (~500m altitude)", 'B 95000', 300,
             expect_json={"ev": "cmd", "cmd": "B", "p": 95000.0}),
-        TestStep("Echo verify", 'Z', 300,
+        TestStep("Echo verify Pa", 'Z', 300,
             expect_json={"ev": "echo", "p": 95000.0}),
         TestStep("Set 101325 Pa (sea level)", 'B 101325', 300,
             expect_json={"ev": "cmd", "cmd": "B", "p": 101325.0}),
-        TestStep("Echo verify", 'Z', 300,
+        TestStep("Echo verify Pa", 'Z', 300,
             expect_json={"ev": "echo", "p": 101325.0}),
         TestStep("Set 85000 Pa (~1500m)", 'B 85000', 300,
             expect_json={"ev": "cmd", "cmd": "B", "p": 85000.0}),
-        TestStep("Echo verify", 'Z', 300,
+        TestStep("Echo verify Pa", 'Z', 300,
             expect_json={"ev": "echo", "p": 85000.0}),
     ]
 ))
 
-# ── U18: Inject quaternion (NOW FULLY VALIDATED) ─────────────────
-# v1 only checked first component with partial string match 'Q=(0.7'.
-# v2 validates ALL 4 quaternion components with ±0.01 tolerance.
+# ── U18: Inject quaternion ───────────────────────────────────────
 SCENARIOS.append(TestScenario(
     name="U18 — Inject quaternion",
     setup_commands=[],

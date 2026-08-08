@@ -35,9 +35,9 @@ void test_set_frame(const RawFrame& rf) {
 }
 
 /* ── Individual getters (derived from g_test_frame) ─────────── */
-/* Pressure: baro_pa_div2 is Pa/2 → ×2 → Pa → /100 → hPa */
+/* Pressure: baro_pa_div2 is Pa/2 → ×2 → Pa (same unit as B command / status p) */
 float test_get_pressure() {
-    return (float)g_test_frame.baro_pa_div2 * 2.0f / 100.0f;
+    return (float)g_test_frame.baro_pa_div2 * 2.0f;
 }
 float test_get_quat_w() { return (float)g_test_frame.q_w / 16384.0f; }
 float test_get_quat_x() { return (float)g_test_frame.q_x / 16384.0f; }
@@ -48,9 +48,11 @@ float test_get_lay()    { return (float)g_test_frame.la_y; }
 float test_get_laz()    { return (float)g_test_frame.la_z; }
 
 /* ── Static helpers for B/Q/L commands (Write RawFrame field) ── */
-static void set_pressure_hpa(float hpa) {
-    /* hPa → Pa → Pa/2: hpa * 100 / 2 = hpa * 50 */
-    g_test_frame.baro_pa_div2 = (uint16_t)(hpa * 50.0f);
+/* B always takes Pascals (json_protocol + unit tests). Clamp to uint16 Pa/2. */
+static void set_pressure_pa(float pa) {
+    if (pa < 0.0f) pa = 0.0f;
+    if (pa > 131070.0f) pa = 131070.0f;  /* max uint16 * 2 */
+    g_test_frame.baro_pa_div2 = (uint16_t)(pa * 0.5f + 0.5f);
 }
 static void set_quat(float w, float x, float y, float z) {
     g_test_frame.q_w = (int16_t)(w * 16384.0f);
@@ -64,13 +66,13 @@ static void set_la(float x, float y, float z) {
     g_test_frame.la_z = (int16_t)z;
 }
 
-/* ── Default frame (desk-still, sea-level) — init on test mode enter */
+/* ── Default frame (desk-still, sea-level) — init on test mode enter.
+   Sea-level Pa so unit tests that arm without B still have a valid P0.
+   Stream path overwrites via test_request_frame(). */
 static void init_default_frame() {
-    set_quat(0.0f, 0.0f, 0.0f, 1.0f);
-    set_la(0.0f, 0.0f, -9810.0f);
-    /* baro=0 → invalid. Start detector auto-init waits for the first
-       real sample written to the ring (serial stream or BHY2). */
-    g_test_frame.baro_pa_div2 = 0;
+    set_quat(1.0f, 0.0f, 0.0f, 0.0f);
+    set_la(0.0f, 0.0f, 0.0f);
+    set_pressure_pa(101325.0f);
 }
 
 /* ── JSON echo ──────────────────────────────────────────────── */
@@ -156,8 +158,8 @@ bool test_mode_handle_serial(char c)
     switch (c) {
     case 'B': {
         g_manual_frame = true;  /* manual injection → no ARM→stream */
-        float pa = Serial.parseFloat();
-        set_pressure_hpa(pa);
+        float pa = Serial.parseFloat();  /* Pascals */
+        set_pressure_pa(pa);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "B");
         Serial.print(','); json_kv("p", pa);
@@ -165,6 +167,7 @@ bool test_mode_handle_serial(char c)
         return true;
     }
     case 'Q': {
+        g_manual_frame = true;  /* same as B — unit tests inject without stream PC */
         float w = Serial.parseFloat(), x = Serial.parseFloat();
         float y = Serial.parseFloat(), z = Serial.parseFloat();
         set_quat(w, x, y, z);
@@ -177,7 +180,9 @@ bool test_mode_handle_serial(char c)
     }
     case 'L': {
         /* set lin-acc — only in test mode (tm=1). When tm=0, main 'L' =
-           natural LOGGING drain path (S06). */
+           natural LOGGING drain path (S06). Marks manual so ARM does not
+           open stream (unit tests inject LA without a frame server). */
+        g_manual_frame = true;
         float x = Serial.parseFloat(), y = Serial.parseFloat(), z = Serial.parseFloat();
         set_la(x, y, z);
         json_begin(); json_kv("ev", "cmd");

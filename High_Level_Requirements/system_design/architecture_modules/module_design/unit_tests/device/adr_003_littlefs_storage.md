@@ -2,7 +2,7 @@
 
 **Status:** Opt-A run payloads + linear pre-roll (2026-08-07)  
 **Original:** ACCEPTED LittleFS (2026-07-11), v1 amend (2026-07-22)  
-**Current baseline tag:** **`v4.78-best-preroll`** (FW 4.78)
+**Current baseline tag:** **`v4.79-best-s03`** (FW 4.79 proven); unit-test alignment **FW 4.80**
 
 ## Run payloads — Opt A RawRunStore
 
@@ -75,10 +75,14 @@ Constraints: no large RAM ring (Cordio OOM); erases off descent path.
 | S06 | `system_tests/test_ring_drain.py` | Drain path |
 | S03 | `system_tests/test_stream_run.py` | Stream integrity (not Hz) |
 | Suite | `system_tests/run_device_suite.py` | S04+S05+S06 |
+| U09–U11 | `unit_tests/test_ring_buffer.py` | Pre-roll fill/reset (not full-3000) |
+| U04–U08 | start/end detector unit tests | Natural entry; no force-`l` for end det |
 
-See `system_tests/device.md`.
+Unit harness (`HARNESS_VERSION` 2.20): use `wait_for_ring_count()`, not only `ring_full` (full 3000 races ARM 30 s).
+
+See `system_tests/device.md` and `unit_tests/README.md`.
 
 ## Version
 
 Bump `FW_VERSION` in `src/config.h` on every storage/pre-roll change.  
-**Current best tag: `v4.78-best-preroll`.**
+**Device proven tag: `v4.79-best-s03`.** Unit-test pressure/flash fixes: **4.80**.

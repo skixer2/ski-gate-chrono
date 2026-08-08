@@ -11,12 +11,15 @@
  * (USB chunk delivers 3-4 frames → only last survived).
  *
  * Serial protocol:
- *   B <pa>            — set barometric pressure (hPa)
- *   Q <w> <x> <y> <z> — set quaternion (floats)
- *   L <x> <y> <z>     — set linear acceleration (mm/s²)
+ *   B <pa>            — set barometric pressure in Pascals (e.g. 101325)
+ *   Q <w> <x> <y> <z> — set quaternion (floats); marks manual frame
+ *   L <x> <y> <z>     — set linear acceleration (mm/s²); marks manual frame
  *   T                  — toggle test mode on/off
  *   S                  — enter stream mode (pull frames via request-response)
- *   Z                  — print current injected values
+ *   Z                  — echo injected values (p in Pa, matching B/cmd)
+ *
+ * Manual B/Q/L suppress ARM→stream so unit tests can inject without a PC
+ * frame server. Stream mode is for S03 (pull RawFrame via 0x3F).
  */
 
 #pragma once

@@ -1,6 +1,7 @@
-# SGC JSON-Lines Protocol v2
+# SGC JSON-Lines Protocol v2.20
 
-*Firmware Phase 9 — Always-JSON (ADR-001)*
+*Firmware Phase 9 — Always-JSON (ADR-001)*  
+*Aligned with FW ≥4.80 / Opt-A linear pre-roll (`v4.79-best-s03` + unit-test fixes)*
 
 ## Format
 
@@ -17,105 +18,121 @@ One JSON object per line (JSONL). No pretty-printing. Numeric values use minimal
 | `from` | string | Previous state in transition |
 | `to` | string | New state in transition |
 | `cmd` | string | Command acknowledged (test mode only) |
-| `r` | int | Ring buffer current count |
-| `rm` | int | Ring buffer max size (500) |
-| `p` | float | Barometric pressure (Pa) |
+| `r` | int | Pre-roll current count (ARMED fill) |
+| `rm` | int | Pre-roll arm cap = **3000** (`ARM_FILL_CAP`) |
+| `rh` | int | Pre-roll head index |
+| `p` | float/int | Barometric pressure (**Pascals**) — status and echo |
 | `bat` | int | Battery percentage (0–100) |
 | `evc` | int | Meta-event count from BHY2 |
 | `qi` | bool | Qi charging (0/1) |
-| `runs` | int | Total runs stored |
+| `runs` | int | Runs currently stored |
+| `total_runs` | int | Lifetime run counter |
 | `q` | [float×4] | Quaternion [w,x,y,z] |
 | `la` | [float×3] | Linear acceleration [x,y,z] (mm/s²) |
 | `tm` | bool | Test mode active (0/1) |
 | `fr` | int | Frame count |
-| `sz` | int | Compressed data size (bytes) |
+| `sz` | int | Compressed / stored data size (bytes) |
 | `id` | int | Run ID number |
-| `cal` | int | Calibration accuracy (0–3) |
-| `pre` | int | Pre-trigger frame count |
+| `store` | string | `"raw"` (Opt-A RawRunStore) |
 | `ok` | bool | Operation success (0/1) |
-| `mag` | float | Quaternion magnitude |
-| `reason` | string | Error/refusal reason |
 | `ver` | string | Firmware version |
-| `sub` | string | Subsystem name (init events) |
-| `next` | int | Next flash address |
-| `delta` | int | Speed delta (start detector) |
-| `mode` | string | start detector mode ("drop" or "speed") |
-| `pa` | float | Pressure delta Pa (start detector) |
-| `err_at` | int | Byte offset of flash mismatch |
-| `crc` | int | CRC32 value (file transfer) |
+| `cap_s` | int | Arm fill capacity in seconds (30) |
+| `arm_cap` | int | Same as rm (preroll_prep event) |
+| `keep` | int | `PREROLL_KEEP` = 1000 |
+| `total` | int | Total pre-roll slots = 4000 |
 
 ## Events
 
 ### Boot sequence
 ```json
-{"ev":"boot","ver":"2.3"}
+{"ev":"boot","ver":"4.80"}
 {"ev":"init","sub":"flash","ok":1}
-{"ev":"index","runs":37,"next":13946880}
+{"ev":"preroll_prep","arm_cap":3000,"total":4000,"keep":1000,"why":"boot"}
 {"ev":"init","sub":"bhy2","ok":1}
 {"ev":"init","sub":"ble","ok":1}
-{"ev":"ready","st":"IDLE","runs":37}
+{"ev":"ready","st":"IDLE","runs":0}
 ```
 
 ### Status query (`?`)
 ```json
-{"ev":"status","st":"ARMED","r":500,"rm":500,"p":10132500,"bat":85,"evc":0,"qi":0,"runs":3}
+{"ev":"status","st":"ARMED","r":1285,"rm":3000,"rh":1285,"p":89721,"bat":90,"evc":0,"qi":0,"runs":1,"total_runs":1,"ver":"4.80","tm":0}
 ```
+
+`p` is **Pascals** (`hPa * 100` from BHY2, or injected Pa in test mode).
 
 ### State transitions
 ```json
 {"ev":"st","from":"IDLE","to":"ARMED"}
 {"ev":"st","from":"ARMED","to":"LOGGING"}
-```
-
-### Timeouts and cooldown
-```json
 {"ev":"timeout","from":"ARMED","to":"IDLE"}
 {"ev":"cooldown","from":"POST_RUN","to":"IDLE"}
+{"ev":"preroll_prep","arm_cap":3000,"total":4000,"keep":1000}
+```
+
+### Pre-roll full
+Emitted once when ARMED fill reaches `ARM_FILL_CAP` (3000). This races the 30 s ARM timeout at 100 Hz — unit tests should prefer `r >= N` polling, not only `ring_full`.
+
+```json
+{"ev":"ring_full","r":3000,"cap_s":30}
 ```
 
 ### Test mode commands
-Test mode (T command) enables simulated sensor injection.
 
-**Stream test (v4.34+):** ARM alone triggers pull-model streaming. No S or B commands needed.
-Start detector auto-initializes from first stream frame's pressure.
+Test mode (`T`) enables simulated sensor injection.
+
+| Cmd | Meaning |
+|-----|---------|
+| `T` | Toggle test mode |
+| `B <Pa>` | Set pressure in **Pascals** (e.g. `B 101325`) — marks **manual** frame |
+| `Q w x y z` | Set quaternion — marks **manual** frame |
+| `L x y z` | Set lin-acc (mm/s²) when tm=1 — marks **manual** frame |
+| `Z` | Echo injected values (`p` in **Pa**) |
+| `S` | Enter stream pull mode (0x3F / 16-byte RawFrame) |
+
+**Manual vs stream**
+
+- After any `B`/`Q`/`L`, `g_manual_frame=true` → ARM does **not** open stream. Unit tests inject this way.
+- Stream path (S03): test mode ON **without** manual inject, or `S` — ARM pulls frames via `0x3F`.
+- When tm=0, bare `L` is the S06 drain-LOGGING command (not lin-acc).
 
 ```json
-{"ev":"cmd","cmd":"T","tm":1}                        // Enter test mode
-{"ev":"st","from":"IDLE","to":"ARMED"}                // ARM triggers stream
-// Firmware sends 0x3F to request frames; PC responds with 16-byte RawFrame
-{"ev":"sd","p0":79725.0,"pa":79745.0,"drp":0.21}       // Start detector diagnostics
-{"ev":"start","mode":"drop","m":2.3}                    // Start detected
-{"ev":"st","from":"ARMED","to":"LOGGING"}              // Run begins
+{"ev":"cmd","cmd":"T","tm":1}
+{"ev":"cmd","cmd":"B","p":101325.0}
+{"ev":"echo","p":101325.0,"q":[1.0,0.0,0.0,0.0],"la":[0.0,0.0,0.0]}
 ```
 
-**Manual mode (B/Q/L commands):** Set individual sensor values on the static test frame.
+**Stream test (S03):** ARM alone triggers pull-model streaming when tm ON and no manual frame.
 
 ```json
-{"ev":"cmd","cmd":"B","p":95000.0}
-{"ev":"cmd","cmd":"Q","q":[0.71,0.00,0.71,0.00]}
-{"ev":"cmd","cmd":"L","la":[1000.00,0.00,0.00]}
-{"ev":"echo","p":101325.0,"q":[1.00,0.00,0.00,0.00],"la":[0.00,0.00,0.00]}
+{"ev":"st","from":"IDLE","to":"ARMED"}
+// Firmware sends 0x3F; PC responds with 16-byte RawFrame
+{"ev":"sd","p0":79725.0,"pa":79745.0,"drp":0.21}
+{"ev":"start","mode":"drop","m":2.3}
+{"ev":"st","from":"ARMED","to":"LOGGING"}
 ```
 
-### Hex dump (flash readback)
-```json
-// h <run_id> raw  →  chunked hex dump of entire run file (same bytes BLE sends)
-{"ev":"hex_dump","id":0,"sz":33008,"chunks":259}
-{"ev":"raw","id":0,"off":0,"hex":"0200000000004001..."}
-{"ev":"raw","id":0,"off":128,"hex":"840a3f0000220b..."}
-// h <run_id>       →  anchors every 100th frame
-{"ev":"hex_dump","id":0,"sz":33008,"anchors":[[0,39862],[100,39900],...],"frames":2428}
-// h <run_id> <from> <to>  → baro for frame range
-// h <run_id> <from> <to> r → raw hex for frame range
-```
+### Force LOGGING variants
+
+| Cmd | Flag | End detector | Ring |
+|-----|------|--------------|------|
+| `l` | `g_force_logging` | **skipped** (S04 rate) | cleared |
+| `L` (tm=0) | `g_bench_drain` | **skipped** (S06) | drain path |
+| start det | natural | **active** | trim keep 1000 |
+
+Unit tests that need end detection must enter LOGGING via start detector, not `l`.
 
 ### Run lifecycle
 ```json
-{"ev":"ring_full","r":500}
-{"ev":"start","mode":"drop","pa":1.5}
-{"ev":"log_start","run":4,"pre":500}
-{"ev":"end_detected","fr":500}
-{"ev":"run_saved","id":4,"fr":500,"sz":4625,"cal":0}
+{"ev":"run_created","ok":1,"id":1,"store":"raw"}
+{"ev":"run_saved","id":1,"fr":162,"sz":1188,"dur_ms":1686,"fps10":960,"ok":1,"store":"raw","we":0,"runs":2,"total":2}
+```
+
+### Flash self-test (`f`)
+Uses reserved sector `0x1FE000` (does **not** erase pre-roll at 0x0000).
+
+```json
+{"ev":"flash","ok":1}
+{"ev":"flash","ok":0,"err_at":127}
 ```
 
 ### Errors and refusals
@@ -123,31 +140,13 @@ Start detector auto-initializes from first stream frame's pressure.
 {"ev":"arm_refused","reason":"quat_magnitude","mag":0.45}
 {"ev":"arm_blocked","reason":"cooldown"}
 {"ev":"state_blocked","reason":"not_armed","current":"IDLE"}
-{"ev":"battery_low","bat":12}
-```
-
-### Flash
-```json
-{"ev":"flash","ok":1}
-{"ev":"flash","ok":0,"err_at":127}
-{"ev":"factory_reset"}
-{"ev":"reboot"}
-```
-
-### BLE File Transfer
-```json
-{"ev":"ft_request","run":0}
-{"ev":"ft_start","run":0,"sz":5120}
-{"ev":"ft_done","crc":3735928559}
-{"ev":"ft_error","reason":"invalid_run"}
-{"ev":"ft_error","reason":"not_found"}
+{"ev":"state_blocked","reason":"not_logging","current":"ARMED"}
 ```
 
 ## Design Decision (ADR-001)
 
 No `#ifdef` on output code. JSON-lines in every build.
-- Test commands (`T`,`B`,`Q`,`L`,`Z`) and sensor injection gated behind `-DTEST_MODE`
-- Serial commands (`?`,`a`,`l`,`p`,`s`,`i`,`f`,`R`) work identically always
-- Production binary is physically sealed — USB inaccessible, test commands harmless
+- Test commands (`T`,`B`,`Q`,`L`,`Z`,`S`) always compiled; gated by runtime tm / manual flags
+- Serial commands (`?`,`a`,`l`,`L`,`p`,`s`,`i`,`f`,`R`) work identically always
 - Bench test = worst-case timing (UART TX blocks loop); production runs faster
 - Rationale: single code path, always tested. See `adr_001_always_json.md`.

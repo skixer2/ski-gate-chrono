@@ -1,5 +1,5 @@
 """
-SGC Unit Test Harness v2 — JSON-lines protocol + structured assertions.
+SGC Unit Test Harness v2.20 — JSON-lines protocol + structured assertions.
 
 Usage:
     python sgc_test_harness.py --port COM3 test_start_detector.py
@@ -9,8 +9,19 @@ Architecture:
     Python ──(serial USB)──▶ SGC Device in TEST_MODE + JSON mode
     Sends inject commands (B/Q/L), reads JSON-lines responses.
 
+Aligned with FW ≥4.80 / Opt-A linear pre-roll:
+    rm = ARM_FILL_CAP = 3000 (~30 s @ 100 Hz)
+    PREROLL_KEEP = 1000 (~10 s kept at LOGGING entry)
+    ring_full fires only at r==3000 (races ARM_TIMEOUT) — prefer
+    wait_for_ring_count() for unit tests.
+    B / echo p are Pascals. Manual B/Q/L suppress ARM→stream.
+
 Protocol: see json_protocol.md for full spec.
 """
+
+HARNESS_VERSION = "2.21.0"
+# Unit scenarios require FW ≥ this (Pa echo, manual Q/L, flash@0x1FE000).
+MIN_FW_VERSION = (4, 80)
 
 import os
 import sys
@@ -113,7 +124,9 @@ class SGCTestHarness:
             self.ser = serial.Serial(self.port, self.baud, timeout=1)
             time.sleep(2)
             self._flush()
+            print(f"SGC Test Harness v{HARNESS_VERSION}")
             print(f"Connected to {self.port} at {self.baud} baud")
+            self._check_firmware_version()
             return True
         except serial.SerialException as e:
             print(f"ERROR: Cannot open {self.port}: {e}")
@@ -127,6 +140,59 @@ class SGCTestHarness:
         if self.ser:
             self.ser.reset_input_buffer()
             self.ser.reset_output_buffer()
+
+    @staticmethod
+    def _parse_ver_tuple(ver: str):
+        """Parse '4.80' / '4.80-foo' → (4, 80). Returns None on failure."""
+        if not ver:
+            return None
+        parts = []
+        for tok in str(ver).replace('-', '.').split('.'):
+            digits = ''
+            for ch in tok:
+                if ch.isdigit():
+                    digits += ch
+                else:
+                    break
+            if digits:
+                parts.append(int(digits))
+            if len(parts) >= 2:
+                break
+        if not parts:
+            return None
+        while len(parts) < 2:
+            parts.append(0)
+        return tuple(parts[:2])
+
+    def _check_firmware_version(self):
+        """Warn loudly if device FW is older than unit-test contract."""
+        try:
+            self.send('V')
+            time.sleep(0.2)
+            objs = self._read_json_lines(800)
+            ver = None
+            for o in objs:
+                if o.get('ev') in ('version', 'boot', 'status') and o.get('ver'):
+                    ver = o.get('ver')
+                    break
+            if ver is None:
+                st = self.query_status_json()
+                if st:
+                    ver = st.get('ver')
+            vt = self._parse_ver_tuple(ver) if ver else None
+            if vt is None:
+                print(f"WARNING: could not read FW version (got {ver!r})")
+                return
+            print(f"Device FW version: {ver}")
+            if vt < MIN_FW_VERSION:
+                need = '.'.join(str(x) for x in MIN_FW_VERSION)
+                print('=' * 60)
+                print(f"ERROR: unit tests need FW ≥ {need}, device reports {ver}")
+                print("Flash Firmware_implementation (config.h FW_VERSION) first.")
+                print("S03–S06 may still pass on older FW; unit scenarios will fail.")
+                print('=' * 60)
+        except Exception as e:
+            print(f"WARNING: FW version check failed: {e}")
 
     def drain_serial(self, timeout_ms: int = 500) -> str:
         """Read and discard all pending serial data. Returns drained content."""
@@ -271,9 +337,11 @@ class SGCTestHarness:
             if key not in data:
                 return False
             actual = data[key]
-            # Numeric tolerance (for floats from Arduino)
+            # Numeric tolerance (Arduino floats + Pa/2 quantization on p)
             if isinstance(value, (int, float)) and isinstance(actual, (int, float)):
-                if abs(actual - value) > 0.001:
+                # baro is stored as Pa/2 uint16 → echo/status p snaps to even Pa
+                tol = 1.0 if key in ('p', 'pa', 'p0') else 0.001
+                if abs(float(actual) - float(value)) > tol:
                     return False
             elif isinstance(value, list) and isinstance(actual, list):
                 if len(actual) != len(value):
@@ -285,7 +353,12 @@ class SGCTestHarness:
                     elif a != e:
                         return False
             elif actual != value:
-                return False
+                # JSON bools often arrive as 0/1
+                if isinstance(value, bool) and actual in (0, 1):
+                    if bool(actual) != value:
+                        return False
+                else:
+                    return False
         return True
 
     # ── Scenario runner ─────────────────────────────────────────
@@ -297,11 +370,15 @@ class SGCTestHarness:
         print(f"{'='*60}")
 
         # ── Setup ───────────────────────────────────────────────
+        # prepare_preroll erases 20 flash sectors on ARMED→IDLE (~0.5–2 s).
+        # Short sleeps drop the following 'a' into the erase window.
         for cmd in scenario.setup_commands:
             if self.verbose:
                 print(f"  SETUP: {cmd}")
             self.send(cmd)
-            time.sleep(0.3)
+            settle = 1.5 if str(cmd).strip().lower() in ('i', 'a', 'p', 'l') else 0.4
+            time.sleep(settle)
+            self.drain_serial(200)
 
         try:
             for i, step in enumerate(scenario.steps, 1):
@@ -339,17 +416,27 @@ class SGCTestHarness:
                         if step.wait_ms > 0:
                             time.sleep(step.wait_ms / 1000.0)
 
-                        # Determine read timeout
+                        # Determine read timeout. State transitions that may
+                        # emit preroll_prep (ARMED→IDLE erase) need longer.
                         read_to = step.timeout_ms
+                        cmd0 = (step.command or '').strip()[:1].lower()
+                        if step.expect_json is not None and cmd0 in ('i', 'a', 'p', 'f'):
+                            read_to = max(read_to, 2500)
                         if step.command and not step.expect_contains and not step.expect_not_contains and not step.expect_json:
                             read_to = min(read_to, 400)
 
                         # ── JSON assertion mode ────────────────────
                         if step.expect_json is not None:
                             objs = self._read_json_lines(read_to)
+                            # If expect matches a later line (st after preroll_prep),
+                            # keep reading briefly for multi-event bursts.
+                            if not any(self._check_json(o, step.expect_json) for o in objs):
+                                extra = self._read_json_lines(800)
+                                if extra:
+                                    objs.extend(extra)
                             output = '\n'.join(json.dumps(o) for o in objs) if objs else "(no JSON)"
                             if self.verbose:
-                                for o in objs[:3]:
+                                for o in objs[:5]:
                                     print(f"    ← {json.dumps(o)}")
                             # Check all received JSON objects (first match wins)
                             for o in objs:
@@ -422,14 +509,27 @@ class SGCTestHarness:
 
 # ── Helpers ─────────────────────────────────────────────────────
 
+# Opt-A linear pre-roll (must match flash_ring.h)
+ARM_FILL_CAP = 3000   # status rm; ring_full at this count
+PREROLL_KEEP = 1000   # frames kept at LOGGING entry / S05 default target
+# Unit tests: enough pre-roll without racing ARM_TIMEOUT (30 s)
+UNIT_RING_READY = 200
+
+
 def force_state(h: SGCTestHarness, state: str):
     cmds = {'SLEEP': 's', 'IDLE': 'i', 'ARMED': 'a', 'LOGGING': 'l', 'POST_RUN': 'p'}
-    h.send(cmds.get(state.upper(), 'i'))
-    time.sleep(0.3)
+    cmd = cmds.get(state.upper(), 'i')
+    h.send(cmd)
+    # IDLE may run prepare_preroll (20 sector erase)
+    time.sleep(1.5 if cmd == 'i' else 0.4)
+    h.drain_serial(200)
 
 def enable_test_mode(h: SGCTestHarness) -> bool:
     """Ensure test mode is ON and injected values are at clean defaults.
-    With JSON protocol, also waits for boot JSON to drain."""
+
+    Ends with B/Q/L so g_manual_frame=true → ARM does NOT open stream
+    (unit tests inject; S03 stream path uses T without B/Q/L, or S).
+    """
     # Drain any boot JSON
     h.drain_serial(1000)
     # Toggle test mode
@@ -440,32 +540,97 @@ def enable_test_mode(h: SGCTestHarness) -> bool:
         h.send('T'); time.sleep(0.15)
         objs = h._read_json_lines(500)
         tm_on = any(o.get('tm') for o in objs if o.get('ev') == 'cmd')
-    # Reset injected values to safe defaults
-    h.send('L 0 0 0'); time.sleep(0.05)
+    # Reset injected values to safe defaults (Pa). Order: Q, L, B last
+    # so manual_frame stays set and baro is valid for start det.
     h.send('Q 1 0 0 0'); time.sleep(0.05)
+    h.send('L 0 0 0'); time.sleep(0.05)
     h.send('B 101325'); time.sleep(0.05)
+    h.drain_serial(200)
     return tm_on
 
-def wait_for_ring_full(h: SGCTestHarness, timeout_ms: int = 12000) -> bool:
-    """Poll for ring_full JSON event.
-    Returns True if ring_full event received, False on timeout.
+def wait_for_ring_full(h: SGCTestHarness, timeout_ms: int = 35000) -> bool:
+    """Poll for ring_full JSON event (r reaches ARM_FILL_CAP=3000).
 
-    Usage in tests:
-        TestStep("Wait for ring to fill", None, 100,
-            on_response=lambda h, _: wait_for_ring_full(h)),
+    Note: full fill races ARM_TIMEOUT 30 s @ 100 Hz. Prefer
+    wait_for_ring_count() for unit tests unless you truly need cap.
     """
     return h.wait_for_json_event("ring_full", timeout_ms=timeout_ms) is not None
 
+
+def wait_for_ring_count(h: SGCTestHarness, min_r: int = UNIT_RING_READY,
+                        timeout_ms: int = 15000,
+                        require_armed: bool = True) -> bool:
+    """Poll status until ring count >= min_r (and optionally still ARMED).
+
+    Default min_r=UNIT_RING_READY (~2 s) — enough for start-det / force-l
+    tests without waiting for full 3000 or ring_full.
+    """
+    deadline = time.time() + timeout_ms / 1000.0
+    while time.time() < deadline:
+        st = h.query_status_json()
+        if st:
+            r = int(st.get('r') or 0)
+            state = st.get('st')
+            if h.verbose:
+                print(f"    … r={r}/{st.get('rm')} st={state}", flush=True)
+            if require_armed and state != 'ARMED':
+                if h.verbose:
+                    print(f"  ⏰ left ARMED (st={state}) before r>={min_r}")
+                return False
+            if r >= min_r:
+                return True
+        time.sleep(0.25)
+    if h.verbose:
+        print(f"  ⏰ timeout waiting for r>={min_r}")
+    return False
+
+
+def expect_status(h: SGCTestHarness, **kwargs) -> bool:
+    """Fetch status and check key==value (numeric tolerance 0.001)."""
+    st = h.query_status_json()
+    if not st:
+        return False
+    if h.verbose:
+        print(f"    ← status {json.dumps(st)}")
+    for k, v in kwargs.items():
+        if k not in st:
+            return False
+        actual = st[k]
+        if isinstance(v, (int, float)) and isinstance(actual, (int, float)):
+            if abs(actual - v) > 0.001:
+                return False
+        elif actual != v:
+            return False
+    return True
+
+
 def inject_pressure(h: SGCTestHarness, pa: float):
+    """Inject barometric pressure in Pascals."""
     h.send(f'B {pa}')
 
 def inject_pressure_ramp(h: SGCTestHarness, start_pa: float, end_pa: float,
                           steps: int, step_delay_ms: int = 110) -> bool:
+    """Ramp pressure in Pascals (start detector / end detector stimulus)."""
     delta = (end_pa - start_pa) / steps
     for i in range(steps + 1):
         h.send(f'B {start_pa + delta * i}')
         time.sleep(step_delay_ms / 1000.0)
     return True
+
+
+def enter_logging_via_start(h: SGCTestHarness,
+                            p0: float = 101325.0,
+                            drop_pa: float = 36.0) -> bool:
+    """Natural ARMED→LOGGING via start detector (keeps end det active).
+
+    force-'l' sets g_force_logging and SKIPS end detector (S04). Tests that
+    need end detection must enter LOGGING this way, not via 'l'.
+    drop_pa default +36 Pa ≈ 3 m > 2 m threshold.
+    """
+    if not wait_for_ring_count(h, min_r=50, timeout_ms=8000):
+        return False
+    inject_pressure_ramp(h, p0, p0 + drop_pa, 12, 100)
+    return h.wait_for_state('LOGGING', timeout_ms=8000)
 
 
 def main():
