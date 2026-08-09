@@ -42,3 +42,7 @@ android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 **/test/results/
 *.ndjson
 *.png
+
+# Local harness run summaries / logs (machine-generated)
+High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/run_*.md
+High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/run_*.log
