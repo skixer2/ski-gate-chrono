@@ -14,7 +14,7 @@ from sgc_test_harness import (
     wait_for_ring_count, ARM_FILL_CAP, UNIT_RING_READY, PREROLL_KEEP,
 )
 
-TEST_VERSION = "2.21.0"
+TEST_VERSION = "2.22.0"
 
 SCENARIOS = []
 

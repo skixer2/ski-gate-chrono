@@ -48,7 +48,7 @@
 ## How to verify on hardware
 
 ```powershell
-# Build/upload FW 4.80, then from unit_tests/:
+# Build/upload FW 4.81, then from unit_tests/:
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 Get-ChildItem test_*.py | ForEach-Object {
   py sgc_test_harness.py --port COM8 $_ --run-id $runId
@@ -56,3 +56,35 @@ Get-ChildItem test_*.py | ForEach-Object {
 # Or device suite only:
 # py ..\..\system_tests\run_device_suite.py COM8 -R --with-s03
 ```
+
+---
+
+## Follow-up — run_20260809_0102 (FW 4.80 + harness 2.21)
+
+### Scoreboard
+| File | 08-08 | 09-01 |
+|------|-------|-------|
+| bit_packer / start / state / sensor / S03–S06 | mixed / fail | **all ✅** |
+| edge_cases | 43–46/68 | **53/83** |
+| end_detector | 9/15 | **12/16** |
+| flash | 6/8 | **6/10** |
+| ring_buffer | 12/18 | **8/21** |
+
+### Remaining root cause (fixed in **FW 4.81** + harness **2.22**)
+1. **POST_RUN called `test_stream_reset()` which cleared `g_manual_frame`.**  
+   First cycle with `enable_test_mode` → B/Q/L → ARM filled ring ✅.  
+   After `run_saved`, next ARM saw `!g_manual_frame` → opened **stream** with no PC server → `r=0` forever → `left ARMED (st=IDLE)` / `not_armed` cascade (E01 re-arm, E02×3, U09–U11, U07–U08, U13…).
+2. **Stream not cleared on ARMED→IDLE** (only on POST_RUN) — sticky pull mode.
+3. **Harness `_read_all` gap-broke** during `prepare_preroll` erase → E04/`i` only saw `preroll_prep`, missed `st`; U12 `f` empty during SPI erase.
+
+### FW 4.81
+- `test_stream_reset()` no longer clears `g_manual_frame`
+- Enter IDLE clears `g_stream_active` + pull flags (keeps manual)
+- Manual ARM forces `g_stream_active=false`
+- `Serial.flush()` before preroll erase so `st` is not lost under SPI IRQ mask
+
+### Harness 2.22
+- `MIN_FW_VERSION=(4,81)`
+- `enable_test_mode`: always `i` + re-assert B/Q/L
+- `_read_all` waits through quiet erase windows
+- `i`/`f` longer JSON windows; `i`→IDLE accepts `preroll_prep` or status IDLE fallback

@@ -9,7 +9,7 @@ FW ≥4.80: B takes Pa; echo returns Pa (not hPa). Matches status.p.
 """
 from sgc_test_harness import TestStep, TestScenario, enable_test_mode
 
-TEST_VERSION = "2.21.0"
+TEST_VERSION = "2.22.0"
 
 SCENARIOS = []
 

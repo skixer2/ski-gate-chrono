@@ -232,21 +232,28 @@ void handle_serial()
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             /* Minimal test fork: enable serial frame source. Everything
-               else (start detector, ring, LOGGING) is the real path. */
+               else (start detector, ring, LOGGING) is the real path.
+               Manual B/Q/L keeps g_manual_frame → no stream (unit inject).
+               S03: tm on, no manual → open pull stream. */
             if (test_mode_active() && !g_manual_frame) {
+                g_manual_frame = false; /* explicit: stream owns the frame */
                 test_stream_reset();
                 g_stream_active = true;
-            } else if (!test_mode_active()) {
-                float qx = rotation.x(), qy = rotation.y();
-                float qz = rotation.z(), qw = rotation.w();
-                float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
-                if (mag < 0.8f || mag > 1.2f) {
-                    json_begin();
-                    json_kv("ev", "arm_refused");
-                    Serial.print(','); json_kv("reason", "quat_magnitude");
-                    Serial.print(','); json_kv("mag", mag);
-                    json_end();
-                    break;
+            } else {
+                /* Manual inject or production: never leave a stale stream on. */
+                g_stream_active = false;
+                if (!test_mode_active()) {
+                    float qx = rotation.x(), qy = rotation.y();
+                    float qz = rotation.z(), qw = rotation.w();
+                    float mag = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+                    if (mag < 0.8f || mag > 1.2f) {
+                        json_begin();
+                        json_kv("ev", "arm_refused");
+                        Serial.print(','); json_kv("reason", "quat_magnitude");
+                        Serial.print(','); json_kv("mag", mag);
+                        json_end();
+                        break;
+                    }
                 }
             }
             g_sm.force_state(DeviceState::ARMED);  /* handler resets start_det + g_last_baro_ms */
@@ -645,12 +652,28 @@ static void on_state_transition(DeviceState from, DeviceState to)
     json_state_evt(g_sm.state_name_for(from), g_sm.state_name());
 
     if (to == DeviceState::IDLE) {
+        /* Drop stream on any path into IDLE (cancel/timeout/cooldown).
+           POST_RUN already clears stream; this covers ARMED→IDLE without
+           LOGGING so unit 'i' / ARM_TIMEOUT cannot leave g_stream_active. */
+        if (g_stream_active) {
+            g_stream_active = false;
+            json_begin(); json_kv("ev", "stream_end");
+            Serial.print(','); json_kv("frames", (long)g_stream_frames);
+            Serial.print(','); json_kv("reason", "idle");
+            json_end();
+            g_stream_frames = 0;
+            test_stream_reset(); /* pull flags only — keeps g_manual_frame */
+        }
         /* JP: prepare_preroll on enter IDLE from ARMED (timeout/cancel) or
            POST_RUN (after run). Erase 3000-slot buffer off the fill path so
            next ARMED is program-only for up to 30 s. */
         if (from == DeviceState::ARMED || from == DeviceState::POST_RUN) {
             /* Skip if already prepared (e.g. soft clear left prepared=true). */
             if (!g_ring.prepared()) {
+                /* Flush st/stream_end BEFORE sector erases. SPI erase can
+                   mask IRQs long enough that an unflushed USB CDC st line
+                   is dropped — harness then only sees preroll_prep. */
+                Serial.flush();
                 g_ring.prepare_preroll();
                 json_begin(); json_kv("ev", "preroll_prep");
                 Serial.print(','); json_kv("arm_cap", (long)ARM_FILL_CAP);
@@ -761,6 +784,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_run_created = false;
         g_page_cursor = 0;
         if (g_stream_frames) { g_stream_frames = 0; }
+        /* Clear pull-stream flags only. Keep g_manual_frame so the next
+           unit-test ARM still uses injected B/Q/L (not empty stream). */
         test_stream_reset();
 
         /* Opt A: pre-erase NEXT run slot during POST_RUN cooldown.

@@ -90,12 +90,16 @@ static void json_print_values() {
 
 bool test_stream_eof() { return g_stream_eof; }
 
-/* ── Reset stream state (call before ARM-triggered stream) ──── */
+/* ── Reset stream pull state (EOF/counters).
+   Does NOT clear g_manual_frame — unit tests set B/Q/L once and must
+   keep manual injection across POST_RUN → next ARM. Clearing manual
+   here (v4.80) made the next ARM open stream; with no PC frame server
+   the ring stayed at r=0 and tests saw instant ARMED→IDLE / not_armed.
+   Stream ARM path sets g_manual_frame=false explicitly before pull. */
 void test_stream_reset() {
     g_stream_eof = false;
     g_stream_had_data = false;
     g_stream_frames = 0;
-    g_manual_frame = false;
 }
 
 /* ── Pull one frame from PC (request-response) ──────────────── */

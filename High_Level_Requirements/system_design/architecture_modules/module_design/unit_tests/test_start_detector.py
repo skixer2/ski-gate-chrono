@@ -12,7 +12,7 @@ from sgc_test_harness import (
     inject_pressure_ramp, wait_for_ring_count, UNIT_RING_READY,
 )
 
-TEST_VERSION = "2.21.0"
+TEST_VERSION = "2.22.0"
 
 SCENARIOS = []
 
