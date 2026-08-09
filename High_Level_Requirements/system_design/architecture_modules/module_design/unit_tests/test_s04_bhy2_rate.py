@@ -34,5 +34,13 @@ def run_device_test(port: str) -> bool:
         "-R",
     ]
     print("Delegating:", " ".join(cmd))
-    r = subprocess.run(cmd)
+    r = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+    )
+    if r.stdout:
+        print(r.stdout, end='' if r.stdout.endswith('\n') else '\n')
+    print(f"child exit={r.returncode}")
     return r.returncode == 0

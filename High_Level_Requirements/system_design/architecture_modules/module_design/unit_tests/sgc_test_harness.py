@@ -19,9 +19,9 @@ Aligned with FW ≥4.80 / Opt-A linear pre-roll:
 Protocol: see json_protocol.md for full spec.
 """
 
-HARNESS_VERSION = "2.22.0"
+HARNESS_VERSION = "2.23.0"
 # Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on IDLE).
-MIN_FW_VERSION = (4, 81)
+MIN_FW_VERSION = (4, 82)
 
 import os
 import sys
@@ -763,6 +763,7 @@ def main():
             # run_device_test owns the port for the duration — release harness first.
             port = harness.port
             harness.disconnect()
+            time.sleep(0.8)  # let Windows release COM port before child opens it
             print(f"\n{'='*60}")
             print(f"DEVICE SYSTEM TEST: {os.path.basename(args.scenario)}")
             print(f"{'='*60}")

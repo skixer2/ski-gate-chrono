@@ -37,5 +37,15 @@ def run_device_test(port: str) -> bool:
         "-R",
     ]
     print("Delegating:", " ".join(cmd))
-    r = subprocess.run(cmd)
+    # Capture child stdout/stderr so Tee/log files see S03 output (manual
+    # run can pass while wrapper log looked empty + rc!=0).
+    r = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+    )
+    if r.stdout:
+        print(r.stdout, end='' if r.stdout.endswith('\n') else '\n')
+    print(f"S03 child exit={r.returncode}")
     return r.returncode == 0
