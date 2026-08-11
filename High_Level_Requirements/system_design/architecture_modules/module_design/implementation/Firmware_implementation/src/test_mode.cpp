@@ -83,6 +83,12 @@ static void invalidate_pressure_for_stream() {
     g_test_frame.baro_pa_div2 = 0;
 }
 
+void test_set_pressure_quiet(float pa)
+{
+    /* Ambient IDLE refresh — never marks manual (would suppress stream ARM). */
+    set_pressure_pa(pa);
+}
+
 /* ── JSON echo ──────────────────────────────────────────────── */
 static void json_print_values() {
     json_begin();

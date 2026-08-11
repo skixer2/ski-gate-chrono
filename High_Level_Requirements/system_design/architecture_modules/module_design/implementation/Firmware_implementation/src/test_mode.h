@@ -47,8 +47,12 @@ bool test_stream_eof();
    Call before ARM-triggered stream start (equivalent to 'S' command init). */
 void test_stream_reset();
 
+/* Update injected baro from real ambient (IDLE refresh). Does NOT set
+   g_manual_frame — stream ARM still opens pull mode; S03 still owns P0. */
+void test_set_pressure_quiet(float pa);
+
 /* Individual getters (derived from g_test_frame) */
-float test_get_pressure();   /* hPa, from baro_pa_div2 */
+float test_get_pressure();   /* Pa, from baro_pa_div2 * 2 (matches B command) */
 float test_get_quat_w();     /* from q_w / 16384.0 */
 float test_get_quat_x();
 float test_get_quat_y();

@@ -93,6 +93,9 @@ static uint32_t g_last_baro_ms   = 0;
 static uint32_t g_last_battery_ms = 0;
 static uint32_t g_last_qi_ms      = 0;
 static uint32_t g_last_cal_ms     = 0;
+static uint32_t g_last_ambient_ms = 0;  /* IDLE BHY2 ambient sample */
+static float    g_ambient_pa      = 0;  /* last good ambient Pa; 0 = none */
+static constexpr uint32_t AMBIENT_IDLE_MS = 5000;
 
 /* ── Current frame (V4.41: file-scope so start detector reads same data as ring) ── */
 static RawFrame g_cur_frame;
@@ -665,6 +668,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
     json_state_evt(g_sm.state_name_for(from), g_sm.state_name());
 
     if (to == DeviceState::IDLE) {
+        /* Sample ambient ASAP on enter IDLE (then every AMBIENT_IDLE_MS). */
+        g_last_ambient_ms = 0;
         /* Drop stream on any path into IDLE (cancel/timeout/cooldown).
            POST_RUN already clears stream; this covers ARMED→IDLE without
            LOGGING so unit 'i' / ARM_TIMEOUT cannot leave g_stream_active. */
@@ -1159,6 +1164,26 @@ void loop()
                 g_sm.force_state(DeviceState::LOGGING);
         }
         g_last_baro_ms = now;
+    }
+
+    /* ── IDLE ambient pressure (BHY2) every ~5 s ──
+       Production ARMED already feeds live BHY2 into start_det via feed_sensors.
+       This keeps a fresh ambient cache for status/diagnostics and refreshes the
+       test-mode default frame when no manual B and no stream (so a desk arm
+       without inject uses room pressure, not hard-coded 101325).
+       NEVER push ambient into g_test_frame during stream — S03 owns P0. */
+    if (!g_stream_active
+        && (g_sm.state() == DeviceState::IDLE || g_sm.state() == DeviceState::SLEEP)
+        && (g_last_ambient_ms == 0
+            || (now - g_last_ambient_ms) >= AMBIENT_IDLE_MS)) {
+        float hpa = pressure.value();  /* BHY2 SENSOR_ID_BARO, hPa */
+        if (hpa > 500.0f && hpa < 1100.0f) {
+            g_ambient_pa = hpa * 100.0f;  /* hPa → Pa */
+            if (test_mode_active() && !g_manual_frame) {
+                test_set_pressure_quiet(g_ambient_pa);
+            }
+        }
+        g_last_ambient_ms = now;
     }
 
     if (now - g_last_battery_ms >= 30000) {
