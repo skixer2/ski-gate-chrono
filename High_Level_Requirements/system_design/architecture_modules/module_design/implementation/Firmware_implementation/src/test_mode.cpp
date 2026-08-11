@@ -158,34 +158,28 @@ bool test_request_frame(uint32_t timeout_ms)
                 /* Partial frame = desync. Drop leftovers so next pull aligns. */
                 if (pos > 0)
                     drain_serial_rx();
-                /* Only set EOF if we've received data before.
-                   During initial setup the PC may not be answering yet. */
+                /* EOF only after we already had a good stream (PC stopped).
+                   Before first frame: keep waiting next tick.
+                   After first frame: do NOT wipe last good baro — start_det
+                   needs a stable sample; zeroing caused S03 ARMED timeouts. */
                 if (g_stream_had_data)
                     g_stream_eof = true;
-                invalidate_pressure_for_stream();
+                else
+                    invalidate_pressure_for_stream();
                 return false;
             }
         }
     }
 
-    /* Accept only frames with a plausible baro (Pa/2). Misaligned pulls
-       (handle_serial stole bytes) put quat/LA debris in the baro field —
-       rejecting them keeps start_det from locking a garbage P0. */
+    /* Accept only frames with a plausible baro (Pa/2). Misaligned pulls put
+       quat/LA debris in the baro field. On reject: keep last good frame. */
     uint16_t baro_div2;
     memcpy(&baro_div2, buf + 14, sizeof(baro_div2)); /* LE uint16 at offset 14 */
     float pa = (float)baro_div2 * 2.0f;
     if (pa < 50000.0f || pa > 110000.0f) {
-        /* Resync: drain and ask again next tick. Do not count as good frame. */
         drain_serial_rx();
-        invalidate_pressure_for_stream();
-        static uint8_t bad_n;
-        if (bad_n < 5) {
-            bad_n++;
-            json_begin(); json_kv("ev", "stream_resync");
-            Serial.print(','); json_kv("pa", (long)pa);
-            Serial.print(','); json_kv("n", (long)bad_n);
-            json_end();
-        }
+        if (!g_stream_had_data)
+            invalidate_pressure_for_stream();
         return false;
     }
 

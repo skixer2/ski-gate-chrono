@@ -860,6 +860,14 @@ void feed_sensors()
             Serial.print(','); json_kv("cap_s", 30L);
             json_end();
         }
+        /* v4.86: feed start_det from THIS frame (same data as ring).
+           Do not rely on a separate 100 ms poll of g_cur_frame — that raced
+           stream pull timeouts which zeroed baro between samples (S03 flake). */
+        if (f.baro_pa_div2 > 0) {
+            float pa = (float)f.baro_pa_div2 * 2.0f;  /* Pa/2 → Pa */
+            if (g_start_det.feed(pa))
+                g_sm.force_state(DeviceState::LOGGING);
+        }
         return;
     }
 
@@ -1141,37 +1149,13 @@ void loop()
         }
     }
 
-    /* ═══════════════════════════════════════════════════════════════
-       Feed sensors → Start detector.
-       V4.41: transitions are synchronous (on_state_transition callback),
-       no lazy g_prev_state check. Start detector uses g_cur_frame from
-       feed_sensors — same data that goes into the ring. No fork. 
-       ═══════════════════════════════════════════════════════════════ */
-
-    /* ── Feed sensors (10 ms) — sets g_cur_frame from serial or BHY2.
-       Advance by +10 from previous tick (not wall 'now') so a late loop
-       does not permanently phase-shift the 100 Hz grid. Cap catch-up at
-       1 frame/loop to avoid a flash-stall burst. ── */
+    /* ── Feed sensors (10 ms). Start det is fed inside feed_sensors() ARMED
+       path from the same frame written to the ring (v4.86). No second poll. ── */
     if (now - g_last_sensor_ms >= 10) {
         feed_sensors();
         g_last_sensor_ms += 10;
         if ((int32_t)(now - g_last_sensor_ms) > 50)
             g_last_sensor_ms = now;  /* resync after long stall */
-    }
-
-    /* ── Start detector (100 ms) — reads g_cur_frame.baro_pa_div2,
-       the same data that feed_sensors just wrote to the ring.
-       Transition handler runs synchronously inside force_state(). ── */
-    if (now - g_last_baro_ms >= 100 && g_sm.state() == DeviceState::ARMED) {
-        /* Same data just written to the ring by feed_sensors().
-           Skip invalid/zero frames so default/uninitialized data
-           cannot poison P₀ before the first real sample arrives. */
-        if (g_cur_frame.baro_pa_div2 > 0) {
-            float pa = (float)g_cur_frame.baro_pa_div2 * 2.0f;  /* Pa/2→Pa */
-            if (g_start_det.feed(pa))
-                g_sm.force_state(DeviceState::LOGGING);
-        }
-        g_last_baro_ms = now;
     }
 
     /* ── IDLE ambient pressure (BHY2) every ~5 s ──
