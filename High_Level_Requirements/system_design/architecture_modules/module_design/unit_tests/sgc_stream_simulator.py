@@ -620,6 +620,9 @@ class SGCDevice:
 
         # -- ARM triggers stream mode automatically (test_mode -> g_stream_active=true).
         # No separate 'S' command needed - the ARM handler sets it. --
+        # Record expected P0 for fail diagnostics (host-side; FW auto-inits from first frame).
+        if frames:
+            self.init_pressure = float(frames[0].pressure_hpa)
         self.ser.write(b'a\n')
         self.ser.flush()
 
