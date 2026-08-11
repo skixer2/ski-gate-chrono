@@ -11,6 +11,7 @@ Default: duration 25s, gates 10, seed 45, factory reset.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -39,11 +40,15 @@ def run_device_test(port: str) -> bool:
     print("Delegating:", " ".join(cmd))
     # Capture child stdout/stderr so Tee/log files see S03 output (manual
     # run can pass while wrapper log looked empty + rc!=0).
+    env = dict(os.environ)
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['PYTHONUTF8'] = '1'
     r = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
+        env=env,
     )
     if r.stdout:
         print(r.stdout, end='' if r.stdout.endswith('\n') else '\n')

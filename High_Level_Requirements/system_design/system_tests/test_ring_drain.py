@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """
-S06 — LOGGING drain of pre-roll (pop-2 + push-1 live, v4.77+).
+S06 - LOGGING drain of pre-roll (pop-2 + push-1 live, v4.77+).
 
 Flow:
-  IDLE → ARM → wait until ring fairly full (or ring_full)
-  → force LOGGING WITHOUT g_force_logging?  We need natural drain path.
+  IDLE -> ARM -> wait until ring fairly full (or ring_full)
+  -> force LOGGING WITHOUT g_force_logging?  We need natural drain path.
 
   Problem: serial 'l' sets g_force_logging and skips ring.
 
-  So S06 uses a small baro trick only if test mode can inject — OR we add
+  So S06 uses a small baro trick only if test mode can inject - OR we add
   firmware support. For BHY2-only bench without moving the device, we use:
 
     Firmware path that drains ring: natural LOGGING entry (start det).
     On a desk, start det won't fire. Options:
       1) Add serial command 'L' = LOGGING without force flag (drain path)
-      2) Use stream mode pressure ramp (S03) — not pure BHY2
+      2) Use stream mode pressure ramp (S03) - not pure BHY2
 
   v4.73: serial 'L' (capital) enters LOGGING with g_force_logging=false
   so drain+encode runs. End with 'p'.
 
 Pass:
-  After ARM fill, 'L' → run_saved with fr >= ~0.8 * ring_count_at_entry
+  After ARM fill, 'L' -> run_saved with fr >= ~0.8 * ring_count_at_entry
   (pre-roll encoded). Optional fps of drain phase from status timing.
 
 Usage:
@@ -34,6 +34,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+# Windows consoles often default to cp1252; force UTF-8 so banners don't crash.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 import time
 
 import serial
@@ -105,7 +112,7 @@ def status(ser: serial.Serial) -> dict | None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="S06 — ring drain on natural LOGGING")
+    ap = argparse.ArgumentParser(description="S06 - ring drain on natural LOGGING")
     ap.add_argument("port")
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("-R", "--factory-reset", action="store_true")
@@ -118,7 +125,7 @@ def main() -> int:
     args = ap.parse_args()
 
     print("=" * 50)
-    print("S06 — FlashRing Drain (natural LOGGING path)")
+    print("S06 - FlashRing Drain (natural LOGGING path)")
     print(f"  Port: {args.port}  fill_s={args.fill_s} log_s={args.log_s}")
     print("=" * 50)
 
@@ -131,7 +138,7 @@ def main() -> int:
     print(f"  ver={ver} st={st.get('st') if st else None} rm={st.get('rm') if st else None}")
 
     if args.factory_reset:
-        print("  Factory reset…")
+        print("  Factory reset...")
         send(ser, "R", 0.4)
         print(f"  boot: {wait_event(ser, 'boot', 12.0)}")
         t0w = time.perf_counter()
@@ -148,14 +155,14 @@ def main() -> int:
     send(ser, "i", 0.3)
     time.sleep(1.2)
 
-    print("\n── ARM + fill ──")
+    print("\n-- ARM + fill --")
     send(ser, "a", 0.6)
     st = status(ser)
     if not st or st.get("st") != "ARMED":
-        print(f"  ✗ not ARMED {st}")
+        print(f"  FAIL not ARMED {st}")
         ser.close()
         return 1
-    print(f"  ✓ ARMED r={st.get('r')} rm={st.get('rm')}")
+    print(f"  OK ARMED r={st.get('r')} rm={st.get('rm')}")
 
     t_fill0 = time.perf_counter()
     last = -1
@@ -164,10 +171,10 @@ def main() -> int:
         sec = int(time.perf_counter() - t_fill0)
         if sec != last and sec > 0 and sec % 2 == 0:
             st = status(ser)
-            print(f"  … fill {sec}s r={st.get('r') if st else '?'}", flush=True)
+            print(f"  ... fill {sec}s r={st.get('r') if st else '?'}", flush=True)
             last = sec
             if st and int(st.get("r") or 0) >= int(st.get("rm") or 9999):
-                print("  ring full — stopping fill early")
+                print("  ring full - stopping fill early")
                 break
 
     st = status(ser)
@@ -176,15 +183,15 @@ def main() -> int:
     print(f"  pre-roll at L: r={r_at}/{rm}")
 
     if r_at < 50:
-        print("  ✗ ring almost empty — fill longer or check ARMED path")
+        print("  FAIL ring almost empty - fill longer or check ARMED path")
         ser.close()
         return 1
 
-    print("\n── LOGGING drain path (serial L, not l; tm must be 0) ──")
-    # Ensure test mode OFF — when tm=1, 'L' is set_la not drain LOGGING
+    print("\n-- LOGGING drain path (serial L, not l; tm must be 0) --")
+    # Ensure test mode OFF - when tm=1, 'L' is set_la not drain LOGGING
     for o in send_keep(ser, "?", 0.4):
         if o.get("ev") == "status" and o.get("tm") in (1, True, "1"):
-            print("  tm=1 — toggling T to OFF before L")
+            print("  tm=1 - toggling T to OFF before L")
             send_keep(ser, "T", 0.4)
 
     t_l0 = time.perf_counter()
@@ -196,18 +203,18 @@ def main() -> int:
         if o.get("ev") == "cmd" and o.get("cmd") == "L" and o.get("mode") == "drain":
             saw_drain_cmd = True
         if o.get("ev") == "cmd" and o.get("cmd") == "L" and "la" in o:
-            print("  ✗ 'L' handled as test-mode set_la — flash v4.74+ or turn tm OFF")
+            print("  FAIL 'L' handled as test-mode set_la - flash v4.74+ or turn tm OFF")
             ser.close()
             return 1
 
     st = status(ser)
     if not st or st.get("st") != "LOGGING":
-        print(f"  ✗ not LOGGING after 'L'. st={st} drain_ack={saw_drain_cmd}")
+        print(f"  FAIL not LOGGING after 'L'. st={st} drain_ack={saw_drain_cmd}")
         print("  tip: flash v4.74+ (test_mode no longer steals L when tm=0)")
         send(ser, "i", 0.3)
         ser.close()
         return 1
-    print("  ✓ LOGGING (drain path, force_logging=0)")
+    print("  OK LOGGING (drain path, force_logging=0)")
 
     # Wait for drain + a bit of live; poll r via ?
     # Also catch run_saved if end-det auto-closes (old FW) or we send p.
@@ -229,14 +236,14 @@ def main() -> int:
         r = int(st.get("r") or 0)
         sec = int(time.perf_counter() - t_l0)
         if sec != last and sec % 1 == 0:
-            print(f"  … log {sec}s st={st.get('st')} r={r}", flush=True)
+            print(f"  ... log {sec}s st={st.get('st')} r={r}", flush=True)
             last = sec
         if drained_at is None and r == 0 and st.get("st") == "LOGGING":
             drained_at = time.perf_counter() - t_l0
             # pop2+push1 while backlog>0; last frame pops without push.
-            # ~10–14 s typical for keep=1000 (SPI slower than ideal 10 ms).
+            # ~10-14 s typical for keep=1000 (SPI slower than ideal 10 ms).
             print(f"  ring empty after {drained_at:.2f}s LOGGING "
-                  f"(expect ~10–14s for 1000 keep; fail if >>20s = r=1 deadlock)")
+                  f"(expect ~10-14s for 1000 keep; fail if >>20s = r=1 deadlock)")
             live_end = time.perf_counter() + args.log_s
             while time.perf_counter() < live_end:
                 for o in read_json_lines(ser, 0.2):
@@ -245,7 +252,7 @@ def main() -> int:
                         print(f"  evt: {o}", flush=True)
             break
         if st.get("st") == "POST_RUN":
-            # Auto end-det closed — run_saved may already be out or coming
+            # Auto end-det closed - run_saved may already be out or coming
             print("  note: already POST_RUN (end det or other)")
             break
         if st.get("st") not in ("LOGGING", "POST_RUN"):
@@ -255,7 +262,7 @@ def main() -> int:
         time.sleep(0.1)
 
     if saved is None:
-        print("── POST_RUN (send p) ──")
+        print("-- POST_RUN (send p) --")
         post = send_keep(ser, "p", 0.8)
         for o in post:
             if o.get("ev") in ("st", "run_saved"):
@@ -266,18 +273,18 @@ def main() -> int:
             saved = wait_event(ser, "run_saved", 25.0)
             print(f"  run_saved: {saved}")
     else:
-        print("── POST_RUN (already have run_saved) ──")
+        print("-- POST_RUN (already have run_saved) --")
 
-    print("\n── Result ──")
+    print("\n-- Result --")
     if not saved:
-        print("  ✗ no run_saved")
+        print("  FAIL no run_saved")
         ser.close()
         return 1
 
     fr = int(saved.get("fr") or 0)
     need = int(args.min_pre_roll_frac * min(r_at, 1000))  # keep window
     ok_fr = fr >= need
-    # Drain should finish in ~ keep/100 … keep/60 s (100–60 Hz effective)
+    # Drain should finish in ~ keep/100 ... keep/60 s (100-60 Hz effective)
     keep_est = min(r_at, 1000)
     drain_ok = True
     if drained_at is not None:
@@ -288,19 +295,19 @@ def main() -> int:
 
     print("=" * 50)
     if ok_fr and saved.get("ok") and drain_ok:
-        msg = f"✓ S06 PASSED — encoded {fr} frames (pre-roll was {r_at})"
+        msg = f"OK S06 PASSED - encoded {fr} frames (pre-roll was {r_at})"
         if drained_at is not None:
             msg += f", drain {drained_at:.2f}s"
         print(msg)
         rc = 0
     else:
-        print("✗ S06 FAILED")
+        print("FAIL S06 FAILED")
         if not ok_fr:
             print(f"  fr {fr} < {need} (pre-roll not fully encoded?)")
         if not saved.get("ok"):
             print("  run_saved ok=false")
         if not drain_ok:
-            print(f"  drain_s={drained_at:.2f} too long — likely r=1 pop1/push1 deadlock")
+            print(f"  drain_s={drained_at:.2f} too long - likely r=1 pop1/push1 deadlock")
         rc = 1
     if ver:
         print(f"  Firmware: v{ver}")

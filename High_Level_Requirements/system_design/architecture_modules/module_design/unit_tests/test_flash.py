@@ -8,7 +8,7 @@ from sgc_test_harness import (
     wait_for_ring_count, UNIT_RING_READY,
 )
 
-TEST_VERSION = "2.23.0"
+TEST_VERSION = "2.24.0"
 
 SCENARIOS = []
 
@@ -18,14 +18,19 @@ SCENARIOS.append(TestScenario(
     setup_commands=['i'],
     teardown_commands=['i'],
     steps=[
-        # Two sector erases + program; poll for event (not single read window).
+        # Two sector erases + program can take seconds. Use expect_json so the
+        # harness keeps the read window open (special-cased for cmd 'f') instead
+        # of sleeping wait_ms then starting a late poll that can miss the event.
         # Accept ok as True/1 (json_kv_bool emits 0/1).
-        TestStep("Run flash self-test", 'f', 100,
-            on_response=lambda h, _: (
-                (lambda ev: ev is not None and bool(ev.get('ok')))(
-                    h.wait_for_json_event('flash', timeout_ms=10000)
-                )
-            )),
+        TestStep(
+            "Run flash self-test",
+            'f',
+            0,
+            timeout_ms=15000,
+            expect_json=lambda d: (
+                d.get('ev') == 'flash' and bool(d.get('ok'))
+            ),
+        ),
     ]
 ))
 

@@ -19,12 +19,19 @@ Aligned with FW ≥4.80 / Opt-A linear pre-roll:
 Protocol: see json_protocol.md for full spec.
 """
 
-HARNESS_VERSION = "2.23.0"
+HARNESS_VERSION = "2.24.0"
 # Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on IDLE).
 MIN_FW_VERSION = (4, 82)
 
 import os
 import sys
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import json
 import serial
 import serial.tools.list_ports

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-sgc_stream_simulator.py — Full test orchestrator: stream synthetic or replayed
+sgc_stream_simulator.py - Full test orchestrator: stream synthetic or replayed
 sensor data to a real SGC device over serial.
 
-ONE COMMAND does it all: wakeup → arm → stream → verify.
+ONE COMMAND does it all: wakeup -> arm -> stream -> verify.
 
 Usage:
   # Full auto: wake, arm, stream, verify
@@ -34,6 +34,13 @@ import json
 import math
 import struct
 import sys
+# Windows consoles often default to cp1252; force UTF-8 so banners don't crash.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,9 +53,9 @@ except ImportError:
     print("ERROR: pyserial required. Install: pip install pyserial")
     sys.exit(1)
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # Constants
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 BAUD_RATE = 115200
 FRAME_RATE_HZ = 100
@@ -60,27 +67,27 @@ DROP_THRESHOLD_M = 2.0
 PA_PER_M_HPA = 0.12     # ~12 Pa/m = 0.12 hPa/m (ISA sea-level gradient)
 SEA_LEVEL_HPA = 1013.25 # standard sea-level pressure in hPa
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # Deterministic hash (replaces Python's non-deterministic hash())
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 def _det_hash(seed: int, *args) -> int:
-    """Deterministic hash — same inputs → same output across runs."""
+    """Deterministic hash - same inputs -> same output across runs."""
     data = f"{seed}:{':'.join(str(a) for a in args)}".encode()
     return int.from_bytes(hashlib.md5(data).digest()[:4], 'little', signed=True)
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # GS Frame Data
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 @dataclass
 class GSFrame:
     """One frame of synthetic sensor data."""
     frame_num: int
-    pressure_hpa: float     # barometric pressure (hPa) — matches BHY2 SENSOR_ID_BARO
+    pressure_hpa: float     # barometric pressure (hPa) - matches BHY2 SENSOR_ID_BARO
     qw: float               # quaternion W
     qx: float               # quaternion X
     qy: float               # quaternion Y
@@ -110,9 +117,9 @@ class GSFrame:
         )
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Frame I/O — NDJSON save/load for replay
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
+# Frame I/O - NDJSON save/load for replay
+# ===================================================================
 
 
 def save_frames_ndjson(frames: List[GSFrame], path: str) -> None:
@@ -138,9 +145,9 @@ def load_frames_ndjson(path: str) -> List[GSFrame]:
     return frames
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # GS Run Profile Generator (deterministic with seed)
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 def lerp(a: float, b: float, t: float) -> float:
@@ -148,7 +155,7 @@ def lerp(a: float, b: float, t: float) -> float:
 
 
 def smoothstep(t: float) -> float:
-    """Smoothstep (Hermite) — smooth transitions with zero initial velocity."""
+    """Smoothstep (Hermite) - smooth transitions with zero initial velocity."""
     t = max(0.0, min(1.0, t))
     return t * t * (3.0 - 2.0 * t)
 
@@ -163,13 +170,13 @@ def generate_gs_run(duration_s: float = 50.0,
     Generate a realistic GS run as sensor frames at 100 Hz.
 
     Phase timeline:
-      t = 0.0 – 2.0s  : Still at start gate (preparation)
-      t = 2.0 – 2.8s  : 4 pole pushes (acceleration spikes)
-      t = 2.8 – 3.0s  : Brief pause
-      t = 3.0 – 45.0s : Descent with gate impacts
-      t = 45.0 – 50.0s: Finish flat — deceleration, baro levels off
+      t = 0.0 - 2.0s  : Still at start gate (preparation)
+      t = 2.0 - 2.8s  : 4 pole pushes (acceleration spikes)
+      t = 2.8 - 3.0s  : Brief pause
+      t = 3.0 - 45.0s : Descent with gate impacts
+      t = 45.0 - 50.0s: Finish flat - deceleration, baro levels off
 
-    Start detector fires when descent reaches 2.0m from P₀ (~18.9 Pa at 1800m).
+    Start detector fires when descent reaches 2.0m from P0 (~18.9 Pa at 1800m).
     With smoothstep, this occurs at ~t=4.7s, ~1.7s after descent begins.
 
     Args:
@@ -186,7 +193,7 @@ def generate_gs_run(duration_s: float = 50.0,
     num_frames = int(duration_s * FRAME_RATE_HZ)
     frames: List[GSFrame] = []
 
-    # Phase boundaries — proportional to duration (designed for 50s, scaled)
+    # Phase boundaries - proportional to duration (designed for 50s, scaled)
     scale = duration_s / 50.0
     push_start    = 2.0 * scale
     descent_start = 3.0 * scale
@@ -213,7 +220,7 @@ def generate_gs_run(duration_s: float = 50.0,
     for i in range(num_frames):
         t = i * FRAME_PERIOD_S
 
-        # ── Altitude → pressure ──────────────────────────────
+        # -- Altitude -> pressure ------------------------------
         if t < descent_start:
             altitude = start_altitude_m
         elif t < finish_start:
@@ -229,9 +236,9 @@ def generate_gs_run(duration_s: float = 50.0,
         # Deterministic sensor noise (±0.01 hPa)
         pressure_hpa += _det_hash(seed, f"baro", i) % 201 / 10000.0 - 0.01
 
-        # ── Quaternion (orientation) ─────────────────────────
+        # -- Quaternion (orientation) -------------------------
         if t < push_start:
-            # Still at gate — slight forward lean (~20° pitch)
+            # Still at gate - slight forward lean (~20 deg  pitch)
             qw, qx, qy, qz = 0.985, 0.0, 0.174, 0.0
         else:
             speed_factor = 0.0
@@ -253,7 +260,7 @@ def generate_gs_run(duration_s: float = 50.0,
             if mag > 0:
                 qw, qx, qy, qz = qw / mag, qx / mag, qy / mag, qz / mag
 
-        # ── Linear acceleration ──────────────────────────────
+        # -- Linear acceleration ------------------------------
         lax, lay, laz = 0.0, 0.0, -9810.0  # gravity baseline (mm/s²)
 
         # Pole pushes
@@ -306,9 +313,9 @@ def generate_gs_run(duration_s: float = 50.0,
     return frames
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # Binary frame packing
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 def pack_frame(frame: GSFrame) -> bytes:
@@ -316,7 +323,7 @@ def pack_frame(frame: GSFrame) -> bytes:
 
     Format identical to firmware RawFrame (ring_buffer.h):
       7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2) = 16 bytes.
-      No sync word — dedicated point-to-point link, fixed frame size.
+      No sync word - dedicated point-to-point link, fixed frame size.
     """
     def _i16(v: float) -> int:
         iv = int(round(v))
@@ -333,13 +340,13 @@ def pack_frame(frame: GSFrame) -> bytes:
         _i16(frame.lax),           # accel_x (mm/s²)
         _i16(frame.lay),
         _i16(frame.laz),
-        max(0, min(65535, int(round(frame.pressure_hpa * 50)))),  # hPa → Pa/2
+        max(0, min(65535, int(round(frame.pressure_hpa * 50)))),  # hPa -> Pa/2
     )
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # SGC Device Controller
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 class SGCDevice:
@@ -397,18 +404,18 @@ class SGCDevice:
     def drain_responses(self, timeout_s: float = 2.0) -> List[dict]:
         return self.read_json_lines(timeout_s)
 
-    # ── Orchestration steps ──────────────────────────────────
+    # -- Orchestration steps ----------------------------------
 
     def wakeup(self) -> bool:
         """Wake device from SLEEP and bring to IDLE."""
-        print("\n── Wakeup ──")
+        print("\n-- Wakeup --")
         # Send 'i' to force IDLE (works from any state)
         self.send_cmd('i', wait_ms=500)
         resp = self.drain_responses(1.0)
         for r in resp:
             ev = r.get("ev", "")
             if ev == "st":
-                print(f"  State: {r.get('from', '?')} → {r.get('to', '?')}")
+                print(f"  State: {r.get('from', '?')} -> {r.get('to', '?')}")
             elif ev == "status":
                 print(f"  Status: state={r.get('st', '?')} batt={r.get('bat', '?')}% "
                       f"runs={r.get('runs', '?')} flash={r.get('wh', '?')}")
@@ -420,18 +427,18 @@ class SGCDevice:
             if r.get("ev") == "status":
                 st = r.get("st", "")
                 if st == "IDLE":
-                    print(f"  Device in IDLE ✓ (batt={r.get('bat')}%, "
+                    print(f"  Device in IDLE OK (batt={r.get('bat')}%, "
                           f"runs={r.get('runs')} flash_used={r.get('wh')})")
                     return True
                 else:
-                    print(f"  ⚠ Device in {st}, retrying...")
+                    print(f"  WARN Device in {st}, retrying...")
                     self.send_cmd('i', wait_ms=300)
         return False
 
     def query_version(self) -> str:
         """Ask the device for its firmware version (no reset). Returns the
         version string and caches it on self.fw_version."""
-        print("\n── Firmware Version ──")
+        print("\n-- Firmware Version --")
         self.send_cmd('V', wait_ms=300)
         resp = self.drain_responses(1.0)
         for r in resp:
@@ -439,14 +446,14 @@ class SGCDevice:
                 self.fw_version = str(r.get("ver", "?"))
                 print(f"  Firmware: v{self.fw_version}")
                 return self.fw_version
-        print("  ⚠ No version response (device may be older than the 'V' command)")
+        print("  WARN No version response (device may be older than the 'V' command)")
         return self.fw_version
 
     def enter_test_mode(self) -> None:
-        print("\n── Enter Test Mode ──")
+        print("\n-- Enter Test Mode --")
         # 'T' toggles. Query first: send 'T' once, check result.
-        # If tm=1 → was OFF, now ON — done.
-        # If tm=0 → was ON, now OFF — send again to get ON.
+        # If tm=1 -> was OFF, now ON - done.
+        # If tm=0 -> was ON, now OFF - send again to get ON.
         self.send_cmd('T', wait_ms=300)
         resp = self.drain_responses(1.0)
         tm = None
@@ -459,11 +466,11 @@ class SGCDevice:
             for r in resp2:
                 if r.get("ev") == "cmd" and r.get("cmd") == "T":
                     tm = r.get('tm', 0)
-            print(f"  Test mode: {tm} (was ON, toggled OFF→ON)")
+            print(f"  Test mode: {tm} (was ON, toggled OFF->ON)")
         elif tm == 1:
             print(f"  Test mode: {tm} (was OFF, single toggle)")
         else:
-            print(f"  Test mode: ? (no response — trying again)")
+            print(f"  Test mode: ? (no response - trying again)")
             self.send_cmd('T', wait_ms=300)
             resp2 = self.drain_responses(1.0)
             for r in resp2:
@@ -473,7 +480,7 @@ class SGCDevice:
 
     def enter_stream_mode(self) -> None:
         """[DEPRECATED v4.34] ARM alone triggers stream now."""
-        print("\n── Enter Stream Mode ──")
+        print("\n-- Enter Stream Mode --")
         self.ser.reset_input_buffer()
         self.ser.write(b'S\n')
         self.ser.flush()
@@ -501,19 +508,19 @@ class SGCDevice:
             self.ser.read(self.ser.in_waiting)
 
         if not saw_response:
-            print("  ⚠ No 'S' response from device")
+            print("  WARN No 'S' response from device")
 
     def arm(self) -> None:
         """Arm via serial command."""
-        print("\n── Arm ──")
+        print("\n-- Arm --")
         self.send_cmd('a', wait_ms=300)
         resp = self.drain_responses(1.0)
         for r in resp:
             ev = r.get("ev", "")
             if ev == "st":
-                print(f"  State: {r.get('from')} → {r.get('to')}")
+                print(f"  State: {r.get('from')} -> {r.get('to')}")
             elif ev == "arm_refused":
-                print(f"  ⚠ Arm refused: {r.get('reason')} (mag={r.get('mag')})")
+                print(f"  WARN Arm refused: {r.get('reason')} (mag={r.get('mag')})")
 
     def set_pressure(self, pa: float) -> None:
         """Set initial test pressure to match first frame."""
@@ -565,14 +572,14 @@ class SGCDevice:
             ev = obj.get("ev", "")
             if ev == "bc":
                 self.breadcrumbs.append(obj)
-                print(f"   ⤷ breadcrumb: {obj.get('at')}")
+                print(f"   > breadcrumb: {obj.get('at')}")
             elif ev == "boot":
                 self.reset_event = obj
                 rr = int(obj.get("rr", 0))
                 print("\n" + "!" * 52)
-                print("   💥 DEVICE RESET DETECTED MID-STREAM")
+                print("   RESET DEVICE RESET DETECTED MID-STREAM")
                 print(f"      boot ver = v{obj.get('ver')}")
-                print(f"      RESETREAS = {rr} (0x{rr:08X}) → {self.decode_reset_reason(rr)}")
+                print(f"      RESETREAS = {rr} (0x{rr:08X}) -> {self.decode_reset_reason(rr)}")
                 if self.breadcrumbs:
                     last = self.breadcrumbs[-1].get("at")
                     print(f"      last breadcrumb before reset = {last}")
@@ -585,7 +592,7 @@ class SGCDevice:
     def stream_frames(self, frames: List[GSFrame], pre_fill: int = 30) -> dict:
         """
         Pull model: firmware sends 0x3F to request each frame, we respond.
-        No timing control needed — firmware sets the pace via its 10ms
+        No timing control needed - firmware sets the pace via its 10ms
         feed_sensors() loop. One 16-byte RawFrame per request.
 
         Returns:
@@ -594,13 +601,13 @@ class SGCDevice:
         total = len(frames)
         REQUEST_BYTE = 0x3F  # firmware's frame request character
 
-        print(f"\n── Stream {total} frames (pull model: respond to 0x3F) ──")
+        print(f"\n-- Stream {total} frames (pull model: respond to 0x3F) --")
         print(f"   Phase: prep 0-2s | pushes 2-2.8s | descent 3-45s | finish 45s+")
-        print(f"   Start P₀: {frames[0].pressure_hpa:.2f} hPa")
+        print(f"   Start P0: {frames[0].pressure_hpa:.2f} hPa")
         ds = int(3.1 * FRAME_RATE_HZ)
         dp = frames[min(ds, total - 1)].pressure_hpa - frames[0].pressure_hpa
         print(f"   Baro ramp at frame {int(3.0 * FRAME_RATE_HZ)} "
-              f"(ΔP={dp:.2f} hPa, start detection needs "
+              f"(dP={dp:.2f} hPa, start detection needs "
               f"~{DROP_THRESHOLD_M * PA_PER_M_HPA:.2f} hPa)")
 
         t0 = time.perf_counter()
@@ -611,8 +618,8 @@ class SGCDevice:
         self.early_events = []
         self._rx_partial = b""
 
-        # ── ARM triggers stream mode automatically (test_mode → g_stream_active=true).
-        # No separate 'S' command needed — the ARM handler sets it. ──
+        # -- ARM triggers stream mode automatically (test_mode -> g_stream_active=true).
+        # No separate 'S' command needed - the ARM handler sets it. --
         self.ser.write(b'a\n')
         self.ser.flush()
 
@@ -635,9 +642,9 @@ class SGCDevice:
                     self.reset_event = obj
                     rr = int(obj.get("rr", 0))
                     print("\n" + "!" * 52)
-                    print("   💥 DEVICE RESET DETECTED MID-STREAM")
+                    print("   RESET DEVICE RESET DETECTED MID-STREAM")
                     print(f"      boot ver = v{obj.get('ver')}")
-                    print(f"      RESETREAS = {rr} (0x{rr:08X}) → "
+                    print(f"      RESETREAS = {rr} (0x{rr:08X}) -> "
                           f"{self.decode_reset_reason(rr)}")
                     print("!" * 52)
                     reset_detected = True
@@ -649,7 +656,7 @@ class SGCDevice:
                 # If firmware stopped requesting mid-stream (end detector),
                 # break after 5s of silence instead of looping forever.
                 if time.perf_counter() - last_request_time > 5.0:
-                    print(f"\n   ⚠ No requests for 5s — firmware stopped at frame {sent}/{total}")
+                    print(f"\n   WARN No requests for 5s - firmware stopped at frame {sent}/{total}")
                     break
                 continue
 
@@ -665,7 +672,7 @@ class SGCDevice:
                         self.ser.write(pack_frame(frames[sent]))
                         sent += 1
                 else:
-                    # Not a request — accumulate as potential JSON
+                    # Not a request - accumulate as potential JSON
                     self._rx_partial += bytes([b])
 
             # Parse any complete JSON lines
@@ -679,20 +686,20 @@ class SGCDevice:
                 idx = min(sent - 1, total - 1)
                 delta_p = frames[idx].pressure_hpa - frames[0].pressure_hpa
                 print(f"   {sent}/{total} ({sent/total*100:.0f}%) "
-                      f"@ {rate:.0f} fps, ΔP={delta_p:.2f} hPa")
+                      f"@ {rate:.0f} fps, dP={delta_p:.2f} hPa")
 
         if reset_detected:
-            print(f"   ⚠ Aborted at frame {sent}/{total} (device reset).")
+            print(f"   WARN Aborted at frame {sent}/{total} (device reset).")
 
         premature_end = (sent < total and not reset_detected)
         if premature_end:
-            print(f"   ⚠ Firmware stopped mid-stream — end detector fired.")
+            print(f"   WARN Firmware stopped mid-stream - end detector fired.")
 
         # All frames sent (or firmware stopped). Firmware keeps requesting
-        # 0x3F but gets no response → timeout → g_stream_eof = true → stops.
-        # response → timeout → g_stream_eof = true → stops requesting.
+        # 0x3F but gets no response -> timeout -> g_stream_eof = true -> stops.
+        # response -> timeout -> g_stream_eof = true -> stops requesting.
         # Wait for 1 second of silence (no 0x3F) = firmware done.
-        print(f"\n   All {sent}/{total} frames sent — waiting for firmware to stop requesting...")
+        print(f"\n   All {sent}/{total} frames sent - waiting for firmware to stop requesting...")
         last_request_time = time.perf_counter()
         end_timeout_s = 2.0  # wait up to 2s for last request, then 1s silence
         deadline = time.perf_counter() + end_timeout_s
@@ -709,14 +716,14 @@ class SGCDevice:
             _parse_json_lines()
             # Check for silence: 1s since last request
             if got_last_request and (time.perf_counter() - last_request_time) > 1.0:
-                print("   Firmware stopped requesting — streaming complete.")
+                print("   Firmware stopped requesting - streaming complete.")
                 break
             time.sleep(0.01)
         else:
             if not got_last_request:
-                print("   ⚠ Firmware never sent a request after last frame")
+                print("   WARN Firmware never sent a request after last frame")
             else:
-                print("   ⚠ Firmware kept requesting (timeout)")
+                print("   WARN Firmware kept requesting (timeout)")
 
         elapsed = time.perf_counter() - t0
         stats = {
@@ -731,7 +738,7 @@ class SGCDevice:
 
     def verify_run(self) -> Optional[dict]:
         """Check device state and verify a run was saved."""
-        print("\n── Verify ──")
+        print("\n-- Verify --")
         time.sleep(2.0)  # wait for POST_RUN + flush
 
         responses = list(getattr(self, "early_events", [])) + self.drain_responses(5.0)
@@ -739,7 +746,7 @@ class SGCDevice:
 
         # V2.17 harness: close_run() does erase-heavy flash work and POST_RUN
         # fires ~5s after stream end (flatline detection), so the old fixed 5s
-        # window cut off right after the START trace — the cbc trail / done /
+        # window cut off right after the START trace - the cbc trail / done /
         # run_saved were swallowed by later drains. If close_run started but
         # hasn't finished, KEEP listening (up to 30s) until done/run_saved.
         def _has(ev_name, key=None, val=None):
@@ -752,7 +759,7 @@ class SGCDevice:
                    and not _has("run_saved")
                    and time.time() < extend_deadline):
                 if not extended:
-                    print("   … close_run() in progress — extending listen window "
+                    print("   ... close_run() in progress - extending listen window "
                           "(up to 30s)")
                     extended = True
                 responses.extend(self.drain_responses(2.0))
@@ -800,12 +807,12 @@ class SGCDevice:
                 # A boot line here (after streaming) also means the device reset.
                 self.reset_event = r
 
-        # Report a mid/post-stream reset up front — this is the key diagnostic.
+        # Report a mid/post-stream reset up front - this is the key diagnostic.
         if self.reset_event:
             rr = int(self.reset_event.get("rr", 0))
-            print("   💥 DEVICE RESET during run:")
+            print("   RESET DEVICE RESET during run:")
             print(f"      boot ver = v{self.reset_event.get('ver')}")
-            print(f"      RESETREAS = {rr} (0x{rr:08X}) → {self.decode_reset_reason(rr)}")
+            print(f"      RESETREAS = {rr} (0x{rr:08X}) -> {self.decode_reset_reason(rr)}")
             if self.breadcrumbs:
                 print(f"      breadcrumbs seen: "
                       f"{', '.join(b.get('at','?') for b in self.breadcrumbs)}")
@@ -813,21 +820,21 @@ class SGCDevice:
         # Report
         print("   State transitions:")
         for se in state_events:
-            print(f"     {se.get('from'):>10} → {se.get('to')}")
+            print(f"     {se.get('from'):>10} -> {se.get('to')}")
 
         if enc_dbg_events:
-            print("   ── First encode debug ──")
+            print("   -- First encode debug --")
             for e in enc_dbg_events:
                 print(f"     src={e.get('src','?')} type={e.get('type','?')} "
                       f"sz={e.get('sz','?')} qw={e.get('qw','?')} baro={e.get('baro','?')}")
 
         if ring_dbg_events:
-            print("   ── Ring frame raw bytes ──")
+            print("   -- Ring frame raw bytes --")
             for r in ring_dbg_events:
                 print(f"     bytes={r.get('bytes','?')}")
 
         if ring_diag_events:
-            print("   ── Ring drain diagnostics ──")
+            print("   -- Ring drain diagnostics --")
             for r in ring_diag_events:
                 phase = r.get('phase','?')
                 if phase == 'start':
@@ -837,7 +844,7 @@ class SGCDevice:
 
         pg_flush_events = [r for r in all_events if r.get('ev') == 'pg_flush']
         if pg_flush_events:
-            print(f"   ── Page flushes ({len(pg_flush_events)} total) ──")
+            print(f"   -- Page flushes ({len(pg_flush_events)} total) --")
             for r in pg_flush_events[:3]:
                 print(f"     csr={r.get('csr','?')} first32={r.get('hex','?')[:40]}...")
         else:
@@ -848,7 +855,7 @@ class SGCDevice:
                 ev_counts[ev] = ev_counts.get(ev, 0) + 1
             unknown = [(k,v) for k,v in ev_counts.items() if k not in ('st','run_saved','stream_end','timeout','close_trace','cbc','enc_dbg','ring_dbg','ring_diag','sd','start','bc','boot')]
             if unknown:
-                print(f"   ── Other events: {dict(unknown)}")
+                print(f"   -- Other events: {dict(unknown)}")
 
         if stream_end:
             se = stream_end[-1]
@@ -858,7 +865,7 @@ class SGCDevice:
             sent = getattr(self, "frames_sent", 0)
             # V4.53: stop printing fake "lost %".
             # g_stream_frames used to reset at LOGGING entry, so
-            # sent - received ≈ ARMED pre-fill, not USB drops.
+            # sent - received ~ ARMED pre-fill, not USB drops.
             if armed_pull is not None and logging_pull is not None:
                 print(f"   Stream pulls: total={total_pull} "
                       f"ARMED={armed_pull} LOGGING={logging_pull} "
@@ -874,10 +881,10 @@ class SGCDevice:
             print("   Timeout events:")
             for te in timeout_events:
                 elapsed = te.get('elapsed', '?')
-                print(f"     {te.get('from'):>10} → {te.get('to')} (elapsed={elapsed}ms)")
+                print(f"     {te.get('from'):>10} -> {te.get('to')} (elapsed={elapsed}ms)")
 
         if enc_baro_events:
-            print(f"   ── Encode baro probes ({len(enc_baro_events)}) ──")
+            print(f"   -- Encode baro probes ({len(enc_baro_events)}) --")
             for r in enc_baro_events[:12]:
                 # p is Pa/2 on wire
                 p_raw = r.get('p')
@@ -891,50 +898,50 @@ class SGCDevice:
                 print(f"     ... +{len(enc_baro_events)-12} more")
 
         if close_bc:
-            print("   ── close_run() step breadcrumbs (cbc) ──")
+            print("   -- close_run() step breadcrumbs (cbc) --")
             for cb in close_bc:
                 extra = ""
                 if "rc" in cb:
                     extra = f" rc={cb.get('rc')}"
                 elif "n" in cb:
                     extra = f" n={cb.get('n')}"
-                print(f"     ⤷ {cb.get('at')}{extra}")
+                print(f"     > {cb.get('at')}{extra}")
             # Only show stall warning if close_run did NOT finish.
             close_finished = any(ct.get("step") == "done" for ct in close_trace)
             run_saved_ok = any(rs.get("ok") for rs in run_saved)
             if not close_finished and not run_saved_ok:
-                print(f"     → LAST step reached: '{close_bc[-1].get('at')}' "
+                print(f"     -> LAST step reached: '{close_bc[-1].get('at')}' "
                       f"(the step AFTER this is where it stalls/fails)")
             else:
-                print(f"     → close_run() completed all steps \u2713")
+                print(f"     -> close_run() completed all steps \u2713")
 
         if close_trace:
-            print("   ── close_run() trace ──")
+            print("   -- close_run() trace --")
             for ct in close_trace:
                 step = ct.get('step', '?')
                 if step == 'start':
                     print(f"     START: run_start={ct.get('run_start')} sz={ct.get('sz')} "
                           f"fr={ct.get('fr')} wh_before={ct.get('wh_before')}")
                 elif step == 'hdr_write':
-                    print(f"     {'✓' if ct.get('ok') else '✗'} Header write: ok={ct.get('ok')} "
+                    print(f"     {'OK' if ct.get('ok') else 'FAIL'} Header write: ok={ct.get('ok')} "
                           f"ver={ct.get('ver')} side={ct.get('side')} "
                           f"bt={ct.get('bt')} hex={ct.get('hex')} nr={ct.get('nr')}")
                 elif step == 'hdr_after_close':
                     print(f"     hdr_after_close: ver={ct.get('ver')} side={ct.get('side')} "
                           f"hex={ct.get('hex')} nr={ct.get('nr')}")
                 elif step == 'hdr_fix':
-                    print(f"     {'✓' if ct.get('ok') else '✗'} hdr_fix: ok={ct.get('ok')} "
+                    print(f"     {'OK' if ct.get('ok') else 'FAIL'} hdr_fix: ok={ct.get('ok')} "
                           f"pre_ver={ct.get('pre_ver')} ver={ct.get('ver')} hex={ct.get('hex')}")
                 elif step == 'hdr_repair':
-                    print(f"     {'✓' if ct.get('ok') else '✗'} hdr_repair: ok={ct.get('ok')}")
+                    print(f"     {'OK' if ct.get('ok') else 'FAIL'} hdr_repair: ok={ct.get('ok')}")
                 elif step == 'hdr_verify':
                     print(f"     hdr_verify: ok={ct.get('ok')} hex={ct.get('hex')} "
                           f"nr={ct.get('nr')} rdwr={ct.get('rdwr')}")
                 elif step == 'trailer_erase':
-                    print(f"     {'✓' if ct.get('ok') else '✗'} Trailer erase: ok={ct.get('ok')} "
+                    print(f"     {'OK' if ct.get('ok') else 'FAIL'} Trailer erase: ok={ct.get('ok')} "
                           f"addr={ct.get('trailer_addr')}")
                 elif step == 'write_head':
-                    print(f"     Write head: {ct.get('wh_old')} → {ct.get('wh_new')}")
+                    print(f"     Write head: {ct.get('wh_old')} -> {ct.get('wh_new')}")
                 elif step == 'done':
                     print(f"     DONE: entry_count={ct.get('entry_count')} "
                           f"run_count={ct.get('run_count')} "
@@ -956,7 +963,7 @@ class SGCDevice:
             rs = run_saved[0]
             ok = rs.get('ok', 0)
             rid = rs.get('id', 0)
-            status = "✓ SUCCESS" if ok else "✗ FAILED (returned 0xFFFF)"
+            status = "OK SUCCESS" if ok else "FAIL FAILED (returned 0xFFFF)"
             print(f"\n   {status}: id={rid} frames={rs.get('fr')} "
                   f"compressed={rs.get('sz')} bytes")
             print(f"     write_head={rs.get('wh')} entry_count={rs.get('ec')} "
@@ -978,8 +985,8 @@ class SGCDevice:
                     fps_s = "?"
                 print(f"     LOGGING rate: {fps_s} fps over {dur_ms} ms")
 
-            # ── Verify run count persisted (mirrors BLE ABC8 read) ──
-            print("\n   ── Run count check (BLE-equivalent) ──")
+            # -- Verify run count persisted (mirrors BLE ABC8 read) --
+            print("\n   -- Run count check (BLE-equivalent) --")
             self.send_cmd('?', wait_ms=300)
             status = self.drain_responses(1.0)
             count_ok = False
@@ -993,17 +1000,17 @@ class SGCDevice:
                     print(f"     runs={runs} total_runs={total_runs} oldest_age={oldest_age}")
                     print(f"     write_head={write_head} read_head={read_head}")
                     if runs > 0 and total_runs > 0:
-                        print(f"     ✓ Run persisted in RAM index")
+                        print(f"     OK Run persisted in RAM index")
                         count_ok = True
                     else:
-                        print(f"     ✗ Run count is ZERO — flash persistence likely failed!")
+                        print(f"     FAIL Run count is ZERO - flash persistence likely failed!")
                         print(f"       (runs={runs}, total_runs={total_runs})")
             if not count_ok:
-                print("     ⚠ WARNING: BLE ABC8 would report 0 runs to the phone app.")
+                print("     WARN WARNING: BLE ABC8 would report 0 runs to the phone app.")
             return rs
 
         # Diagnostics if no run saved
-        print("\n   ⚠ No run saved. Diagnostics:")
+        print("\n   WARN No run saved. Diagnostics:")
         self.send_cmd('?', wait_ms=300)
         status = self.drain_responses(1.0)
         got_status = False
@@ -1013,7 +1020,7 @@ class SGCDevice:
                 print(f"     Device: st={r.get('st')} batt={r.get('bat')}% "
                       f"runs={r.get('runs')} ring={r.get('r')}/{r.get('rm')}")
             else:
-                # V2.17: do NOT swallow late events — close_run() output that
+                # V2.17: do NOT swallow late events - close_run() output that
                 # arrives after the verify window lands in THIS drain.
                 print(f"     late event: {json.dumps(r)}")
 
@@ -1027,35 +1034,35 @@ class SGCDevice:
 
         if close_started and not close_finished:
             # close_run() began (start trace) but never emitted 'done'.
-            print("     ✗ close_run() STARTED but never finished — it is "
+            print("     FAIL close_run() STARTED but never finished - it is "
                   "hanging/failing mid-close.")
             print("       Look at the last {\"ev\":\"cbc\",\"at\":...} breadcrumb "
                   "above to see which step stalled.")
             if not got_status:
-                print("       (No '?' status response — device is likely HUNG "
+                print("       (No '?' status response - device is likely HUNG "
                       "inside close_run(), not just slow.)")
         elif reached_logging:
-            print("     ✗ Reached LOGGING but no run_saved — close_run() did not "
+            print("     FAIL Reached LOGGING but no run_saved - close_run() did not "
                   "persist the run.")
         elif not any(e.get("ev") == "start" for e in sd_events):
-            print("     ✗ Start detection never fired.")
+            print("     FAIL Start detection never fired.")
             threshold_pa = DROP_THRESHOLD_M * PA_PER_M_HPA * self.init_pressure / SEA_LEVEL_HPA
-            print(f"       Baro ramp ΔP must exceed {threshold_pa:.0f} Pa "
-                  f"(2.0m drop at P₀={self.init_pressure:.0f} hPa)")
+            print(f"       Baro ramp dP must exceed {threshold_pa:.0f} Pa "
+                  f"(2.0m drop at P0={self.init_pressure:.0f} hPa)")
 
         return None
 
     def verify_data_integrity(self, ndjson_path: str, run_id: int = 0) -> bool:
-        """Retrieve raw bytes from flash (same as BLE→phone), decompress, compare to NDJSON.
+        """Retrieve raw bytes from flash (same as BLE->phone), decompress, compare to NDJSON.
 
-        Uses 'h <run_id> raw' to get the full run file as a hex string —
+        Uses 'h <run_id> raw' to get the full run file as a hex string -
         identical to what BLE file transfer sends to the phone app.
         Decompresses using sgc_decompressor (same algorithm as phone).
 
         Returns True if integrity check passes."""
         from sgc_decompressor import decompress_from_hex, compare_to_ndjson
 
-        print("\n── Data Integrity Check ──")
+        print("\n-- Data Integrity Check --")
 
         def _collect_hex(timeout_s: float):
             hd, he, chunks, other = None, None, [], []
@@ -1089,16 +1096,16 @@ class SGCDevice:
                     if hd and hd.get('chunks') and len(chunks) >= int(hd.get('chunks') or 0):
                         break
                 else:
-                    # quiet for 1.5s after first data → done
+                    # quiet for 1.5s after first data -> done
                     if (hd or chunks or he) and (time.time() - last_rx) > 1.5:
                         break
             return hd, he, chunks, other
 
-        # Ensure IDLE and let POST_RUN→IDLE prepare_preroll finish (can take
+        # Ensure IDLE and let POST_RUN->IDLE prepare_preroll finish (can take
         # several seconds for full pre-roll erase). Then clear RX and dump.
         self.send_cmd('i', wait_ms=300)
         self.drain_responses(0.5)
-        # Wait until device answers ? (main loop free — not stuck in erase)
+        # Wait until device answers ? (main loop free - not stuck in erase)
         t_wait0 = time.time()
         while time.time() - t_wait0 < 20.0:
             self.send_cmd('?', wait_ms=50)
@@ -1123,7 +1130,7 @@ class SGCDevice:
 
         if not hex_dump and not raw_chunks:
             if hex_err:
-                print(f"   ✗ Firmware returned hex_err: {hex_err}")
+                print(f"   FAIL Firmware returned hex_err: {hex_err}")
                 return False
             print("   Retrying h command...")
             self.send_cmd('i', wait_ms=300)
@@ -1139,10 +1146,10 @@ class SGCDevice:
                 print(f"   (retry other events: {evs})")
 
         if hex_err:
-            print(f"   ✗ Firmware returned hex_err: {hex_err}")
+            print(f"   FAIL Firmware returned hex_err: {hex_err}")
             return False
         if not raw_chunks:
-            print("   ✗ No raw data chunks from device")
+            print("   FAIL No raw data chunks from device")
             return False
 
         # Assemble by offset into a dense bytearray (detect gaps)
@@ -1160,14 +1167,14 @@ class SGCDevice:
             try:
                 by_off[off] = bytes.fromhex(hx)
             except ValueError:
-                print(f"   ✗ Bad hex at off={off}")
+                print(f"   FAIL Bad hex at off={off}")
                 return False
 
         print(f"   Retrieved {len(by_off)}/{expected_chunks} unique offsets "
               f"(raw events={len(raw_chunks)}), data_sz={sz}")
 
         if 0 not in by_off:
-            print(f"   ✗ Missing chunk at offset 0 (first offs={sorted(by_off)[:5]})")
+            print(f"   FAIL Missing chunk at offset 0 (first offs={sorted(by_off)[:5]})")
             return False
 
         # Rebuild contiguous file; fill gaps with None detection
@@ -1197,7 +1204,7 @@ class SGCDevice:
                     gaps.append(i)
                     if len(gaps) >= 8:
                         break
-            print(f"   ✗ Incomplete dump: {gap_bytes} missing bytes "
+            print(f"   FAIL Incomplete dump: {gap_bytes} missing bytes "
                   f"(first gaps at {gaps})")
             print(f"   First 64 raw bytes: {bytes(raw[:64]).hex()}")
             return False
@@ -1207,7 +1214,7 @@ class SGCDevice:
               f"data_sz={struct.unpack_from('<I', raw, 8)[0]}")
 
         if raw[0] not in (1, 2, 3):
-            print(f"   ✗ Invalid format_ver={raw[0]} — dump still corrupt")
+            print(f"   FAIL Invalid format_ver={raw[0]} - dump still corrupt")
             return False
 
         frames = decompress_from_hex(bytes(raw).hex())
@@ -1220,7 +1227,7 @@ class SGCDevice:
                   f"q_y={frames[1].q_y} la=[{frames[1].la_x},{frames[1].la_y},{frames[1].la_z}]")
 
         if len(frames) == 0:
-            print("   ✗ Decompression produced no frames")
+            print("   FAIL Decompression produced no frames")
             return False
 
         # Align NDJSON to the logged window: firmware logs from start
@@ -1243,21 +1250,21 @@ class SGCDevice:
         # Stream injection drops ~10% frames before encode. Integrity is a
         # subsequence match against NDJSON, not a 1:1 index compare.
         if matched == 0:
-            print("   ✗ No frames matched — decompression/align error")
+            print("   FAIL No frames matched - decompression/align error")
             return False
         if match_rate >= 0.95 and mismatched <= max(5, int(0.02 * total)):
-            print(f"   ✓ Data integrity verified — {matched} frames match NDJSON "
+            print(f"   OK Data integrity verified - {matched} frames match NDJSON "
                   f"(subsequence, ≥95%)")
             return True
 
-        print("   ✗ Data integrity below threshold "
+        print("   FAIL Data integrity below threshold "
               "(need ≥95% match and ≤2% hard mismatch)")
         return False
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # Main test scenario
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 def run_full_test(port: str,
@@ -1271,7 +1278,7 @@ def run_full_test(port: str,
                   factory_reset: bool = False,
                   interactive: bool = True) -> int:
     """
-    Full test orchestration: wakeup → [factory reset] → arm → stream → verify.
+    Full test orchestration: wakeup -> [factory reset] -> arm -> stream -> verify.
 
     factory_reset=True (CLI: -R/--reset) erases the flash filesystem before the
     run for a clean state. Off by default so a crash doesn't wipe the evidence
@@ -1284,38 +1291,38 @@ def run_full_test(port: str,
     try:
         device.connect()
 
-        # ── Step 1: Wakeup ─────────────────────────────────
+        # -- Step 1: Wakeup ---------------------------------
         if not device.wakeup():
-            print("⚠ Could not confirm IDLE state, proceeding anyway...")
+            print("WARN Could not confirm IDLE state, proceeding anyway...")
 
-        # ── Step 2: Factory reset filesystem (opt-in via -R) ──
+        # -- Step 2: Factory reset filesystem (opt-in via -R) --
         if factory_reset:
-            print("\n── Factory Reset (-R) ──")
+            print("\n-- Factory Reset (-R) --")
             device.send_cmd('R', wait_ms=500)
             time.sleep(4.0)  # wait for reboot + COM port re-enumeration
             device.ser.close()
             time.sleep(1.0)
             device.connect()  # reconnect after reboot
             if not device.wakeup():
-                print("⚠ Could not confirm IDLE after reset, proceeding...")
+                print("WARN Could not confirm IDLE after reset, proceeding...")
         else:
-            print("\n── Factory Reset: SKIPPED (pass -R to erase flash first) ──")
+            print("\n-- Factory Reset: SKIPPED (pass -R to erase flash first) --")
 
-        # ── Query firmware version (no reset) — reported in results ──
+        # -- Query firmware version (no reset) - reported in results --
         device.query_version()
 
-        # ── Step 3: Test mode ─────────────────────────────
+        # -- Step 3: Test mode -----------------------------
         device.enter_test_mode()
 
-        # ── Step 4: Get frames (generate or replay) ────────
+        # -- Step 4: Get frames (generate or replay) --------
         if replay_path:
-            print(f"\n── Replay: {replay_path} ──")
+            print(f"\n-- Replay: {replay_path} --")
             frames = load_frames_ndjson(replay_path)
             if not frames:
                 print("ERROR: No frames loaded from replay file.")
                 return 1
         else:
-            print(f"\n── Generate GS run (seed={seed}) ──")
+            print(f"\n-- Generate GS run (seed={seed}) --")
             frames = generate_gs_run(
                 duration_s=duration_s,
                 gate_count=gate_count,
@@ -1323,13 +1330,13 @@ def run_full_test(port: str,
                 seed=seed,
             )
             print(f"   Generated {len(frames)} frames "
-                  f"(P₀={frames[0].pressure_hpa:.2f} hPa "
+                  f"(P0={frames[0].pressure_hpa:.2f} hPa "
                   f"~{(SEA_LEVEL_HPA - frames[0].pressure_hpa) * (1/PA_PER_M_HPA):.0f}m altitude)")
 
             if save_path:
                 save_frames_ndjson(frames, save_path)
 
-        # ── Step 4: Stream (triggers ARM internally, then pull-model) ──
+        # -- Step 4: Stream (triggers ARM internally, then pull-model) --
         if interactive:
             input("\nPress ENTER to start streaming...")
         else:
@@ -1339,7 +1346,7 @@ def run_full_test(port: str,
 
         device.stream_frames(frames, pre_fill=pre_fill)
 
-        # ── Step 6: Verify ─────────────────────────────────
+        # -- Step 6: Verify ---------------------------------
         result = device.verify_run()
 
         if result:
@@ -1356,7 +1363,7 @@ def run_full_test(port: str,
 
             rid = int(result.get('id', 0) or 0)
             if rid == 0xFFFF or rid < 0:
-                print(f"\n   ⚠ run_saved id={rid} invalid; probing status for latest run")
+                print(f"\n   WARN run_saved id={rid} invalid; probing status for latest run")
                 device.send_cmd('?', wait_ms=300)
                 st = device.drain_responses(1.0)
                 rid = 0
@@ -1371,9 +1378,9 @@ def run_full_test(port: str,
 
             print("\n" + "=" * 50)
             if integrity_ok:
-                print("✓ TEST PASSED — data integrity verified")
+                print("OK TEST PASSED - data integrity verified")
             else:
-                print("⚠ TEST PASSED but data integrity check FAILED")
+                print("WARN TEST PASSED but data integrity check FAILED")
             print(f"  Firmware version: v{device.fw_version}")
             print("=" * 50)
             return 0 if integrity_ok else 1
@@ -1381,13 +1388,13 @@ def run_full_test(port: str,
             print("\n" + "=" * 50)
             if device.reset_event:
                 rr = int(device.reset_event.get("rr", 0))
-                print("✗ TEST FAILED — DEVICE RESET")
-                print(f"  RESETREAS = {rr} (0x{rr:08X}) → "
+                print("FAIL TEST FAILED - DEVICE RESET")
+                print(f"  RESETREAS = {rr} (0x{rr:08X}) -> "
                       f"{device.decode_reset_reason(rr)}")
                 if device.breadcrumbs:
                     print(f"  Last breadcrumb: {device.breadcrumbs[-1].get('at')}")
             else:
-                print("⚠ TEST: no run saved — check diagnostics above")
+                print("WARN TEST: no run saved - check diagnostics above")
             print(f"  Firmware version: v{device.fw_version}")
             print("=" * 50)
             return 1
@@ -1410,17 +1417,17 @@ def list_ports() -> None:
         return
     print("Available serial ports:")
     for p in ports:
-        print(f"  {p.device} — {p.description}")
+        print(f"  {p.device} - {p.description}")
 
 
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 # CLI
-# ═══════════════════════════════════════════════════════════════════
+# ===================================================================
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SGC Stream Simulator — wakeup → arm → stream → verify",
+        description="SGC Stream Simulator - wakeup -> arm -> stream -> verify",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

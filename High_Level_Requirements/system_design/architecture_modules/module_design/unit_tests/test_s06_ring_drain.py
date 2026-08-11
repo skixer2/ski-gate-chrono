@@ -8,6 +8,7 @@ Delegates to system_tests/test_ring_drain.py (~20–40 s).
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,11 +32,15 @@ def run_device_test(port: str) -> bool:
         "--fill-s", "12",
     ]
     print("Delegating:", " ".join(cmd))
+    env = dict(os.environ)
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['PYTHONUTF8'] = '1'
     r = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
+        env=env,
     )
     if r.stdout:
         print(r.stdout, end='' if r.stdout.endswith('\n') else '\n')

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-S04 — BHY2 real-sensor LOGGING rate test (no USB frame injection).
+S04 - BHY2 real-sensor LOGGING rate test (no USB frame injection).
 
 Purpose:
   Measure real BHY2 LOGGING sample rate (encode + flash write).
 
   v4.63+ Opt-A production path (force-'l' and start-detector):
-    POST_RUN / boot: prepare_next_run() full-slot erase (~249 KB) — not ARM
-    LOGGING: BHY2 → packer → page buf → SPI program (program-only if prepared)
+    POST_RUN / boot: prepare_next_run() full-slot erase (~249 KB) - not ARM
+    LOGGING: BHY2 -> packer -> page buf -> SPI program (program-only if prepared)
     NO LittleFS on run payload. run_saved.store == "raw" (v4.64).
 
 IMPORTANT state machine rule (firmware):
   LOGGING may only be entered from ARMED.
   POST_RUN may only be entered from LOGGING.
-  So the bench sequence is: IDLE → a(ARMED) → l(LOGGING) → … → p(POST_RUN)
+  So the bench sequence is: IDLE -> a(ARMED) -> l(LOGGING) -> ... -> p(POST_RUN)
 
 NOTE (v4.58+):
   Serial 'l' force-LOGGING disables the end detector so a stationary bench
@@ -23,10 +23,10 @@ NOTE (v4.58+):
 Flow:
   - factory reset optional (-R)
   - ensure test mode OFF (real BHY2 path, g_stream_active stays false)
-  - arm with 'a'  → expect green LED / st ARMED
-  - force LOGGING with 'l' → expect red LED / run_created
+  - arm with 'a'  -> expect green LED / st ARMED
+  - force LOGGING with 'l' -> expect red LED / run_created
   - wait --duration seconds (capture any early run_saved/end)
-  - force POST_RUN with 'p' → expect run_saved {fr, dur_ms, fps10}
+  - force POST_RUN with 'p' -> expect run_saved {fr, dur_ms, fps10}
 
 Pass criteria (defaults):
   fps >= 90  (target 100 Hz with headroom for flash sync)
@@ -44,6 +44,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+# Windows consoles often default to cp1252; force UTF-8 so banners don't crash.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 import time
 
 import serial
@@ -134,7 +141,7 @@ def read_test_mode(ser: serial.Serial, wait_s: float = 1.0) -> int | None:
             tm = _tm_from_obj(o)
             if tm is not None:
                 return tm
-            # Old FW: status without tm — unknown
+            # Old FW: status without tm - unknown
             return None
     return None
 
@@ -157,7 +164,7 @@ def ensure_test_mode_off(ser: serial.Serial, attempts: int = 6) -> bool:
 
         if tm == 1:
             # Toggle once to OFF, then re-read via status (never trust toggle alone)
-            print("  tm=1 — sending T once to turn OFF…")
+            print("  tm=1 - sending T once to turn OFF...")
             send_keep(ser, "T", 0.8)
             time.sleep(0.2)
             tm2 = read_test_mode(ser, 1.0)
@@ -165,19 +172,19 @@ def ensure_test_mode_off(ser: serial.Serial, attempts: int = 6) -> bool:
                 print("  Test mode OFF: True (tm=0 after toggle)")
                 return True
             if tm2 == 1:
-                print("  ⚠ still tm=1 after toggle; retry…")
+                print("  WARN still tm=1 after toggle; retry...")
                 time.sleep(0.5)
                 continue
-            # status lost tm field mid-run — fall through
+            # status lost tm field mid-run - fall through
 
         # status silent or pre-4.65 (no tm field): wait for loop, do NOT toggle yet
         if tm is None:
             # Device may still be in setup() full-slot erase after boot
-            print(f"  … waiting for status (attempt {i+1}/{attempts})")
+            print(f"  ... waiting for status (attempt {i+1}/{attempts})")
             time.sleep(1.0)
 
     # Last resort for old FW without status.tm: one carefully paired toggle cycle
-    # Only if we never got status — after cold boot tm defaults OFF, so skip T.
+    # Only if we never got status - after cold boot tm defaults OFF, so skip T.
     st = send_keep(ser, "?", 1.5)
     for o in st:
         if o.get("ev") == "status":
@@ -190,11 +197,11 @@ def ensure_test_mode_off(ser: serial.Serial, attempts: int = 6) -> bool:
                 tm = read_test_mode(ser, 1.0)
                 print(f"  Test mode OFF: {tm == 0} (tm={tm})")
                 return tm == 0
-            # No tm field: boot default is OFF — safe for S04 real BHY2 path
+            # No tm field: boot default is OFF - safe for S04 real BHY2 path
             print(f"  fallback status ok (no tm field, assume OFF): st={o.get('st')} ver={o.get('ver')}")
             return True
 
-    print("  ✗ no status response — device not in main loop yet?")
+    print("  FAIL no status response - device not in main loop yet?")
     return False
 
 
@@ -226,8 +233,8 @@ def evaluate_run(saved: dict, duration_s: float, min_fps: float, ver: str | None
     print(f"  store={store} compressed={saved.get('sz')} runs={saved.get('runs')} "
           f"we={saved.get('we')}")
     if store != "raw":
-        print("  ⚠ expected store=raw on force-l (v4.62+ Opt-A spike); "
-              "got LFS path — flash may be old firmware")
+        print("  WARN expected store=raw on force-l (v4.62+ Opt-A spike); "
+              "got LFS path - flash may be old firmware")
 
     # Require the full requested window (allow 10% short on duration).
     min_dur_ms = int(0.9 * duration_s * 1000)
@@ -238,10 +245,10 @@ def evaluate_run(saved: dict, duration_s: float, min_fps: float, ver: str | None
 
     print("\n" + "=" * 50)
     if pass_fps and pass_fr and pass_dur and ok:
-        print(f"✓ S04 PASSED — {fps:.1f} fps, {fr} frames in {dur_ms} ms")
+        print(f"OK S04 PASSED - {fps:.1f} fps, {fr} frames in {dur_ms} ms")
         rc = 0
     else:
-        print("✗ S04 FAILED")
+        print("FAIL S04 FAILED")
         if not ok:
             print("  run_saved ok=false")
         if not pass_fps:
@@ -253,7 +260,7 @@ def evaluate_run(saved: dict, duration_s: float, min_fps: float, ver: str | None
                   f"(ended early? end-detector / force-l unsupported on this FW?)")
             if dur_ms > 0 and fr > 0:
                 print(f"  note: short-run rate still ~{fps:.1f} fps "
-                      f"— useful, but S04 needs full {duration_s:.0f}s window")
+                      f"- useful, but S04 needs full {duration_s:.0f}s window")
         rc = 1
     if ver:
         print(f"  Firmware: v{ver}")
@@ -262,7 +269,7 @@ def evaluate_run(saved: dict, duration_s: float, min_fps: float, ver: str | None
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="S04 — BHY2 real LOGGING rate test")
+    ap = argparse.ArgumentParser(description="S04 - BHY2 real LOGGING rate test")
     ap.add_argument("port", help="Serial port, e.g. COM8")
     ap.add_argument("--duration", type=float, default=20.0, help="LOGGING seconds")
     ap.add_argument("--baud", type=int, default=115200)
@@ -273,11 +280,11 @@ def main() -> int:
                     help="Seconds to wait after boot for BHY2 quat settle before arm")
     ap.add_argument("--onboard-led", action="store_true",
                     help="Enable Nicla onboard RGB (serial O 1). Default OFF when "
-                         "strip path active — I2C costs LOGGING rate.")
+                         "strip path active - I2C costs LOGGING rate.")
     args = ap.parse_args()
 
     print("=" * 50)
-    print("S04 — BHY2 Real LOGGING Rate Test")
+    print("S04 - BHY2 Real LOGGING Rate Test")
     print(f"  Port:     {args.port}")
     print(f"  Duration: {args.duration:.1f}s")
     print(f"  Min FPS:  {args.min_fps:.1f}")
@@ -303,15 +310,15 @@ def main() -> int:
                 print(f"  Firmware: v{ver}")
 
     if args.factory_reset:
-        print("  Factory reset…")
+        print("  Factory reset...")
         send(ser, "R", 0.5)
         boot = wait_event(ser, "boot", 10.0)
         print(f"  boot: {boot}")
         if boot and boot.get("ver"):
             ver = boot.get("ver")
         # Boot line prints early; setup() still runs BLE + full-slot prepare_next_run
-        # (~60 sector erases). Wait until main loop answers '?' — up to ~15 s.
-        print("  Waiting for post-boot init (full-slot prep can take several s)…")
+        # (~60 sector erases). Wait until main loop answers '?' - up to ~15 s.
+        print("  Waiting for post-boot init (full-slot prep can take several s)...")
         ready = False
         t_wait0 = time.perf_counter()
         while time.perf_counter() - t_wait0 < 15.0:
@@ -330,13 +337,13 @@ def main() -> int:
             if ready:
                 break
         if not ready:
-            print("  ⚠ status not seen within 15s — continuing anyway")
+            print("  WARN status not seen within 15s - continuing anyway")
         send_keep(ser, "i", 0.4)
 
-    # Real BHY2 path — must NOT be in test/stream mode
-    # NOTE: serial 'T' *toggles* test mode — never use it as a query.
+    # Real BHY2 path - must NOT be in test/stream mode
+    # NOTE: serial 'T' *toggles* test mode - never use it as a query.
     if not ensure_test_mode_off(ser):
-        print("  ✗ Could not ensure test mode OFF")
+        print("  FAIL Could not ensure test mode OFF")
         ser.close()
         return 1
 
@@ -348,7 +355,7 @@ def main() -> int:
                 print(f"  Onboard LED: ON (onboard={o.get('onboard')})")
                 break
         else:
-            print("  ⚠ O 1 sent (enable onboard LED) — no ack (old FW?)")
+            print("  WARN O 1 sent (enable onboard LED) - no ack (old FW?)")
     else:
         # Ensure off for rate bench if previous session left it on
         send_keep(ser, "O 0", 0.4)
@@ -356,12 +363,12 @@ def main() -> int:
 
     # Give BHY2 a moment so arm quat check can pass
     if args.arm_wait > 0:
-        print(f"  Waiting {args.arm_wait:.1f}s for BHY2 settle…")
+        print(f"  Waiting {args.arm_wait:.1f}s for BHY2 settle...")
         time.sleep(args.arm_wait)
         read_json_lines(ser, 0.2)
 
-    # ── IDLE → ARMED ───────────────────────────────────────────
-    print("\n── ARM (required before LOGGING) ──")
+    # -- IDLE -> ARMED -------------------------------------------
+    print("\n-- ARM (required before LOGGING) --")
     send(ser, "i", 0.2)
     arm_evs = send(ser, "a", 0.8)
     for r in arm_evs:
@@ -377,15 +384,15 @@ def main() -> int:
             print(f"  status: st={st_after_arm}")
 
     if st_after_arm != "ARMED":
-        print(f"  ✗ Not ARMED (st={st_after_arm}). "
-              f"Cannot enter LOGGING from IDLE — SM requires ARMED.")
+        print(f"  FAIL Not ARMED (st={st_after_arm}). "
+              f"Cannot enter LOGGING from IDLE - SM requires ARMED.")
         print("  Tip: if arm_refused quat_magnitude, wait longer / check BHY2.")
         ser.close()
         return 1
-    print("  ✓ ARMED (expect green LED)")
+    print("  OK ARMED (expect green LED)")
 
-    # ── ARMED → LOGGING ────────────────────────────────────────
-    print(f"\n── LOGGING for {args.duration:.1f}s (BHY2 live) ──")
+    # -- ARMED -> LOGGING ----------------------------------------
+    print(f"\n-- LOGGING for {args.duration:.1f}s (BHY2 live) --")
     log_evs = send(ser, "l", 0.8)
     for r in log_evs:
         ev = r.get("ev")
@@ -399,10 +406,10 @@ def main() -> int:
             print(f"  status: st={st_log}")
 
     if st_log != "LOGGING":
-        print(f"  ✗ Not LOGGING (st={st_log})")
+        print(f"  FAIL Not LOGGING (st={st_log})")
         ser.close()
         return 1
-    print("  ✓ LOGGING (expect red LED)")
+    print("  OK LOGGING (expect red LED)")
 
     t0 = time.perf_counter()
     last_print = -1
@@ -431,19 +438,19 @@ def main() -> int:
             elif ev in ("state_blocked", "timeout", "st"):
                 print(f"  evt: {r}", flush=True)
         if saved is not None:
-            print("  ⚠ run_saved during LOGGING window (early close)", flush=True)
+            print("  WARN run_saved during LOGGING window (early close)", flush=True)
             break
         sec = int(time.perf_counter() - t0)
         if sec != last_print and sec > 0 and sec % 5 == 0:
-            # Progress only — do NOT query '?' during LOGGING for rate benches.
+            # Progress only - do NOT query '?' during LOGGING for rate benches.
             # (Older FW ? called persist_index erase; even fixed, serial work
             # steals loop time. Final ? after run_saved is enough for show_us.)
-            print(f"  … {sec}s", flush=True)
+            print(f"  ... {sec}s", flush=True)
             last_print = sec
 
-    # ── LOGGING → POST_RUN (only if still logging) ─────────────
+    # -- LOGGING -> POST_RUN (only if still logging) -------------
     if saved is None:
-        print("── POST_RUN ──")
+        print("-- POST_RUN --")
         post_evs = send_keep(ser, "p", 0.5)
         for r in post_evs:
             if r.get("ev") in ("st", "run_saved", "state_blocked", "stream_end", "end"):
@@ -462,16 +469,16 @@ def main() -> int:
                     print(f"  late: {r}")
     else:
         if early_end:
-            print("  (skipped p — already closed by end detector)")
+            print("  (skipped p - already closed by end detector)")
         else:
-            print("  (skipped p — run_saved already received)")
+            print("  (skipped p - run_saved already received)")
 
-    print("\n── Result ──")
+    print("\n-- Result --")
     if not saved:
         for r in send(ser, "?", 0.5):
             if r.get("ev") == "status":
                 print(f"  final status: {r}")
-        print("  ✗ No run_saved event")
+        print("  FAIL No run_saved event")
         ser.close()
         return 1
 

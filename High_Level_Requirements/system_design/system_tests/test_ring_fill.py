@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-S05 — ARMED FlashRing fill rate (BHY2, no USB stream).
+S05 - ARMED FlashRing fill rate (BHY2, no USB stream).
 
-Measures how fast the linear pre-roll fills (v4.75: rm=3000 ≈ 30 s ARM cap).
+Measures how fast the linear pre-roll fills (v4.75: rm=3000 ~ 30 s ARM cap).
 
 ARMED is program-only (prepare_preroll erased buffer on enter IDLE).
 
@@ -22,6 +22,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+# Windows consoles often default to cp1252; force UTF-8 so banners don't crash.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 import time
 
 import serial
@@ -93,23 +100,23 @@ def status(ser: serial.Serial) -> dict | None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="S05 — ARMED ring fill rate")
+    ap = argparse.ArgumentParser(description="S05 - ARMED ring fill rate")
     ap.add_argument("port")
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("-R", "--factory-reset", action="store_true")
     ap.add_argument("--min-fps", type=float, default=90.0)
     ap.add_argument("--timeout", type=float, default=40.0,
-                    help="Max seconds to wait for ring_full (v4.75 cap≈30s)")
+                    help="Max seconds to wait for ring_full (v4.75 cap~30s)")
     ap.add_argument("--target", type=int, default=1000,
-                    help="Stop when r>=target (default 1000 ≈10s; "
-                         "use --target 0 for full rm=3000 — ARM times out at 30s, "
+                    help="Stop when r>=target (default 1000 ~10s; "
+                         "use --target 0 for full rm=3000 - ARM times out at 30s, "
                          "pass uses peak r before timeout)")
     ap.add_argument("--onboard-led", action="store_true",
                     help="Enable Nicla onboard RGB (O 1)")
     args = ap.parse_args()
 
     print("=" * 50)
-    print("S05 — ARMED FlashRing Fill Rate")
+    print("S05 - ARMED FlashRing Fill Rate")
     print(f"  Port: {args.port}  min_fps: {args.min_fps}")
     print("=" * 50)
 
@@ -123,7 +130,7 @@ def main() -> int:
           f"r={st.get('r') if st else None} rm={st.get('rm') if st else None}")
 
     if args.factory_reset:
-        print("  Factory reset…")
+        print("  Factory reset...")
         send(ser, "R", 0.4)
         boot = wait_event(ser, "boot", 12.0)
         print(f"  boot: {boot}")
@@ -147,7 +154,7 @@ def main() -> int:
     send(ser, "i", 0.3)
     time.sleep(1.5)
 
-    print("\n── ARM (fill ring) ──")
+    print("\n-- ARM (fill ring) --")
     send(ser, "i", 0.2)
     evs = send(ser, "a", 0.8)
     for o in evs:
@@ -156,7 +163,7 @@ def main() -> int:
 
     st = status(ser)
     if not st or st.get("st") != "ARMED":
-        print(f"  ✗ not ARMED: {st}")
+        print(f"  FAIL not ARMED: {st}")
         ser.close()
         return 1
 
@@ -164,7 +171,7 @@ def main() -> int:
     target = rm if args.target == 0 else args.target
     if target > rm:
         target = rm
-    print(f"  ✓ ARMED  rm={rm}  measure_target={target}")
+    print(f"  OK ARMED  rm={rm}  measure_target={target}")
 
     t_arm = time.perf_counter()
     full = None
@@ -186,17 +193,17 @@ def main() -> int:
                 full = o
                 break
             if o.get("ev") == "st" and o.get("to") not in (None, "ARMED"):
-                print(f"  ⚠ left ARMED: {o}")
+                print(f"  WARN left ARMED: {o}")
                 left_armed = True
         sec = int(time.perf_counter() - t_arm)
         if sec != last_print and sec > 0 and sec % 2 == 0:
             st = status(ser)
             r = int(st.get("r") or 0) if st else last_r
-            # After ARM timeout, prepare_preroll clears r — keep peak
+            # After ARM timeout, prepare_preroll clears r - keep peak
             if st and st.get("st") == "ARMED":
                 peak_r = max(peak_r, r)
                 last_r = r
-            print(f"  … {sec}s  r={r}/{rm} peak={peak_r}", flush=True)
+            print(f"  ... {sec}s  r={r}/{rm} peak={peak_r}", flush=True)
             last_print = sec
             if peak_r >= target or r >= target:
                 hit_target = True
@@ -216,16 +223,16 @@ def main() -> int:
     if peak_r >= target or r_end >= target or full is not None:
         hit_target = True
 
-    print("\n── Result ──")
+    print("\n-- Result --")
     if full:
         print(f"  ring_full event: {full}")
     if left_armed and peak_r < target:
         print(f"  note: ARMED ended early (timeout=30s). peak_r={peak_r} "
               f"before IDLE cleared buffer")
-    print(f"  time≈{t_full:.2f}s  r={r_end} peak={peak_r} rm={rm} "
+    print(f"  time~{t_full:.2f}s  r={r_end} peak={peak_r} rm={rm} "
           f"target={target} rh={rh}")
 
-    # For full-cap test, ARM_TIMEOUT 30s races rm=3000 @100Hz — accept peak
+    # For full-cap test, ARM_TIMEOUT 30s races rm=3000 @100Hz - accept peak
     # ≥ 95% of target if we hit timeout (forward fill still proven)
     n_meas = max(peak_r, r_end)
     ok_full = hit_target or (full is not None) or (
@@ -235,7 +242,7 @@ def main() -> int:
     # Use time until leave ARMED / hit target
     fps = (n_for_fps / t_full) if t_full > 0.05 else 0.0
     t_exp = min(target, n_for_fps) / 100.0
-    print(f"  fill_fps≈{fps:.1f}  expected_time≈{t_exp:.1f}s for n={n_for_fps}")
+    print(f"  fill_fps~{fps:.1f}  expected_time~{t_exp:.1f}s for n={n_for_fps}")
 
     pass_fps = fps >= args.min_fps
     pass_time = t_full <= max(t_exp * 1.6, 32.0)  # allow ARM 30s window
@@ -243,11 +250,11 @@ def main() -> int:
 
     print("=" * 50)
     if pass_ok:
-        print(f"✓ S05 PASSED — fill ~{fps:.1f} fps, n={n_for_fps} in {t_full:.2f}s "
+        print(f"OK S05 PASSED - fill ~{fps:.1f} fps, n={n_for_fps} in {t_full:.2f}s "
               f"(rm={rm} target={target})")
         rc = 0
     else:
-        print("✗ S05 FAILED")
+        print("FAIL S05 FAILED")
         if not ok_full:
             print(f"  peak_r={peak_r} r={r_end} < target={target} (rm={rm})")
         if not pass_fps:

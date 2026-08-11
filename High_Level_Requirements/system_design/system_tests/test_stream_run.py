@@ -1,10 +1,10 @@
 """
-System test: S03 — Full stream-injection run (binary sensor streaming)
+System test: S03 - Full stream-injection run (binary sensor streaming)
 
 Runs the complete pipeline on real hardware:
-  wakeup → test mode → set pressure → arm → stream 5000 frames
-  → start detection → LOGGING → gate impacts → end detection
-  → POST_RUN → run saved to flash
+  wakeup -> test mode -> set pressure -> arm -> stream 5000 frames
+  -> start detection -> LOGGING -> gate impacts -> end detection
+  -> POST_RUN -> run saved to flash
 
 Uses sgc_stream_simulator.py in non-interactive mode.
 Takes ~60 seconds. Requires real device connected via serial.
@@ -14,10 +14,17 @@ Usage:
   python test_stream_run.py COM8 --duration 20      # Quick 20s test
   python test_stream_run.py COM8 --replay run.ndjson  # Replay recorded data
 
-Returns exit code 0 on success, 1 on failure — CI-friendly.
+Returns exit code 0 on success, 1 on failure - CI-friendly.
 """
 
 import sys
+# Windows consoles often default to cp1252; force UTF-8 so banners don't crash.
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 import os
 
 # Add unit_tests to path for the simulator import
@@ -33,7 +40,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="S03 — Stream injection system test",
+        description="S03 - Stream injection system test",
     )
     parser.add_argument("port", help="Serial port (e.g., COM8, /dev/ttyACM0)")
     parser.add_argument("--duration", type=float, default=50.0,
@@ -53,7 +60,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 50)
-    print("S03 — Stream Injection System Test")
+    print("S03 - Stream Injection System Test")
     print(f"  Port:     {args.port}")
     print(f"  Duration: {args.duration}s")
     print(f"  Gates:    {args.gates}")
@@ -74,9 +81,9 @@ def main():
     )
 
     if exit_code == 0:
-        print("\n[S03] ✓ PASSED")
+        print("\n[S03] OK PASSED")
     else:
-        print("\n[S03] ✗ FAILED")
+        print("\n[S03] FAIL FAILED")
 
     sys.exit(exit_code)
 
