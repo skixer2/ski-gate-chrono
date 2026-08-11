@@ -244,6 +244,7 @@ void handle_serial()
                    cannot lock P0 to the tm-enter 101325 default before the
                    first S03 0x3F response (~797 hPa GS profile). */
                 test_stream_reset();
+                test_stream_drain_rx(); /* align first 16B pull */
                 g_stream_active = true;
             } else {
                 /* Manual inject or production: never leave a stale stream on. */
@@ -633,6 +634,9 @@ void flash_test()
     /* Use reserved sector — never pre-roll (0x0000) or run slots.
        Layout: 0x1FE000–0x1FFFFF reserved (raw_run_store.h). */
     static constexpr uint32_t TEST_ADDR = 0x1FE000u;
+    /* Ack immediately so harness knows 'f' was received (erase can take s). */
+    json_begin(); json_kv("ev", "flash"); json_kv("phase", "start"); json_end();
+    Serial.flush();
     if (!g_flash.erase_block(TEST_ADDR)) {
         json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false);
         Serial.print(','); json_kv("err", "erase1"); json_end(); Serial.flush(); return;
@@ -1047,7 +1051,11 @@ void loop()
        Else: full peripheral service. */
     DeviceState loop_st = g_sm.state();
     if (g_stream_active) {
-        handle_serial();
+        /* v4.85: do NOT handle_serial while streaming.
+           Pull frames are raw 16B; payload bytes look like cmds ('a','l',
+           0x3F inside LE quats, etc.). Stealing even one byte desyncs the
+           pull parser → garbage baro → start_det never locks P0 → ARM_TIMEOUT
+           (S03 flake on 4.82–4.84). Exit stream via end det / timeout / POST_RUN. */
         g_led.update();  /* athlete must see ARMED/LOGGING */
     } else if (loop_st == DeviceState::LOGGING) {
         /* Real BHY2 LOGGING: keep LED blink (RED_CHASE). show_onboard_blink

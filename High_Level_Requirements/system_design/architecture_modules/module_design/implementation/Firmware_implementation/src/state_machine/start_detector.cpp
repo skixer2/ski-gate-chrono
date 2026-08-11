@@ -15,6 +15,7 @@ StartDetector::StartDetector()
 void StartDetector::reset(float p0_pa)
 {
     m_p0 = p0_pa;
+    m_last_reported_pa = 0;
     m_drop_triggered = false;
 }
 
@@ -25,6 +26,15 @@ bool StartDetector::feed(float pressure_pa)
     if (m_p0 <= 0.0f) {
         if (pressure_pa > 50000.0f && pressure_pa < 110000.0f) {
             m_p0 = pressure_pa;
+            m_last_reported_pa = pressure_pa;
+            /* Always emit lock so S03/host can see P0 even if later sd gated. */
+            json_begin();
+            json_kv("ev", "sd");
+            Serial.print(','); json_kv("p0", m_p0, 1);
+            Serial.print(','); json_kv("pa", pressure_pa, 1);
+            Serial.print(','); json_kv("drp", 0.0f, 2);
+            Serial.print(','); json_kv("lock", 1L);
+            json_end();
         }
         return false;
     }

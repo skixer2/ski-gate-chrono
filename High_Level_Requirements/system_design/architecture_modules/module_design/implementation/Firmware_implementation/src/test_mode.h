@@ -47,6 +47,9 @@ bool test_stream_eof();
    Call before ARM-triggered stream start (equivalent to 'S' command init). */
 void test_stream_reset();
 
+/* Drop pending USB RX before first stream pull (alignment). */
+void test_stream_drain_rx();
+
 /* Update injected baro from real ambient (IDLE refresh). Does NOT set
    g_manual_frame — stream ARM still opens pull mode; S03 still owns P0. */
 void test_set_pressure_quiet(float pa);

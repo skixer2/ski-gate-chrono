@@ -19,7 +19,7 @@ Aligned with FW ≥4.80 / Opt-A linear pre-roll:
 Protocol: see json_protocol.md for full spec.
 """
 
-HARNESS_VERSION = "2.24.0"
+HARNESS_VERSION = "2.25.0"
 # Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on IDLE).
 MIN_FW_VERSION = (4, 82)
 
@@ -443,7 +443,8 @@ class SGCTestHarness:
                         if step.expect_json is not None and cmd0 in ('i', 'a', 'p'):
                             read_to = max(read_to, 4000)
                         if step.expect_json is not None and cmd0 == 'f':
-                            read_to = max(read_to, 5000)
+                            # two 4KB erases + program; allow long SPI quiet
+                            read_to = max(read_to, 25000)
                         if step.command and not step.expect_contains and not step.expect_not_contains and not step.expect_json:
                             read_to = min(read_to, 400)
 

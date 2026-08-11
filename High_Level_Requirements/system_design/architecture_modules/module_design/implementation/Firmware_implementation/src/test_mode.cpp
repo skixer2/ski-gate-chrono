@@ -120,6 +120,15 @@ void test_stream_reset() {
     invalidate_pressure_for_stream();
 }
 
+/* Discard any pending RX (stale cmds / partial frames). Call before stream
+   ARM and after a short-frame timeout so the next 16B pull is aligned. */
+static void drain_serial_rx()
+{
+    int guard = 512;
+    while (Serial.available() > 0 && guard-- > 0)
+        (void)Serial.read();
+}
+
 /* ── Pull one frame from PC (request-response) ──────────────── */
 bool test_request_frame(uint32_t timeout_ms)
 {
@@ -127,38 +136,68 @@ bool test_request_frame(uint32_t timeout_ms)
        feed_sensors() runs at full 100Hz to feed end detector. */
     if (g_stream_eof)
         return false;
-    
+
+    /* First pull after ARM: give the PC more time to enter the respond loop
+       (factory-reset reconnect + generate can leave a gap). */
+    if (!g_stream_had_data && timeout_ms < 500)
+        timeout_ms = 500;
+
     Serial.write(0x3F);  /* '?' — request one frame */
     /* No flush() — USB CDC flush on nRF52 blocks waiting for host.
        The byte goes to the TX buffer and will be sent naturally. */
-    
+
     uint32_t deadline = millis() + timeout_ms;
     uint8_t buf[16];
     uint8_t pos = 0;
-    
+
     while (pos < 16) {
         if (Serial.available()) {
-            buf[pos++] = Serial.read();
+            buf[pos++] = (uint8_t)Serial.read();
         } else {
             if ((int32_t)(millis() - deadline) > 0) {
+                /* Partial frame = desync. Drop leftovers so next pull aligns. */
+                if (pos > 0)
+                    drain_serial_rx();
                 /* Only set EOF if we've received data before.
-                   During initial setup (enter_stream_mode pause),
-                   the PC hasn't started sending yet — keep polling. */
+                   During initial setup the PC may not be answering yet. */
                 if (g_stream_had_data)
                     g_stream_eof = true;
-                else
-                    /* Pre-first-frame timeout: do NOT keep sea-level default.
-                       start_det skips baro_pa_div2==0 until a real frame. */
-                    invalidate_pressure_for_stream();
+                invalidate_pressure_for_stream();
                 return false;
             }
         }
     }
-    
+
+    /* Accept only frames with a plausible baro (Pa/2). Misaligned pulls
+       (handle_serial stole bytes) put quat/LA debris in the baro field —
+       rejecting them keeps start_det from locking a garbage P0. */
+    uint16_t baro_div2;
+    memcpy(&baro_div2, buf + 14, sizeof(baro_div2)); /* LE uint16 at offset 14 */
+    float pa = (float)baro_div2 * 2.0f;
+    if (pa < 50000.0f || pa > 110000.0f) {
+        /* Resync: drain and ask again next tick. Do not count as good frame. */
+        drain_serial_rx();
+        invalidate_pressure_for_stream();
+        static uint8_t bad_n;
+        if (bad_n < 5) {
+            bad_n++;
+            json_begin(); json_kv("ev", "stream_resync");
+            Serial.print(','); json_kv("pa", (long)pa);
+            Serial.print(','); json_kv("n", (long)bad_n);
+            json_end();
+        }
+        return false;
+    }
+
     memcpy(&g_test_frame, buf, sizeof(RawFrame));
     g_stream_had_data = true;  /* PC is alive */
     g_stream_frames++;
     return true;
+}
+
+void test_stream_drain_rx()
+{
+    drain_serial_rx();
 }
 
 /* ── Serial command handler ─────────────────────────────────── */
