@@ -26,7 +26,10 @@ SCENARIOS.append(TestScenario(
             0,
             timeout_ms=25000,
             expect_json=lambda d: (
-                d.get('ev') == 'flash' and bool(d.get('ok'))
+                # ignore phase=start ack; require final ok=1/true
+                d.get('ev') == 'flash'
+                and d.get('phase') != 'start'
+                and bool(d.get('ok'))
             ),
         ),
     ]
