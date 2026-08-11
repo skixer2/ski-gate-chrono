@@ -68,11 +68,19 @@ static void set_la(float x, float y, float z) {
 
 /* ── Default frame (desk-still, sea-level) — init on test mode enter.
    Sea-level Pa so unit tests that arm without B still have a valid P0.
-   Stream path overwrites via test_request_frame(). */
+   Stream path MUST invalidate baro before first pull (see test_stream_reset /
+   test_request_frame) so start_det cannot lock P0 to 101325 while S03
+   streams ~800 hPa GS profiles. */
 static void init_default_frame() {
     set_quat(1.0f, 0.0f, 0.0f, 0.0f);
     set_la(0.0f, 0.0f, 0.0f);
     set_pressure_pa(101325.0f);
+}
+
+/* Invalidate pressure so start_det skips (baro_pa_div2==0) until a real
+   stream frame or manual B arrives. Quat/LA left alone for unit inject. */
+static void invalidate_pressure_for_stream() {
+    g_test_frame.baro_pa_div2 = 0;
 }
 
 /* ── JSON echo ──────────────────────────────────────────────── */
@@ -95,11 +103,15 @@ bool test_stream_eof() { return g_stream_eof; }
    keep manual injection across POST_RUN → next ARM. Clearing manual
    here (v4.80) made the next ARM open stream; with no PC frame server
    the ring stayed at r=0 and tests saw instant ARMED→IDLE / not_armed.
-   Stream ARM path sets g_manual_frame=false explicitly before pull. */
+   Stream ARM path sets g_manual_frame=false explicitly before pull.
+
+   v4.83: also zero baro so a slow first 0x3F response cannot leave the
+   tm-enter sea-level default in g_test_frame (start_det P0 poison). */
 void test_stream_reset() {
     g_stream_eof = false;
     g_stream_had_data = false;
     g_stream_frames = 0;
+    invalidate_pressure_for_stream();
 }
 
 /* ── Pull one frame from PC (request-response) ──────────────── */
@@ -128,6 +140,10 @@ bool test_request_frame(uint32_t timeout_ms)
                    the PC hasn't started sending yet — keep polling. */
                 if (g_stream_had_data)
                     g_stream_eof = true;
+                else
+                    /* Pre-first-frame timeout: do NOT keep sea-level default.
+                       start_det skips baro_pa_div2==0 until a real frame. */
+                    invalidate_pressure_for_stream();
                 return false;
             }
         }

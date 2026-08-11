@@ -237,6 +237,9 @@ void handle_serial()
                S03: tm on, no manual → open pull stream. */
             if (test_mode_active() && !g_manual_frame) {
                 g_manual_frame = false; /* explicit: stream owns the frame */
+                /* Clears pull flags AND invalidates baro (v4.83) so start_det
+                   cannot lock P0 to the tm-enter 101325 default before the
+                   first S03 0x3F response (~797 hPa GS profile). */
                 test_stream_reset();
                 g_stream_active = true;
             } else {
