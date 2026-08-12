@@ -200,7 +200,34 @@ void test_stream_drain_rx()
     drain_serial_rx();
 }
 
-/* Local float tokenizer — no newlib scanf/strtof. */
+/* Buffer rest of line after the command letter (same race as main 'h').
+   USB CDC often delivers "L 0 0 " then "-9810\n" in separate packets.
+   Live Serial.parseFloat() on the third token can timeout on the missing
+   '-' and ACK la:[0,0,0] (U19 flake). Wait for '\n' then parse.
+   500 ms — same budget as hex-dump 'h' args (v4.79). */
+static size_t tm_read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
+{
+    size_t n = 0;
+    if (cap == 0) return 0;
+    buf[0] = '\0';
+    uint32_t t0 = millis();
+    while ((int32_t)(millis() - t0) < (int32_t)wait_ms) {
+        if (!Serial.available()) { delay(1); continue; }
+        char ch = (char)Serial.read();
+        if (ch == '\r') continue;
+        if (ch == '\n') { buf[n] = '\0'; return n; }
+        if (n + 1 < cap) buf[n++] = ch;
+        /* else drop overflow chars until newline */
+    }
+    buf[n] = '\0';
+    return n;
+}
+
+/* Local float tokenizer — no newlib scanf/strtof.
+   Handles optional leading +/-, integer + optional fraction.
+   v4.87 sscanf% f → always 0 on nano.
+   v4.88 strtof → B/Q/pos L OK but U19 "L 0 0 -9810" ACK'd la:[810,0,0]
+   (third-token sign path untrustworthy on this lib). */
 static bool tm_parse_one_float(const char*& p, float& out)
 {
     while (*p == ' ' || *p == '\t') p++;
@@ -210,6 +237,7 @@ static bool tm_parse_one_float(const char*& p, float& out)
     if (*p == '-') { neg = true; p++; }
     else if (*p == '+') { p++; }
 
+    /* Need at least one digit or leading-dot digit */
     if (!((*p >= '0' && *p <= '9') || (*p == '.' && p[1] >= '0' && p[1] <= '9')))
         return false;
 
@@ -243,21 +271,12 @@ static int tm_parse_floats(const char* s, float* out, int max_n)
     return n;
 }
 
-/* ── Line-oriented serial handler (v4.91) ───────────────────────
-   main.cpp buffers a full "cmd [args]\n" then calls this with the
-   command letter and args pointer. Never reads Serial here.
-   Root cause of U19 flake on 4.89/4.90 full suites after S03:
-   handle_serial() consumed 'L' from a partial USB packet while the
-   rest of " 0 0 -9810\n" was still in flight; line reader then saw
-   only "-9810" (alen=5, ntok=1) → la:[-9810,0,0]. */
-bool test_mode_handle_line(char c, const char* args)
+/* ── Serial command handler ─────────────────────────────────── */
+bool test_mode_handle_serial(char c)
 {
-    if (!args) args = "";
-
     /* 'T' always available (toggle). Injection/stream cmds only when tm ON.
        Critical: bare 'L' was always stolen as set_la — blocked S06 drain
-       LOGGING command in main.cpp (v4.73). When tm=0, return false so
-       main handles 'L' as drain. */
+       LOGGING command in main.cpp (v4.73). */
     if (c == 'T') {
         g_test_mode = !g_test_mode;
         g_manual_frame = false;
@@ -274,6 +293,9 @@ bool test_mode_handle_line(char c, const char* args)
 
     switch (c) {
     case 'B': {
+        /* manual injection → no ARM→stream */
+        char args[40];
+        tm_read_rest_of_line(args, sizeof(args), 500);
         float pa = 0.0f;
         (void)tm_parse_floats(args, &pa, 1);  /* Pascals */
         g_manual_frame = true;
@@ -285,6 +307,9 @@ bool test_mode_handle_line(char c, const char* args)
         return true;
     }
     case 'Q': {
+        /* same as B — unit tests inject without stream PC */
+        char args[48];
+        tm_read_rest_of_line(args, sizeof(args), 500);
         float qv[4] = {0, 0, 0, 0};
         (void)tm_parse_floats(args, qv, 4);
         g_manual_frame = true;
@@ -298,13 +323,18 @@ bool test_mode_handle_line(char c, const char* args)
     }
     case 'L': {
         /* set lin-acc — only in test mode (tm=1). When tm=0, main 'L' =
-           natural LOGGING drain path (S06). */
+           natural LOGGING drain path (S06). Marks manual so ARM does not
+           open stream (unit tests inject LA without a frame server).
+           v4.87: full-line buffer (U19 CDC race).
+           v4.88: strtof not sscanf %f (newlib-nano has no float scanf).
+           v4.89: local signed tokenizer (U19 -9810 → la:[810,0,0] on strtof). */
+        char args[40];
+        size_t alen = tm_read_rest_of_line(args, sizeof(args), 500);
         float la[3] = {0, 0, 0};
         int ntok = tm_parse_floats(args, la, 3);
-        size_t alen = 0;
-        while (args[alen]) alen++;
         g_manual_frame = true;
         set_la(la[0], la[1], la[2]);
+        /* ACK stored int16 values (same as echo), not raw parse floats. */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "L");
         Serial.print(',');
@@ -318,12 +348,14 @@ bool test_mode_handle_line(char c, const char* args)
         json_print_values();
         return true;
     case 'S':
-        /* V4.14: Pull model. */
+        /* V4.14: Pull model. g_stream_had_data prevents premature
+           EOF during the initial setup pause (enter_stream_mode).
+           EOF only activates after PC responds AND then stops. */
         g_stream_active = true;
         g_stream_frames = 0;
         g_stream_eof = false;
         g_stream_had_data = false;
-        g_manual_frame = false;
+        g_manual_frame = false;  /* stream mode → auto frames, not manual */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
         Serial.print(','); json_kv_bool("strm", true);

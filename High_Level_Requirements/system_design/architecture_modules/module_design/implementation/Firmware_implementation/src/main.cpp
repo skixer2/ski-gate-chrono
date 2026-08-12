@@ -195,43 +195,42 @@ void apply_state_visuals(DeviceState s)
 /* Read rest of current command line into buf (excluding the already-consumed
    first character). Waits up to wait_ms for the terminating newline.
    Returns length written (0 if timeout / empty). */
-/* v4.92: non-blocking full-line serial dispatch.
-   - v4.91 blocked ≤500ms for '\n' → mass unit timeouts (run_2024).
-   - Still assemble complete "cmd [args]\n" before dispatch (U19 needs
-     letter+args together; never parse inject via live Serial mid-line).
-   - Stream mode still skips handle_serial in loop() (v4.85). */
-static char    g_rx_line[64];
-static uint8_t g_rx_len = 0;
+static size_t read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
+{
+    size_t n = 0;
+    uint32_t t0 = millis();
+    while ((int32_t)(millis() - t0) < (int32_t)wait_ms) {
+        if (!Serial.available()) { delay(1); continue; }
+        char c = (char)Serial.read();
+        if (c == '\r') continue;
+        if (c == '\n') { if (n < cap) buf[n] = '\0'; return n; }
+        if (n + 1 < cap) buf[n++] = c;
+    }
+    if (n < cap) buf[n] = '\0';
+    return n;
+}
 
 void handle_serial()
 {
-    while (Serial.available()) {
-        char ch = (char)Serial.read();
-        if (ch == '\r')
-            continue;
-        if (ch != '\n') {
-            if (g_rx_len + 1 < sizeof(g_rx_line))
-                g_rx_line[g_rx_len++] = ch;
-            continue;
-        }
+    if (!Serial.available()) return;
+    char c = Serial.read();
 
-        g_rx_line[g_rx_len] = '\0';
-        uint8_t n = g_rx_len;
-        g_rx_len = 0;
-        if (n == 0)
-            continue;
+    /* V4.13: Pull model — no binary parser needed. Frames are pulled
+       by feed_sensors() → test_request_frame() via request-response.
+       In stream mode, handle_serial() skips the binary path entirely. */
 
-        char c = g_rx_line[0];
-        const char* args = g_rx_line + 1;
-        while (*args == ' ' || *args == '\t')
-            args++;
+    if (test_mode_handle_serial(c)) return;
 
-        if (test_mode_handle_line(c, args))
-            continue;
+    /* V4.45/v4.79: for 'h', buffer the full line first so arg parsing does
+       not race USB CDC (partial packet with only 'h'). Wait up to 500 ms
+       for " <id> raw\n" — 50 ms was too short after long stream + preroll. */
+    char h_args[40];
+    h_args[0] = '\0';
+    if (c == 'h') {
+        read_rest_of_line(h_args, sizeof(h_args), 500);
+    }
 
-        const char* h_args = args;
-
-        switch (c) {
+    switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
@@ -299,8 +298,10 @@ void handle_serial()
            Use during bench if you want visible ARMED/LOGGING without a strip. */
         bool en = !g_led.onboard_enabled();
         /* Optional arg: O 0 / O 1 */
-        if (*args == '0') en = false;
-        else if (*args == '1') en = true;
+        if (Serial.available()) {
+            int v = Serial.parseInt();
+            if (v == 0 || v == 1) en = (v != 0);
+        }
         g_led.set_onboard_enabled(en);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "O");
@@ -526,7 +527,7 @@ void handle_serial()
         }
 
         Serial.print(']');
-                Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
+        Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
         return;
     }
     case 'y': {
@@ -622,13 +623,10 @@ void handle_serial()
         Serial.print(','); json_kv("show_us", (long)g_led.last_show_us());
         Serial.print(','); json_kv("shows", (long)g_led.show_count());
         json_end();
-        break;
+        return;
     }
-        default:
-            break;
-        } /* switch */
-    } /* while Serial.available */
-} /* handle_serial */
+    }
+}
 
 /* ================================================================== */
 void flash_test()
