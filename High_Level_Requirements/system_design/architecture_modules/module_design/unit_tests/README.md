@@ -1,34 +1,36 @@
 # SGC Test Framework
 
+**What to run:** see **[TEST_CATALOG.md](TEST_CATALOG.md)** (smoke / core / full).
+Default day-to-day = **core**, not full `Get-ChildItem test_*.py`.
+
 ```
 unit_tests/          ← Module unit tests + device system wrappers (test_*.py)
+  TEST_CATALOG.md    ← keep/merge/drop + tiers (source of truth)
   sgc_test_harness.py
   test_state_machine.py … test_edge_cases.py   ← U01+ (JSON steps)
-  test_s03_stream_run.py                       ← S03 device (delegates)
-  test_s04_bhy2_rate.py                        ← S04 device (delegates)
-  test_s05_ring_fill.py                        ← S05 device (delegates)
-  test_s06_ring_drain.py                       ← S06 device (delegates)
+  test_s02_factory_reset.py                    ← S02 serial R
+  test_s03_stream_run.py … test_s06_*.py       ← device (delegates)
 
 system_design/system_tests/   ← Device system scripts (S03–S06 bodies)
   test_bhy2_rate.py / test_ring_fill.py / test_ring_drain.py / test_stream_run.py
   run_device_suite.py
   device.md
+  test_full_run.py.obsolete   ← DO NOT RUN (r=500 era)
 ```
 
-## All tests (your usual command)
+## Core loop (recommended)
 
 From `unit_tests/` on the PC with Nicla on COM8:
 
 ```powershell
-# All tests, one .md, multiple .log
-rm $runId*
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
-Get-ChildItem test_*.py | ForEach-Object {
+# See TEST_CATALOG.md for smoke / core file lists
+Get-ChildItem test_*.py | ForEach-Object {   # full tier only
   py sgc_test_harness.py --port COM8 $_ --run-id $runId
 }
 ```
 
-This now picks up **S03 / S04 / S05 / S06** as well as the unit scenarios (U01…).
+Full `test_*.py` picks up **S02–S06** wrappers + all units (including long U20).
 
 | File | Layer | Duration (order) |
 |------|--------|------------------|

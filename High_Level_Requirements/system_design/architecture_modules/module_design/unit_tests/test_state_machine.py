@@ -3,6 +3,7 @@ Unit test: State Machine (v2.20 — Opt-A)
     U01 — SLEEP ↔ IDLE
     U02 — IDLE → ARMED → IDLE
     U03 — Full state cycle via natural start + end detectors
+    U20 — ARM_TIMEOUT → IDLE (~30 s, no start)  [full tier only]
 
 force-'l' skips end det (S04). U03 uses start/end detectors so the
 full production path IDLE→ARMED→LOGGING→POST_RUN→IDLE is covered.
@@ -12,7 +13,7 @@ from sgc_test_harness import (
     wait_for_ring_count, inject_pressure_ramp, UNIT_RING_READY,
 )
 
-TEST_VERSION = "2.22.0"
+TEST_VERSION = "2.26.0"
 
 SCENARIOS = []
 
@@ -87,6 +88,27 @@ SCENARIOS.append(TestScenario(
         TestStep("Wait cooldown → IDLE",
             poll_state='IDLE', poll_interval_ms=300, timeout_ms=20000),
         TestStep("Verify back to IDLE", '?', 300,
+            expect_json={"st": "IDLE"}),
+    ]
+))
+
+# ── U20: Aborted start — ARM_TIMEOUT (~30 s) → IDLE (R02) ────────
+# Long test (~35 s). Not in smoke/core; full tier only.
+SCENARIOS.append(TestScenario(
+    name="U20 — ARM_TIMEOUT → IDLE (no start)",
+    setup_commands=['i'],
+    teardown_commands=['i'],
+    steps=[
+        TestStep("Enable test mode (manual frame, no stream)", None, 150,
+            on_response=lambda h, _: enable_test_mode(h)),
+        TestStep("Arm", 'a', 500,
+            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+        # Flat inject at sea level — start_det must not fire
+        TestStep("Hold flat (no descent)", 'B 101325', 200,
+            expect_json={"ev": "cmd", "cmd": "B"}),
+        TestStep("Wait ARM_TIMEOUT → IDLE (~30 s)",
+            poll_state='IDLE', poll_interval_ms=500, timeout_ms=40000),
+        TestStep("Verify IDLE after timeout", '?', 400,
             expect_json={"st": "IDLE"}),
     ]
 ))

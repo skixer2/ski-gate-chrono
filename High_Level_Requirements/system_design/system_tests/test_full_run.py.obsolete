@@ -1,3 +1,7 @@
+# OBSOLETE 2026-08-12 — do not run
+# Expects circular ring r=500 / ring_full; Opt-A uses linear 3000.
+# S01 replaced by S03+U03. S02 factory reset → unit_tests/test_s02_factory_reset.py
+# See unit_tests/TEST_CATALOG.md
 """
 System test: End-to-End Run Cycle (v2 — JSON protocol)
     S01 — Complete ARMED → LOGGING → POST_RUN simulation
