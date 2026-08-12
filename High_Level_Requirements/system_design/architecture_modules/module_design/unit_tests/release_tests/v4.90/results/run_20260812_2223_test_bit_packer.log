@@ -1,0 +1,133 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_bit_packer.py — 2026-08-12 22:23:20
+============================================================
+
+
+============================================================
+Scenario: U14 — Compression exercised during run
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set identity quat + zero accel
+    → Q 1 0 0 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [1.0, 0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 3: Set zero linear accel
+    → L 0 0 0
+    ← {"ev": "cmd", "cmd": "L", "la": [0.0, 0.0, 0.0], "ntok": 3, "alen": 6}
+    ✅ PASS
+
+  Step 4: Set sea-level pressure
+    → B 101325
+    ← {"ev": "cmd", "cmd": "B", "p": 101325.0}
+    ✅ PASS
+
+  Step 5: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 6: Wait for pre-roll samples
+    … r=130/3000 st=ARMED
+    … r=253/3000 st=ARMED
+    ✅ PASS
+
+  Step 7: Verify ARMED with samples
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 352, "rm": 3000, "rh": 352, "p": 89239, "bat": 92, "evc": 172, "qi": 0, "runs": 4, "total_runs": 4, "oldest_age": 0, "ldc": 1, "ldc_raw": 797926, "flash_pct": 50, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1755, "shows": 3168}
+    ✅ PASS
+
+  Step 8: Force LOGGING
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 4, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 50663, "typ": 2}
+    ✅ PASS
+
+  Step 9: Force POST_RUN
+    → p
+    ← {"ev": "st", "from": "LOGGING", "to": "POST_RUN"}
+    ← {"ev": "run_saved", "id": 4, "fr": 117, "sz": 738, "dur_ms": 1247, "fps10": 938, "ok": 1, "store": "raw", "we": 0, "runs": 5, "total": 5}
+    ✅ PASS
+
+  Step 10: Verify POST_RUN (or already cooling)
+    → ?
+    ← {"ev": "raw_prep", "slot": 5, "prep_kb": 244, "slot_kb": 244}
+    ← {"ev": "status", "st": "POST_RUN", "r": 0, "rm": 3000, "rh": 0, "p": 89237, "bat": 92, "evc": 164, "qi": 0, "runs": 5, "total_runs": 5, "oldest_age": 0, "ldc": 1, "ldc_raw": 797914, "flash_pct": 62, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1755, "shows": 3198}
+    ✅ PASS
+
+  Step 11: Wait IDLE
+    ⏳ polling for STATE:IDLE......    ← STATE:IDLE
+
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 11/11
+
+============================================================
+Scenario: U15 — All packet types exercised
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set gentle rotation (T1 packets)
+    → Q 0.9 0.1 0.0 0.4
+    ← {"ev": "cmd", "cmd": "Q", "q": [0.9, 0.1, 0.0, 0.4]}
+    ✅ PASS
+
+  Step 3: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Check ARMED promptly
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 117, "rm": 3000, "rh": 117, "p": 89237, "bat": 92, "evc": 229, "qi": 0, "runs": 5, "total_runs": 5, "oldest_age": 0, "ldc": 1, "ldc_raw": 797902, "flash_pct": 62, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1796, "shows": 3327}
+    ✅ PASS
+
+  Step 5: → IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  Step 6: Set large rotation change (T3 anchor)
+    → Q 0.5 0.5 0.5 0.5
+    ← {"ev": "cmd", "cmd": "Q", "q": [0.5, 0.5, 0.5, 0.5]}
+    ✅ PASS
+
+  Step 7: Arm again
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 8: Check ARMED
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 117, "rm": 3000, "rh": 117, "p": 89239, "bat": 92, "evc": 114, "qi": 0, "runs": 5, "total_runs": 5, "oldest_age": 0, "ldc": 1, "ldc_raw": 797926, "flash_pct": 62, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1797, "shows": 3369}
+    ✅ PASS
+
+  Step 9: Return to IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 9/9
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results saved to run_20260812_2223.md

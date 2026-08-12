@@ -1,0 +1,101 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_end_detector.py — 2026-08-12 22:27:27
+============================================================
+
+
+============================================================
+Scenario: U07 — End detection: flat (dp=0)
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set pressure baseline
+    → B 101000
+    ← {"ev": "cmd", "cmd": "B", "p": 101000.0}
+    ✅ PASS
+
+  Step 3: Arm device
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101000.0, "pa": 101000.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Enter LOGGING via start detector
+    … r=131/3000 st=ARMED
+    … r=248/3000 st=ARMED
+    ← STATE:LOGGING
+    ✅ PASS
+
+  Step 5: Hold flat pressure
+    → B 101036
+    ← {"ev": "cmd", "cmd": "B", "p": 101036.0}
+    ✅ PASS
+
+  Step 6: Wait for end_detected → POST_RUN
+    ⏳ polling for STATE:POST_RUN...    ← STATE:POST_RUN
+
+    ✅ PASS
+
+  Step 7: Wait cooldown → IDLE
+    ⏳ polling for STATE:IDLE.......    ← STATE:IDLE
+
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 7/7
+
+============================================================
+Scenario: U08 — No false end during ascent (dp < 0)
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set pressure baseline
+    → B 101000
+    ← {"ev": "cmd", "cmd": "B", "p": 101000.0}
+    ✅ PASS
+
+  Step 3: Arm device
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101000.0, "pa": 101000.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Enter LOGGING via start detector
+    … r=128/3000 st=ARMED
+    … r=256/3000 st=ARMED
+    ← STATE:LOGGING
+    ✅ PASS
+
+  Step 5: Keep ascending (falling P)
+    ✅ PASS
+
+  Step 6: Still LOGGING under ascent
+    → ?
+    ← {"ev": "status", "st": "LOGGING", "r": 0, "rm": 3000, "rh": 988, "p": 89247, "bat": 92, "evc": 140, "qi": 0, "runs": 6, "total_runs": 12, "oldest_age": 0, "ldc": 1, "ldc_raw": 797902, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1744, "shows": 5564}
+    ✅ PASS
+
+  Step 7: Hold flat at ascent level
+    → B 100840
+    ← {"ev":"cmd","cmd":"B","p":100840.00}
+    ✅ PASS
+
+  Step 8: Wait POST_RUN + cooldown → IDLE
+    ⏳ polling for STATE:IDLE............    ← STATE:IDLE
+
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 8/8
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results appended to run_20260812_2223.md

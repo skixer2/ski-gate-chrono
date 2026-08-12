@@ -1,0 +1,59 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_s04_bhy2_rate.py — 2026-08-12 22:31:54
+============================================================
+
+
+============================================================
+DEVICE SYSTEM TEST: test_s04_bhy2_rate.py
+============================================================
+Delegating: C:\Python37\python.exe F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\system_tests\test_bhy2_rate.py COM8 --duration 20 -R
+==================================================
+S04 - BHY2 Real LOGGING Rate Test
+  Port:     COM8
+  Duration: 20.0s
+  Min FPS:  90.0
+==================================================
+  State: IDLE batt=None runs=1 ver=4.90
+  Factory reset...
+  boot: {'ev': 'boot', 'ver': '4.90', 'rr': 4}
+  Waiting for post-boot init (full-slot prep can take several s)...
+  ready: st=IDLE ver=4.90 tm=0 runs=0 (7.8s)
+  Test mode OFF: True (tm=0 via status)
+  Onboard LED: OFF (use --onboard-led to enable)
+  Waiting 2.0s for BHY2 settle...
+
+-- ARM (required before LOGGING) --
+  {'ev': 'st', 'from': 'IDLE', 'to': 'ARMED'}
+  status: st=ARMED
+  OK ARMED (expect green LED)
+
+-- LOGGING for 20.0s (BHY2 live) --
+  {'ev': 'st', 'from': 'ARMED', 'to': 'LOGGING'}
+  {'ev': 'run_created', 'ok': 1, 'id': 0, 'store': 'raw'}
+  {'ev': 'enc_baro', 'fn': 0, 'p': 44628, 'typ': 2}
+  status: st=LOGGING
+  OK LOGGING (expect red LED)
+  ... 5s
+  ... 10s
+  ... 15s
+  ... 20s
+-- POST_RUN --
+  {'ev': 'st', 'from': 'LOGGING', 'to': 'POST_RUN'}
+  {'ev': 'run_saved', 'id': 0, 'fr': 2124, 'sz': 14852, 'dur_ms': 21388, 'fps10': 993, 'ok': 1, 'store': 'raw', 'we': 0, 'runs': 1, 'total': 1}
+
+-- Result --
+  run_saved: id=0 ok=True fr=2124 dur_ms=21388 fps=99.3
+  store=raw compressed=14852 runs=1 we=0
+
+==================================================
+OK S04 PASSED - 99.3 fps, 2124 frames in 21388 ms
+  Firmware: v4.90
+==================================================
+child exit=0
+SGC Test Harness v2.25.0
+Connected to COM8 at 115200 baud
+Device FW version: 4.90
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results appended to run_20260812_2223.md

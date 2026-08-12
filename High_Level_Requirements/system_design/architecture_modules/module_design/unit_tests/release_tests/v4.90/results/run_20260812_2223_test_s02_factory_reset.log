@@ -1,0 +1,38 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_s02_factory_reset.py — 2026-08-12 22:29:53
+============================================================
+
+
+============================================================
+Scenario: S02 — Factory reset (serial R)
+============================================================
+  SETUP: i
+
+  Step 1: Verify IDLE
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89253, "bat": 92, "evc": 219, "qi": 0, "runs": 6, "total_runs": 14, "oldest_age": 0, "ldc": 1, "ldc_raw": 797914, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1744, "shows": 6464}
+    ✅ PASS
+
+  Step 2: Trigger factory reset
+    ← {'ev': 'factory_reset'}
+    ← {'ev': 'reboot'}
+    ✅ PASS
+
+  Step 3: Wait post-reboot settle
+    ← {"ev":"boot","ver":"4.90","rr":4}
+    ← {"ev":"led","strip":10,"timing_only":0,"pin":12}
+    ← {"ev":"init","sub":"flash","ok":1}
+    ← {"ev":"preroll_prep","arm_cap":3000,"total":4000,"keep":1000,"why":"boot"}
+    ← {"ev":"init","sub":"ldc1612","ok":1,"dev_id":12373,"manuf":21577,"baseline":797943,"bl_ok":1}
+    ✅ PASS
+
+  Step 4: Verify wiped + IDLE
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89254, "bat": 92, "evc": 98, "qi": 0, "runs": 0, "total_runs": 0, "oldest_age": 0, "ldc": 1, "ldc_raw": 797938, "flash_pct": 0, "ver": "4.90", "tm": 0, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1755, "shows": 9}
+    ✅ PASS
+
+  Results: 4/4
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results appended to run_20260812_2223.md

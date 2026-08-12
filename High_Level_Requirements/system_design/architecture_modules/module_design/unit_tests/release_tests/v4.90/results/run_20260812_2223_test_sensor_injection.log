@@ -1,0 +1,136 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_sensor_injection.py — 2026-08-12 22:34:10
+============================================================
+
+
+============================================================
+Scenario: U16 — Toggle test mode
+============================================================
+
+  Step 1: Ensure test mode ON
+    ✅ PASS
+
+  Step 2: Verify mode ON via echo
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 3: Disable test mode
+    → T
+    ← {"ev": "cmd", "cmd": "T", "tm": 0}
+    ✅ PASS
+
+  Step 4: Enable again
+    → T
+    ← {"ev": "cmd", "cmd": "T", "tm": 1}
+    ✅ PASS
+
+  TEARDOWN:
+    → T
+
+  Results: 4/4
+
+============================================================
+Scenario: U17 — Inject pressure values
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set 95000 Pa (~500m altitude)
+    → B 95000
+    ← {"ev": "cmd", "cmd": "B", "p": 95000.0}
+    ✅ PASS
+
+  Step 3: Echo verify Pa
+    → Z
+    ← {"ev": "echo", "p": 95000.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 4: Set 101325 Pa (sea level)
+    → B 101325
+    ← {"ev": "cmd", "cmd": "B", "p": 101325.0}
+    ✅ PASS
+
+  Step 5: Echo verify Pa
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 6: Set 85000 Pa (~1500m)
+    → B 85000
+    ← {"ev": "cmd", "cmd": "B", "p": 85000.0}
+    ✅ PASS
+
+  Step 7: Echo verify Pa
+    → Z
+    ← {"ev": "echo", "p": 85000.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 7/7
+
+============================================================
+Scenario: U18 — Inject quaternion
+============================================================
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set identity quaternion
+    → Q 1 0 0 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [1.0, 0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 3: Echo verify identity
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 4: Set tilted quaternion
+    → Q 0.707 0 0.707 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [0.71, 0.0, 0.71, 0.0]}
+    ✅ PASS
+
+  Step 5: Echo verify tilted (tolerance ±0.01)
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [0.71, 0.0, 0.71, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Results: 5/5
+
+============================================================
+Scenario: U19 — Inject linear acceleration
+============================================================
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set accel (1000, 0, 0)
+    → L 1000 0 0
+    ← {"ev": "cmd", "cmd": "L", "la": [1000.0, 0.0, 0.0], "ntok": 3, "alen": 9}
+    ✅ PASS
+
+  Step 3: Echo verify
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [1000.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 4: Set accel (0, 0, -9810)
+    → L 0 0 -9810
+    ← {"ev": "cmd", "cmd": "L", "la": [0.0, 0.0, -9810.0], "ntok": 3, "alen": 10}
+    ✅ PASS
+
+  Step 5: Echo verify gravity vector
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, -9810.0]}
+    ✅ PASS
+
+  Results: 5/5
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results appended to run_20260812_2223.md

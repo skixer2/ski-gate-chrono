@@ -1,0 +1,80 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_flash.py — 2026-08-12 22:28:34
+============================================================
+
+
+============================================================
+Scenario: U12 — Flash self-test
+============================================================
+  SETUP: i
+
+  Step 1: Run flash self-test
+    → f
+    ← {"ev": "flash", "phase": "start"}
+    ← {"ev": "flash", "ok": 1}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 1/1
+
+============================================================
+Scenario: U13 — Full run cycle → flash storage
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Record initial runs
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89251, "bat": 92, "evc": 229, "qi": 0, "runs": 6, "total_runs": 13, "oldest_age": 0, "ldc": 1, "ldc_raw": 797877, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1745, "shows": 5792}
+    ✅ PASS
+
+  Step 3: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Wait pre-roll samples
+    … r=129/3000 st=ARMED
+    … r=256/3000 st=ARMED
+    ✅ PASS
+
+  Step 5: Start logging (force)
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 13, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 50663, "typ": 2}
+    ✅ PASS
+
+  Step 6: End run (force POST_RUN) + wait run_saved
+    → p
+    ← JSON ev:run_saved
+    ✅ PASS
+
+  Step 7: Wait cooldown → IDLE
+    ⏳ polling for STATE:IDLE........    ← STATE:IDLE
+
+    ✅ PASS
+
+  Step 8: Verify back to IDLE
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89253, "bat": 92, "evc": 167, "qi": 0, "runs": 6, "total_runs": 14, "oldest_age": 0, "ldc": 1, "ldc_raw": 797926, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1744, "shows": 5929}
+    ✅ PASS
+
+  Step 9: Check runs incremented
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89249, "bat": 92, "evc": 17, "qi": 0, "runs": 6, "total_runs": 14, "oldest_age": 0, "ldc": 1, "ldc_raw": 797877, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1754, "shows": 5937}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 9/9
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results appended to run_20260812_2223.md

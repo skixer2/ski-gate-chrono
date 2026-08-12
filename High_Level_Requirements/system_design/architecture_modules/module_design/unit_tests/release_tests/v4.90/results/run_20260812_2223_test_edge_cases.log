@@ -1,0 +1,539 @@
+============================================================
+SGC Test: F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests\test_edge_cases.py — 2026-08-12 22:24:02
+============================================================
+
+
+============================================================
+Scenario: E01 — Ring buffer wraparound
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 3: Wait pre-roll samples
+    … r=130/3000 st=ARMED
+    … r=255/3000 st=ARMED
+    ✅ PASS
+
+  Step 4: Verify r and rm
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 355, "rm": 3000, "rh": 355, "p": 89239, "bat": 92, "evc": 17, "qi": 0, "runs": 5, "total_runs": 5, "oldest_age": 0, "ldc": 1, "ldc_raw": 797890, "flash_pct": 62, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1744, "shows": 3498}
+    ✅ PASS
+
+  Step 5: Force LOGGING (drains ring)
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 5, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 50663, "typ": 2}
+    ✅ PASS
+
+  Step 6: Force POST_RUN + wait run_saved
+    → p
+    ← JSON ev:run_saved
+    ✅ PASS
+
+  Step 7: Wait IDLE
+    ⏳ polling for STATE:IDLE........    ← STATE:IDLE
+
+    ✅ PASS
+
+  Step 8: Re-arm: ring should reset
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ✅ PASS
+
+  Step 9: Wait fill again
+    … r=130/3000 st=ARMED
+    … r=255/3000 st=ARMED
+    ✅ PASS
+
+  Step 10: Verify r after re-arm fill
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 354, "rm": 3000, "rh": 354, "p": 89239, "bat": 92, "evc": 205, "qi": 0, "runs": 6, "total_runs": 6, "oldest_age": 0, "ldc": 1, "ldc_raw": 797914, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 5797, "shows": 3639}
+    ✅ PASS
+
+  Step 11: Return to IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 11/11
+
+============================================================
+Scenario: E02 — Multi-run flash storage
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Record initial runs
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89239, "bat": 92, "evc": 151, "qi": 0, "runs": 6, "total_runs": 6, "oldest_age": 0, "ldc": 1, "ldc_raw": 797914, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1797, "shows": 3698}
+    ✅ PASS
+
+  Step 3: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Wait pre-roll
+    … r=129/3000 st=ARMED
+    ✅ PASS
+
+  Step 5: Force LOGGING
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 6, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 50663, "typ": 2}
+    ✅ PASS
+
+  Step 6: Force POST_RUN + wait run_saved
+    → p
+    ← JSON ev:run_saved
+    ✅ PASS
+
+  Step 7: Wait IDLE
+    ⏳ polling for STATE:IDLE........    ← STATE:IDLE
+
+    ✅ PASS
+
+  Step 8: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ✅ PASS
+
+  Step 9: Wait pre-roll
+    … r=127/3000 st=ARMED
+    ✅ PASS
+
+  Step 10: Force LOGGING
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 7, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 0, "typ": 2}
+    ✅ PASS
+
+  Step 11: Force POST_RUN + wait run_saved
+    → p
+    ← JSON ev:run_saved
+    ✅ PASS
+
+  Step 12: Wait IDLE
+    ⏳ polling for STATE:IDLE........    ← STATE:IDLE
+
+    ✅ PASS
+
+  Step 13: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ✅ PASS
+
+  Step 14: Wait pre-roll
+    … r=129/3000 st=ARMED
+    ✅ PASS
+
+  Step 15: Force LOGGING
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 8, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 0, "typ": 2}
+    ✅ PASS
+
+  Step 16: Force POST_RUN + wait run_saved
+    → p
+    ← JSON ev:run_saved
+    ✅ PASS
+
+  Step 17: Wait IDLE
+    ⏳ polling for STATE:IDLE........    ← STATE:IDLE
+
+    ✅ PASS
+
+  Step 18: Verify runs incremented
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89243, "bat": 92, "evc": 109, "qi": 0, "runs": 6, "total_runs": 9, "oldest_age": 0, "ldc": 1, "ldc_raw": 797902, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1755, "shows": 4047}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 18/18
+
+============================================================
+Scenario: E03 — Zero-length run (ARM → immediate POST_RUN)
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 3: Force POST_RUN (no LOGGING)
+    → p
+    ← {"ev": "state_blocked", "reason": "not_logging", "current": "ARMED"}
+    ✅ PASS
+
+  Step 4: Verify still ARMED (transition blocked)
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 237, "rm": 3000, "rh": 237, "p": 89241, "bat": 92, "evc": 251, "qi": 0, "runs": 6, "total_runs": 9, "oldest_age": 0, "ldc": 1, "ldc_raw": 797877, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1755, "shows": 4127}
+    ✅ PASS
+
+  Step 5: Return to IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 5/5
+
+============================================================
+Scenario: E04 — Rapid state toggling (ARM↔IDLE × 5)
+============================================================
+  SETUP: i
+
+  Step 1: → ARMED
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 2: → IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  Step 3: → ARMED
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: → IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  Step 5: → ARMED
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 6: → IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  Step 7: → ARMED
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 8: → IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  Step 9: → ARMED
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 10: → IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 10/10
+
+============================================================
+Scenario: E05 — Invalid injection: negative pressure
+============================================================
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set negative pressure
+    → B -1000
+    ← {"ev": "cmd", "cmd": "B", "p": -1000.0}
+    ✅ PASS
+
+  Step 3: Echo clamps / handles value
+    → Z
+    ← {"ev": "echo", "p": 0.0, "q": [1.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 4: Restore sea level
+    → B 101325
+    ← {"ev": "cmd", "cmd": "B", "p": 101325.0}
+    ✅ PASS
+
+  TEARDOWN:
+    → B 101325
+
+  Results: 4/4
+
+============================================================
+Scenario: E06 — Invalid injection: NaN-like quaternion
+============================================================
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set zero quaternion (potentially problematic)
+    → Q 0 0 0 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [0.0, 0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 3: Echo verify firmware handles it
+    → Z
+    ← {"ev": "echo", "p": 101326.0, "q": [0.0, 0.0, 0.0, 0.0], "la": [0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 4: Restore identity
+    → Q 1 0 0 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [1.0, 0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  TEARDOWN:
+    → Q 1 0 0 0
+
+  Results: 4/4
+
+============================================================
+Scenario: E07 — Arm refusal: quat magnitude out of range
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Set tiny quaternion (mag ~0.1)
+    → Q 0.1 0 0 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [0.1, 0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 3: Arm accepts synthetic quat
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Restore identity
+    → Q 1 0 0 0
+    ← {"ev": "cmd", "cmd": "Q", "q": [1.0, 0.0, 0.0, 0.0]}
+    ✅ PASS
+
+  Step 5: Return IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+    → Q 1 0 0 0
+
+  Results: 5/5
+
+============================================================
+Scenario: E08 — State transition validation: blocked paths
+============================================================
+  SETUP: i
+
+  Step 1: Force LOGGING from IDLE (should block)
+    → l
+    ← {"ev": "state_blocked", "reason": "not_armed", "current": "IDLE"}
+    ✅ PASS
+
+  Step 2: Verify still IDLE
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89245, "bat": 92, "evc": 190, "qi": 0, "runs": 6, "total_runs": 9, "oldest_age": 0, "ldc": 1, "ldc_raw": 797926, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1745, "shows": 4543}
+    ✅ PASS
+
+  Step 3: Force POST_RUN from IDLE (should block)
+    → p
+    ← {"ev": "state_blocked", "reason": "not_logging", "current": "IDLE"}
+    ✅ PASS
+
+  Step 4: Verify still IDLE
+    → ?
+    ← {"ev": "status", "st": "IDLE", "r": 0, "rm": 3000, "rh": 0, "p": 89245, "bat": 92, "evc": 159, "qi": 0, "runs": 6, "total_runs": 9, "oldest_age": 0, "ldc": 1, "ldc_raw": 797841, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1754, "shows": 4560}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 4/4
+
+============================================================
+Scenario: E09 — Start detector: pressure noise rejection
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Sync baseline (ensure clean 101325)
+    → B 101325
+    ← {"ev": "cmd", "cmd": "B", "p": 101325.0}
+    ✅ PASS
+
+  Step 3: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 4: Wait P0 latch
+    … r=139/3000 st=ARMED
+    … r=263/3000 st=ARMED
+    ✅ PASS
+
+  Step 5: Inject ±1 Pa oscillation (net zero)
+    ✅ PASS
+
+  Step 6: Still ARMED (noise shouldn't trigger)
+    → ?
+    ← {"ev": "status", "st": "ARMED", "r": 483, "rm": 3000, "rh": 483, "p": 89245, "bat": 92, "evc": 153, "qi": 0, "runs": 6, "total_runs": 9, "oldest_age": 0, "ldc": 1, "ldc_raw": 797902, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1754, "shows": 4677}
+    ✅ PASS
+
+  Step 7: Return to IDLE
+    → i
+    ← {"ev": "st", "from": "ARMED", "to": "IDLE"}
+    ← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000}
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 7/7
+
+============================================================
+Scenario: E10 — Ring buffer content non-zero (log_start pre > 0)
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 3: Wait pre-roll
+    … r=129/3000 st=ARMED
+    … r=249/3000 st=ARMED
+    ✅ PASS
+
+  Step 4: Start via descent
+    ← STATE:LOGGING
+    ✅ PASS
+
+  Step 5: Inject further descent (block end det)
+    ✅ PASS
+
+  Step 6: Verify LOGGING
+    → ?
+    ← {"ev": "status", "st": "LOGGING", "r": 0, "rm": 3000, "rh": 0, "p": 89243, "bat": 92, "evc": 78, "qi": 0, "runs": 6, "total_runs": 9, "oldest_age": 0, "ldc": 1, "ldc_raw": 797877, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1744, "shows": 4822}
+    ✅ PASS
+
+  Step 7: Force POST_RUN + cleanup
+    → p
+    ← {"ev": "st", "from": "LOGGING", "to": "POST_RUN"}
+    ← {"ev": "run_saved", "id": 9, "fr": 270, "sz": 1696, "dur_ms": 2748, "fps10": 982, "ok": 1, "store": "raw", "we": 0, "runs": 7, "total": 10}
+    ✅ PASS
+
+  Step 8: Wait IDLE
+    ⏳ polling for STATE:IDLE........    ← STATE:IDLE
+
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 8/8
+
+============================================================
+Scenario: E11 — Run saved: frame count + data size > 0
+============================================================
+  SETUP: i
+
+  Step 1: Enable test mode
+    ✅ PASS
+
+  Step 2: Arm
+    → a
+    ← {"ev": "st", "from": "IDLE", "to": "ARMED"}
+    ← {"ev": "sd", "p0": 101326.0, "pa": 101326.0, "drp": 0.0, "lock": 1}
+    ✅ PASS
+
+  Step 3: Wait pre-roll
+    … r=130/3000 st=ARMED
+    … r=249/3000 st=ARMED
+    ✅ PASS
+
+  Step 4: Force LOGGING + wait for live frames
+    → l
+    ← {"ev": "st", "from": "ARMED", "to": "LOGGING"}
+    ← {"ev": "run_created", "ok": 1, "id": 10, "store": "raw"}
+    ← {"ev": "enc_baro", "fn": 0, "p": 50663, "typ": 2}
+    ✅ PASS
+
+  Step 5: Force POST_RUN + wait run_saved
+    → p
+    ← JSON ev:run_saved
+    ✅ PASS
+
+  Step 6: Verify runs incremented via status
+    → ?
+    ← {"ev": "raw_prep", "slot": 4, "prep_kb": 244, "slot_kb": 244}
+    ← {"ev": "status", "st": "POST_RUN", "r": 0, "rm": 3000, "rh": 0, "p": 89247, "bat": 92, "evc": 243, "qi": 0, "runs": 6, "total_runs": 11, "oldest_age": 0, "ldc": 1, "ldc_raw": 797865, "flash_pct": 75, "ver": "4.90", "tm": 1, "strip_n": 10, "strip_to": 0, "onboard": 0, "show_us": 1756, "shows": 5025}
+    ✅ PASS
+
+  Step 7: Wait IDLE
+    ⏳ polling for STATE:IDLE......    ← STATE:IDLE
+
+    ✅ PASS
+
+  TEARDOWN:
+    → i
+
+  Results: 7/7
+
+============================================================
+OVERALL: ALL TESTS PASSED ✅
+Results appended to run_20260812_2223.md
