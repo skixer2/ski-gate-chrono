@@ -195,56 +195,43 @@ void apply_state_visuals(DeviceState s)
 /* Read rest of current command line into buf (excluding the already-consumed
    first character). Waits up to wait_ms for the terminating newline.
    Returns length written (0 if timeout / empty). */
-static size_t read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
-{
-    size_t n = 0;
-    uint32_t t0 = millis();
-    while ((int32_t)(millis() - t0) < (int32_t)wait_ms) {
-        if (!Serial.available()) { delay(1); continue; }
-        char c = (char)Serial.read();
-        if (c == '\r') continue;
-        if (c == '\n') { if (n < cap) buf[n] = '\0'; return n; }
-        if (n + 1 < cap) buf[n++] = c;
-    }
-    if (n < cap) buf[n] = '\0';
-    return n;
-}
+/* v4.92: non-blocking full-line serial dispatch.
+   - v4.91 blocked ≤500ms for '\n' → mass unit timeouts (run_2024).
+   - Still assemble complete "cmd [args]\n" before dispatch (U19 needs
+     letter+args together; never parse inject via live Serial mid-line).
+   - Stream mode still skips handle_serial in loop() (v4.85). */
+static char    g_rx_line[64];
+static uint8_t g_rx_len = 0;
 
 void handle_serial()
 {
-    if (!Serial.available()) return;
-
-    /* v4.91: buffer a COMPLETE command line before dispatch.
-       Never take the cmd letter from one USB packet and args from the next
-       via a second reader — that desynced U19 after long suites:
-         host "L 0 0 -9810\n" → FW saw 'L' then only "-9810" (alen=5).
-       Host always terminates with \n (harness send()). Timeout 500 ms. */
-    char line[64];
-    size_t n = 0;
-    uint32_t t0 = millis();
-    bool got_nl = false;
-    while ((int32_t)(millis() - t0) < 500) {
-        if (!Serial.available()) { delay(1); continue; }
+    while (Serial.available()) {
         char ch = (char)Serial.read();
-        if (ch == '\r') continue;
-        if (ch == '\n') { got_nl = true; break; }
-        if (n + 1 < sizeof(line)) line[n++] = ch;
-    }
-    line[n] = '\0';
-    if (n == 0) return;  /* bare newline or timeout with nothing */
+        if (ch == '\r')
+            continue;
+        if (ch != '\n') {
+            if (g_rx_len + 1 < sizeof(g_rx_line))
+                g_rx_line[g_rx_len++] = ch;
+            continue;
+        }
 
-    char c = line[0];
-    const char* args = line + 1;
-    while (*args == ' ' || *args == '\t') args++;
-    (void)got_nl;  /* partial line on timeout still dispatched with what we have */
+        g_rx_line[g_rx_len] = '\0';
+        uint8_t n = g_rx_len;
+        g_rx_len = 0;
+        if (n == 0)
+            continue;
 
-    /* V4.13: Pull model — no binary parser in stream mode (loop skips us). */
-    if (test_mode_handle_line(c, args)) return;
+        char c = g_rx_line[0];
+        const char* args = g_rx_line + 1;
+        while (*args == ' ' || *args == '\t')
+            args++;
 
-    /* h_args alias: full line already buffered — args is "<id> raw" etc. */
-    const char* h_args = args;
+        if (test_mode_handle_line(c, args))
+            continue;
 
-    switch (c) {
+        const char* h_args = args;
+
+        switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
@@ -311,7 +298,7 @@ void handle_serial()
         /* Toggle Nicla onboard RGB (I2C). Default OFF when strip path is built-in.
            Use during bench if you want visible ARMED/LOGGING without a strip. */
         bool en = !g_led.onboard_enabled();
-        /* Optional arg from full line: O 0 / O 1 */
+        /* Optional arg: O 0 / O 1 */
         if (*args == '0') en = false;
         else if (*args == '1') en = true;
         g_led.set_onboard_enabled(en);
@@ -321,16 +308,7 @@ void handle_serial()
         json_end();
         return;
     }
-    case 'f':
-        /* Self-test only off hot path. Always ACK so harness never sees silence. */
-        if (g_sm.state() == DeviceState::ARMED || g_sm.state() == DeviceState::LOGGING) {
-            json_begin(); json_kv("ev", "flash");
-            Serial.print(','); json_kv_bool("ok", false);
-            Serial.print(','); json_kv("err", "busy"); json_end();
-            return;
-        }
-        flash_test();
-        return;
+    case 'f': if (g_sm.state() != DeviceState::ARMED && g_sm.state() != DeviceState::LOGGING) flash_test(); return;
     case 'z': {
         json_begin();
         json_kv("ev", "ldc_diag");
@@ -548,7 +526,7 @@ void handle_serial()
         }
 
         Serial.print(']');
-        Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
+                Serial.print(",\"frames\":"); Serial.print(frame_idx); Serial.println("}");
         return;
     }
     case 'y': {
@@ -646,7 +624,8 @@ void handle_serial()
         json_end();
         return;
     }
-    }
+    
+    } /* while Serial.available */
 }
 
 /* ================================================================== */
