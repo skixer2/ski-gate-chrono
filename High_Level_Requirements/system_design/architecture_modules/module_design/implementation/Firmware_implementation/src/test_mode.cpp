@@ -12,7 +12,7 @@
 #include "test_json.h"
 
 #include <Arduino.h>
-#include <stdio.h>  /* sscanf for B/Q/L line parse */
+#include <stdlib.h>  /* strtof — newlib-nano has no float scanf */
 
 extern bool     g_stream_active;   /* from main.cpp */
 extern uint32_t g_stream_frames;   /* from main.cpp */
@@ -198,7 +198,7 @@ void test_stream_drain_rx()
 /* Buffer rest of line after the command letter (same race as main 'h').
    USB CDC often delivers "L 0 0 " then "-9810\n" in separate packets.
    Live Serial.parseFloat() on the third token can timeout on the missing
-   '-' and ACK la:[0,0,0] (U19 flake). Wait for '\n' then sscanf. */
+   '-' and ACK la:[0,0,0] (U19 flake). Wait for '\n' then parse. */
 static size_t tm_read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
 {
     size_t n = 0;
@@ -211,6 +211,25 @@ static size_t tm_read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
         if (n + 1 < cap) buf[n++] = ch;
     }
     if (n < cap) buf[n] = '\0';
+    return n;
+}
+
+/* Parse up to max_n floats from a buffered args string.
+   Use strtof — Arduino newlib-nano has NO float scanf (sscanf %f → 0).
+   That was the v4.87 U17/U18/U19 total wipe (all inject ACKs zero). */
+static int tm_parse_floats(const char* s, float* out, int max_n)
+{
+    int n = 0;
+    const char* p = s;
+    while (n < max_n && p && *p) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') break;
+        char* endp = nullptr;
+        float v = strtof(p, &endp);
+        if (endp == p) break;  /* no conversion */
+        out[n++] = v;
+        p = endp;
+    }
     return n;
 }
 
@@ -240,7 +259,7 @@ bool test_mode_handle_serial(char c)
         char args[40];
         tm_read_rest_of_line(args, sizeof(args), 200);
         float pa = 0.0f;
-        (void)sscanf(args, "%f", &pa);  /* Pascals */
+        (void)tm_parse_floats(args, &pa, 1);  /* Pascals */
         g_manual_frame = true;
         set_pressure_pa(pa);
         json_begin(); json_kv("ev", "cmd");
@@ -253,14 +272,14 @@ bool test_mode_handle_serial(char c)
         /* same as B — unit tests inject without stream PC */
         char args[48];
         tm_read_rest_of_line(args, sizeof(args), 200);
-        float w = 0, x = 0, y = 0, z = 0;
-        (void)sscanf(args, "%f %f %f %f", &w, &x, &y, &z);
+        float qv[4] = {0, 0, 0, 0};
+        (void)tm_parse_floats(args, qv, 4);
         g_manual_frame = true;
-        set_quat(w, x, y, z);
+        set_quat(qv[0], qv[1], qv[2], qv[3]);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "Q");
         Serial.print(',');
-        json_arr4("q", w, x, y, z);
+        json_arr4("q", qv[0], qv[1], qv[2], qv[3]);
         json_end();
         return true;
     }
@@ -268,17 +287,18 @@ bool test_mode_handle_serial(char c)
         /* set lin-acc — only in test mode (tm=1). When tm=0, main 'L' =
            natural LOGGING drain path (S06). Marks manual so ARM does not
            open stream (unit tests inject LA without a frame server).
-           v4.87: full-line buffer before parse (U19 negative LA race). */
+           v4.87: full-line buffer (U19 CDC race).
+           v4.88: strtof not sscanf %f (newlib-nano has no float scanf). */
         char args[40];
         tm_read_rest_of_line(args, sizeof(args), 200);
-        float x = 0, y = 0, z = 0;
-        (void)sscanf(args, "%f %f %f", &x, &y, &z);
+        float la[3] = {0, 0, 0};
+        (void)tm_parse_floats(args, la, 3);
         g_manual_frame = true;
-        set_la(x, y, z);
+        set_la(la[0], la[1], la[2]);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "L");
         Serial.print(',');
-        json_arr3("la", x, y, z);
+        json_arr3("la", la[0], la[1], la[2]);
         json_end();
         return true;
     }
