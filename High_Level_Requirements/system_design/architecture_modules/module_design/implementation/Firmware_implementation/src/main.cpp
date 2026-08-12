@@ -213,22 +213,36 @@ static size_t read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
 void handle_serial()
 {
     if (!Serial.available()) return;
-    char c = Serial.read();
 
-    /* V4.13: Pull model — no binary parser needed. Frames are pulled
-       by feed_sensors() → test_request_frame() via request-response.
-       In stream mode, handle_serial() skips the binary path entirely. */
-
-    if (test_mode_handle_serial(c)) return;
-
-    /* V4.45/v4.79: for 'h', buffer the full line first so arg parsing does
-       not race USB CDC (partial packet with only 'h'). Wait up to 500 ms
-       for " <id> raw\n" — 50 ms was too short after long stream + preroll. */
-    char h_args[40];
-    h_args[0] = '\0';
-    if (c == 'h') {
-        read_rest_of_line(h_args, sizeof(h_args), 500);
+    /* v4.91: buffer a COMPLETE command line before dispatch.
+       Never take the cmd letter from one USB packet and args from the next
+       via a second reader — that desynced U19 after long suites:
+         host "L 0 0 -9810\n" → FW saw 'L' then only "-9810" (alen=5).
+       Host always terminates with \n (harness send()). Timeout 500 ms. */
+    char line[64];
+    size_t n = 0;
+    uint32_t t0 = millis();
+    bool got_nl = false;
+    while ((int32_t)(millis() - t0) < 500) {
+        if (!Serial.available()) { delay(1); continue; }
+        char ch = (char)Serial.read();
+        if (ch == '\r') continue;
+        if (ch == '\n') { got_nl = true; break; }
+        if (n + 1 < sizeof(line)) line[n++] = ch;
     }
+    line[n] = '\0';
+    if (n == 0) return;  /* bare newline or timeout with nothing */
+
+    char c = line[0];
+    const char* args = line + 1;
+    while (*args == ' ' || *args == '\t') args++;
+    (void)got_nl;  /* partial line on timeout still dispatched with what we have */
+
+    /* V4.13: Pull model — no binary parser in stream mode (loop skips us). */
+    if (test_mode_handle_line(c, args)) return;
+
+    /* h_args alias: full line already buffered — args is "<id> raw" etc. */
+    const char* h_args = args;
 
     switch (c) {
     case 'i': g_sm.force_state(DeviceState::IDLE); break;
@@ -297,11 +311,9 @@ void handle_serial()
         /* Toggle Nicla onboard RGB (I2C). Default OFF when strip path is built-in.
            Use during bench if you want visible ARMED/LOGGING without a strip. */
         bool en = !g_led.onboard_enabled();
-        /* Optional arg: O 0 / O 1 */
-        if (Serial.available()) {
-            int v = Serial.parseInt();
-            if (v == 0 || v == 1) en = (v != 0);
-        }
+        /* Optional arg from full line: O 0 / O 1 */
+        if (*args == '0') en = false;
+        else if (*args == '1') en = true;
         g_led.set_onboard_enabled(en);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "O");
@@ -309,7 +321,16 @@ void handle_serial()
         json_end();
         return;
     }
-    case 'f': if (g_sm.state() != DeviceState::ARMED && g_sm.state() != DeviceState::LOGGING) flash_test(); return;
+    case 'f':
+        /* Self-test only off hot path. Always ACK so harness never sees silence. */
+        if (g_sm.state() == DeviceState::ARMED || g_sm.state() == DeviceState::LOGGING) {
+            json_begin(); json_kv("ev", "flash");
+            Serial.print(','); json_kv_bool("ok", false);
+            Serial.print(','); json_kv("err", "busy"); json_end();
+            return;
+        }
+        flash_test();
+        return;
     case 'z': {
         json_begin();
         json_kv("ev", "ldc_diag");

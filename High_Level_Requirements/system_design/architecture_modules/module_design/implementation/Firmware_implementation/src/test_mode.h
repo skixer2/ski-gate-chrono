@@ -64,4 +64,6 @@ float test_get_lax();        /* mm/s² */
 float test_get_lay();
 float test_get_laz();
 
-bool test_mode_handle_serial(char c);
+/* Line-oriented (v4.91): cmd letter + args from a complete "…\n" line.
+   Never parse inject args via live Serial after reading only the letter. */
+bool test_mode_handle_line(char cmd, const char* args);
