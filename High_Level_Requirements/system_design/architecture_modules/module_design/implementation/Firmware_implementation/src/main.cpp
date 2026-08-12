@@ -622,11 +622,13 @@ void handle_serial()
         Serial.print(','); json_kv("show_us", (long)g_led.last_show_us());
         Serial.print(','); json_kv("shows", (long)g_led.show_count());
         json_end();
-        return;
+        break;
     }
-    
+        default:
+            break;
+        } /* switch */
     } /* while Serial.available */
-}
+} /* handle_serial */
 
 /* ================================================================== */
 void flash_test()
