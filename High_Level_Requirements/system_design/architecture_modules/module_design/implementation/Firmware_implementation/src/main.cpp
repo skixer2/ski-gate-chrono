@@ -634,30 +634,43 @@ void flash_test()
     /* Use reserved sector — never pre-roll (0x0000) or run slots.
        Layout: 0x1FE000–0x1FFFFF reserved (raw_run_store.h). */
     static constexpr uint32_t TEST_ADDR = 0x1FE000u;
-    /* Ack immediately so harness knows 'f' was received (erase can take s). */
-    json_begin(); json_kv("ev", "flash"); json_kv("phase", "start"); json_end();
+    /* Ack immediately so harness knows 'f' was received (erase can take s).
+       v4.90: commas between json_kv fields — prior lines were invalid JSON
+       ({"ev":"flash""phase":"start"}) so harness dropped every flash event
+       → U12 silent FAIL while SPI test still ran. */
+    json_begin(); json_kv("ev", "flash");
+    Serial.print(','); json_kv("phase", "start"); json_end();
     Serial.flush();
     if (!g_flash.erase_block(TEST_ADDR)) {
-        json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false);
-        Serial.print(','); json_kv("err", "erase1"); json_end(); Serial.flush(); return;
+        json_begin(); json_kv("ev", "flash");
+        Serial.print(','); json_kv_bool("ok", false);
+        Serial.print(','); json_kv("err", "erase1"); json_end();
+        Serial.flush(); return;
     }
-    uint8_t wr[256]; for(int i=0;i<256;i++) wr[i]=(uint8_t)(i*3+7);
-    if (!g_flash.write_page(TEST_ADDR,wr,256)) {
-        json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false);
-        Serial.print(','); json_kv("err", "prog"); json_end(); Serial.flush(); return;
+    uint8_t wr[256]; for (int i = 0; i < 256; i++) wr[i] = (uint8_t)(i * 3 + 7);
+    if (!g_flash.write_page(TEST_ADDR, wr, 256)) {
+        json_begin(); json_kv("ev", "flash");
+        Serial.print(','); json_kv_bool("ok", false);
+        Serial.print(','); json_kv("err", "prog"); json_end();
+        Serial.flush(); return;
     }
     uint8_t rd[256];
-    if (!g_flash.read_data(TEST_ADDR,rd,256)) {
-        json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false);
-        Serial.print(','); json_kv("err", "read"); json_end(); Serial.flush(); return;
+    if (!g_flash.read_data(TEST_ADDR, rd, 256)) {
+        json_begin(); json_kv("ev", "flash");
+        Serial.print(','); json_kv_bool("ok", false);
+        Serial.print(','); json_kv("err", "read"); json_end();
+        Serial.flush(); return;
     }
-    for (int i=0;i<256;i++) if (rd[i]!=wr[i]) {
-        json_begin(); json_kv("ev","flash"); json_kv_bool("ok",false);
-        Serial.print(','); json_kv("err_at",(long)i); json_end(); Serial.flush(); return;
+    for (int i = 0; i < 256; i++) if (rd[i] != wr[i]) {
+        json_begin(); json_kv("ev", "flash");
+        Serial.print(','); json_kv_bool("ok", false);
+        Serial.print(','); json_kv("err_at", (long)i); json_end();
+        Serial.flush(); return;
     }
     /* Leave sector erased so reserved region stays clean. */
     g_flash.erase_block(TEST_ADDR);
-    json_begin(); json_kv("ev","flash"); json_kv_bool("ok",true); json_end();
+    json_begin(); json_kv("ev", "flash");
+    Serial.print(','); json_kv_bool("ok", true); json_end();
     Serial.flush();  /* ensure harness sees result after SPI quiet period */
 }
 
