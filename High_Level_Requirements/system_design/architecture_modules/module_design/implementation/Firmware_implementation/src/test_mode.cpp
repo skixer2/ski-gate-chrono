@@ -12,6 +12,7 @@
 #include "test_json.h"
 
 #include <Arduino.h>
+#include <stdio.h>  /* sscanf for B/Q/L line parse */
 
 extern bool     g_stream_active;   /* from main.cpp */
 extern uint32_t g_stream_frames;   /* from main.cpp */
@@ -194,6 +195,25 @@ void test_stream_drain_rx()
     drain_serial_rx();
 }
 
+/* Buffer rest of line after the command letter (same race as main 'h').
+   USB CDC often delivers "L 0 0 " then "-9810\n" in separate packets.
+   Live Serial.parseFloat() on the third token can timeout on the missing
+   '-' and ACK la:[0,0,0] (U19 flake). Wait for '\n' then sscanf. */
+static size_t tm_read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
+{
+    size_t n = 0;
+    uint32_t t0 = millis();
+    while ((int32_t)(millis() - t0) < (int32_t)wait_ms) {
+        if (!Serial.available()) { delay(1); continue; }
+        char ch = (char)Serial.read();
+        if (ch == '\r') continue;
+        if (ch == '\n') { if (n < cap) buf[n] = '\0'; return n; }
+        if (n + 1 < cap) buf[n++] = ch;
+    }
+    if (n < cap) buf[n] = '\0';
+    return n;
+}
+
 /* ── Serial command handler ─────────────────────────────────── */
 bool test_mode_handle_serial(char c)
 {
@@ -216,8 +236,12 @@ bool test_mode_handle_serial(char c)
 
     switch (c) {
     case 'B': {
-        g_manual_frame = true;  /* manual injection → no ARM→stream */
-        float pa = Serial.parseFloat();  /* Pascals */
+        /* manual injection → no ARM→stream */
+        char args[40];
+        tm_read_rest_of_line(args, sizeof(args), 200);
+        float pa = 0.0f;
+        (void)sscanf(args, "%f", &pa);  /* Pascals */
+        g_manual_frame = true;
         set_pressure_pa(pa);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "B");
@@ -226,9 +250,12 @@ bool test_mode_handle_serial(char c)
         return true;
     }
     case 'Q': {
-        g_manual_frame = true;  /* same as B — unit tests inject without stream PC */
-        float w = Serial.parseFloat(), x = Serial.parseFloat();
-        float y = Serial.parseFloat(), z = Serial.parseFloat();
+        /* same as B — unit tests inject without stream PC */
+        char args[48];
+        tm_read_rest_of_line(args, sizeof(args), 200);
+        float w = 0, x = 0, y = 0, z = 0;
+        (void)sscanf(args, "%f %f %f %f", &w, &x, &y, &z);
+        g_manual_frame = true;
         set_quat(w, x, y, z);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "Q");
@@ -240,9 +267,13 @@ bool test_mode_handle_serial(char c)
     case 'L': {
         /* set lin-acc — only in test mode (tm=1). When tm=0, main 'L' =
            natural LOGGING drain path (S06). Marks manual so ARM does not
-           open stream (unit tests inject LA without a frame server). */
+           open stream (unit tests inject LA without a frame server).
+           v4.87: full-line buffer before parse (U19 negative LA race). */
+        char args[40];
+        tm_read_rest_of_line(args, sizeof(args), 200);
+        float x = 0, y = 0, z = 0;
+        (void)sscanf(args, "%f %f %f", &x, &y, &z);
         g_manual_frame = true;
-        float x = Serial.parseFloat(), y = Serial.parseFloat(), z = Serial.parseFloat();
         set_la(x, y, z);
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "L");
