@@ -75,7 +75,7 @@ Same `--run-id` summary `.md` + per-file `.log` behavior.
 - Baseline board: FW **4.90** / `run_20260812_2223` (historical device tag `v4.79-best-s03`)
 - Stream orchestrator: `sgc_stream_simulator.py` **SIM 2.50.0** (S03 integrity host retry)
 
-## S03 integrity host retry (SIM 2.50.0)
+## S03 integrity host retry (SIM 2.50.0+)
 
 S03 dump step uses `h <id> raw`. On 4.90, CDC can race that line → device
 `hex_err` **`bad_id`** / **`no_args`** while the run path was green.
@@ -92,6 +92,20 @@ i → ? (wait status) → h <id> raw
 - Details: `system_tests/device.md` § S03
 
 Host-only; **do not** flash a serial-stack FW experiment for this flake.
+
+## GS synthetic profile (SIM 2.51.0+)
+
+`generate_gs_run()` produces baro descent **plus**:
+- carved **yaw/roll** turns phased to gate spacing (app ω zero-crossings)
+- **pole impacts** ~28 000 mm/s² lateral (~2.9 g), dual-lobe ~100 ms
+- start pole-pushes + finish decel
+
+LA wire units = **mm/s²** (int16). Phone ImpactDetector |g| = **9810** (app **1.9**).
+
+```powershell
+py test_stream_run.py COM8 --duration 25 --gates 10 --seed 45 -R
+# optional: --gate-strength 28000
+```
 
 ## Unit vs device contracts (do not regress)
 
