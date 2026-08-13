@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.49.0"  # integrity h-cmd: flush + wait ready after preroll_prep
+SIM_VERSION = "2.50.0"  # integrity: auto-retry i/?/h on hex_err bad_id/no_args
 
 import argparse
 import hashlib
@@ -1110,49 +1110,58 @@ class SGCDevice:
                         break
             return hd, he, chunks, other
 
-        # Ensure IDLE and let POST_RUN->IDLE prepare_preroll finish (can take
-        # several seconds for full pre-roll erase). Then clear RX and dump.
-        self.send_cmd('i', wait_ms=300)
-        self.drain_responses(0.5)
-        # Wait until device answers ? (main loop free - not stuck in erase)
-        t_wait0 = time.time()
-        while time.time() - t_wait0 < 20.0:
-            self.send_cmd('?', wait_ms=50)
-            st_batch = self.drain_responses(0.6)
-            if any(r.get('ev') == 'status' for r in st_batch):
-                break
-            time.sleep(0.3)
-        self.drain_responses(0.3)
-        self.ser.reset_input_buffer()
-        time.sleep(0.05)
+        # Transient parse races on CDC (4.90): hex_err bad_id / no_args while
+        # the run is fine. Retry sequence: i -> ? (loop free) -> h <id> raw.
+        # Permanent reasons (no_run, bad_size, read_fail) fail immediately.
+        TRANSIENT_HEX_ERR = frozenset({"bad_id", "no_args"})
+        MAX_DUMP_ATTEMPTS = 3
 
-        # Request raw hex dump (same bytes BLE sends to phone)
-        print(f"   Requesting: h {run_id} raw")
-        # Longer post-write wait so FW can finish reading the full line (v4.79+)
-        self.send_cmd(f'h {run_id} raw', wait_ms=400)
-        hex_dump, hex_err, raw_chunks, other = _collect_hex(25.0)
-        if other:
-            evs = {}
-            for r in other:
-                evs[r.get('ev','?')] = evs.get(r.get('ev','?'), 0) + 1
-            print(f"   (other events during dump: {evs})")
-
-        if not hex_dump and not raw_chunks:
-            if hex_err:
-                print(f"   FAIL Firmware returned hex_err: {hex_err}")
-                return False
-            print("   Retrying h command...")
+        def _ready_for_dump():
+            # Ensure IDLE and let POST_RUN->IDLE prepare_preroll finish (can take
+            # several seconds for full pre-roll erase). Then clear RX and dump.
             self.send_cmd('i', wait_ms=300)
+            self.drain_responses(0.5)
+            t_wait0 = time.time()
+            while time.time() - t_wait0 < 20.0:
+                self.send_cmd('?', wait_ms=50)
+                st_batch = self.drain_responses(0.6)
+                if any(r.get('ev') == 'status' for r in st_batch):
+                    break
+                time.sleep(0.3)
             self.drain_responses(0.3)
             self.ser.reset_input_buffer()
-            time.sleep(0.1)
+            time.sleep(0.05)
+
+        hex_dump, hex_err, raw_chunks, other = None, None, [], []
+        for attempt in range(1, MAX_DUMP_ATTEMPTS + 1):
+            if attempt == 1:
+                print(f"   Requesting: h {run_id} raw")
+            else:
+                reason = (hex_err or {}).get('reason', 'no_response')
+                print(f"   Retry {attempt}/{MAX_DUMP_ATTEMPTS} after hex_err/no data "
+                      f"(reason={reason}): i / ? / h {run_id} raw")
+            _ready_for_dump()
+            # Longer post-write wait so FW can finish reading the full line (v4.79+)
             self.send_cmd(f'h {run_id} raw', wait_ms=400)
             hex_dump, hex_err, raw_chunks, other = _collect_hex(25.0)
             if other:
                 evs = {}
                 for r in other:
-                    evs[r.get('ev','?')] = evs.get(r.get('ev','?'), 0) + 1
-                print(f"   (retry other events: {evs})")
+                    evs[r.get('ev', '?')] = evs.get(r.get('ev', '?'), 0) + 1
+                label = "other events during dump" if attempt == 1 else f"retry{attempt} other"
+                print(f"   ({label}: {evs})")
+
+            if raw_chunks and not hex_err:
+                break  # got data
+
+            reason = (hex_err or {}).get('reason') if hex_err else None
+            if hex_err and reason not in TRANSIENT_HEX_ERR:
+                print(f"   FAIL Firmware returned hex_err: {hex_err}")
+                return False
+            if attempt == MAX_DUMP_ATTEMPTS:
+                break
+            # transient / silence → loop and resend i/?/h
+            time.sleep(0.2)
 
         if hex_err:
             print(f"   FAIL Firmware returned hex_err: {hex_err}")

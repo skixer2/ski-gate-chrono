@@ -39,7 +39,7 @@ Get-ChildItem test_*.py | % { py sgc_test_harness.py --port COM8 $_ --run-id $ru
 
 | ID | File | Proves | Notes |
 |----|------|--------|-------|
-| **S03** | `test_s03_stream_run.py` → `system_tests/test_stream_run.py` | Stream SM + start/end + encode + **hex integrity** | **Must keep.** USB fps ~40–55 OK. Integrity dump can flake — not start-det. |
+| **S03** | `test_s03_stream_run.py` → `system_tests/test_stream_run.py` | Stream SM + start/end + encode + **hex integrity** | **Must keep.** USB fps ~40–55 OK. Dump parse flake (`bad_id`/`no_args`) auto-retried by **SIM 2.50.0** (`i`/`?`/`h`, ≤3×) — not start-det. See `device.md` § S03. |
 | **S04** | `test_s04_*` → `test_bhy2_rate.py` | Live BHY2 LOGGING ≥90 fps, `store=raw` | **Must keep.** Opt-A rate gate. |
 | **S05** | `test_s05_*` → `test_ring_fill.py` | ARMED linear fill ≥90 fps | **Must keep.** |
 | **S06** | `test_s06_*` → `test_ring_drain.py` | LOGGING pop2+push1 drain ~10 s | **Must keep.** |
@@ -96,7 +96,7 @@ Get-ChildItem test_*.py | % { py sgc_test_harness.py --port COM8 $_ --run-id $ru
 | **9th-run overwrite** | F08 auto-overwrite | Medium — device full-flash |
 | **BLE I01–I03** | run list / FT / CRC | High product, needs phone/BLE rig |
 | **Compression ratio assert** | P07 on S03 dump | Medium — extend S03 metrics |
-| **S03 integrity retry** | 1 automatic re-dump on Bad hex | Medium harness polish |
+| ~~**S03 integrity retry**~~ | auto `i`/`?`/`h` on `bad_id`/`no_args` | **Done** SIM 2.50.0 |
 
 ---
 

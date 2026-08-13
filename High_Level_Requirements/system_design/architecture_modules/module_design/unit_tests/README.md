@@ -72,7 +72,26 @@ Same `--run-id` summary `.md` + per-file `.log` behavior.
 - System tests detail: `../../system_tests/device.md`
 - Storage/pre-roll: `device/adr_003_littlefs_storage.md`
 - JSON protocol: `device/json_protocol.md` (rm=3000, B/echo in **Pa**)
-- Baseline device tag: **`v4.79-best-s03`**; unit-test alignment FW **4.80** + harness **2.20**
+- Baseline board: FW **4.90** / `run_20260812_2223` (historical device tag `v4.79-best-s03`)
+- Stream orchestrator: `sgc_stream_simulator.py` **SIM 2.50.0** (S03 integrity host retry)
+
+## S03 integrity host retry (SIM 2.50.0)
+
+S03 dump step uses `h <id> raw`. On 4.90, CDC can race that line → device
+`hex_err` **`bad_id`** / **`no_args`** while the run path was green.
+
+`sgc_stream_simulator.verify_data_integrity` (used by `system_tests/test_stream_run.py`
+and harness `test_s03_stream_run.py`) automatically retries up to **3×**:
+
+```text
+i → ? (wait status) → h <id> raw
+```
+
+- Retry: `bad_id`, `no_args`, or no chunks  
+- Fail immediately: `no_run`, `bad_size`, `read_fail`  
+- Details: `system_tests/device.md` § S03
+
+Host-only; **do not** flash a serial-stack FW experiment for this flake.
 
 ## Unit vs device contracts (do not regress)
 
@@ -83,6 +102,7 @@ Same `--run-id` summary `.md` + per-file `.log` behavior.
 | `B` / echo `p` | Pascals | expect Pa (not hPa) |
 | Manual B/Q/L | suppresses ARM→stream | call `enable_test_mode()` before unit inject |
 | Stream S03 | ARM + 0x3F pull | do not send B/Q/L before ARM |
+| S03 integrity | `h id raw` + decompress | SIM 2.50.0 retries `i`/`?`/`h` on `bad_id`/`no_args` |
 | `f` flash test | reserved `0x1FE000` | allow ≥2 s for response |
 
 ## Hierarchy

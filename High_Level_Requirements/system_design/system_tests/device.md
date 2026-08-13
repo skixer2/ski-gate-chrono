@@ -1,6 +1,6 @@
 # System Tests — Device
 
-*Updated 2026-08-07 — Opt-A storage + linear pre-roll (FW **v4.79**, tag `v4.79-best-s03`).*
+*Updated 2026-08-13 — S03 integrity host retry (SIM **2.50.0**); FW baseline **4.90** (historical tag `v4.79-best-s03`).*
 
 System tests verify end-to-end device behavior over **serial** (JSON-lines).  
 Hardware: Nicla Sense ME on COM port (e.g. `COM8`). Prefer **`-R`** after flash map changes.
@@ -102,7 +102,33 @@ Pass: state transitions + decompressor match ≥95% (typically 100%).
 ```powershell
 py test_stream_run.py COM8 --duration 25 --gates 10 --save run.ndjson --seed 45 -R
 # Proven v4.79: 2406 frames, 100% integrity, LOGGING ~54.5 fps USB (not a rate gate)
+# Baseline board FW 4.90: run_20260812_2223 (full harness green incl. integrity)
 ```
+
+#### Integrity dump (`h <id> raw`) — host retry (SIM **2.50.0**)
+
+Body: `system_tests/test_stream_run.py` → `unit_tests/sgc_stream_simulator.py`  
+(`SIM_VERSION` in simulator header).
+
+After a green run path, S03 requests a full-file hex dump for decompress/compare.
+On FW **4.90**, USB CDC can occasionally race the multi-token `h` line so the
+device answers `hex_err` with **`bad_id`** or **`no_args`** even though the run
+is stored (`runs=1`, SM path OK). That is a **dump parse flake**, not a lost run.
+
+**Host behaviour (2.50.0+):** up to **3** dump attempts. Each attempt:
+
+1. `i` — force IDLE  
+2. `?` — poll until `ev:status` (main loop free; preroll erase finished)  
+3. `h <run_id> raw` — full hex dump
+
+| `hex_err.reason` | Action |
+|------------------|--------|
+| `bad_id`, `no_args` | **Retry** (`i` / `?` / `h`) |
+| empty / no chunks | **Retry** |
+| `no_run`, `bad_size`, `read_fail` | **Fail immediately** (real fault) |
+
+Log line on retry: `Retry N/3 after hex_err/no data (reason=…): i / ? / h <id> raw`.  
+**No firmware bump** for this — stay on **4.90**. Pull latest `sgc_stream_simulator.py` on the PC before judging S03.
 
 ### S04 — BHY2 real LOGGING rate
 
@@ -170,4 +196,4 @@ Serial `R` → boot → runs=0. Used as `-R` preamble on S04–S06.
 | S04 | fps ≥ 90, store=raw, we=0, full duration window |
 | S05 | fill_fps ≥ 90 to target (or peak under ARM timeout for target=0) |
 | S06 | drain_s ≤ ~18 s for keep=1000; fr sufficient; run_saved ok |
-| S03 | integrity ≥95% (default in harness loop; `--with-s03` in run_device_suite) |
+| S03 | integrity ≥95% (default in harness loop; `--with-s03` in run_device_suite); host auto-retries `h` dump on `bad_id`/`no_args` (SIM 2.50.0+) |
