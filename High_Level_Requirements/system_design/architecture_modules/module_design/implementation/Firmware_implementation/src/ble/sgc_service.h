@@ -29,6 +29,7 @@ void sgc_ble_config_save();
 const char* sgc_ble_get_device_name();
 uint8_t     sgc_ble_get_arm_side();
 uint8_t     sgc_ble_get_discipline();
+uint32_t    sgc_ble_epoch_now();   /* UTC epoch seconds, 0 if never synced */
 
 void sgc_ble_ft_init();
 void sgc_ble_ft_poll();

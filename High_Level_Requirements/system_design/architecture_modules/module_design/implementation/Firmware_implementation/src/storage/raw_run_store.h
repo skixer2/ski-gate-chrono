@@ -54,7 +54,7 @@ public:
      * Start a run on the prepared slot: write RunHeader, reset cursor.
      * If nothing prepared, prepares now (S04 force-l path).
      */
-    bool create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy);
+    bool create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy, uint32_t ts_utc);
 
     /** Append compressed bytes (page-buffer flushes). */
     bool append_data(const uint8_t* data, size_t len);
@@ -125,6 +125,7 @@ private:
     uint8_t  m_pending_arm_side;
     int16_t  m_pending_baro_temp;
     uint8_t  m_pending_cal;
+    uint32_t m_pending_ts_utc;
 
     uint16_t m_next_run_id;
     uint16_t m_entry_count;

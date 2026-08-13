@@ -756,7 +756,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
         /* Both production and force-l use raw store (Opt A).
            create_run() uses slot prepared in POST_RUN; if none (first boot
            / S04 -R), it prepares now (full or partial erase). */
-        g_run_created = g_runs.create_run(0, baro_temp, cal);
+        g_run_created = g_runs.create_run(0, baro_temp, cal, sgc_ble_epoch_now());
         /* Rate clock after create — prefer POST_RUN-paid erase so this is
            header program only (~ms). */
         g_logging_start_ms = millis();

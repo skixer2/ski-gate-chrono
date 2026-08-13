@@ -55,6 +55,10 @@ static BLEByteCharacteristic    char_cal       (SGC_UUID("ABD0"), BLERead | BLEN
 static char    g_dev_name[21] = "SGC";
 static uint8_t g_arm_side    = 0;
 static uint8_t g_discipline  = 1;
+/* Time sync (ABC0): phone writes epoch seconds at connect. Store the sync
+   anchor so run timestamps are correct epoch, not 0 (1970). */
+static uint32_t g_epoch_at_sync  = 0;
+static uint32_t g_millis_at_sync = 0;
 /* Sector 508 / 0x1FC000 — config; outside RawRunStore slots (ends 0x1FC000). */
 static constexpr uint32_t CONFIG_FLASH_ADDR = 508 * 4096;
 
@@ -96,12 +100,23 @@ const char* sgc_ble_get_device_name() { return g_dev_name; }
 uint8_t     sgc_ble_get_arm_side()    { return g_arm_side; }
 uint8_t     sgc_ble_get_discipline()  { return g_discipline; }
 
+/** Current UTC epoch seconds (0 if never synced via ABC0). */
+uint32_t sgc_ble_epoch_now() {
+    if (g_epoch_at_sync == 0) return 0;
+    return g_epoch_at_sync + (millis() - g_millis_at_sync) / 1000u;
+}
+
 /* ═══════════════════════════════════════════════════════════════ */
 /*  Callbacks                                                        */
 /* ═══════════════════════════════════════════════════════════════ */
 
 static void on_time_written(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;
+    uint32_t epoch = char_time.value();
+    if (epoch > 1000000000u) {   /* sanity: reject pre-2001 garbage */
+        g_epoch_at_sync  = epoch;
+        g_millis_at_sync = millis();
+    }
 }
 static void on_dev_name_written(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;

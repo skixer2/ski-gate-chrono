@@ -63,7 +63,7 @@ RawRunStore::RawRunStore()
       m_slot_base(0), m_slot_end(0), m_cursor(0), m_erased_end(0),
       m_payload_bytes(0), m_run_crc(0xFFFFFFFFu),
       m_write_err(0), m_pending_arm_side(0), m_pending_baro_temp(0),
-      m_pending_cal(0), m_next_run_id(0), m_entry_count(0), m_slot_used_mask(0)
+      m_pending_cal(0), m_pending_ts_utc(0), m_next_run_id(0), m_entry_count(0), m_slot_used_mask(0)
 {
     memset(m_entries, 0, sizeof(m_entries));
     memset(m_entry_slot, 0, sizeof(m_entry_slot));
@@ -273,7 +273,7 @@ bool RawRunStore::prepare_next_run()
     return true;
 }
 
-bool RawRunStore::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy)
+bool RawRunStore::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_accuracy, uint32_t ts_utc)
 {
     if (!m_ok || m_writing) return false;
     if (!m_prepared) {
@@ -292,12 +292,13 @@ bool RawRunStore::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_ac
     m_pending_arm_side = arm_side;
     m_pending_baro_temp = baro_temp;
     m_pending_cal = cal_accuracy;
+    m_pending_ts_utc = ts_utc;
 
     RunHeader hdr;
     memset(&hdr, 0, sizeof(hdr));
     hdr.format_ver = 2;
     hdr.arm_side = arm_side;
-    hdr.ts_utc = 0;
+    hdr.ts_utc = ts_utc;
     hdr.baro_temp = baro_temp;
     hdr.data_size = 0;
     hdr.frame_count = 0;
@@ -368,7 +369,7 @@ uint16_t RawRunStore::close_run(uint32_t frame_count)
     e.run_id = m_write_run_id;
     e.page_start = m_slot_base;
     e.page_end = m_cursor;
-    e.timestamp = 0;
+    e.timestamp = m_pending_ts_utc;
     e.arm_side = m_pending_arm_side;
     e.format_version = 2;
     e.compressed_size = m_payload_bytes;
