@@ -80,20 +80,20 @@ bool RawRunStore::begin(SPIFlash& flash)
     m_prepared = false;
     if (!m_ok) return false;
 
-    /* V5.01: layout already built in SPIFlash::begin(); just bind. */
-    const FlashLayout& L = flash_layout();
-    if (!L.ok) {
-        /* Defensive re-init if begin order ever changes. */
+    /* V5.01: layout already built in SPIFlash::begin(); re-init if missing. */
+    if (!flash_layout().ok) {
         if (!flash_layout_init(m_flash->total_size()) || !flash_layout().ok) {
             Serial.println("{\"ev\":\"raw_store\",\"ok\":0,\"reason\":\"layout\"}");
             m_ok = false;
             return false;
         }
     }
-    const FlashLayout& L2 = flash_layout();
-    m_max_slots  = L2.max_slots;
-    m_slot_size  = L2.slot_size;
-    m_index_addr = L2.index_addr;
+    {
+        const FlashLayout& L = flash_layout();
+        m_max_slots  = L.max_slots;
+        m_slot_size  = L.slot_size;
+        m_index_addr = L.index_addr;
+    }
 
     if (!load_index()) {
         m_next_run_id = 0;
@@ -107,7 +107,7 @@ bool RawRunStore::begin(SPIFlash& flash)
     Serial.print(",\"slot_kb\":");
     Serial.print((long)(m_slot_size / 1024));
     Serial.print(",\"chip_kb\":");
-    Serial.print((long)(L.chip_size / 1024));
+    Serial.print((long)(flash_layout().chip_size / 1024));
     Serial.print(",\"runs\":");
     Serial.print((int)m_entry_count);
     Serial.println("}");
