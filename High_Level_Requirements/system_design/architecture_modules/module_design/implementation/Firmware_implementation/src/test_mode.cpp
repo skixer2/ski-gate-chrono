@@ -109,6 +109,7 @@ static void json_print_values() {
 }
 
 bool test_stream_eof() { return g_stream_eof; }
+bool test_stream_has_data() { return g_stream_had_data; }
 
 /* ── Reset stream pull state (EOF/counters).
    Does NOT clear g_manual_frame — unit tests set B/Q/L once and must

@@ -727,7 +727,10 @@ static void on_state_transition(DeviceState from, DeviceState to)
            Soft clear only if somehow dirty (should be prepared). */
         if (!g_ring.prepared())
             g_ring.clear();
-        /* P₀ auto-inits from first valid frame written to the ring. */
+        /* P₀ auto-inits from first valid frame written to the ring.
+           Stream ARM already called test_stream_reset() (baro=0). Soft-clear
+           ring count so no leftover slots from a prior aborted fill. */
+        g_ring.clear();
         g_start_det.reset(0.0f);
     }
     if (to == DeviceState::SLEEP) {
@@ -863,6 +866,18 @@ void feed_sensors()
     if (st == DeviceState::SLEEP) return;
 
     if (st == DeviceState::ARMED) {
+        /* V4.98: stream ARM must NOT ring/start_det on ambient leftovers.
+           IDLE ambient (test_set_pressure_quiet) can leave room baro (~941 hPa)
+           in g_test_frame. After 'a', g_stream_active is true but the first
+           successful 0x3F pull may land on a later tick — feeding ambient as
+           P0 poisons S03 (GS profile ~797 hPa) and integrity fails.
+           Skip until stream has real data (or non-stream manual/prod path). */
+        if (g_stream_active && test_mode_active() && !test_stream_has_data()) {
+            /* Do not touch g_test_frame here — invalidate already done on ARM.
+               Just skip ring + start_det until first good pull. */
+            return;
+        }
+
         /* Linear pre-roll: program only up to ARM_FILL_CAP (3000). */
         bool was_full = g_ring.is_full();
         g_ring.write(f, true);

@@ -42,6 +42,8 @@ bool test_request_frame(uint32_t timeout_ms = 100);
 
 /* True after first request timeout — PC has no more frames. */
 bool test_stream_eof();
+/** True after at least one valid 0x3F pull this stream session. */
+bool test_stream_has_data();
 
 /* Reset stream state: clear EOF, had_data, frames counter, manual flag.
    Call before ARM-triggered stream start (equivalent to 'S' command init). */
