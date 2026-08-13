@@ -5,6 +5,7 @@
  */
 
 #include "spi_flash.h"
+#include "flash_layout.h"
 #include <Arduino.h>
 #include <BlockDevice.h>
 #include "SPIFBlockDevice.h"
@@ -18,14 +19,18 @@ bool SPIFlash::begin()
        cold boot (not in DP): 0xAB = Read Electronic ID in normal mode. */
     release_deep_powerdown();
 
-    /* V2.29: Create explicit SPIFBlockDevice for MX25R1635F (SPI1:
-     * p4 MOSI, p5 MISO, p3 SCK, p26 CS_FLASH). get_default_instance()
-     * returns internal nRF flash (512KB) — writes beyond 512KB silently
-     * truncate/overflow, corrupting the LittleFS superblock. */
+    /* V2.29: Create explicit SPIFBlockDevice for MX25R family (SPI1:
+     * p4 MOSI, p5 MISO, p3 SCK, p26 CS_FLASH). SFDP sizes 2/4/8 MB.
+     * get_default_instance() is internal nRF flash — do not use. */
     m_bd = new SPIFBlockDevice(p4, p5, p3, p26);
     if (!m_bd) return false;
     if (static_cast<mbed::BlockDevice*>(m_bd)->init() != 0) return false;
     m_ok = true;
+
+    /* V5.01: map config/index/self-test to top of chip before any use. */
+    uint32_t sz = static_cast<mbed::BlockDevice*>(m_bd)->size();
+    if (!flash_layout_init(sz)) return false;
+
     return self_test();
 }
 
@@ -75,8 +80,9 @@ bool SPIFlash::write_safe(uint32_t addr, const uint8_t* data, size_t len) {
 bool SPIFlash::self_test()
 {
     if (!m_ok) return false;
-    /* Reserved sector — never pre-roll @ 0x0000 (see raw_run_store layout). */
-    const uint32_t TEST_ADDR = 0x1FE000u;
+    /* Top-of-chip reserved sector (never pre-roll @ 0x0000). */
+    const uint32_t TEST_ADDR = flash_selftest_addr();
+    if (TEST_ADDR == 0) return false;
     const uint32_t TEST_LEN  = 256;
     if (!erase_block(TEST_ADDR)) return false;
     uint8_t wr[256];

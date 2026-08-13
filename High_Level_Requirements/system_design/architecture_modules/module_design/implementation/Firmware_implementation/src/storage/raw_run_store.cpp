@@ -1,11 +1,12 @@
 /**
  * @file    raw_run_store.cpp
- * @brief   Multi-slot pre-erased raw run storage (Opt A production, v4.63/v4.64).
+ * @brief   Multi-slot pre-erased raw run storage (Opt A, v4.63/v5.01 size-aware).
  *          prepare_next_run(): full-slot erase at POST_RUN/boot (not ARM).
  */
 
 #include "raw_run_store.h"
 #include "spi_flash.h"
+#include "flash_layout.h"
 #include <Arduino.h>
 #include <string.h>
 #include <stdio.h>
@@ -63,7 +64,9 @@ RawRunStore::RawRunStore()
       m_slot_base(0), m_slot_end(0), m_cursor(0), m_erased_end(0),
       m_payload_bytes(0), m_run_crc(0xFFFFFFFFu),
       m_write_err(0), m_pending_arm_side(0), m_pending_baro_temp(0),
-      m_pending_cal(0), m_pending_ts_utc(0), m_next_run_id(0), m_entry_count(0), m_slot_used_mask(0)
+      m_pending_cal(0), m_pending_ts_utc(0), m_next_run_id(0), m_entry_count(0),
+      m_slot_used_mask(0), m_max_slots(RRS_LEGACY_SLOTS), m_slot_size(RRS_SLOT_SIZE),
+      m_index_addr(0x1FD000u)
 {
     memset(m_entries, 0, sizeof(m_entries));
     memset(m_entry_slot, 0, sizeof(m_entry_slot));
@@ -76,6 +79,22 @@ bool RawRunStore::begin(SPIFlash& flash)
     m_writing = false;
     m_prepared = false;
     if (!m_ok) return false;
+
+    /* V5.01: layout already built in SPIFlash::begin(); just bind. */
+    const FlashLayout& L = flash_layout();
+    if (!L.ok) {
+        /* Defensive re-init if begin order ever changes. */
+        if (!flash_layout_init(m_flash->total_size()) || !flash_layout().ok) {
+            Serial.println("{\"ev\":\"raw_store\",\"ok\":0,\"reason\":\"layout\"}");
+            m_ok = false;
+            return false;
+        }
+    }
+    const FlashLayout& L2 = flash_layout();
+    m_max_slots  = L2.max_slots;
+    m_slot_size  = L2.slot_size;
+    m_index_addr = L2.index_addr;
+
     if (!load_index()) {
         m_next_run_id = 0;
         m_entry_count = 0;
@@ -84,9 +103,11 @@ bool RawRunStore::begin(SPIFlash& flash)
         persist_index();
     }
     Serial.print("{\"ev\":\"raw_store\",\"ok\":1,\"slots\":");
-    Serial.print((int)RRS_MAX_SLOTS);
+    Serial.print((int)m_max_slots);
     Serial.print(",\"slot_kb\":");
-    Serial.print((long)(RRS_SLOT_SIZE / 1024));
+    Serial.print((long)(m_slot_size / 1024));
+    Serial.print(",\"chip_kb\":");
+    Serial.print((long)(L.chip_size / 1024));
     Serial.print(",\"runs\":");
     Serial.print((int)m_entry_count);
     Serial.println("}");
@@ -96,50 +117,124 @@ bool RawRunStore::begin(SPIFlash& flash)
 bool RawRunStore::load_index()
 {
     if (!m_flash) return false;
-    uint8_t buf[sizeof(IndexHeader) + RRS_MAX_SLOTS * (sizeof(RunEntry) + 1)];
-    if (!m_flash->read_data(RRS_INDEX_ADDR, buf, sizeof(buf))) return false;
-    IndexHeader ih;
-    memcpy(&ih, buf, sizeof(ih));
-    if (ih.magic != INDEX_MAGIC) return false;
-    if (ih.entry_count > RRS_MAX_SLOTS) return false;
-    m_next_run_id = ih.next_run_id;
-    m_entry_count = ih.entry_count;
-    m_slot_used_mask = ih.slot_used_mask;
-    const uint8_t* p = buf + sizeof(IndexHeader);
-    for (uint16_t i = 0; i < m_entry_count; i++) {
-        memcpy(&m_entries[i], p, sizeof(RunEntry));
-        p += sizeof(RunEntry);
-        m_entry_slot[i] = *p++;
+
+    /* Header first — decide RRS2 vs legacy RRS1. */
+    uint8_t hdrbuf[sizeof(IndexHeader)];
+    if (!m_flash->read_data(m_index_addr, hdrbuf, sizeof(hdrbuf))) return false;
+
+    uint32_t magic = 0;
+    memcpy(&magic, hdrbuf, 4);
+
+    if (magic == INDEX_MAGIC) {
+        IndexHeader ih;
+        memcpy(&ih, hdrbuf, sizeof(ih));
+        if (ih.entry_count > m_max_slots || ih.entry_count > RRS_MAX_SLOTS_CAP)
+            return false;
+        /* Geometry mismatch (e.g. index from larger chip) — reject, re-init. */
+        if (ih.max_slots != 0 && ih.max_slots != m_max_slots)
+            return false;
+        m_next_run_id = ih.next_run_id;
+        m_entry_count = ih.entry_count;
+        m_slot_used_mask = ih.slot_used_mask;
+
+        /* Entries: each RunEntry + 1B slot id. May span multiple pages. */
+        size_t need = (size_t)m_entry_count * (sizeof(RunEntry) + 1);
+        if (need == 0) return true;
+        /* Read up to one full sector of payload after header (index fits 4 KB). */
+        uint8_t body[FLASH_SECTOR_SIZE - sizeof(IndexHeader)];
+        size_t body_max = sizeof(body);
+        if (need > body_max) return false;
+        if (!m_flash->read_data(m_index_addr + sizeof(IndexHeader), body, need))
+            return false;
+        const uint8_t* p = body;
+        for (uint16_t i = 0; i < m_entry_count; i++) {
+            memcpy(&m_entries[i], p, sizeof(RunEntry));
+            p += sizeof(RunEntry);
+            m_entry_slot[i] = *p++;
+            if (m_entry_slot[i] >= m_max_slots) return false;
+        }
+        return true;
     }
-    return true;
+
+    /* Legacy RRS1 (v4.63–v5.00): 8-bit mask, no max_slots field. */
+    if (magic == INDEX_MAGIC_LEGACY) {
+        struct __attribute__((packed)) LegacyHdr {
+            uint32_t magic;
+            uint16_t next_run_id;
+            uint16_t entry_count;
+            uint8_t  slot_used_mask;
+            uint8_t  _pad[7];
+        };
+        LegacyHdr lh;
+        memcpy(&lh, hdrbuf, sizeof(lh));
+        if (lh.entry_count > m_max_slots || lh.entry_count > 8) return false;
+        m_next_run_id = lh.next_run_id;
+        m_entry_count = lh.entry_count;
+        m_slot_used_mask = lh.slot_used_mask;
+
+        size_t need = (size_t)m_entry_count * (sizeof(RunEntry) + 1);
+        uint8_t body[256];
+        if (need > sizeof(body)) return false;
+        if (need > 0) {
+            if (!m_flash->read_data(m_index_addr + sizeof(LegacyHdr), body, need))
+                return false;
+            const uint8_t* p = body;
+            for (uint16_t i = 0; i < m_entry_count; i++) {
+                memcpy(&m_entries[i], p, sizeof(RunEntry));
+                p += sizeof(RunEntry);
+                m_entry_slot[i] = *p++;
+            }
+        }
+        /* Migrate to RRS2 on next persist. */
+        return true;
+    }
+
+    return false;
 }
 
 bool RawRunStore::persist_index()
 {
     if (!m_flash) return false;
-    /* Sector program: erase then write first pages */
-    if (!m_flash->erase_block(RRS_INDEX_ADDR)) {
+    if (!m_flash->erase_block(m_index_addr)) {
         m_write_err++;
         return false;
     }
-    uint8_t page[256];
-    memset(page, 0xFF, sizeof(page));
+
     IndexHeader ih;
     memset(&ih, 0, sizeof(ih));
     ih.magic = INDEX_MAGIC;
     ih.next_run_id = m_next_run_id;
     ih.entry_count = m_entry_count;
     ih.slot_used_mask = m_slot_used_mask;
-    memcpy(page, &ih, sizeof(ih));
+    ih.max_slots = m_max_slots;
+
+    /* Build payload: header + entries. Fits well under 4 KB for 32 slots. */
+    uint8_t sector[FLASH_SECTOR_SIZE];
+    memset(sector, 0xFF, sizeof(sector));
+    memcpy(sector, &ih, sizeof(ih));
     size_t off = sizeof(ih);
-    for (uint16_t i = 0; i < m_entry_count && off + sizeof(RunEntry) + 1 <= sizeof(page); i++) {
-        memcpy(page + off, &m_entries[i], sizeof(RunEntry));
+    for (uint16_t i = 0; i < m_entry_count; i++) {
+        if (off + sizeof(RunEntry) + 1 > sizeof(sector)) {
+            m_write_err++;
+            return false;
+        }
+        memcpy(sector + off, &m_entries[i], sizeof(RunEntry));
         off += sizeof(RunEntry);
-        page[off++] = m_entry_slot[i];
+        sector[off++] = m_entry_slot[i];
     }
-    if (!m_flash->write_page(RRS_INDEX_ADDR, page, 256)) {
-        m_write_err++;
-        return false;
+
+    /* Program page-by-page (256 B). */
+    size_t written = 0;
+    size_t total = off;
+    while (written < total) {
+        size_t chunk = total - written;
+        if (chunk > 256) chunk = 256;
+        if (!m_flash->write_page(m_index_addr + (uint32_t)written,
+                                 sector + written, chunk)) {
+            m_write_err++;
+            return false;
+        }
+        written += chunk;
     }
     return true;
 }
@@ -148,7 +243,6 @@ bool RawRunStore::erase_range(uint32_t addr, uint32_t len)
 {
     if (!m_flash || len == 0) return false;
     uint32_t end = addr + len;
-    /* sector-align */
     uint32_t a = addr & ~(RRS_SECTOR - 1u);
     for (; a < end; a += RRS_SECTOR) {
         if (!m_flash->erase_block(a)) {
@@ -163,7 +257,6 @@ bool RawRunStore::ensure_erased(uint32_t need_end)
 {
     if (need_end <= m_erased_end) return true;
     if (need_end > m_slot_end) need_end = m_slot_end;
-    /* Erase one sector at a time ahead of the write cursor. */
     while (m_erased_end < need_end) {
         if (!m_flash->erase_block(m_erased_end)) {
             m_write_err++;
@@ -202,7 +295,7 @@ int RawRunStore::find_entry_idx(uint16_t run_id) const
 
 int RawRunStore::find_free_slot() const
 {
-    for (uint8_t s = 0; s < RRS_MAX_SLOTS; s++)
+    for (uint16_t s = 0; s < m_max_slots; s++)
         if ((m_slot_used_mask & (1u << s)) == 0) return (int)s;
     return -1;
 }
@@ -222,7 +315,7 @@ void RawRunStore::remove_entry_at(int idx)
 {
     if (idx < 0 || (uint16_t)idx >= m_entry_count) return;
     uint8_t slot = m_entry_slot[idx];
-    m_slot_used_mask = (uint8_t)(m_slot_used_mask & ~(1u << slot));
+    m_slot_used_mask &= ~(1u << slot);
     for (uint16_t i = (uint16_t)idx; i + 1 < m_entry_count; i++) {
         m_entries[i] = m_entries[i + 1];
         m_entry_slot[i] = m_entry_slot[i + 1];
@@ -240,7 +333,7 @@ void RawRunStore::delete_oldest_run()
 
 void RawRunStore::ensure_space_for_new_run()
 {
-    while (m_entry_count >= RRS_MAX_SLOTS - 1 && m_entry_count > 0)
+    while (m_entry_count >= m_max_slots - 1 && m_entry_count > 0)
         delete_oldest_run();
 }
 
@@ -257,18 +350,16 @@ bool RawRunStore::prepare_next_run()
     }
     if (s < 0) return false;
 
-    /* Full-slot erase — intended for POST_RUN cooldown (~10 s) or boot.
-       ~60 sectors × erase; athlete is stopped. LOGGING then is program-only. */
     uint32_t base = slot_addr((uint8_t)s);
-    if (!erase_range(base, RRS_SLOT_SIZE)) return false;
+    if (!erase_range(base, m_slot_size)) return false;
     m_prep_slot = (uint8_t)s;
     m_prepared = true;
     Serial.print("{\"ev\":\"raw_prep\",\"slot\":");
     Serial.print((int)m_prep_slot);
     Serial.print(",\"prep_kb\":");
-    Serial.print((long)(RRS_SLOT_SIZE / 1024));
+    Serial.print((long)(m_slot_size / 1024));
     Serial.print(",\"slot_kb\":");
-    Serial.print((long)(RRS_SLOT_SIZE / 1024));
+    Serial.print((long)(m_slot_size / 1024));
     Serial.println("}");
     return true;
 }
@@ -283,9 +374,9 @@ bool RawRunStore::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_ac
     m_write_slot = m_prep_slot;
     m_prepared = false;
     m_slot_base = slot_addr(m_write_slot);
-    m_slot_end = m_slot_base + RRS_SLOT_SIZE;
+    m_slot_end = m_slot_base + m_slot_size;
     m_cursor = m_slot_base;
-    m_erased_end = m_slot_end; /* full slot erased in prepare_next_run */
+    m_erased_end = m_slot_end;
     m_payload_bytes = 0;
     m_run_crc = 0xFFFFFFFFu;
     m_write_run_id = m_next_run_id;
@@ -314,13 +405,11 @@ bool RawRunStore::create_run(uint8_t arm_side, int16_t baro_temp, uint8_t cal_ac
 bool RawRunStore::append_data(const uint8_t* data, size_t len)
 {
     if (!m_writing || !data || len == 0) return false;
-    uint32_t slot_end = m_slot_base + RRS_SLOT_SIZE;
-    /* reserve 6 B for CRC trailer */
+    uint32_t slot_end = m_slot_base + m_slot_size;
     if (m_cursor + len + CRC32_TRAILER_SIZE > slot_end) {
         m_write_err++;
         return false;
     }
-    /* Keep ≥1 sector erased ahead when possible (amortize erase off critical path). */
     uint32_t want = m_cursor + (uint32_t)len + RRS_SECTOR;
     if (want > slot_end) want = slot_end;
     if (!ensure_erased(want)) return false;
@@ -355,13 +444,12 @@ uint16_t RawRunStore::close_run(uint32_t frame_count)
 
     if (!ok) return 0xFFFF;
 
-    /* Drop any prior entry using this slot */
     for (int i = (int)m_entry_count - 1; i >= 0; i--) {
         if (m_entry_slot[i] == m_write_slot)
             remove_entry_at(i);
     }
 
-    if (m_entry_count >= RRS_MAX_SLOTS)
+    if (m_entry_count >= m_max_slots)
         delete_oldest_run();
 
     RunEntry e;
@@ -378,7 +466,7 @@ uint16_t RawRunStore::close_run(uint32_t frame_count)
     m_entries[m_entry_count] = e;
     m_entry_slot[m_entry_count] = m_write_slot;
     m_entry_count++;
-    m_slot_used_mask = (uint8_t)(m_slot_used_mask | (1u << m_write_slot));
+    m_slot_used_mask |= (1u << m_write_slot);
     m_next_run_id++;
 
     if (!persist_index()) return 0xFFFF;
@@ -387,8 +475,8 @@ uint16_t RawRunStore::close_run(uint32_t frame_count)
 
 uint8_t RawRunStore::flash_used_pct() const
 {
-    uint32_t used = (uint32_t)m_entry_count * RRS_SLOT_SIZE;
-    uint32_t total = (uint32_t)RRS_MAX_SLOTS * RRS_SLOT_SIZE;
+    uint32_t used = (uint32_t)m_entry_count * m_slot_size;
+    uint32_t total = (uint32_t)m_max_slots * m_slot_size;
     if (total == 0) return 0;
     uint32_t pct = (used * 100u) / total;
     return (uint8_t)(pct > 100 ? 100 : pct);
@@ -407,7 +495,6 @@ bool RawRunStore::read_run_header(uint16_t run_id, RunHeader& hdr) const
     if (!e || !m_flash) return false;
     if (!m_flash->read_data(e->page_start, reinterpret_cast<uint8_t*>(&hdr), sizeof(hdr)))
         return false;
-    /* format_ver=2 stores 0 size on disk — fill from index */
     hdr.data_size = e->compressed_size;
     hdr.frame_count = (uint16_t)(e->frame_count > 65535 ? 65535 : e->frame_count);
     return true;
@@ -475,7 +562,9 @@ void RawRunStore::list_files() const
     Serial.print("{\"ev\":\"raw_list\",\"n\":");
     Serial.print((int)m_entry_count);
     Serial.print(",\"mask\":");
-    Serial.print((int)m_slot_used_mask);
+    Serial.print((unsigned long)m_slot_used_mask);
+    Serial.print(",\"slots\":");
+    Serial.print((int)m_max_slots);
     Serial.println("}");
     for (uint16_t i = 0; i < m_entry_count; i++) {
         Serial.print("{\"ev\":\"raw_ent\",\"id\":");

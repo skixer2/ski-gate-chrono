@@ -16,6 +16,7 @@
 #include "file_transfer.h"
 #include "../state_machine/state_machine.h"
 #include "../storage/spi_flash.h"
+#include "../storage/flash_layout.h"
 #include "../storage/raw_run_store.h"
 #include "../test_json.h"
 #include <ArduinoBLE.h>
@@ -64,9 +65,7 @@ static uint8_t g_discipline  = 1;
    anchor so run timestamps are correct epoch, not 0 (1970). */
 static uint32_t g_epoch_at_sync  = 0;
 static uint32_t g_millis_at_sync = 0;
-/* Sector 508 / 0x1FC000 — config; outside RawRunStore slots (ends 0x1FC000). */
-static constexpr uint32_t CONFIG_FLASH_ADDR = 508 * 4096;
-
+/* V5.01: config at top-of-chip (0x1FC000 on 2 MB; scales with SFDP size). */
 struct __attribute__((packed)) FlashConfig {
     uint32_t magic;  // 0x53474343 = "SGCC"
     char     dev_name[21];
@@ -80,7 +79,9 @@ extern SPIFlash g_flash;
 void sgc_ble_config_load()
 {
     FlashConfig cfg;
-    g_flash.read_data(CONFIG_FLASH_ADDR, (uint8_t*)&cfg, sizeof(cfg));
+    uint32_t addr = flash_config_addr();
+    if (addr == 0) addr = 0x1FC000u; /* boot order fallback */
+    g_flash.read_data(addr, (uint8_t*)&cfg, sizeof(cfg));
     if (cfg.magic == 0x53474343) {
         memcpy(g_dev_name, cfg.dev_name, 20); g_dev_name[20] = '\0';
         g_arm_side = cfg.arm_side; g_discipline = cfg.discipline;
@@ -97,8 +98,10 @@ void sgc_ble_config_save()
     cfg.magic = 0x53474343;
     strncpy(cfg.dev_name, g_dev_name, 20);
     cfg.arm_side = g_arm_side; cfg.discipline = g_discipline;
-    g_flash.erase_block(CONFIG_FLASH_ADDR);
-    g_flash.write_page(CONFIG_FLASH_ADDR, (const uint8_t*)&cfg, sizeof(cfg));
+    uint32_t addr = flash_config_addr();
+    if (addr == 0) addr = 0x1FC000u;
+    g_flash.erase_block(addr);
+    g_flash.write_page(addr, (const uint8_t*)&cfg, sizeof(cfg));
 }
 
 const char* sgc_ble_get_device_name() { return g_dev_name; }

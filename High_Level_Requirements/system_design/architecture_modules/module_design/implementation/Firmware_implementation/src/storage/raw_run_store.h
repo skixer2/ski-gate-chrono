@@ -1,22 +1,24 @@
 /**
  * @file    raw_run_store.h
- * @brief   Opt-A production run storage — pre-erased raw SPI slots (v4.63/v4.64).
+ * @brief   Opt-A production run storage — pre-erased raw SPI slots (v4.63/v5.01).
  *
  * Replaces LittleFS for run payloads. Proven by S04 @ 99.4 fps (v4.62 spike).
  *
- * Flash map (MX25R 2 MB, v4.77+):
- *   0x0000–0x13FFF    Linear pre-roll 4000×20B (3000 ARM + 1000 drain)
- *   0x14000–0x1FBFFF  Run slots (8 × sector-aligned)
- *   0x1FC000          Config
- *   0x1FD000          Index
- *   0x1FE000–0x1FFFFF reserved
+ * Flash map (size-aware, v5.01 — pre-roll FIXED):
+ *   0x0000–0x13FFF     Linear pre-roll 4000×20B (FlashRing — unchanged)
+ *   0x14000–config     Run slots (N × ~244 KB; N from SFDP chip size)
+ *   chip-0x4000        Config
+ *   chip-0x3000        Index (RRS2)
+ *   chip-0x2000        SPI self-test
+ *
+ * Classic 2 MB → N=8, addresses identical to v4.77–v5.00.
+ * 4 MB → 16 slots; 8 MB → 32 slots (cap).
  *
  * On-disk run (BLE-compatible):
  *   [RunHeader 16B][compressed frames…][0xC3 0x32 CRC32_LE 4B]
  *
  * Hot path: program() only.
  * Erases: prepare_next_run() full-slot erase at POST_RUN (10 s) or boot — NOT ARM.
- * Extra BSS: 8×RunEntry + scalars (~300 B). No large RAM ring.
  */
 
 #pragma once
@@ -24,23 +26,18 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "littlefs_storage.h"  /* RunHeader, RunEntry, CRC32_* */
+#include "flash_layout.h"
 
-static constexpr uint32_t RRS_DATA_BASE   = 0x14000u; /* after pre-roll 0x0000–0x13FFF */
-static constexpr uint32_t RRS_DATA_END    = 0x1FC000u;
-static constexpr uint32_t RRS_INDEX_ADDR  = 0x1FD000u;  /* sector 509 */
-static constexpr uint32_t RRS_SECTOR      = 4096u;
-static constexpr uint16_t RRS_MAX_SLOTS   = 8;
-
-/* (0x1FC000-0x14000)/8 → floor to sector multiple */
-static constexpr uint32_t RRS_SLOT_SIZE   =
-    ((RRS_DATA_END - RRS_DATA_BASE) / RRS_MAX_SLOTS / RRS_SECTOR) * RRS_SECTOR;
+/* Back-compat aliases used by comments/tests. Prefer flash_layout() at runtime. */
+static constexpr uint32_t RRS_SECTOR    = FLASH_SECTOR_SIZE;
+static constexpr uint16_t RRS_MAX_SLOTS = RRS_MAX_SLOTS_CAP; /* array dim only */
 
 class RawRunStore
 {
 public:
     RawRunStore();
 
-    /** Bind flash + load index from sector 509 (or empty). */
+    /** Bind flash, init layout from SFDP size, load index (or empty). */
     bool begin(class SPIFlash& flash);
 
     /**
@@ -72,6 +69,8 @@ public:
 
     uint16_t run_count() const { return m_entry_count; }
     uint16_t total_run_count() const { return m_next_run_id; }
+    uint16_t max_slots() const { return m_max_slots; }
+    uint32_t slot_size() const { return m_slot_size; }
 
     uint8_t  flash_used_pct() const;
     uint32_t oldest_run_age() const;
@@ -98,14 +97,17 @@ public:
     static uint32_t crc32_finalize(uint32_t crc) { return crc ^ 0xFFFFFFFF; }
 
 private:
-    static constexpr uint32_t INDEX_MAGIC = 0x52525331u; /* "RRS1" */
+    /* RRS2: 32-bit slot mask (was RRS1 8-bit). 2 MB chips still N=8. */
+    static constexpr uint32_t INDEX_MAGIC = 0x52525332u; /* "RRS2" */
+    static constexpr uint32_t INDEX_MAGIC_LEGACY = 0x52525331u; /* "RRS1" */
 
     struct __attribute__((packed)) IndexHeader {
         uint32_t magic;
         uint16_t next_run_id;
         uint16_t entry_count;
-        uint8_t  slot_used_mask;  /* bit i = slot i has a live run */
-        uint8_t  _pad[7];
+        uint32_t slot_used_mask;  /* bit i = slot i has a live run */
+        uint16_t max_slots;       /* geometry that wrote this index */
+        uint8_t  _pad[2];
     };
 
     class SPIFlash* m_flash;
@@ -129,14 +131,17 @@ private:
 
     uint16_t m_next_run_id;
     uint16_t m_entry_count;
-    uint8_t  m_slot_used_mask;
-    RunEntry m_entries[RRS_MAX_SLOTS];
-    uint8_t  m_entry_slot[RRS_MAX_SLOTS]; /* slot index for m_entries[i] */
+    uint32_t m_slot_used_mask;
+    uint16_t m_max_slots;
+    uint32_t m_slot_size;
+    uint32_t m_index_addr;
+    RunEntry m_entries[RRS_MAX_SLOTS_CAP];
+    uint8_t  m_entry_slot[RRS_MAX_SLOTS_CAP]; /* slot index for m_entries[i] */
 
-    static uint32_t slot_addr(uint8_t slot) {
-        return RRS_DATA_BASE + (uint32_t)slot * RRS_SLOT_SIZE;
+    uint32_t slot_addr(uint8_t slot) const {
+        return flash_data_base() + (uint32_t)slot * m_slot_size;
     }
-    static uint32_t slot_sectors() { return RRS_SLOT_SIZE / RRS_SECTOR; }
+    uint32_t slot_sectors() const { return m_slot_size / RRS_SECTOR; }
 
     bool erase_range(uint32_t addr, uint32_t len);
     bool ensure_erased(uint32_t need_end); /* lazy sector erase ahead of cursor */

@@ -10,7 +10,8 @@
  *   - LOGGING drain: pop 2 + push 1 live (net −1/tick → ~10 s to empty 1000)
  *     Live samples need the +1000 headroom when head was already at 3000.
  *
- * Flash: 0x0000–0x13FFF (20 × 4 KB), RawRunStore from 0x14000.
+ * Flash: 0x0000–0x13FFF (20 × 4 KB) FIXED — does not grow with larger NOR.
+ * RawRunStore from 0x14000 (slot count scales with SFDP size, v5.01).
  */
 
 #pragma once
