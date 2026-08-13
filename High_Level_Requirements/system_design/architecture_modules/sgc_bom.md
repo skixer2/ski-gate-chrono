@@ -1,4 +1,13 @@
-# SGC — Bill of Materials (v4.0 — Langir piezo)
+# SGC — Bill of Materials (v4.2 — Langir piezo)
+
+*2026-08-13 — v4.2: Flash U7 committed to MX25R6435F (8 MB, pin-compatible, firmware
+auto-detects size). USB-C charging added as active SGC line (GCT USB4085 + CC pull-downs
++ ESD + IP67 cap); Qi receiver remains DNP. Beeper BZ1 DNP/optional (footprint retained).*
+
+*2026-08-13 — v4.1: Qi receiver dropped (DNP — planarity/centring; USB-C + IP67 cap
+as mechanical alternative). Beeper BZ1 → DNP/optional (footprint retained). Battery
+JST 3-pin connector flagged provisional (varies by cell model). Flash U7 flagged
+pin-compatible upgrade path (MX25R3235F / MX25R6435F).*
 
 *2026-08-12 — v4.0: Pole-mount v1 arming switched to a Langir 16 mm piezoelectric
 pushbutton. LDC1612 + PCB coil dropped from the ACTIVE BOM (footprint retained for
@@ -40,10 +49,11 @@ benefits at half the price and still in active production from Langir.
 | 2 | **UHF RFID module** | Impinj E310 — **⚠️ v2 UNPOPULATED** | $0 | $0 | $0 |
 | 3 | **UWB tag** | Qorvo DW3000 — **⚠️ v2 UNPOPULATED** | $0 | $0 | $0 |
 | 4 | **RGB LED strip** | 5× SK6812-mini (2×2mm), daisy-chained | $2.50 | $1.50 | $1.00 |
-| 5 | **Beeper** | Piezo surface transducer (10×10mm) | $1.50 | $1.00 | $0.70 |
-| 6 | **Passives + power** | Caps, resistors, P-MOSFET ×2 (v2), pull-ups | $2.80 | $1.85 | $1.35 |
-| 7 | **Custom PCB** | 4-layer FR4, ~22×55mm, ENIG, 0.8mm | $15.00¹ | $8.00 | $4.00 |
-| 8 | **PCB assembly** | SMD pick-and-place + reflow | —² | $5.00 | $3.00 |
+| 5 | **Beeper** | Piezo surface transducer (10×10mm) — ⚠️ DNP/optional (footprint retained) | $0 | $0 | $0 |
+| 6 | **USB-C charging** | GCT USB4085-GF-A + CC pull-downs + ESD + IP67 cap | $1.50 | $1.00 | $0.70 |
+| 7 | **Passives + power** | Caps, resistors, P-MOSFET ×2 (v2), pull-ups | $2.80 | $1.85 | $1.35 |
+| 8 | **Custom PCB** | 4-layer FR4, ~22×55mm, ENIG, 0.8mm | $15.00¹ | $8.00 | $4.00 |
+| 9 | **PCB assembly** | SMD pick-and-place + reflow | —² | $5.00 | $3.00 |
 | | **SGC additions subtotal** | | **$33.80** | **$26.35** | **$17.05** |
 
 ¹ Prototype PCB: 5 boards from JLCPCB ~$30 → ~$6/board. Allocated $15 includes PCB + stencil + small-order surcharge.
@@ -56,9 +66,12 @@ benefits at half the price and still in active production from Langir.
 
 **Not included in SGC BOM (part of Nicla replica):**
 - nRF52832 (ANNA-B112 module), BHI260AP, BMP390, BMM150, BME688 — already on Nicla
-- MX25R1635F Flash U7 (2 MB) — Nicla's onboard flash
+- MX25R6435F Flash U7 (8 MB) — pin-compatible swap from MX25R1635F (2 MB). Same SOIC-8
+  pinout, same JEDEC SPI command set + SFDP. Firmware auto-detects size (SPIFBlockDevice
+  SFDP); layout re-mapped for 8 MB (pre-roll stays 0x0000–0x13FFF).
 - BQ25120A charger, IS31FL3194 RGB LED driver, LDOs — Nicla power management
-- Battery (Renata ICP622540PMT), Qi coil — Nicla standard accessories
+- Battery (Renata ICP622540PMT) — ⚠️ provisional; JST 3-pin connector may change per cell
+- Qi coil / IP6833 receiver — ⚠️ DROPPED (DNP); USB-C + IP67 cap as mechanical alternative
 - 32 kHz + 32 MHz crystals — Nicla stock
 
 ## Enclosure + Mechanical

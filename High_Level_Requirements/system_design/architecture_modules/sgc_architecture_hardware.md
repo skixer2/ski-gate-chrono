@@ -25,8 +25,8 @@ It is NOT a bare chip — it's a complete subsystem that gets soldered onto a la
 
 That larger PCB is the **carrier PCB** (custom SGC board, 22 × 55 mm, 4-layer) which:
 - **Carries** the ANNA-B112 module as a mounted component
-- **Adds** all SGC peripherals: LDC1612 proximity, SK6812 × 5, beeper, Qi coil, MOSFET power gating, BQ25120 charger
-- **Replicates** the Nicla Sense ME wiring exactly (BHI260AP, BMP390, Flash MX25R1635F, IS31FL3194)
+- **Adds** all SGC peripherals: LDC1612 proximity, SK6812 × 5, beeper (DNP), USB-C charging, MOSFET power gating, BQ25120 charger
+- **Replicates** the Nicla Sense ME wiring exactly (BHI260AP, BMP390, Flash MX25R6435F, IS31FL3194)
 - **Reserves** footprint for v2 (RFID Impinj E310 + UWB DW3000, not populated)
 
 **Analogy:** ANNA-B112 = "brain", carrier PCB = "body" providing power, sensors, and actuators.
@@ -83,7 +83,7 @@ added using only free ANNA-B112 GPIOs.
                    ║               │   │   │   │   │   │          ║
                    ║  ┌────────────▼───▼┐  │   │   │   │          ║
                    ║  │  Flash U7       │  │   │   │   │          ║
-                   ║  │  MX25R1635F 2MB │  │   │   │   │          ║
+                   ║  │  MX25R6435F 8MB │  │   │   │   │          ║
                    ║  │  CS: P0.26      │  │   │   │   │          ║
                    ║  └────────────────┘  │   │   │   │          ║
                    ║                      │   │   │   │          ║
@@ -122,7 +122,7 @@ added using only free ANNA-B112 GPIOs.
 - **Strict Nicla replica:** All Nicla Sense ME pins wired identically.
   BHI260AP on SPI P0.03–P0.05 (CS P0.31, INT P0.14). Sensors via Arduino_BHY2.
 - **Battery:** BQ25120 charger + BHI260AP fuel gauge. No custom VBAT_ADC.
-- **Flash:** Nicla's onboard MX25R1635F (U7) — 2 MB, CS P0.26. No external flash.
+- **Flash:** MX25R6435F (U7) — 8 MB, CS P0.26 (pin-compatible swap from 2 MB MX25R1635F).
 - **I2C1 bus (P0.22/P0.23):** LDC1612 added to Nicla's external I2C header bus.
 - **BHI SPI (P0.03–P0.05):** BHI260AP + Flash U7 — managed by BHY2 internally.
 - **SGC SPI (P0.11/P0.27/P0.28):** RFID (v2) + UWB (v2) — Arduino SPI bus.
@@ -155,7 +155,7 @@ These match the Nicla Sense ME exactly. Custom PCB copies this wiring.
 | P0.22 | I2C0 SDA (Wire) | External I2C header (J2-1) / ESLOV |
 | P0.23 | I2C0 SCL (Wire) | External I2C header (J2-2) / ESLOV |
 | P0.25 | Charge disable | BQ25120 CD |
-| P0.26 | Flash CS | MX25R1635F (U7) — Nicla's onboard 2 MB flash |
+| P0.26 | Flash CS | MX25R6435F (U7) — 8 MB flash |
 | P0.27 | SPI MOSI | External SPI header (J1-4), shared M2 bus |
 | P0.28 | SPI MISO | External SPI header (J1-5), shared M2 bus |
 | P0.31 | BHI260AP CS | Chip select for BHI260AP sensor hub |
@@ -471,7 +471,10 @@ boost quiescent draw when LEDs are off.
 | FP6291 | SOT-23-6 | 2.5 A | 2.6 V | Higher Vin min, less headroom for depleted battery |
 | TPS61023 | SOT-563 | 3.7 A | 0.5 V | Premium TI option (~$0.45), ultra-low Vin, but tiny SOT-563 harder to hand-solder |
 
-### Qi Wireless Charging Receiver
+### Qi Wireless Charging Receiver — ⚠️ DROPPED (v4.2 → USB-C)
+
+> v4.2: Qi dropped due to planarity/centring. Charging is now USB-C (GCT USB4085) →
+> BQ25120 `IN`. See `sgc_usb_c_charging_spec.md`. This section retained for reference.
 
 The Qi receiver harvests power from any standard Qi (WPC BPP) transmitter pad and
 delivers regulated 5 V to the BQ25120A charger input (IN pin, 3.4–6.4 V range).

@@ -27,7 +27,7 @@
 - Does the proximity arming work on snow?
 - Is BLE range sufficient at race speeds?
 - Is battery life acceptable in -10°C?
-- Does the beeper work through a helmet + wind noise?
+- ~~Does the beeper work through a helmet + wind noise?~~ → beeper DNP (v4.2, footprint retained)
 - Firmware hardened through real-world abuse.
 
 **Exit criteria:** 3+ successful on-snow test sessions, no hardware blockers.
@@ -151,7 +151,7 @@ The Nicla Sense ME sits **next to** the companion carrier PCB on the same plane.
 │  │  BHI260AP        │    │  │ 5V Boost SOT-23    │  │  │
 │  │  BMP390          │    │  │ Level Shifter      │  │  │
 │  │  BQ25120A        │    │  │ SK6812 ×5 header   │  │  │
-│  │  MX25R1635F      │    │  │ Battery JST conn   │  │  │
+│  │  MX25R6435F      │    │  │ Battery JST conn   │  │  │
 │  │  BLE Antenna     │    │  └─────────────────────┘  │  │
 │  └──────────────────┘    └───────────────────────────┘  │
 │                                                          │
@@ -207,7 +207,7 @@ Screws sit outside the O-ring seal → IP67 maintained without potting.
   ├──────────────────────────┤  ← O-ring groove (seal)
   │  ┌────────────────────┐  │
   │  │  PCB + Battery      │  │  ← Internal cavity
-  │  │  Beeper (faces pole) │  │
+  │  │  Beeper (DNP)       │  │
   │  └────────────────────┘  │
   └──────────────────────────┘
   BOTTOM HALF (faces pole shaft)
@@ -240,7 +240,7 @@ user/service-swappable battery the right call.
 4. **Enclosure assembly:** PCB+battery placed in bottom half → O-ring seated → top half screwed on (4 screws outside O-ring)
 5. **Strap:** Elastic strap threaded through slots or wrapped externally
 6. **Final QC:** Waterproof test (IP67 pressure decay), LED visibility, button activation, BLE range, BMM150 figure-8 cal
-7. **Packaging:** Retail box with quick-start card, Qi charging pad, spare strap
+7. **Packaging:** Retail box with quick-start card, USB-C cable, spare strap
 
 ### 5.6 Enclosure Dimensions (target)
 
@@ -275,11 +275,11 @@ See §5 for the v1 pole-mount mechanical design.*
 
 | Ref | Component | Package | Qty | Purpose |
 |-----|-----------|---------|-----|---------|
-| U_QI | IP6833 Qi Receiver | QFN-28 4×4mm | 1 | 5W Qi wireless power receiver |
-| L_QI | Qi receiver coil 24 µH | WPC A11 48×32mm | 1 | Wound wire + ferrite shield |
-| C_AC1/2 | 22 nF, 50V, NP0/C0G | 0603 | 2 | Qi resonant capacitors |
-| C_RECT | 22 µF, 16V, X5R | 0805 | 1 | Rectifier output filter |
-| C_BOOT | 100 nF, 16V, X5R | 0603 | 1 | Bootstrap capacitor |
+| U_QI | IP6833 Qi Receiver (⚠️ DROPPED) | QFN-28 4×4mm | 0 | Removed — replaced by USB-C charging |
+| L_QI | Qi receiver coil 24 µH (⚠️ DROPPED) | WPC A11 48×32mm | 0 | Removed — replaced by USB-C charging |
+| C_AC1/2 | 22 nF, 50V, NP0/C0G (⚠️ DROPPED) | 0603 | 0 | Qi resonant caps — removed |
+| C_RECT | 22 µF, 16V, X5R (⚠️ DROPPED) | 0805 | 0 | Rectifier filter — removed |
+| C_BOOT | 100 nF, 16V, X5R (⚠️ DROPPED) | 0603 | 0 | Bootstrap cap — removed |
 | SW1 | Langir 16mm piezo button | Ø16mm panel | 1 | Arming (v1). On P0.02, edge interrupt, NO pulse 20–1000 ms |
 | U1 | LDC1612 (⚠️ v2 only, unpopulated) | WSON-12 | (0) | Forearm guard arming. Footprint retained, no IC loaded in v1 |
 | L1 | PCB trace coil (⚠️ v2 only) | 14mm spiral | (0) | LDC1612 sensing coil. Not routed in v1 pole-mount PCB |
@@ -291,8 +291,11 @@ See §5 for the v1 pole-mount mechanical design.*
 | R_FB2 | 10 kΩ, 1% | 0603 | 1 | Boost feedback divider low-side |
 | U3 | Level Shifter (74AHCT1G125) | SOT-23-5 | 1 | 3.3V→5V data line shift |
 | D1-D5 | SK6812-mini RGBW | 2×2mm | 5 | Status indicator LEDs |
-| BZ1 | Piezo beeper | SMD | 1 | Audible feedback |
+| BZ1 | Piezo beeper (⚠️ DNP) | SMD | 0 | Footprint retained; not populated (v4.2) |
 | J1 | Battery connector | JST-PH 2-pin | 1 | LiPo battery input |
+| J_USB | USB-C receptacle (GCT USB4085-GF-A) | mid-mount SMD | 1 | USB-C charging (5V → BQ25120 IN) |
+| R_CC1/2 | 5.1 kΩ (1%) | 0402 | 2 | USB-C CC sink pull-downs |
+| C_USB | 10 µF, 10V, X5R | 0805 | 1 | USB VBUS bulk cap |
 | J2 | Nicla interconnect | 0.1" header/flex | 1 | Connection to Nicla |
 | R1-R4 | 2.2kΩ pull-up × 2, 10kΩ × 2 | 0603 | 4 | I²C pull-ups, misc |
 | C1-C4 | 100nF, 10µF decoupling | 0603 | 4 | Power decoupling |
@@ -332,7 +335,7 @@ Piezo button (Langir 16mm) added → ~€7-12 per unit (single qty), ~€6-7 @ 1
 - **QA routine per unit:**
   1. Button test — press → GPIO P0.02 falling-edge pulse captured
   2. SK6812 test pattern — chase sequence, verify all 5 LEDs
-  3. Beeper test — short beep
+  3. ~~Beeper test — short beep~~ (beeper DNP v4.2)
   4. BLE advertising check — verify device broadcasts
   5. BMM150 calibration check
 
@@ -344,7 +347,7 @@ Piezo button (Langir 16mm) added → ~€7-12 per unit (single qty), ~€6-7 @ 1
 4. **Top half screwed on** (4 screws, outside O-ring seal)
 5. **Strap threaded** through enclosure slots
 6. **Final QC:** IP67 pressure decay test, LED visibility, BLE range
-7. **Packaging:** Retail box with quick-start card, Qi pad, spare strap
+7. **Packaging:** Retail box with quick-start card, USB-C cable, spare strap
 
 ---
 
@@ -386,7 +389,7 @@ Ski product = **highly seasonal demand** (October–March peak).
 | Silicone strap + buckle | ~€1-2 | Custom length |
 | Screws (4× stainless) | ~€0.10 | |
 | Assembly labor (screw + strap + QC) | ~€2-4 | Simple, no potting |
-| Packaging (retail box + Qi pad) | ~€3-5 | Includes Qi pad, spare strap |
+| Packaging (retail box + USB-C cable) | ~€3-5 | Includes USB-C cable, spare strap |
 | **Mechanical subtotal** | **~€7-15** | |
 
 | **TOTAL COGS (Phase 3, pole mount)** | **~€94-118** | |

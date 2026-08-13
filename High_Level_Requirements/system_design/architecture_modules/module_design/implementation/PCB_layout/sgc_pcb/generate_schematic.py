@@ -19,9 +19,10 @@ import datetime
 SYMBOLS = [
     # ── Sheet 1: MCU Core ──
     ("sgc_pcb_symbols:ANNA-B112", "MD1", "ANNA-B112", "SGC:ANNA-B112", 200, 300, 0, False),
+    ("Device:Crystal",             "Y1",  "32.768kHz", "Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm", 150, 200, 0, False),  # XL1/XL2 — was missing from schematic
     ("sgc_pcb_symbols:BHI260AP",   "U5",  "BHI260AP",  "SGC:BHI260AP_LGA-44", 600, 300, 0, False),
     ("sgc_pcb_symbols:BMP390",     "U6",  "BMP390",    "SGC:BMP390_LGA-10",   800, 300, 0, False),
-    ("sgc_pcb_symbols:MX25R1635F", "U7",  "MX25R1635F","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", 600, 100, 0, False),
+    ("sgc_pcb_symbols:MX25R6435F", "U7",  "MX25R6435F","Package_SO:SOIC-8_5.23x5.23mm_P1.27mm", 600, 100, 0, False),
     ("sgc_pcb_symbols:IS31FL3194", "U8",  "IS31FL3194","SGC:IS31FL3194_QFN-16", 800, 100, 0, False),
     ("sgc_pcb_symbols:BQ25120A",   "U9",  "BQ25120A",  "SGC:BQ25120A_DSBGA-25", 400, -100, 0, False),
 
@@ -36,13 +37,14 @@ SYMBOLS = [
     ("sgc_pcb_symbols:SK6812-mini",     "D4", "SK6812-mini", "SGC:SK6812-mini", 400, 500, 0, False),
     ("sgc_pcb_symbols:SK6812-mini",     "D5", "SK6812-mini", "SGC:SK6812-mini", 500, 500, 0, False),
     ("sgc_pcb_symbols:74AHCT1G125",     "U10", "74AHCT1G125", "Package_TO_SOT_SMD:SOT-23-5", 100, 650, 0, False),
-    ("sgc_pcb_symbols:Piezo_Transducer","BZ1", "Piezo_10x10", "SGC:Piezo_Transducer_10x10", 300, 650, 0, False),
+    ("sgc_pcb_symbols:Piezo_Transducer","BZ1", "Piezo_10x10", "SGC:Piezo_Transducer_10x10", 300, 650, 0, True),  # DNP — footprint retained (user feedback: wind/helmet noise, low value)
 
     # ── Sheet 4: Power ──
     ("sgc_pcb_symbols:MT3608",        "U4",  "MT3608",  "Package_TO_SOT_SMD:SOT-23-6", 600, -300, 0, False),
-    ("sgc_pcb_symbols:IP6833",        "U11", "IP6833",  "SGC:IP6833_QFN-28",           800, -300, 0, False),
-    ("sgc_pcb_symbols:Qi_Coil",       "L3",  "24uH_A11","SGC:Qi_Coil_WPC_A11",         800, -500, 0, False),
+    ("sgc_pcb_symbols:IP6833",        "U11", "IP6833",  "SGC:IP6833_QFN-28",           800, -300, 0, True),   # DNP — Qi dropped (planarity/centring), USB-C alt
+    ("sgc_pcb_symbols:Qi_Coil",       "L3",  "24uH_A11","SGC:Qi_Coil_WPC_A11",         800, -500, 0, True),   # DNP — Qi dropped
     ("sgc_pcb_symbols:Battery_JST_3pin", "J1", "BAT_JST", "Connector_JST:JST_ACH_BM03B-ACHSS-GAN-ETF", 400, -500, 0, False),
+    ("Connector:USB_C_Receptacle_USB2.0", "J2", "USB4085", "Connector_USB:USB_C_Receptacle_USB2.0", 800, -600, 0, False),  # USB-C charging (GCT USB4085, replaces Qi)
 
     # ── Sheet 5: v2 (unpopulated) ──
     ("sgc_pcb_symbols:PMOS_Gate", "Q1", "PMOS_RFID", "Package_TO_SOT_SMD:SOT-23", 900, 500, 0, True),
@@ -69,12 +71,15 @@ PASSIVES = [
     ("C19", "100n",  "Capacitor_SMD:C_0603_1608Metric", 500, 550, False),  # LED decoup (1 of 5)
     ("C_IN",  "10uF",  "Capacitor_SMD:C_0805_2012Metric", 600, -400, False), # boost input
     ("C_OUT", "22uF",  "Capacitor_SMD:C_0805_2012Metric", 600, -500, False), # boost output
-    ("C_AC1", "22nF",  "Capacitor_SMD:C_0603_1608Metric", 850, -400, False), # Qi AC1
-    ("C_AC2", "22nF",  "Capacitor_SMD:C_0603_1608Metric", 850, -450, False), # Qi AC2
-    ("C_RECT","22uF",  "Capacitor_SMD:C_0805_2012Metric", 900, -300, False), # Qi rect filter
-    ("C_BOOT","100n",  "Capacitor_SMD:C_0603_1608Metric", 900, -350, False), # Qi bootstrap
-    ("C_VDD", "1uF",   "Capacitor_SMD:C_0603_1608Metric", 900, -400, False), # Qi VDD
+    ("C_AC1", "22nF",  "Capacitor_SMD:C_0603_1608Metric", 850, -400, True),  # Qi AC1 (DNP — Qi dropped)
+    ("C_AC2", "22nF",  "Capacitor_SMD:C_0603_1608Metric", 850, -450, True),  # Qi AC2 (DNP)
+    ("C_RECT","22uF",  "Capacitor_SMD:C_0805_2012Metric", 900, -300, True),  # Qi rect filter (DNP)
+    ("C_BOOT","100n",  "Capacitor_SMD:C_0603_1608Metric", 900, -350, True),  # Qi bootstrap (DNP)
+    ("C_VDD", "1uF",   "Capacitor_SMD:C_0603_1608Metric", 900, -400, True),  # Qi VDD (DNP)
     ("L_Boost", "4.7uH", "Inductor_SMD:L_0805_2012Metric", 650, -350, False), # boost inductor
+    ("R_CC1", "5.1k", "Resistor_SMD:R_0402_1005Metric", 900, -600, False),  # USB-C CC1 sink pull-down
+    ("R_CC2", "5.1k", "Resistor_SMD:R_0402_1005Metric", 900, -650, False),  # USB-C CC2 sink pull-down
+    ("C_USB", "10uF", "Capacitor_SMD:C_0805_2012Metric", 900, -700, False),  # USB VBUS bulk
 ]
 
 # ---------------------------------------------------------------------------
@@ -84,7 +89,7 @@ PASSIVES = [
 GLOBAL_LABELS = [
     # Power
     ("VCC_3V3", 150, 600), ("VDD_1V8", 250, 600), ("VBAT", 350, 600),
-    ("VDD_5V", 450, 600), ("V_QI_5V", 550, 600), ("GND", 650, 600),
+    ("VDD_5V", 450, 600), ("VBUS", 550, 600), ("GND", 650, 600),
     # SPI1 (BHI)
     ("BHI_SPI_SCK", 150, 700), ("BHI_SPI_MOSI", 250, 700), ("BHI_SPI_MISO", 350, 700),
     ("BHI_CS", 450, 700), ("BHI_INT", 550, 700), ("FLASH_CS", 650, 700),
@@ -107,9 +112,9 @@ GLOBAL_LABELS = [
 TEXTS = [
     ("SGC — Custom PCB: Nicla Sense ME Replica (v1 pole-mount)", 200, 1200, 100),
     ("Sheet 1 — MCU Core: ANNA-B112 + BHI260AP + BMP390 + Flash + RGB + Charger", 200, 400, 80),
-    ("Sheet 2 — Sensors: Reed Switch (v1 arming) + LDC1612 (v2, DNP)", 100, -200, 80),
-    ("Sheet 3 — Peripherals: SK6812 ×5 + Level Shifter + Beeper", 100, 750, 80),
-    ("Sheet 4 — Power: Boost MT3608 + Qi IP6833 + Battery JST", 600, -150, 80),
+    ("Sheet 2 — Sensors: Langir Piezo Button (v1 arming) + LDC1612 (v2, DNP)", 100, -200, 80),
+    ("Sheet 3 — Peripherals: SK6812 ×5 + Level Shifter + Beeper (DNP)", 100, 750, 80),
+    ("Sheet 4 — Power: Boost MT3608 + Battery JST + USB-C Charging (Qi DNP)", 600, -150, 80),
     ("Sheet 5 — v2 Peripherals (UNPOPULATED): RFID + UWB power gates", 900, 700, 80),
 ]
 
@@ -156,11 +161,11 @@ def main():
     out.append('  (paper "A3")')
     out.append('  (title_block')
     out.append('    (title "SGC — Ski Gate Chrono")')
-    out.append('    (date "2026-08-12")')
-    out.append('    (rev "v1.0")')
+    out.append('    (date "2026-08-13")')
+    out.append('    (rev "v4.2")')
     out.append('    (company "VYT Solutions")')
     out.append('    (comment 1 "Custom PCB — Nicla Sense ME Replica")')
-    out.append('    (comment 2 "22 × 55 mm, 4-layer FR4, 0.8 mm")')
+    out.append('    (comment 2 "22 × 55 mm, 4-layer FR4, 0.8 mm — 8 MB flash + USB-C charging")')
     out.append('  )')
 
     # Lib symbols — reference external library
@@ -177,7 +182,7 @@ def main():
     # Power symbols for each distinct power rail
     power_nets = {"GND": (700, -600)}
     for i, (name, _, _) in enumerate(GLOBAL_LABELS):
-        if name in ("VCC_3V3", "VDD_1V8", "VBAT", "VDD_5V", "V_QI_5V"):
+        if name in ("VCC_3V3", "VDD_1V8", "VBAT", "VDD_5V", "VBUS"):
             out.extend(emit_power(name, 700 + (i % 5) * 100, -600 - (i // 5) * 100))
 
     # Global labels

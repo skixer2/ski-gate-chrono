@@ -209,17 +209,17 @@
     )
   )
 
-  ;; ── MX25R1635F Flash ──
-  (symbol "MX25R1635F"
+  ;; ── MX25R6435F Flash ──
+  (symbol "MX25R6435F"
     (in_bom yes) (on_board yes)
     (property "Reference" "U" (at -7.62 -10.16 0) (effects (font (size 1.27 1.27))))
-    (property "Value" "MX25R1635F" (at 0 10.16 0) (effects (font (size 1.27 1.27))))
-    (property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (at 0 -12.7 0) (effects (font (size 1.27 1.27)) hide))
-    (property "Description" "Macronix 16Mbit SPI NOR Flash, SOIC-8, 2 MB" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
-    (symbol "MX25R1635F_0_1"
+    (property "Value" "MX25R6435F" (at 0 10.16 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm" (at 0 -12.7 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Macronix 64Mbit SPI NOR Flash, SOIC-8 (208-mil), 8 MB" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "MX25R6435F_0_1"
       (rectangle (start -7.62 7.62) (end 7.62 -7.62) (stroke (width 0.254) (type default)) (fill (type background)))
     )
-    (symbol "MX25R1635F_1_1"
+    (symbol "MX25R6435F_1_1"
       (pin input line (at -12.7 5.08 0) (length 5.08) (name "~CS" (effects (font (size 1.27 1.27)))) (number "1"))
       (pin output line (at -12.7 0 0) (length 5.08) (name "SO/MISO" (effects (font (size 1.27 1.27)))) (number "2"))
       (pin power_in line (at -12.7 -5.08 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "4"))

@@ -1,4 +1,14 @@
-# SGC — Wiring Netlist (v3.0 — Nicla Sense ME Replica)
+# SGC — Wiring Netlist (v4.2 — Nicla Sense ME Replica)
+
+*2026-08-13 — v4.2: Flash U7 swapped to MX25R6435F (8 MB, pin-compatible; size
+auto-detected in firmware). USB-C charging added (J2 GCT USB4085 + CC pull-downs);
+Qi receiver removed from active design (footprints remain DNP).*
+
+*2026-08-13 — v4.1: Qi receiver (IP6833 + coil) dropped → DNP (planarity/centring;
+USB-C + cap as mechanical alternative). Beeper BZ1 → DNP (footprint retained).
+Battery JST 3-pin connector provisional (varies by cell model). Discrepancy fixes:
+Y1 crystal + U6 BMP390 added to component reference; stale "Reed Switch" label
+corrected to Langir piezo.*
 
 *2026-06-16 — v3.0: Complete redesign. Custom PCB = strict Nicla Sense ME replica.
 All Nicla internal connections replicated exactly. SGC peripherals added using only
@@ -25,7 +35,7 @@ same module used on the stock Nicla Sense ME. All pin connections match exactly.
 | 24 | P0.04 | BHI_SPI_MOSI | BHI260AP (U5) + Flash U7 — BHY2 managed |
 | 23 | P0.05 | BHI_SPI_MISO | BHI260AP (U5) + Flash U7 — BHY2 managed |
 | 25 | P0.31 | BHI_CS | BHI260AP CS (U5 pin) |
-| 31 | P0.26 | FLASH_CS | Flash U7 /CS (MX25R1635F, Nicla stock) |
+| 31 | P0.26 | FLASH_CS | Flash U7 /CS (MX25R6435F, 8 MB) |
 | 13 | P0.14 | BHI_INT | BHI260AP HIRQ/INT |
 | 14 | P0.15 | I2C0_SDA | IS31FL3194 (U8) SDA, BQ25120 (U9) SDA, R7(2.2k→3.3V) |
 | 15 | P0.16 | I2C0_SCL | IS31FL3194 (U8) SCL, BQ25120 (U9) SCL, R8(2.2k→3.3V) |
@@ -181,7 +191,7 @@ Level shifter VCC = 5V_BOOST, input from 3.3V GPIO, output to SK6812 data line.
 
 Nicla stock power tree — identical to Nicla Sense ME:
 - BQ25120A charger (U9) on I2C0 (P0.15/P0.16)
-- Battery: JST 3-pin connector (VBAT, NTC, GND)
+- Battery: JST 3-pin connector (VBAT, NTC, GND) — ⚠️ provisional; connector may change per selected battery model
 - Qi coil: 5W receiver → rectifier → 5V → BQ25120 input
 - 3.3V LDO: VDD_nRF, SGC peripherals (except SK6812 LEDs)
 - 1.8V LDO: VDD_Sensors
@@ -214,7 +224,11 @@ strip and level shifter. The boost is software-gated via EN pin for power saving
 to RFID_EN → BOOST_EN must move to another free GPIO (recommended: P0.20 or P0.29
 when v2 peripherals not populated).
 
-### Qi Receiver (IP6833 — Production / BQ51013B Module — Prototype)
+### Qi Receiver (IP6833 — Production / BQ51013B Module — Prototype) — ⚠️ DROPPED (DNP)
+
+> v4.1: Qi charging dropped due to planarity + centring issues (hard to align
+> charger and device). Mechanical alternative: USB-C port with IP67 cap. Footprints
+> retained as DNP.
 
 The Qi receiver converts magnetic coupling from a Qi transmitter pad into
 regulated 5 V DC to feed the BQ25120A charger input.
@@ -251,6 +265,27 @@ Two-wire connection: V+ (5V) → BQ25120A IN, GND → common ground.
 
 ---
 
+### USB-C Charging (GCT USB4085) — v4.2
+
+Replaces the dropped Qi receiver. The BQ25120A accepts 5 V at `IN`, so USB-C
+charging needs **no extra charging IC** — just a receptacle wired as a sink + ESD.
+
+| USB-C pin | Net | Connect To |
+|-----------|-----|------------|
+| A4/A9/B4/B9 (VBUS) | VBUS | → BQ25120 U9 `IN` (via C_USB 10 µF + ESD TVS) |
+| A1/A12/B1/B12 + shell (GND) | GND | → GND plane |
+| A5 (CC1) | CC1 | R_CC1 5.1 kΩ (1%) → GND |
+| B5 (CC2) | CC2 | R_CC2 5.1 kΩ (1%) → GND |
+| A6/A7, B6/B7 (D+/D−) | — | NC (or test points for future USB2.0 debug) |
+| A8/B8 (SBU1/2) | — | NC |
+
+- **Part:** GCT USB4085-GF-A (16-pin USB-C 2.0 receptacle, mid-mount SMD + TH shell stakes).
+- **ESD:** TVS on VBUS + CC (Nexperia PESD5V0U2UT or TI TPD4E05U06).
+- **Cap:** custom-molded silicone tethered dust cap (IP67) around the port opening.
+  See `sgc_usb_c_charging_spec.md`.
+
+---
+
 ## Component Reference
 
 | Ref | Component | Footprint | Notes |
@@ -260,16 +295,20 @@ Two-wire connection: V+ (5V) → BQ25120A IN, GND → common ground.
 | U2 | RFID (Impinj E310) | (v2, unpopulated) | v2 only |
 | U3 | DW3000 | QFN-40 | v2 only |
 | U4 | MT3608 | SOT-23-6 | SGC addition — 5V boost for SK6812 LEDs |
-| U_QI | IP6833 (P1+) / BQ51013B module (P0) | QFN-28 / Module | SGC addition — Qi wireless receiver |
+| U_QI (U11) | IP6833 (P1+) / BQ51013B module (P0) | QFN-28 / Module | ⚠️ DROPPED — Qi receiver (DNP) |
 | U5 | BHI260AP | LGA-44 | Nicla stock |
-| U7 | MX25R1635F | SOIC-8 / USON-8 | Nicla stock (2 MB Flash) |
+| U6 | BMP390 | LGA-10 | Nicla stock — pressure (was missing from ref table) |
+| U7 | MX25R6435F | SOIC-8 (208-mil) | 8 MB Flash (pin-compatible swap from MX25R1635F) |
 | U8 | IS31FL3194 | QFN-16 | Nicla stock (RGB LED driver) |
 | U9 | BQ25120A | DSBGA-25 | Nicla stock (charger) |
 | D1–D5 | SK6812-mini | 2×2mm | SGC addition |
-| BZ1 | Piezo transducer | 10×10mm | SGC addition |
+| BZ1 | Piezo transducer | 10×10mm | SGC addition — ⚠️ DNP (footprint retained) |
 | SW1 | Langir piezo button | Ø16mm panel | SGC addition — arming (P0.02) |
 | Q1, Q2 | P-MOSFET | SOT-23 | v2 power gates |
 | L1 | LDC coil | PCB trace, 14mm | ⚠️ v2 only (DNP in v1) |
 | L_Boost | Power inductor 4.7 µH | 0805/1206 | SGC addition — boost inductor |
-| L_QI | Qi coil 24 µH WPC A11 | Wound coil 48×32mm | SGC addition — Qi receiver coil |
+| L_QI (L3) | Qi coil 24 µH WPC A11 | Wound coil 48×32mm | ⚠️ DROPPED — Qi receiver coil (DNP) |
 | Y1 | 32.768 kHz crystal | 3.2×1.5mm | Nicla stock |
+| J2 | USB-C (GCT USB4085) | mid-mount SMD + TH stakes | SGC addition — USB-C charging (replaces Qi) |
+| R_CC1, R_CC2 | 5.1 kΩ (1%) | 0402 | SGC addition — USB-C CC sink pull-downs |
+| C_USB | 10 µF, 10V, X5R | 0805 | SGC addition — USB VBUS bulk |
