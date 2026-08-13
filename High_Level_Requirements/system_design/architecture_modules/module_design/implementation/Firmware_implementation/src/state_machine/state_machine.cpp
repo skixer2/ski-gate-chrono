@@ -16,6 +16,7 @@ StateMachine::StateMachine()
       m_state_entered_ms(0),
       m_allow_rearm(true),
       m_cooldown_notified(false),
+      m_hold_idle(false),
       m_on_transition(nullptr)
 {
 }
@@ -129,6 +130,11 @@ void StateMachine::check_timeouts()
 
     switch (m_state) {
     case DeviceState::IDLE:
+        /* V5.00: phone connected or BLE FT in progress — keep IDLE so ADV
+           policy and GATT stay usable; sleep would stopAdvertise and leave
+           a zombie link after app kill. */
+        if (m_hold_idle)
+            break;
         if (elapsed >= SLEEP_TIMEOUT_MS) {
             json_begin();
             json_kv("ev", "timeout");

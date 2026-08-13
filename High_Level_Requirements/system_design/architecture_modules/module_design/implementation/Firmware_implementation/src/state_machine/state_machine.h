@@ -42,6 +42,10 @@ public:
     /** Called every loop iteration — handles timeouts */
     void tick();
 
+    /** V5.00: while BLE central is connected (or FT active), do not IDLE→SLEEP. */
+    void set_hold_idle(bool hold) { m_hold_idle = hold; }
+    bool hold_idle() const { return m_hold_idle; }
+
     /* Accessors */
     DeviceState state() const { return m_state; }
     uint32_t    state_entered_ms() const { return m_state_entered_ms; }
@@ -57,5 +61,6 @@ private:
     uint32_t    m_state_entered_ms;
     bool        m_allow_rearm;
     bool        m_cooldown_notified;   /* one-shot: avoid cooldown message spam */
+    bool        m_hold_idle;          /* BLE connected / FT — stay IDLE */
     TransitionCallback m_on_transition;
 };

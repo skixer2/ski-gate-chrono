@@ -13,13 +13,18 @@
  */
 
 #include "sgc_service.h"
+#include "file_transfer.h"
 #include "../state_machine/state_machine.h"
 #include "../storage/spi_flash.h"
 #include "../storage/raw_run_store.h"
+#include "../test_json.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
 
 extern RawRunStore g_runs;
+extern StateMachine g_sm;
+
+static bool g_central_connected = false;
 
 #define SGC_UUID(base16) "5347" base16 "-0000-1000-8000-00805F9B34FB"
 static BLEService svc(SGC_UUID("0000"));
@@ -140,6 +145,52 @@ static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
     sgc_ble_ft_on_request(char_ft_req.value());
 }
 
+void sgc_ble_restart_advertising(const char* why)
+{
+    /* V5.00: after unclean app kill, Cordio often keeps a half-open link and
+       bare advertise() is a no-op. Full stop → restore ADV payload → start. */
+    BLE.stopAdvertise();
+    if (BLE.connected()) {
+        BLE.disconnect();
+        BLE.poll();
+    }
+    BLE.setLocalName(g_dev_name);
+    BLE.setAdvertisedService(svc);
+    BLE.advertise();
+    if (why) {
+        json_begin();
+        json_kv("ev", "ble_adv");
+        Serial.print(','); json_kv("why", why);
+        json_end();
+    }
+}
+
+bool sgc_ble_central_connected() { return g_central_connected; }
+
+static void on_ble_connected(BLEDevice central)
+{
+    g_central_connected = true;
+    g_sm.set_hold_idle(true);
+    json_begin();
+    json_kv("ev", "ble_conn");
+    Serial.print(','); json_kv("addr", central.address().c_str());
+    json_end();
+}
+
+static void on_ble_disconnected(BLEDevice central)
+{
+    (void)central;
+    g_central_connected = false;
+    /* Abort FT first so sgc_ble_ft_active() clears before hold_idle. */
+    sgc_ble_ft_abort("disconnect");
+    g_sm.set_hold_idle(false);
+    /* Hard re-advertise so phone scan finds us after app kill / link drop. */
+    sgc_ble_restart_advertising("disconnect");
+    json_begin();
+    json_kv("ev", "ble_disc");
+    json_end();
+}
+
 /* ═══════════════════════════════════════════════════════════════ */
 /*  Init                                                             */
 /* ═══════════════════════════════════════════════════════════════ */
@@ -162,6 +213,11 @@ void sgc_ble_init()
     char_arm_side.setEventHandler(BLEWritten, on_arm_side_written);
     char_discipline.setEventHandler(BLEWritten, on_discipline_written);
     char_ft_req.setEventHandler(BLEWritten, on_ft_request);
+
+    /* V5.00: connection lifecycle — hold IDLE while linked; on drop abort FT
+       and hard-restart advertising (app kill left zombie link + no ADV). */
+    BLE.setEventHandler(BLEConnected, on_ble_connected);
+    BLE.setEventHandler(BLEDisconnected, on_ble_disconnected);
 
     sgc_ble_config_load();
 
@@ -186,23 +242,37 @@ void sgc_ble_update_state(DeviceState s)
     switch (s) {
     case DeviceState::IDLE:
     case DeviceState::POST_RUN:
-        /* V4.94: bare BLE.advertise() after stopAdvertise() (SLEEP/ARMED/
-           LOGGING) is often a no-op on ArduinoBLE/Cordio — phone keeps
-           scanning empty while serial already shows st=IDLE. Hard cycle:
-           stop → restore name + advertised service → advertise. */
+        /* V4.94/V5.00: bare advertise after stop is often a no-op on Cordio.
+           If still connected (app killed mid-session), disconnect first so
+           ADV actually restarts and phone can scan again. */
+        if (!BLE.connected())
+            sgc_ble_restart_advertising(nullptr);
+        else {
+            /* Stay connected — do not kick the phone on IDLE refresh. */
+            BLE.setLocalName(g_dev_name);
+        }
+        break;
+    case DeviceState::SLEEP:
+        /* Drop link + ADV so we do not sit half-connected with ADV off. */
+        sgc_ble_ft_abort("sleep");
         BLE.stopAdvertise();
-        BLE.setLocalName(g_dev_name);
-        BLE.setAdvertisedService(svc);
-        BLE.advertise();
+        if (BLE.connected()) {
+            BLE.disconnect();
+            BLE.poll();
+        }
+        g_central_connected = false;
+        g_sm.set_hold_idle(false);
         break;
     default:
-        /* SLEEP/ARMED/LOGGING — save power, prevent brown-out */
+        /* ARMED/LOGGING — save power, prevent brown-out; keep link if any */
         BLE.stopAdvertise();
         break;
     }
     uint8_t sf = char_state.value() & 0xE0;
     char_state.writeValue(sf | (static_cast<uint8_t>(s) & 0x1F));
-    char_transfer.writeValue(0);
+    /* Do not zero transfer status here during active FT — that races poll. */
+    if (!sgc_ble_ft_active())
+        char_transfer.writeValue(0);
 }
 void sgc_ble_poll() { BLE.poll(); }
 

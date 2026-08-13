@@ -23,3 +23,5 @@
 void sgc_ble_transfer_init();
 void sgc_ble_transfer_poll();
 bool sgc_ble_ft_active();   /* true while streaming a run over BLE */
+/** Abort in-flight FT (disconnect / SLEEP / stall). reason for serial JSON. */
+void sgc_ble_ft_abort(const char* reason);

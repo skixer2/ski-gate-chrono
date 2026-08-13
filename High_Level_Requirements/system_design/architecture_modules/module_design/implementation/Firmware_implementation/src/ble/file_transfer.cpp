@@ -8,6 +8,7 @@
  */
 
 #include "file_transfer.h"
+#include "../config.h"
 #include "../storage/raw_run_store.h"
 #include "../test_json.h"
 #include <ArduinoBLE.h>
@@ -30,6 +31,7 @@ static uint16_t  g_ft_run_id  = 0;
 static uint32_t  g_ft_crc     = 0;
 static uint32_t  g_ft_chunks  = 0;
 static uint32_t  g_ft_start_ms = 0;
+static uint32_t  g_ft_last_prog_ms = 0;  /* stall watchdog */
 
 /* Single ATT notification payload at min MTU 23: opcode+handle leave 20 B.
    Keep 20 until we have a reliable negotiated-MTU path (ATT max often stays 23
@@ -41,24 +43,47 @@ static constexpr uint32_t FT_PROG_EVERY = 50;   /* serial progress every N chunk
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
 
+void sgc_ble_ft_abort(const char* reason)
+{
+    if (g_ft_state != FT_STREAMING) return;
+    g_ft_state = FT_IDLE;
+    json_begin();
+    json_kv("ev", "ft_abort");
+    Serial.print(','); json_kv("reason", reason ? reason : "?");
+    Serial.print(','); json_kv("off", (long)g_ft_offset);
+    Serial.print(','); json_kv("sz", (long)g_ft_size);
+    Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+    json_end();
+    /* Best-effort status notify if still linked. */
+    if (BLE.connected()) {
+        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        BLE.poll();
+    }
+}
+
 void sgc_ble_transfer_poll()
 {
     if (g_ft_state != FT_STREAMING) return;
 
     if (!BLE.connected()) {
-        g_ft_state = FT_IDLE;
-        json_begin();
-        json_kv("ev", "ft_abort");
-        Serial.print(','); json_kv("reason", "disconnect");
-        Serial.print(','); json_kv("off", (long)g_ft_offset);
-        Serial.print(','); json_kv("sz", (long)g_ft_size);
-        Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
-        json_end();
+        sgc_ble_ft_abort("disconnect");
         return;
     }
 
     static uint32_t last_chunk_ms = 0;
     uint32_t now = millis();
+
+    /* V5.00: if writeValue/HCI wedges and we stop advancing, abort so main
+       loop can resume BHY2 and advertise path after disconnect recovery. */
+    if (g_ft_last_prog_ms != 0 && (now - g_ft_last_prog_ms) > FT_STALL_TIMEOUT_MS) {
+        sgc_ble_ft_abort("stall");
+        if (BLE.connected()) {
+            BLE.disconnect();
+            BLE.poll();
+        }
+        return;
+    }
+
     if (now - last_chunk_ms < FT_CHUNK_MS) return;
     last_chunk_ms = now;
 
@@ -105,6 +130,7 @@ void sgc_ble_transfer_poll()
 
     g_ft_offset += send_len;
     g_ft_chunks++;
+    g_ft_last_prog_ms = now;
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
         json_begin();
@@ -190,6 +216,7 @@ void sgc_ble_ft_on_request(uint16_t run_id)
     g_ft_crc      = 0xFFFFFFFF;
     g_ft_chunks   = 0;
     g_ft_start_ms = millis();
+    g_ft_last_prog_ms = g_ft_start_ms;
     g_ft_state    = FT_STREAMING;
     sgc_ble_ft_status_char()->writeValue((uint8_t)FT_STREAMING);
     BLE.poll();

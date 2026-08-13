@@ -1115,6 +1115,8 @@ void loop()
            needed during a download (device is in IDLE). */
         if (!sgc_ble_ft_active()) BHY2.update();
         sgc_ble_poll(); sgc_ble_transfer_poll();
+        /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
+        g_sm.set_hold_idle(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
         g_led.update(); g_ldc.tick();
         handle_serial();
     }

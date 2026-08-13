@@ -15,6 +15,10 @@ enum class DeviceState : uint8_t;
 void sgc_ble_init();
 void sgc_ble_update_state(DeviceState s);
 void sgc_ble_poll();
+/** Hard stop→name→service→advertise (Cordio needs full cycle after link drop). */
+void sgc_ble_restart_advertising(const char* why = nullptr);
+/** True while a central is connected (updated on connect/disconnect events). */
+bool sgc_ble_central_connected();
 
 void sgc_ble_set_battery(uint8_t pct);
 void sgc_ble_set_cal(uint8_t cal);
