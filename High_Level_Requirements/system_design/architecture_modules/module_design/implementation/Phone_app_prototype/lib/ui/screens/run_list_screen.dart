@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -27,6 +28,7 @@ class _RunListScreenState extends State<RunListScreen> {
   bool _isScanning = false;
   bool _isDownloading = false;
   List<SavedRun> _localRuns = [];
+  List<RunMetadata> _deviceRuns = []; // runs present on the connected device
 
   @override
   void initState() {
@@ -110,6 +112,9 @@ class _RunListScreenState extends State<RunListScreen> {
         debugPrint('[SGC] reading run count…');
         _runCount = await sgc.getRunCount();
         debugPrint('[SGC] run count = $_runCount');
+        final ft = FileTransfer(sgc);
+        _deviceRuns = await ft.getRunList();
+        debugPrint('[SGC] device runs: ${_deviceRuns.length}');
       } catch (e, stack) {
         debugPrint('[SGC] ERROR during setup: $e');
         debugPrint('[SGC] stack: $stack');
@@ -155,6 +160,12 @@ class _RunListScreenState extends State<RunListScreen> {
     if (mounted) setState(() => _localRuns = runs);
   }
 
+  /// Device runs not yet present in local storage.
+  List<RunMetadata> get _missingRuns {
+    final localIds = _localRuns.map((r) => r.id).toSet();
+    return _deviceRuns.where((r) => !localIds.contains(r.id)).toList();
+  }
+
   Future<void> _openLocalRun(SavedRun run) async {
     final data = await _storage.load(run.fileName);
     if (data == null || !mounted) return;
@@ -183,112 +194,49 @@ class _RunListScreenState extends State<RunListScreen> {
     try {
       final ft = FileTransfer(_sgc!);
 
-      // Fetch run list from device
-      final runs = await ft.getRunList();
-      debugPrint('[SGC] Run list: ${runs.length} runs');
+      // Refresh device run list + local index, then download missing runs.
+      _deviceRuns = await ft.getRunList();
+      await _loadLocalRuns();
+      final missing = _missingRuns;
+      debugPrint('[SGC] Device runs: ${_deviceRuns.length}, missing: ${missing.length}');
 
-      if (runs.isEmpty) {
+      if (missing.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No runs on device')),
+            SnackBar(content: Text(_deviceRuns.isEmpty
+                ? 'No runs on device'
+                : 'All ${_deviceRuns.length} runs already downloaded')),
           );
         }
         return;
       }
 
-      // Download the latest run (last in list)
-      final latest = runs.last;
-      debugPrint('[SGC] Downloading run #${latest.id} (${latest.size} bytes, side=${latest.side})');
-
-      // Download with up to one retry on CRC failure (BLE GATT notification loss)
-      TransferResult? result;
-      bool crcOk = false;
-      const maxAttempts = 2;
-      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        result = await ft.download(latest.id);
-
-        if (result.compressedData.isEmpty) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Download failed — empty data')),
-            );
-          }
-          return;
-        }
-
-        final decompressor = Decompressor();
-        crcOk = decompressor.validateCRC(result.compressedData);
-        if (crcOk) {
-          debugPrint('[SGC] ✅ CRC valid for run #${latest.id} (attempt $attempt)');
-          break;
-        }
-        debugPrint('[SGC] ⚠️ CRC FAILED for run #${latest.id} (attempt $attempt/${maxAttempts})');
-        if (attempt < maxAttempts) {
-          debugPrint('[SGC]    Retrying download...');
-          await Future.delayed(const Duration(milliseconds: 500));
-        }
+      int ok = 0, failed = 0;
+      for (final run in missing) {
+        debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
+        final data = await _downloadOne(ft, run.id);
+        if (data == null) { failed++; continue; }
+        final decoded = Decompressor().decompressFull(data);
+        await _storage.save(
+          runId: run.id,
+          compressedData: data,
+          result: decoded,
+          deviceName: _config?.deviceName ?? 'SGC',
+        );
+        ok++;
       }
-
-      if (!crcOk) {
-        debugPrint('[SGC] ⚠️ CRC STILL FAILED after $maxAttempts attempts for run #${latest.id} — download aborted');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('⚠️ Download corrupted — try again. Firmware chunk rate may need reduction.'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
-        setState(() => _isDownloading = false);
-        return; // Don't decompress or navigate on corrupt data
-      }
-
-      // Decompress
-      final decompressor = Decompressor();
-      final decoded = decompressor.decompressFull(result!.compressedData);
-
-      // Save to local storage
-      await _storage.save(
-        runId: latest.id,
-        compressedData: result.compressedData,
-        result: decoded,
-        deviceName: _config?.deviceName ?? 'SGC',
-      );
-
-      // Reload local runs list
       await _loadLocalRuns();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Downloaded run #${latest.id}: '
-              '${decoded.frameCount} frames '
-              '(${decoded.totalDurationSec.toStringAsFixed(1)}s)',
-            ),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // Navigate to detail screen
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => RunDetailScreen(
-              result: decoded,
-              deviceName: _config?.deviceName,
-              armSide: _config?.armSide,
-            ),
+            content: Text(failed == 0
+                ? 'Downloaded $ok run(s)'
+                : 'Downloaded $ok run(s), $failed failed'),
+            backgroundColor: failed > 0 ? Colors.orange : Colors.green,
           ),
         );
       }
 
-      debugPrint('[SGC] Run header: fmt=${decoded.header.formatVersion} '
-          'side=${decoded.header.armSide} '
-          'cal=${decoded.header.calAccuracy} '
-          'temp=${decoded.header.baroTempC.toStringAsFixed(1)}°C');
-      debugPrint('[SGC] Frames: ${decoded.frameCount}, '
-          'duration=${decoded.totalDurationSec.toStringAsFixed(1)}s');
     } catch (e, stack) {
       debugPrint('[SGC] Download error: $e');
       debugPrint('[SGC] $stack');
@@ -300,6 +248,27 @@ class _RunListScreenState extends State<RunListScreen> {
     } finally {
       if (mounted) setState(() => _isDownloading = false);
     }
+  }
+
+  /// Download one run with CRC retry. Returns compressed bytes or null on failure.
+  Future<Uint8List?> _downloadOne(FileTransfer ft, int runId) async {
+    const maxAttempts = 2;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      final result = await ft.download(runId);
+      if (result.compressedData.isEmpty) {
+        debugPrint('[SGC] run #$runId: empty data (attempt $attempt)');
+        if (attempt < maxAttempts) await Future.delayed(const Duration(milliseconds: 500));
+        continue;
+      }
+      final decompressor = Decompressor();
+      if (decompressor.validateCRC(result.compressedData)) {
+        debugPrint('[SGC] ✅ CRC valid for run #$runId (attempt $attempt)');
+        return result.compressedData;
+      }
+      debugPrint('[SGC] ⚠️ CRC FAILED for run #$runId (attempt $attempt/$maxAttempts)');
+      if (attempt < maxAttempts) await Future.delayed(const Duration(milliseconds: 500));
+    }
+    return null;
   }
 
   @override
@@ -399,6 +368,7 @@ class _RunListScreenState extends State<RunListScreen> {
                 _infoRow('Arm Side', _config?.armSide.label ?? 'Unknown'),
                 _infoRow('Discipline', _config?.discipline.label ?? 'Unknown'),
                 _infoRow('Runs on Device', _runCount.toString()),
+                _infoRow('Not Downloaded', _missingRuns.length.toString()),
                 _infoRow('BLE MTU', '${_ble.mtu} bytes'),
               ],
             ),
@@ -410,10 +380,14 @@ class _RunListScreenState extends State<RunListScreen> {
             leading: _isDownloading
                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.download),
-            title: const Text('Download Latest Run'),
-            subtitle: Text(_isDownloading ? 'Transferring…' : 'Transfer runs from device'),
+            title: Text(_isDownloading
+                ? 'Downloading…'
+                : 'Download Missing Runs (${_missingRuns.length})'),
+            subtitle: Text(_isDownloading
+                ? 'Transferring…'
+                : '${_deviceRuns.length} on device · ${_missingRuns.length} not downloaded'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: (_runCount > 0 && !_isDownloading) ? _downloadRuns : null,
+            onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
           ),
         ),
         // ── Local runs section ──
