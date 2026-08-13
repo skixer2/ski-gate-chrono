@@ -148,12 +148,10 @@ static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
 void sgc_ble_restart_advertising(const char* why)
 {
     /* V5.00: after unclean app kill, Cordio often keeps a half-open link and
-       bare advertise() is a no-op. Full stop → restore ADV payload → start. */
+       bare advertise() is a no-op. Full stop → restore ADV payload → start.
+       Do NOT disconnect here — caller decides; disconnect while already in
+       BLEDisconnected handler is unsafe / recursive. */
     BLE.stopAdvertise();
-    if (BLE.connected()) {
-        BLE.disconnect();
-        BLE.poll();
-    }
     BLE.setLocalName(g_dev_name);
     BLE.setAdvertisedService(svc);
     BLE.advertise();
@@ -184,10 +182,14 @@ static void on_ble_disconnected(BLEDevice central)
     /* Abort FT first so sgc_ble_ft_active() clears before hold_idle. */
     sgc_ble_ft_abort("disconnect");
     g_sm.set_hold_idle(false);
-    /* Hard re-advertise so phone scan finds us after app kill / link drop. */
-    sgc_ble_restart_advertising("disconnect");
+    /* Re-ADV only when discoverable states want it. SLEEP intentionally drops
+       the link with ADV off — do not fight that path (disconnect is ours). */
+    DeviceState st = g_sm.state();
+    if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
+        sgc_ble_restart_advertising("disconnect");
     json_begin();
     json_kv("ev", "ble_disc");
+    Serial.print(','); json_kv("st", StateMachine::state_name_for(st));
     json_end();
 }
 
