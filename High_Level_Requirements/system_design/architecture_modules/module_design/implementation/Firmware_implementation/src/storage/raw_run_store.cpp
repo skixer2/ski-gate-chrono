@@ -118,46 +118,30 @@ bool RawRunStore::load_index()
 {
     if (!m_flash) return false;
 
-    /* Header first — decide RRS2 vs legacy RRS1. */
-    uint8_t hdrbuf[sizeof(IndexHeader)];
-    if (!m_flash->read_data(m_index_addr, hdrbuf, sizeof(hdrbuf))) return false;
+    /* V5.02: small stack only. A 4 KB sector buffer here crashed mbed after
+       BLE.begin (SingletonPtr assert — stack smash / heap corruption). */
+    uint8_t hdr[32];
+    if (!m_flash->read_data(m_index_addr, hdr, sizeof(hdr))) return false;
 
     uint32_t magic = 0;
-    memcpy(&magic, hdrbuf, 4);
+    memcpy(&magic, hdr, 4);
+
+    uint16_t entry_count = 0;
+    uint32_t body_base = 0; /* absolute flash addr of first entry */
 
     if (magic == INDEX_MAGIC) {
         IndexHeader ih;
-        memcpy(&ih, hdrbuf, sizeof(ih));
+        memcpy(&ih, hdr, sizeof(ih));
         if (ih.entry_count > m_max_slots || ih.entry_count > RRS_MAX_SLOTS_CAP)
             return false;
-        /* Geometry mismatch (e.g. index from larger chip) — reject, re-init. */
         if (ih.max_slots != 0 && ih.max_slots != m_max_slots)
             return false;
         m_next_run_id = ih.next_run_id;
-        m_entry_count = ih.entry_count;
         m_slot_used_mask = ih.slot_used_mask;
-
-        /* Entries: each RunEntry + 1B slot id. May span multiple pages. */
-        size_t need = (size_t)m_entry_count * (sizeof(RunEntry) + 1);
-        if (need == 0) return true;
-        /* Read up to one full sector of payload after header (index fits 4 KB). */
-        uint8_t body[FLASH_SECTOR_SIZE - sizeof(IndexHeader)];
-        size_t body_max = sizeof(body);
-        if (need > body_max) return false;
-        if (!m_flash->read_data(m_index_addr + sizeof(IndexHeader), body, need))
-            return false;
-        const uint8_t* p = body;
-        for (uint16_t i = 0; i < m_entry_count; i++) {
-            memcpy(&m_entries[i], p, sizeof(RunEntry));
-            p += sizeof(RunEntry);
-            m_entry_slot[i] = *p++;
-            if (m_entry_slot[i] >= m_max_slots) return false;
-        }
-        return true;
-    }
-
-    /* Legacy RRS1 (v4.63–v5.00): 8-bit mask, no max_slots field. */
-    if (magic == INDEX_MAGIC_LEGACY) {
+        entry_count = ih.entry_count;
+        body_base = m_index_addr + (uint32_t)sizeof(IndexHeader);
+    } else if (magic == INDEX_MAGIC_LEGACY) {
+        /* RRS1: 8-bit mask, fixed 16 B header layout */
         struct __attribute__((packed)) LegacyHdr {
             uint32_t magic;
             uint16_t next_run_id;
@@ -166,30 +150,29 @@ bool RawRunStore::load_index()
             uint8_t  _pad[7];
         };
         LegacyHdr lh;
-        memcpy(&lh, hdrbuf, sizeof(lh));
+        memcpy(&lh, hdr, sizeof(lh));
         if (lh.entry_count > m_max_slots || lh.entry_count > 8) return false;
         m_next_run_id = lh.next_run_id;
-        m_entry_count = lh.entry_count;
         m_slot_used_mask = lh.slot_used_mask;
-
-        size_t need = (size_t)m_entry_count * (sizeof(RunEntry) + 1);
-        uint8_t body[256];
-        if (need > sizeof(body)) return false;
-        if (need > 0) {
-            if (!m_flash->read_data(m_index_addr + sizeof(LegacyHdr), body, need))
-                return false;
-            const uint8_t* p = body;
-            for (uint16_t i = 0; i < m_entry_count; i++) {
-                memcpy(&m_entries[i], p, sizeof(RunEntry));
-                p += sizeof(RunEntry);
-                m_entry_slot[i] = *p++;
-            }
-        }
-        /* Migrate to RRS2 on next persist. */
-        return true;
+        entry_count = lh.entry_count;
+        body_base = m_index_addr + (uint32_t)sizeof(LegacyHdr);
+    } else {
+        return false;
     }
 
-    return false;
+    m_entry_count = 0;
+    const size_t rec = sizeof(RunEntry) + 1;
+    uint8_t recbuf[sizeof(RunEntry) + 1];
+    for (uint16_t i = 0; i < entry_count; i++) {
+        if (!m_flash->read_data(body_base + (uint32_t)i * (uint32_t)rec,
+                                recbuf, rec))
+            return false;
+        memcpy(&m_entries[i], recbuf, sizeof(RunEntry));
+        m_entry_slot[i] = recbuf[sizeof(RunEntry)];
+        if (m_entry_slot[i] >= m_max_slots) return false;
+        m_entry_count++;
+    }
+    return true;
 }
 
 bool RawRunStore::persist_index()
@@ -200,6 +183,11 @@ bool RawRunStore::persist_index()
         return false;
     }
 
+    /* V5.02: stream pages only — max index payload ~1.1 KB (32×33 + hdr).
+       Never allocate a 4 KB sector on the stack. */
+    uint8_t page[256];
+    memset(page, 0xFF, sizeof(page));
+
     IndexHeader ih;
     memset(&ih, 0, sizeof(ih));
     ih.magic = INDEX_MAGIC;
@@ -207,35 +195,32 @@ bool RawRunStore::persist_index()
     ih.entry_count = m_entry_count;
     ih.slot_used_mask = m_slot_used_mask;
     ih.max_slots = m_max_slots;
+    memcpy(page, &ih, sizeof(ih));
 
-    /* Build payload: header + entries. Fits well under 4 KB for 32 slots. */
-    uint8_t sector[FLASH_SECTOR_SIZE];
-    memset(sector, 0xFF, sizeof(sector));
-    memcpy(sector, &ih, sizeof(ih));
-    size_t off = sizeof(ih);
+    size_t page_off = sizeof(ih);
+    uint32_t page_base = 0; /* offset from m_index_addr */
+
+    auto flush_page = [&]() -> bool {
+        if (!m_flash->write_page(m_index_addr + page_base, page, 256)) {
+            m_write_err++;
+            return false;
+        }
+        return true;
+    };
+
     for (uint16_t i = 0; i < m_entry_count; i++) {
-        if (off + sizeof(RunEntry) + 1 > sizeof(sector)) {
-            m_write_err++;
-            return false;
+        size_t need = sizeof(RunEntry) + 1;
+        if (page_off + need > sizeof(page)) {
+            if (!flush_page()) return false;
+            page_base += 256;
+            memset(page, 0xFF, sizeof(page));
+            page_off = 0;
         }
-        memcpy(sector + off, &m_entries[i], sizeof(RunEntry));
-        off += sizeof(RunEntry);
-        sector[off++] = m_entry_slot[i];
+        memcpy(page + page_off, &m_entries[i], sizeof(RunEntry));
+        page_off += sizeof(RunEntry);
+        page[page_off++] = m_entry_slot[i];
     }
-
-    /* Program page-by-page (256 B). */
-    size_t written = 0;
-    size_t total = off;
-    while (written < total) {
-        size_t chunk = total - written;
-        if (chunk > 256) chunk = 256;
-        if (!m_flash->write_page(m_index_addr + (uint32_t)written,
-                                 sector + written, chunk)) {
-            m_write_err++;
-            return false;
-        }
-        written += chunk;
-    }
+    if (!flush_page()) return false;
     return true;
 }
 
