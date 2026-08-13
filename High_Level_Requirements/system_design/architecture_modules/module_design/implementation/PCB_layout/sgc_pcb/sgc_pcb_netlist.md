@@ -45,7 +45,7 @@ available for SGC use (routed internally, not broken out to headers).
 
 | Module Pin | nRF52 GPIO | Nicla Label | SGC Assignment |
 |-----------|-----------|-------------|----------------|
-| 20 | P0.02 | A0 | **LDC_INTB** — LDC1612 INTB (active LOW), R9(100k→3.3V pull-up) |
+| 20 | P0.02 | A0 | **BUTTON** — Langir piezo pushbutton (pulse), R9(100k→3.3V pull-up) |
 | 21 | P0.09 | RX/LPIO2 | **BEEPER** — Piezo transducer via R12(100Ω) |
 | 22 | P0.10 | LPIO3 | **QI_DETECT** — Qi charger detect, R10(10k→3.3V pull-up) |
 | 35 | P0.19 | ESLOV INT | **LED_DIN** — SK6812 #1 DIN (first in chain of 5) |
@@ -80,7 +80,7 @@ Nicla stock — no SGC devices on this bus. See Sheet 1 for connections.
 
 ## Sheet 5: SGC Sensors
 
-### U1 (LDC1612DNTR — Inductive Proximity Sensor)
+### U1 (LDC1612DNTR — Inductive Proximity Sensor) ⚠️ v2 ONLY (DNP in v1)
 
 | Pin | Net Name | Connect To |
 |-----|----------|------------|
@@ -90,7 +90,7 @@ Nicla stock — no SGC devices on this bus. See Sheet 1 for connections.
 | SCL | I2C1_SCL | P0.23, R16 |
 | ADDR | GND | I²C address 0x2A |
 | SD | GND | Shutdown inactive |
-| INTB | LDC_INTB | P0.02, R9(100k→3.3V) |
+| INTB | LDC_INTB | P0.02 (v2 only), R9(100k→3.3V) |
 | IN0A | COIL_A | L1 pin1, C18(33pF→IN0B) |
 | IN0B | COIL_B | L1 pin2, C18(33pF→IN0A) |
 
@@ -256,7 +256,7 @@ Two-wire connection: V+ (5V) → BQ25120A IN, GND → common ground.
 | Ref | Component | Footprint | Notes |
 |-----|-----------|-----------|-------|
 | MD1 | ANNA-B112 | Module, 52-pin LGA | nRF52832 + BLE |
-| U1 | LDC1612DNTR | WSON-12 | SGC addition |
+| U1 | LDC1612DNTR | WSON-12 | ⚠️ v2 only (DNP in v1) |
 | U2 | RFID (Impinj E310) | (v2, unpopulated) | v2 only |
 | U3 | DW3000 | QFN-40 | v2 only |
 | U4 | MT3608 | SOT-23-6 | SGC addition — 5V boost for SK6812 LEDs |
@@ -267,8 +267,9 @@ Two-wire connection: V+ (5V) → BQ25120A IN, GND → common ground.
 | U9 | BQ25120A | DSBGA-25 | Nicla stock (charger) |
 | D1–D5 | SK6812-mini | 2×2mm | SGC addition |
 | BZ1 | Piezo transducer | 10×10mm | SGC addition |
+| SW1 | Langir piezo button | Ø16mm panel | SGC addition — arming (P0.02) |
 | Q1, Q2 | P-MOSFET | SOT-23 | v2 power gates |
-| L1 | LDC coil | PCB trace, 14mm | SGC addition |
+| L1 | LDC coil | PCB trace, 14mm | ⚠️ v2 only (DNP in v1) |
 | L_Boost | Power inductor 4.7 µH | 0805/1206 | SGC addition — boost inductor |
 | L_QI | Qi coil 24 µH WPC A11 | Wound coil 48×32mm | SGC addition — Qi receiver coil |
 | Y1 | 32.768 kHz crystal | 3.2×1.5mm | Nicla stock |

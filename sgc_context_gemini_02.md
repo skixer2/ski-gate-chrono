@@ -1,6 +1,8 @@
 # SGC — Context Summary
 
-> **CURRENT (2026-08-07):** Firmware **v4.78** tag **`v4.78-best-preroll`**. Opt-A `RawRunStore` run payloads (`store=raw`, S04 ~99.5 fps). Linear ARMED pre-roll **3000** slots @ `0x0000–0xEFFF`: `prepare_preroll()` on **enter IDLE** (from ARMED/POST_RUN) + boot; ARMED **program-only**; keep last **1000** at start for phone. Tag `v4.71-best-s04` = best rate snapshot. See AD-015/016, ADR-003, MEMORY.md.
+> **CURRENT (2026-08-11):** AD-017 **pole-mount pivot**. v1 form factor = pole shaft mount below grip, back side (shielded from gate impacts). Magnetic reed switch arming (poles-together gesture). Dual-device kit (one per pole). Forearm guard deferred to v2. Firmware, sensors, PCB, and phone app unchanged.
+
+> **Firmware:** v4.79 tag `v4.79-best-s03`. Opt-A `RawRunStore` run payloads (`store=raw`, S04 ~99.5 fps). Linear ARMED pre-roll 4000 slots. See AD-015/016, ADR-003, MEMORY.md.
 
 ---
 

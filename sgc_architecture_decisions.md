@@ -397,3 +397,77 @@ injection are also always compiled in — no `-DTEST_MODE` flag exists.
 
 **Tests:** S05 fill, S06 drain (`L` with tm=0), S04 live rate unchanged.
 
+---
+
+## AD-017: Pole-Mount as v1 Primary Form Factor
+
+**Date:** 2026-08-11
+**Status:** Accepted
+**Supersedes:** Forearm guard as v1 primary (moved to v2/future)
+
+**Decision:** The v1 production device mounts on the upper ski pole shaft, just below the handgrip. The electronics face the back of the pole (protected from direct gate impacts). Two devices per athlete (one per pole). Forearm guard form factor is deferred to v2 as a separate premium product variant.
+
+**Rationale:**
+
+Forearm guard development would require:
+- Injection-molded polycarbonate shell (180–220 mm), multi-cavity tooling
+- EVA foam padding, velcro straps — multiple SKUs per size (S/M/L)
+- Epoxy/silicone potting automation
+- 200g shock rating for direct gate impacts
+- Cross-arm LDC1612 proximity arming with passive target discs
+- Complex multi-step mechanical assembly
+
+None of this is manageable by a solo developer. The pole mount eliminates all of it:
+- Small enclosure (~25×25×70 mm), O-ring sealed — 3D-printable for prototypes
+- Standard pole strap/clamp attachment — one SKU fits all pole diameters
+- Pole shaft absorbs gate impacts — device on back side is shielded
+- Simple reed switch arming (no LDC1612, no target disc)
+- Single PCB, single assembly step
+
+**What stays identical:**
+- All firmware (sensors, state machine, storage, BLE) — 100% reusable
+- Phone app (gate detection, course setup, cloud) — unchanged
+- Sensor complement (BHI260AP, BMP390) — unchanged
+- PCB (Nicla replica or companion carrier) — unchanged, just different enclosure
+
+**What changes:**
+
+| Aspect | Forearm Guard (→v2) | Pole Mount (v1) |
+|--------|---------------------|-----------------|
+| Enclosure | 180–220mm PC shell | Small tube, O-ring seal |
+| Mounting | Velcro straps on forearm | Strap/clamp on pole shaft |
+| Arming | LDC1612 cross-arm proximity | Magnetic reed switch (poles-together) |
+| LDC1612 | Active (cross-arm target disc) | Removed from active BOM |
+| Device count | 1 per arm = 2 per athlete | 1 per pole = 2 per athlete |
+| Left/right | Identified by arm side | Identified by pole side (same logic) |
+| Impact path | Direct forearm strike | Through pole shaft (shielded) |
+| Shock rating | 200g | Pole-flex absorbed (lower) |
+| SKUs | 6 (L/R × S/M/L) | 1 |
+| Production COGS | ~€105–134 (P3) | ~€50–70 (est.) |
+| Retail price | €249–349 | €149–199 (est.) |
+
+**Arming — Reed Switch (AD-017.1):**
+
+A normally-open magnetic reed switch sits inside the sealed device enclosure. A small neodymium magnet is embedded in each pole grip (or a silicone band around the grip). At the start gate, the athlete brings both pole grips together → each magnet triggers the opposite pole's reed switch → both devices arm simultaneously after 1000 ms continuous hold (same timing as F03).
+
+Advantages over alternatives:
+- **No mechanical penetration** — reed switch is glass-encapsulated, enclosure stays IP67
+- **No moving parts** — rated for 10⁷+ cycles, no freeze/jam risk at −20°C
+- **One gesture, two devices** — same "bring together" motion as original cross-arm design
+- **Glove-friendly** — large activation zone, no small button to find
+- **Cost:** ~€0.30 for reed switch + €0.50 for magnet
+
+**Electronics placement:** Device mounts on the BACK of the pole (trailing side, away from gates). Gate impacts hit the front of the pole; the shaft flex absorbs energy and the device is shielded. The SK6812 LEDs face upward/outward for athlete visibility. The beeper faces inward (against the pole) for transmission through the shaft.
+
+**Mounting:** Simple silicone-coated elastic strap with a quick-release buckle. Wraps around the pole shaft and the device body. No clamp mechanism needed for v1 — strap tension + silicone grip is sufficient for a 40–50g device.
+
+**Forearm guard as v2:** The forearm guard is preserved in all documentation as a future product variant. It would reuse the same electronics module in a larger protective shell. The LDC1612 and cross-arm arming would be reintroduced for that variant. AD-017 does NOT delete forearm guard content — it re-frames it as "v2 / future development."
+
+**Impact on existing documentation:**
+- Hardware enclosure (§8) → rewritten for pole-mount, forearm guard moved to §8bis
+- Production strategy → simplified; injection molding deferred to v2
+- Requirements H04 (inductive through shell) → marked v2; new H14 (reed switch arming)
+- Requirements H05 (thickness <16mm) → relaxed for pole mount
+- Requirements H06 (weight ≤40g) → tightened to ≤50g
+- Interface I06 (cross-arm) → marked v2; new I12 (reed switch → nRF52 GPIO)
+

@@ -1,5 +1,6 @@
-# SGC — High-Level Requirements (v5.7)
+# SGC — High-Level Requirements (v5.9 — Pole-Mount)
 
+*2026-08-11 — v5.9: AD-017 pole-mount pivot. H04/H09/I06 → v2 only. H05/H06 relaxed for pole mount. H14/I12 added for reed switch arming.*
 *2026-06-09 — v5.7: Post-review fixes — F58–F61, P09, H11–H12, I10, course_gates schema marked v2 only. Silver tier removed.
 *2026-06-09 — v5.6: F04 dual start detection (speed OR drop). F52–F57 marked v2 only (RFID unpopulated). F41 SETUP/white reserved for v2.*
 *2026-06-08 — v5.5: Cross-arm proximity arming — changed from button-press to forearms-together detection. Athlete brings forearms together at start gate; LDC1612 on each arm detects the approaching passive copper/iron target disc embedded in the opposite arm's strap. H04 updated for cross-arm range (~30 mm approach → near-contact). I06 rewritten as cross-arm proximity. F12/F13/F42 verification language updated. Cross-Arm Arming section rewritten.*
@@ -121,12 +122,13 @@ Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no
 | **H01** | Operating temperature range | −20°C to +40°C |
 | **H02** | Battery life (active logging, cold-derated) | ≥ 8 hours continuous at −10°C. Reference session: 3 hours, 10 runs |
 | **H03** | Enclosure ingress protection | IP67 (sealed, no mechanical buttons or ports). Beeper uses surface transducer bonded to inner enclosure wall — no sound port |
-| **H04** | Inductive trigger detection through polycarbonate shell | Reliable cross-arm proximity detection: target disc approach from ~30 mm down to near-contact. Coil sensitivity designed for forearm-to-forearm distance at start gate — athlete brings forearms together, LDC1612 detects approaching copper/iron disc in opposite strap |
-| **H05** | Total module thickness | < 16 mm (Nicla + battery + Qi coil, closely stacked). The enclosure shell is integral to the IP67 seal — no additional protective layer is needed; the enclosure itself contains the device thickness. |
-| **H06** | Total module weight (single arm) | Not critical; ≤ 40 g acceptable for prototype |
+| **H04** | ⚠️ **v2/Forearm Guard Only** — Inductive trigger detection through polycarbonate shell | Reliable cross-arm proximity detection: target disc approach from ~30 mm down to near-contact. Coil sensitivity designed for forearm-to-forearm distance at start gate — athlete brings forearms together, LDC1612 detects approaching copper/iron disc in opposite strap. v1 pole mount uses reed switch arming instead (see H14) |
+| **H05** | Total module thickness (pole mount v1) | ~25 mm (device + enclosure). Not critical for pole-mount form factor. Forearm guard thickness (<16 mm) deferred to v2 |
+| **H06** | Total module weight (single device) | ≤ 50 g (electronics + enclosure + strap). Pole mount; weight not critical for shaft attachment |
 | **H07** | Onboard storage capacity | ≥ 10 runs per arm before sync required |
 | **H08** | No ferromagnetic materials near the BMM150 magnetometer | BMM150 calibration must remain stable. The Qi charging coil and surface transducer may contain magnets — these must be shielded or placed > 10 mm from the BMM150 |
-| **H09** | The device shall withstand accelerations from gate pole impacts without damage or sensor decalibration | **200 g** shock test (typical slalom pole strike 100-200g at the grip); verify functional post-impact |
+| **H09** | ⚠️ **v2/Forearm Guard Only** — The device shall withstand accelerations from gate pole impacts without damage or sensor decalibration | **200 g** shock test (typical slalom pole strike 100-200g at the grip); verify functional post-impact. v1 pole mount: device on back side of pole is shielded — pole shaft absorbs impact energy |
+| **H14** | The device shall detect magnetic arming via reed switch (v1 pole mount) | NO reed switch on GPIO P0.02 (internal pull-up). N52 neodymium magnet (Ø6×2mm) in opposite pole grip. Athlete brings pole grips together → 1000 ms continuous magnetic hold → arm. Same timing as F03. Also supports 20 s continuous hold for factory reset (F42) |
 | **H10** | The device shall be rechargeable via **Qi wireless charging** (no exposed contacts, fully sealed, compatible with IP67) | Place on Qi pad, verify charging LED (F41) lights. Charge from 0% to 100%, verify full charge within 3 hours |
 | **H11** | ⚠️ **v2 ONLY** — The PCB shall include an unpopulated Impinj E310-based UHF RFID module footprint with SPI routing and ceramic antenna keepout. *v1: footprint only, no IC populated.* | Module footprint present; no IC soldered |
 | **H12** | ⚠️ **v2 ONLY** — UHF RFID frontend vs. BMM150 magnetometer non-interference. *v1: RFID unpopulated — not applicable.* | BMM150 calibration with RFID active/inactive (v2 only) |
@@ -143,27 +145,29 @@ Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no
 | **I03** | LDC1612 ↔ nRF52832 | I²C, continuous inductance monitoring. INTB pin → nRF52 GPIO for sleep wake (F13) |
 | **I04** | SPI Flash ↔ nRF52832 | SPI, circular run storage with per-file CRC32 |
 | **I05** | Device ↔ Phone | BLE 5.0, LE 2M PHY preferred, custom GATT + Nordic DFU service (run list, file transfer, device config R/W, OTA firmware). Bonded pairing with LE Secure Connections |
-| **I06** | Left arm ↔ Right arm | **No active radio link.** Each arm arms independently on its own LDC1612 sensor. A passive copper/iron foil disc is embedded in each strap. When the athlete brings forearms together at the start gate, each LDC1612 detects the approaching foil disc on the **opposite** arm's strap via cross-arm inductive proximity. No cross-arm BLE, no scan windows, no radio latency. "Cross-arm" refers to the physical proximity between forearms, not an inter-device link |
+| **I06** | ⚠️ **v2/Forearm Guard Only** — Left arm ↔ Right arm | **No active radio link.** Each arm arms independently on its own LDC1612 sensor. A passive copper/iron foil disc is embedded in each strap. When the athlete brings forearms together at the start gate, each LDC1612 detects the approaching foil disc on the **opposite** arm's strap via cross-arm inductive proximity. No cross-arm BLE, no scan windows, no radio latency. "Cross-arm" refers to the physical proximity between forearms, not an inter-device link. v1 pole mount uses reed switch arming (see I12) — each device arms independently on its own reed switch |
+| **I12** | Reed Switch ↔ nRF52832 (v1 pole mount) | GPIO P0.02 with internal pull-up. NO reed switch (glass-encapsulated, 10–15 AT sensitivity). LOW = magnet present (pole grips together). Polled at 10 Hz in IDLE; edge-detect interrupt for wake from SLEEP. Same pin as LDC1612 INTB (v2) — mutually exclusive |
 | **I07** | Phone ↔ Cloud | HTTPS REST API, endpoint URL retrieved from hardcoded bootstrap address |
 | **I08** | Beeper ↔ nRF52832 | GPIO PWM → surface transducer bonded to inner enclosure wall (IP67, no sound port) |
 | **I09** | Qi Receiver ↔ Battery Charger | Qi coil → rectifier → 5V → Nicla BQ25100 charger. Coil placed opposite side of PCB from BMM150 |
 | **I10** | ⚠️ **v2 ONLY** — UHF RFID Reader ↔ nRF52832 | SPI, reader IC controlled by nRF52832. *v1: footprint only, no reader populated.* |
 | **I11** | DW3000 UWB ↔ nRF52832 | ⚠️ **FOOTPRINT ONLY — NOT POPULATED, NOT TESTED, NO FIRMWARE.** SPI (shared bus with Flash + RFID), dedicated CSn line. Power-gated (GPIO-controlled MOSFET on VDD_UWB rail, default OFF). Antenna: ceramic chip antenna footprint, tuned for UWB channel 5 (6.5 GHz) or channel 9 (8 GHz). Reserved purely to avoid PCB redesign if UWB is adopted in v2+ |
 
-### Cross-Arm Arming: Why BLE Is Not Needed
+### Arming: Reed Switch (v1 Pole Mount) — Why BLE Is Not Needed
 
-The arming mechanism is purely inductive, based on cross-arm proximity — no mechanical button, no moving parts:
+The arming mechanism is purely magnetic — no mechanical button, no moving parts:
 
-1. Athlete brings **forearms together** at the start gate → the passive copper/iron foil disc embedded in the **left strap** approaches the **right arm's** LDC1612 coil
-2. Right LDC1612 detects the approaching foil disc → continuous 1000 ms proximity → **right arm arms** (F03)
-3. Simultaneously, the passive copper/iron foil disc embedded in the **right strap** approaches the **left arm's** LDC1612 coil
-4. Left LDC1612 detects the approaching foil disc → continuous 1000 ms proximity → **left arm arms**
+1. Athlete brings **pole grips together** at the start gate → N52 magnet in each pole grip triggers the opposite pole's reed switch
+2. Each device detects continuous magnetic hold for 1000 ms → **both devices arm simultaneously** (F03)
+3. Same gesture as the original cross-arm design — natural pre-start motion
 
-Each arm arms independently on its own sensor. The "cross-arm handshake" (I06) is the mutual inductive detection: each LDC1612 sees the other arm's passive copper/iron foil disc approaching. It is not a BLE advertisement. No radio latency, no scan windows, no real-time BLE handshake.
+Each device arms independently on its own reed switch. No cross-device BLE, no radio latency.
 
-**What if one arm fails to arm?** The athlete separates and brings forearms together again. Since each arm operates independently, a failed left-arm detection doesn't affect the right arm's ability to arm.
+**What if one device fails to arm?** The athlete separates and brings pole grips together again. Each device operates independently. Single-device operation is supported (R08) — gate detection still functional from one pole's sensor data.
 
-**Safety net:** If the left arm arms and the right arm doesn't (or vice versa), the phone accepts single-arm runs (R08). Gate detection from one arm is still functional — just no cross-correlation alignment.
+### Cross-Arm Arming: LDC1612 (⚠️ v2 Forearm Guard)
+
+*Preserved for v2. The v1 pole mount uses reed switch arming instead.*
 
 ---
 
@@ -241,7 +245,7 @@ REQ-FUNC (F01–F61, F57.1–F57.4)  ◄─────────────�
        │                                              ▲
 REQ-PERF (P01–P09)  ◄─────────────── PERFORMANCE TESTS (bench: scope, jitter)
        │                                              ▲
-REQ-HW  (H01–H13)   ◄─────────────── ENVIRONMENTAL TESTS (cold chamber, shock)
+REQ-HW  (H01–H14)   ◄─────────────── ENVIRONMENTAL TESTS (cold chamber, shock)
        │                                              ▲
        ▼                                              │
   SYSTEM DESIGN           ────────────►  SYSTEM TESTS (BLE service, state machine)
@@ -283,6 +287,7 @@ REQ-HW  (H01–H13)   ◄─────────────── ENVIRONME
 | 2026-06-06 | v5.4 | **Coherence fixes:** C1: removed stale F41 tag from `runs.format_version`. W5: F41 LED now includes SETUP/white state. I6: I06 rewrote to remove ambiguity — "opposite strap" → "button membrane of each strap". No cross-arm radio. | 
 | 2026-06-08 | v5.5 | **Cross-arm proximity arming:** Replaced button-press mechanism with forearms-together proximity detection. Each strap embeds a passive copper/iron target disc; LDC1612 on each arm detects the approaching disc on the opposite arm. No mechanical button, no moving parts — preserves IP67. F12/F13/F42 verification updated. H04 range changed from 1-2 mm to ~30 mm approach distance. I06 rewritten as cross-arm proximity. F41 LED upgraded to 5× SK6812-mini strip with sequential flowing-point animation. Cross-Arm Arming section rewritten. |
 | 2026-06-09 | v5.8 | **v1 course setup requirements:** Added F57.1–F57.4 for phone-side course setup (Mode A: New sequential recording, Mode B: Update with GPS+ΔP dual-signal detection + Move/Delete/Add, dual course view, delta-based course map format). Updated course_gates DB comment with delta-format clarification. Updated F58 cross-reference to point to F57.1–F57.4. V-Model traceability extended to F57.1–F57.4. |
+| 2026-08-11 | v5.9 | **AD-017 pole-mount pivot:** H04, H09 marked v2/forearm guard only. H05, H06 relaxed for pole mount. H14 (reed switch arming) added. I06 marked v2; I12 (reed switch interface) added. Cross-arm arming section split into v1 reed switch / v2 LDC1612. V-Model updated (H01–H14). |
 
 ---
 

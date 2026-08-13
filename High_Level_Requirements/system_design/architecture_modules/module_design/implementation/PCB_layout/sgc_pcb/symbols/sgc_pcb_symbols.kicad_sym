@@ -1,0 +1,381 @@
+(kicad_symbol_lib
+  (version 20231120)
+  (generator "kicad_symbol_editor")
+  (generator_version "8.0")
+
+  ;; ── ANNA-B112 Module (nRF52832 + BLE) ──
+  (symbol "ANNA-B112"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "MD" (at -17.78 -40.64 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "ANNA-B112" (at 5.08 40.64 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:ANNA-B112" (at 0 -45.72 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.u-blox.com/en/product/anna-b112-module" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "u-blox ANNA-B112 nRF52832 + BLE module, 52-pin LGA" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "ANNA-B112_0_1"
+      (rectangle (start -17.78 38.1) (end 17.78 -38.1) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "ANNA-B112_1_1"
+      ;; Left side pins
+      (pin bidirectional line (at -22.86 33.02 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin bidirectional line (at -22.86 27.94 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin bidirectional line (at -22.86 22.86 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "7"))
+      (pin bidirectional line (at -22.86 17.78 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "8"))
+      (pin power_in line (at -22.86 12.7 0) (length 5.08) (name "VCC" (effects (font (size 1.27 1.27)))) (number "9"))
+      (pin bidirectional line (at -22.86 7.62 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "10"))
+      (pin bidirectional line (at -22.86 2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "11"))
+      (pin input line (at -22.86 -2.54 0) (length 5.08) (name "~RESET" (effects (font (size 1.27 1.27)))) (number "12"))
+      (pin input line (at -22.86 -7.62 0) (length 5.08) (name "P0.14/BHI_INT" (effects (font (size 1.27 1.27)))) (number "13"))
+      (pin bidirectional line (at -22.86 -12.7 0) (length 5.08) (name "P0.15/SDA_W1" (effects (font (size 1.27 1.27)))) (number "14"))
+      (pin bidirectional line (at -22.86 -17.78 0) (length 5.08) (name "P0.16/SCL_W1" (effects (font (size 1.27 1.27)))) (number "15"))
+      (pin bidirectional line (at -22.86 -22.86 0) (length 5.08) (name "P0.18/SWO" (effects (font (size 1.27 1.27)))) (number "16"))
+      (pin bidirectional line (at -22.86 -27.94 0) (length 5.08) (name "P0.00/XL1" (effects (font (size 1.27 1.27)))) (number "17"))
+      (pin bidirectional line (at -22.86 -33.02 0) (length 5.08) (name "P0.01/XL2" (effects (font (size 1.27 1.27)))) (number "18"))
+      ;; Right side pins (bottom to top)
+      (pin bidirectional line (at 22.86 -33.02 0) (length 5.08) (name "P0.03/SPI1_SCK" (effects (font (size 1.27 1.27)))) (number "19"))
+      (pin bidirectional line (at 22.86 -27.94 0) (length 5.08) (name "P0.02/LDC_INTB" (effects (font (size 1.27 1.27)))) (number "20"))
+      (pin bidirectional line (at 22.86 -22.86 0) (length 5.08) (name "P0.09/BEEPER" (effects (font (size 1.27 1.27)))) (number "21"))
+      (pin bidirectional line (at 22.86 -17.78 0) (length 5.08) (name "P0.10/QI_DETECT" (effects (font (size 1.27 1.27)))) (number "22"))
+      (pin bidirectional line (at 22.86 -12.7 0) (length 5.08) (name "P0.05/SPI1_MISO" (effects (font (size 1.27 1.27)))) (number "23"))
+      (pin bidirectional line (at 22.86 -7.62 0) (length 5.08) (name "P0.04/SPI1_MOSI" (effects (font (size 1.27 1.27)))) (number "24"))
+      (pin bidirectional line (at 22.86 -2.54 0) (length 5.08) (name "P0.31/BHI_CS" (effects (font (size 1.27 1.27)))) (number "25"))
+      (pin bidirectional line (at 22.86 2.54 0) (length 5.08) (name "P0.30/UWB_PWR" (effects (font (size 1.27 1.27)))) (number "26"))
+      (pin bidirectional line (at 22.86 7.62 0) (length 5.08) (name "P0.29/UWB_CS" (effects (font (size 1.27 1.27)))) (number "27"))
+      (pin bidirectional line (at 22.86 12.7 0) (length 5.08) (name "P0.28/SPI_MISO" (effects (font (size 1.27 1.27)))) (number "28"))
+      (pin bidirectional line (at 22.86 17.78 0) (length 5.08) (name "P0.27/SPI_MOSI" (effects (font (size 1.27 1.27)))) (number "29"))
+      (pin bidirectional line (at 22.86 22.86 0) (length 5.08) (name "P0.25/CHG_DIS" (effects (font (size 1.27 1.27)))) (number "30"))
+      (pin bidirectional line (at 22.86 27.94 0) (length 5.08) (name "P0.26/FLASH_CS" (effects (font (size 1.27 1.27)))) (number "31"))
+      (pin bidirectional line (at 22.86 33.02 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "32"))
+      ;; Bottom side pins
+      (pin bidirectional line (at 0 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "33"))
+      (pin bidirectional line (at 2.54 -43.18 90) (length 5.08) (name "P0.11/SPI_SCK" (effects (font (size 1.27 1.27)))) (number "34"))
+      (pin bidirectional line (at 5.08 -43.18 90) (length 5.08) (name "P0.19/LED_STRIP" (effects (font (size 1.27 1.27)))) (number "35"))
+      (pin bidirectional line (at 7.62 -43.18 90) (length 5.08) (name "P0.22/SDA_W0" (effects (font (size 1.27 1.27)))) (number "36"))
+      (pin bidirectional line (at 10.16 -43.18 90) (length 5.08) (name "P0.23/SCL_W0" (effects (font (size 1.27 1.27)))) (number "37"))
+      (pin bidirectional line (at 12.7 -43.18 90) (length 5.08) (name "P0.24/BOOST_EN" (effects (font (size 1.27 1.27)))) (number "38"))
+      (pin bidirectional line (at -17.78 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "41"))
+      (pin bidirectional line (at -15.24 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "42"))
+      (pin bidirectional line (at -12.7 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "43"))
+      (pin bidirectional line (at -10.16 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "44"))
+      (pin bidirectional line (at -7.62 -43.18 90) (length 5.08) (name "P0.20/RFID_CS" (effects (font (size 1.27 1.27)))) (number "45"))
+      (pin bidirectional line (at -5.08 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "46"))
+      (pin bidirectional line (at -2.54 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "47"))
+      (pin bidirectional line (at 15.24 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "48"))
+      (pin bidirectional line (at 17.78 -43.18 90) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "49"))
+      (pin bidirectional line (at -17.78 -38.1 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "50"))
+      (pin bidirectional line (at 17.78 -38.1 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "51"))
+      (pin bidirectional line (at 15.24 38.1 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "52"))
+    )
+  )
+
+  ;; ── BHI260AP Sensor Hub ──
+  (symbol "BHI260AP"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -12.7 -17.78 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "BHI260AP" (at 2.54 17.78 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:BHI260AP_LGA-44" (at 0 -20.32 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Bosch BHI260AP 6-axis IMU + sensor hub, LGA-44" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "BHI260AP_0_1"
+      (rectangle (start -12.7 15.24) (end 12.7 -15.24) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "BHI260AP_1_1"
+      ;; Left
+      (pin input line (at -17.78 10.16 0) (length 5.08) (name "~CS" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin input line (at -17.78 5.08 0) (length 5.08) (name "SCK" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin input line (at -17.78 0 0) (length 5.08) (name "MOSI" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin output line (at -17.78 -5.08 0) (length 5.08) (name "MISO" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin output line (at -17.78 -10.16 0) (length 5.08) (name "INT/HIRQ" (effects (font (size 1.27 1.27)))) (number "5"))
+      ;; Right
+      (pin power_in line (at 17.78 10.16 0) (length 5.08) (name "VDD(1.8V)" (effects (font (size 1.27 1.27)))) (number "6"))
+      (pin power_in line (at 17.78 5.08 0) (length 5.08) (name "VDDIO(3.3V)" (effects (font (size 1.27 1.27)))) (number "7"))
+      (pin power_in line (at 17.78 0 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "8"))
+      ;; Bottom
+      (pin bidirectional line (at 0 -20.32 90) (length 5.08) (name "SPI_MST_SCK" (effects (font (size 1.27 1.27)))) (number "9"))
+      (pin bidirectional line (at 2.54 -20.32 90) (length 5.08) (name "SPI_MST_MOSI" (effects (font (size 1.27 1.27)))) (number "10"))
+      (pin bidirectional line (at 5.08 -20.32 90) (length 5.08) (name "SPI_MST_MISO" (effects (font (size 1.27 1.27)))) (number "11"))
+      (pin bidirectional line (at 7.62 -20.32 90) (length 5.08) (name "SPI_MST_CS0" (effects (font (size 1.27 1.27)))) (number "12"))
+      (pin bidirectional line (at 10.16 -20.32 90) (length 5.08) (name "SPI_MST_CS1" (effects (font (size 1.27 1.27)))) (number "13"))
+    )
+  )
+
+  ;; ── LDC1612 Inductive Sensor ──
+  (symbol "LDC1612"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -7.62 -12.7 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "LDC1612DNTR" (at 1.27 12.7 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:LDC1612_WSON-12" (at 0 -15.24 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "TI LDC1612 2-ch inductive sensor, WSON-12, I2C addr 0x2A/0x2B" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "LDC1612_0_1"
+      (rectangle (start -7.62 10.16) (end 7.62 -10.16) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "LDC1612_1_1"
+      (pin power_in line (at -12.7 7.62 0) (length 5.08) (name "VDD(1.8V)" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin power_in line (at -12.7 2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin bidirectional line (at -12.7 -2.54 0) (length 5.08) (name "SDA" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin input line (at -12.7 -7.62 0) (length 5.08) (name "SCL" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin input line (at 12.7 7.62 0) (length 5.08) (name "ADDR" (effects (font (size 1.27 1.27)))) (number "5"))
+      (pin input line (at 12.7 2.54 0) (length 5.08) (name "SD" (effects (font (size 1.27 1.27)))) (number "6"))
+      (pin output line (at 12.7 -2.54 0) (length 5.08) (name "INTB" (effects (font (size 1.27 1.27)))) (number "7"))
+      (pin passive line (at 12.7 -7.62 0) (length 5.08) (name "IN0A" (effects (font (size 1.27 1.27)))) (number "8"))
+      (pin passive line (at 2.54 -15.24 90) (length 5.08) (name "IN0B" (effects (font (size 1.27 1.27)))) (number "9"))
+    )
+  )
+
+  ;; ── MT3608 Boost Converter ──
+  (symbol "MT3608"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -5.08 -10.16 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "MT3608" (at 0 10.16 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-6" (at 0 -12.7 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Aerosemi MT3608 boost converter, SOT-23-6, 4A switch" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "MT3608_0_1"
+      (rectangle (start -5.08 7.62) (end 5.08 -7.62) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "MT3608_1_1"
+      (pin passive line (at -10.16 5.08 0) (length 5.08) (name "SW" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin power_in line (at -10.16 0 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin input line (at -10.16 -5.08 0) (length 5.08) (name "FB" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin input line (at 10.16 5.08 0) (length 5.08) (name "EN" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin power_in line (at 10.16 0 0) (length 5.08) (name "VIN" (effects (font (size 1.27 1.27)))) (number "5"))
+      (pin no_connect line (at 10.16 -5.08 0) (length 5.08) (name "NC" (effects (font (size 1.27 1.27)))) (number "6"))
+    )
+  )
+
+  ;; ── SK6812-mini RGB LED ──
+  (symbol "SK6812-mini"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "D" (at -5.08 -7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "SK6812-mini" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:SK6812-mini" (at 0 -10.16 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "SK6812-mini 2x2mm addressable RGB LED, WS2812-compatible" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "SK6812-mini_0_1"
+      (rectangle (start -5.08 5.08) (end 5.08 -5.08) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "SK6812-mini_1_1"
+      (pin power_in line (at -10.16 2.54 0) (length 5.08) (name "VDD" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin power_in line (at -10.16 -2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin input line (at 10.16 2.54 0) (length 5.08) (name "DIN" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin output line (at 10.16 -2.54 0) (length 5.08) (name "DOUT" (effects (font (size 1.27 1.27)))) (number "4"))
+    )
+  )
+
+  ;; ── Reed Switch (NO) ──
+  (symbol "Reed_Switch_NO"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "SW" (at -7.62 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "Reed_NO" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:Reed_Switch_14mm" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Normally-open magnetic reed switch, glass-encapsulated, 10-15 AT" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "Reed_Switch_NO_0_1"
+      (rectangle (start -7.62 3.81) (end 7.62 -3.81) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "Reed_Switch_NO_1_1"
+      (pin passive line (at -12.7 0 0) (length 5.08) (name "A" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at 12.7 0 0) (length 5.08) (name "B" (effects (font (size 1.27 1.27)))) (number "2"))
+    )
+  )
+
+  ;; ── Piezo Transducer ──
+  (symbol "Piezo_Transducer"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "BZ" (at -5.08 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "Piezo_10x10mm" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:Piezo_Transducer_10x10" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Piezo surface transducer 10x10mm, bonded to enclosure wall" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "Piezo_Transducer_0_1"
+      (rectangle (start -5.08 2.54) (end 5.08 -2.54) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "Piezo_Transducer_1_1"
+      (pin passive line (at -10.16 0 0) (length 5.08) (name "+" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at 10.16 0 0) (length 5.08) (name "-" (effects (font (size 1.27 1.27)))) (number "2"))
+    )
+  )
+
+  ;; ── 74AHCT1G125 Level Shifter ──
+  (symbol "74AHCT1G125"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -5.08 -7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "74AHCT1G125" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 0 -10.16 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Single buffer with 3-state output, 3.3V→5V level shift, SOT-23-5" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "74AHCT1G125_0_1"
+      (rectangle (start -5.08 5.08) (end 5.08 -5.08) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "74AHCT1G125_1_1"
+      (pin input line (at -10.16 2.54 0) (length 5.08) (name "~OE" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin input line (at -10.16 0 0) (length 5.08) (name "A" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin power_in line (at -10.16 -2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin output line (at 10.16 2.54 0) (length 5.08) (name "Y" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin power_in line (at 10.16 -2.54 0) (length 5.08) (name "VCC(5V)" (effects (font (size 1.27 1.27)))) (number "5"))
+    )
+  )
+
+  ;; ── MX25R1635F Flash ──
+  (symbol "MX25R1635F"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -7.62 -10.16 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "MX25R1635F" (at 0 10.16 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (at 0 -12.7 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Macronix 16Mbit SPI NOR Flash, SOIC-8, 2 MB" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "MX25R1635F_0_1"
+      (rectangle (start -7.62 7.62) (end 7.62 -7.62) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "MX25R1635F_1_1"
+      (pin input line (at -12.7 5.08 0) (length 5.08) (name "~CS" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin output line (at -12.7 0 0) (length 5.08) (name "SO/MISO" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin power_in line (at -12.7 -5.08 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin input line (at 12.7 5.08 0) (length 5.08) (name "SI/MOSI" (effects (font (size 1.27 1.27)))) (number "5"))
+      (pin input line (at 12.7 0 0) (length 5.08) (name "SCK" (effects (font (size 1.27 1.27)))) (number "6"))
+      (pin power_in line (at 12.7 -5.08 0) (length 5.08) (name "VCC" (effects (font (size 1.27 1.27)))) (number "8"))
+    )
+  )
+
+  ;; ── BQ25120A Charger ──
+  (symbol "BQ25120A"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -10.16 -12.7 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "BQ25120A" (at 0 12.7 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:BQ25120A_DSBGA-25" (at 0 -15.24 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "TI BQ25120A PMIC charger, DSBGA-25, I2C" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "BQ25120A_0_1"
+      (rectangle (start -10.16 10.16) (end 10.16 -10.16) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "BQ25120A_1_1"
+      (pin power_in line (at -15.24 7.62 0) (length 5.08) (name "IN(5V)" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin power_in line (at -15.24 2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin bidirectional line (at -15.24 -2.54 0) (length 5.08) (name "SDA" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin input line (at -15.24 -7.62 0) (length 5.08) (name "SCL" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin power_out line (at 15.24 7.62 0) (length 5.08) (name "BAT+" (effects (font (size 1.27 1.27)))) (number "5"))
+      (pin passive line (at 15.24 2.54 0) (length 5.08) (name "NTC" (effects (font (size 1.27 1.27)))) (number "6"))
+      (pin input line (at 15.24 -2.54 0) (length 5.08) (name "~MR" (effects (font (size 1.27 1.27)))) (number "7"))
+      (pin input line (at 15.24 -7.62 0) (length 5.08) (name "~CD" (effects (font (size 1.27 1.27)))) (number "8"))
+    )
+  )
+
+  ;; ── IP6833 Qi Receiver ──
+  (symbol "IP6833"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -12.7 -12.7 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "IP6833" (at 0 12.7 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:IP6833_QFN-28" (at 0 -15.24 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Injoinic IP6833 Qi wireless receiver, QFN-28, 5W" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "IP6833_0_1"
+      (rectangle (start -12.7 10.16) (end 12.7 -10.16) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "IP6833_1_1"
+      (pin passive line (at -17.78 7.62 0) (length 5.08) (name "AC1" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at -17.78 2.54 0) (length 5.08) (name "AC2" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin power_out line (at -17.78 -2.54 0) (length 5.08) (name "RECT" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin passive line (at -17.78 -7.62 0) (length 5.08) (name "BOOT" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin power_out line (at 17.78 7.62 0) (length 5.08) (name "VOUT(5V)" (effects (font (size 1.27 1.27)))) (number "5"))
+      (pin power_out line (at 17.78 2.54 0) (length 5.08) (name "VDD" (effects (font (size 1.27 1.27)))) (number "6"))
+      (pin power_in line (at 17.78 -2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "7"))
+      (pin power_in line (at 0 -15.24 90) (length 5.08) (name "EP(GND)" (effects (font (size 1.27 1.27)))) (number "8"))
+    )
+  )
+
+  ;; ── IS31FL3194 RGB LED Driver ──
+  (symbol "IS31FL3194"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -7.62 -7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "IS31FL3194" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:IS31FL3194_QFN-16" (at 0 -10.16 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "ISSI IS31FL3194 I2C RGB LED driver, QFN-16, addr 0x53" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "IS31FL3194_0_1"
+      (rectangle (start -7.62 5.08) (end 7.62 -5.08) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "IS31FL3194_1_1"
+      (pin power_in line (at -12.7 2.54 0) (length 5.08) (name "VCC" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin power_in line (at -12.7 -2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin bidirectional line (at 12.7 2.54 0) (length 5.08) (name "SDA" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin input line (at 12.7 -2.54 0) (length 5.08) (name "SCL" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin output line (at 0 -10.16 90) (length 5.08) (name "OUTR" (effects (font (size 1.27 1.27)))) (number "5"))
+      (pin output line (at 2.54 -10.16 90) (length 5.08) (name "OUTG" (effects (font (size 1.27 1.27)))) (number "6"))
+      (pin output line (at 5.08 -10.16 90) (length 5.08) (name "OUTB" (effects (font (size 1.27 1.27)))) (number "7"))
+    )
+  )
+
+  ;; ── BMP390 Pressure Sensor ──
+  (symbol "BMP390"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -7.62 -7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "BMP390" (at 0 7.62 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:BMP390_LGA-10" (at 0 -10.16 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Bosch BMP390 barometric pressure sensor, sub-sensor of BHI260AP" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "BMP390_0_1"
+      (rectangle (start -7.62 5.08) (end 7.62 -5.08) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "BMP390_1_1"
+      (pin power_in line (at -12.7 2.54 0) (length 5.08) (name "VDD(1.8V)" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin power_in line (at -12.7 -2.54 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin input line (at 12.7 2.54 0) (length 5.08) (name "SCK" (effects (font (size 1.27 1.27)))) (number "3"))
+      (pin bidirectional line (at 12.7 0 0) (length 5.08) (name "SDI/SDO" (effects (font (size 1.27 1.27)))) (number "4"))
+      (pin input line (at 12.7 -2.54 0) (length 5.08) (name "~CSB" (effects (font (size 1.27 1.27)))) (number "5"))
+    )
+  )
+
+  ;; ── Qi Coil (wound, WPC A11) ──
+  (symbol "Qi_Coil"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "L" (at -7.62 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "24uH_WPC_A11" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:Qi_Coil_WPC_A11" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Qi WPC A11 receiver coil, 24 µH, wound wire + ferrite backer" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "Qi_Coil_0_1"
+      (rectangle (start -7.62 2.54) (end 7.62 -2.54) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "Qi_Coil_1_1"
+      (pin passive line (at -12.7 0 0) (length 5.08) (name "AC1" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at 12.7 0 0) (length 5.08) (name "AC2" (effects (font (size 1.27 1.27)))) (number "2"))
+    )
+  )
+
+  ;; ── P-MOSFET Power Gate ──
+  (symbol "PMOS_Gate"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "Q" (at -7.62 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "PMOS_SOT23" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "P-channel MOSFET, SOT-23, power gate switch" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "PMOS_Gate_0_1"
+      (rectangle (start -7.62 3.81) (end 7.62 -3.81) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "PMOS_Gate_1_1"
+      (pin input line (at -12.7 0 0) (length 5.08) (name "G" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at 12.7 2.54 0) (length 5.08) (name "S" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin passive line (at 0 -8.89 90) (length 5.08) (name "D" (effects (font (size 1.27 1.27)))) (number "3"))
+    )
+  )
+
+  ;; ── Battery Connector 3-pin JST ──
+  (symbol "Battery_JST_3pin"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "J" (at -5.08 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "BAT_JST_ACH" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Connector_JST:JST_ACH_BM03B-ACHSS-GAN-ETF" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "3-pin JST ACH battery connector (VBAT, NTC, GND)" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "Battery_JST_3pin_0_1"
+      (rectangle (start -5.08 3.81) (end 5.08 -3.81) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "Battery_JST_3pin_1_1"
+      (pin passive line (at -10.16 2.54 0) (length 5.08) (name "VBAT" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at -10.16 -2.54 0) (length 5.08) (name "NTC" (effects (font (size 1.27 1.27)))) (number "2"))
+      (pin passive line (at 10.16 0 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "3"))
+    )
+  )
+
+  ;; ── Piezo Pushbutton (Langir 16mm) ──
+  (symbol "Piezo_Button"
+    (in_bom yes) (on_board yes)
+    (property "Reference" "SW" (at -7.62 -5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "Langir_16mm_Piezo" (at 0 5.08 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:Piezo_Button_16mm_Panel" (at 0 -7.62 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "Langir 16mm piezoelectric pushbutton, momentary NO, IP68/69K" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "Piezo_Button_0_1"
+      (rectangle (start -7.62 3.81) (end 7.62 -3.81) (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "Piezo_Button_1_1"
+      (pin passive line (at -12.7 0 0) (length 5.08) (name "OUT" (effects (font (size 1.27 1.27)))) (number "1"))
+      (pin passive line (at 12.7 0 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2"))
+    )
+  )
+)

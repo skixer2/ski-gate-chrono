@@ -46,3 +46,10 @@ android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 # Local harness run summaries / logs (machine-generated)
 High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/run_*.md
 High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/run_*.log
+
+# Release-test packaging / links (machine-generated, keep local)
+High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/pack_release_*.ps1
+High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/release_tests_*_link
+
+# Raw hex dumps (runtime test artifacts)
+High_Level_Requirements/system_design/system_tests/results/*.txt

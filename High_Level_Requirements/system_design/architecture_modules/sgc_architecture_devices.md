@@ -1,5 +1,6 @@
-# SGC — Architecture: Device Firmware (v1.4)
+# SGC — Architecture: Device Firmware (v1.6 — Pole-Mount)
 
+*2026-08-12 — v1.6: Hardware arming target = Langir 16 mm piezo button on P0.02 (edge interrupt; single press = arm, 5 presses = factory reset). ⚠️ Firmware code below still describes the LDC1612 proximity path — NOT yet migrated; waiting on JP to buy + wire the button. See sgc_architecture_hardware.md v2.2 + sgc_bom.md v4.0.*
 *2026-06-27 — v1.4: Start detection simplified to drop-only (cumulative > 2.0 m). Drain changed to data-driven (pop N = min(2, ring.count())). See sgc_system_design.md v2.2 for rationale.*
 *2026-06-09 — v1.3: Architecture pivot — RFID removed from active BOM. Start detector (speed OR drop). rfid_reader marked as v2 stub. See sgc_architecture_decisions.md for pivot rationale.*
 
@@ -1129,17 +1130,18 @@ not I²C. The correct approach is Arduino_BHY2:
 | `Wire.requestFrom(0x77, 3)` | `baro.dataAvailable(); baro.value();` |
 | `PIN_FIFO_IRQ = p2` | BHY2 handles FIFO internally |
 
-### LDC1612 (SGC Addition — I²C)
+### LDC1612 (SGC Addition — I²C, ⚠️ v2 only)
 
 The LDC1612 is the only sensor NOT managed by BHY2. It connects to I2C1
-(P0.22/P0.23) at address 0x2A with interrupt on P0.02.
+(P0.22/P0.23) at address 0x2A with interrupt on P0.02. ⚠️ v2 forearm guard only —
+DNP in v1. In v1 pole-mount, P0.02 is the Langir piezo-button arming input instead.
 
 ```cpp
 void init() {
     // I²C address: 0x2A on Wire (P0.22/P0.23)
     // Channel 0 only
     // RCOUNT: ~10 Hz in low-power mode (SLEEP), continuous in IDLE/ARMED
-    // INTB pin: P0.02 — asserts when proximity threshold crossed
+    // INTB pin: P0.02 — asserts when proximity threshold crossed (v2 only)
 }
 
 ---
@@ -1247,7 +1249,7 @@ Key changes from v1.3:
 - Battery via BQ25120/BHY2 (no VBAT_ADC)
 - Flash = Nicla's MX25R1635F U7 (no external W25Q16)
 - All GPIOs verified against ANNA-B112 datasheet Table 7
-- SGC v1 pins: P0.02 (LDC_INTB), P0.09 (BEEPER), P0.10 (QI_DETECT), P0.19 (LED_STRIP)
+- SGC v1 pins: P0.02 (BUTTON — piezo, edge interrupt), P0.09 (BEEPER), P0.10 (QI_DETECT), P0.19 (LED_STRIP)
 - SGC v2 pins: P0.20 (RFID_CS), P0.24 (RFID_EN), P0.29 (UWB_CS), P0.30 (UWB_PWR)
 
 ---

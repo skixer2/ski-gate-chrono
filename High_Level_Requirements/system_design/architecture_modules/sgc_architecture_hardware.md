@@ -1,6 +1,10 @@
-# SGC — Architecture: Hardware (v2.0)
+# SGC — Architecture: Hardware (v2.2 — Pole-Mount)
 
-*2026-06-17 — v2.1: Corrected I²C bus naming (Wire=p22/p23, Wire1=p15/p16 per Nicla variant). BHI260AP on internal SPI1 (p3/p4/p5, CS=p31). Flash on SPI1 (CS=p26). Onboard RGB is I2C IS31FL3194 on Wire1, not GPIO. SK6812 strip on P0.19 for custom PCB only.*
+*2026-08-12 — v2.2: Arming changed from magnetic reed switch (rejected — magnet field de-calibrates the BMM150 magnetometer in the BHI260AP) to a Langir 16 mm piezoelectric pushbutton on P0.02. LDC1612 dropped from active BOM (footprint retained for v2). See sgc_bom.md v4.0.*
+
+*2026-08-11 — v2.1: AD-017 pole-mount pivot. Form factor changed from forearm guard to pole-shaft mount (below grip, back side). Enclosure §8 rewritten. Arming §3 changed from LDC1612 cross-arm to magnetic reed switch. Forearm guard preserved as §8bis for v2.
+
+*2026-06-17 — v2.0: Corrected I²C bus naming (Wire=p22/p23, Wire1=p15/p16 per Nicla variant). BHI260AP on internal SPI1 (p3/p4/p5, CS=p31). Flash on SPI1 (CS=p26). Onboard RGB is I2C IS31FL3194 on Wire1, not GPIO. SK6812 strip on P0.19 for custom PCB only.*
 
 *2026-06-16 — v2.0: Complete pin reassignment. Custom PCB is a strict Nicla Sense ME replica. All Nicla pins replicated exactly. SGC peripherals on free ANNA-B112 GPIOs only. BHI260AP/BMP390 accessed via Arduino_BHY2 (SPI slave on P0.03–P0.05). Battery via BQ25120/BHY2. Flash = Nicla's onboard MX25R1635F (U7). RFID + UWB v2 kept. See sgc_architecture_decisions.md and config.h v2.0 for full mapping rationale.*
 
@@ -98,7 +102,7 @@ added using only free ANNA-B112 GPIOs.
                    ║    └─────────┘                                ║
                    ║                                               ║
                    ║  GPIO pins (free ANNA-B112 GPIOs):            ║
-                   ║    P0.02 → LDC_INTB   (interrupt)             ║
+                   ║    P0.02 → BUTTON     (piezo, edge intr)     ║
                    ║    P0.09 → BEEPER     (PWM piezo)             ║
                    ║    P0.10 → QI_DETECT  (Qi presence)           ║
                    ║    P0.19 → LED_STRIP  (SK6812, custom PCB)   ║
@@ -165,7 +169,7 @@ Assigned to free ANNA-B112 GPIOs not consumed by the Nicla replica.
 
 | GPIO | SGC v1 (core) | SGC v2 (RFID + UWB) | Nicla original |
 |------|--------------|---------------------|----------------|
-| P0.02 | `LDC_INTB` | `LDC_INTB` | A0 header |
+| P0.02 | `BUTTON` | `BUTTON` | A0 header |
 | P0.09 | `BEEPER` | `BEEPER` | UART RX / LPIO2 |
 | P0.10 | `QI_DETECT` | `QI_DETECT` | LPIO3 header |
 | P0.19 | `LED_STRIP` | `LED_STRIP` | ESLOV INT |
@@ -234,7 +238,9 @@ SPI register access needed. Arduino alias: `SPI1` object (MOSI=p4, MISO=p5, SCK=
 | Start detection | Descent > 1.5 m/s vertical velocity (F04) |
 | End detection | 10 s flatline ±0.3 m/s + IMU stillness (F06) |
 
-### LDC1612 — Inductive Proximity Sensor (SGC Addition)
+### LDC1612 — Inductive Proximity Sensor (⚠️ v2/Forearm Guard Only)
+
+**v1 (pole mount): NOT populated.** The LDC1612 is unused in the pole-mount form factor. Footprint retained on PCB for potential v2 forearm guard variant.
 
 | Parameter | Value |
 |-----------|-------|
@@ -247,7 +253,30 @@ SPI register access needed. Arduino alias: `SPI1` object (MOSI=p4, MISO=p5, SCK=
 | Factory reset | 20 s continuous hold (F42) |
 | Sleep polling | 10 Hz, ~50 µA (F13 wake) |
 
-**Rationale:** No mechanical button, no moving parts — preserves IP67 sealing. The athlete naturally brings forearms together before pushing off at the start gate. This motion is detected as rising LDC1612 inductance shift from the approaching copper/iron target disc on the opposite strap. Both arms arm independently on their own sensor.
+**Rationale (v2):** No mechanical button, no moving parts — preserves IP67 sealing. The athlete naturally brings forearms together before pushing off at the start gate. This motion is detected as rising LDC1612 inductance shift from the approaching copper/iron target disc on the opposite strap. Both arms arm independently on their own sensor.
+
+### Piezo Pushbutton — Arming (v1 Pole-Mount)
+
+| Parameter | Value |
+|-----------|-------|
+| Type | Langir 16 mm piezoelectric pushbutton, momentary NO (pulse output) |
+| Interface | GPIO P0.02 (internal pull-up). Falling edge = press. **Edge interrupt** (not 10 Hz poll) |
+| Activation | Athlete presses button with back of glove |
+| Arm | Single press (F03) |
+| Factory reset | 5 presses within 3 s (F42) |
+| Button | Langir 16 mm, IP68/IP69K, stainless, ≤3 N, 50 M cycles, −40…+85 °C |
+| Output | NO pulse 20–1000 ms (piezo — no sustained hold) |
+
+**Rationale:** No magnet (avoids BMM150 magnetometer de-calibration), no moving parts
+(piezo element behind a solid metal face → trivial IP67 sealing), glove-friendly
+(≤3 N on a Ø16 mm face). Replaces both the reed switch (rejected — magnet field
+interferes with the BMM150 in the BHI260AP) and the LDC1612 (footprint too large
+for pole-mount + aluminium pole shaft is itself a conductive target).
+
+**Firmware change:** a piezo emits a *pulse*, not a held level. P0.02 must be configured
+as a **GPIO edge interrupt** — a 10 Hz poll will miss the 20 ms pulse. Arming logic moves
+from "1000 ms continuous hold" to "single press"; factory reset from "20 s hold" to
+"5 presses in 3 s". Debounce is minimal (single clean closure).
 
 ---
 
@@ -601,9 +630,100 @@ LED draw ~15 mA @ 5V → ~85 mW load on battery (~23 mA @ 3.7V after efficiency)
 
 ---
 
-## 8. Enclosure
+## 8. Enclosure — Pole Mount (v1 Primary)
 
 ### Mechanical Design
+
+The v1 device mounts on the upper ski pole shaft, just below the handgrip. The electronics face the **back** of the pole (trailing side, away from gates). The pole shaft itself shields the device from direct gate impacts.
+
+| Parameter | Value | Reference |
+|-----------|-------|-----------|
+| Material | ABS or polycarbonate | LEDs visible through translucent wall |
+| Sealing | IP67, O-ring between two shell halves + sealed Ø16 mm button cutout (piezo — no moving part through wall) | H03 |
+| Arming | Langir 16 mm piezo pushbutton, Ø16 mm panel cutout (nut + O-ring) | I12, H14 |
+| Beeper | Piezo surface transducer bonded to inner enclosure wall, facing pole | No sound port needed (H03, I08) |
+| LED window | Translucent wall over 5× SK6812-mini LEDs, facing outward/upward | F41 |
+| Qi coil | Mounted on back side of PCB, facing away from athlete | H08 isolation > 10 mm |
+| Dimensions | ~25 × 25 × 70 mm (width × height × length along pole axis) | Not critical for v1; refine after PCB layout |
+| Weight | ≤ 50 g (electronics + enclosure + strap) | H06 |
+| Shock | Pole shaft absorbs gate impact energy — device on back side is shielded | Reduced from 200g forearm requirement |
+| Mounting | Silicone-coated elastic strap + quick-release buckle. Wraps around pole shaft and device body | One size fits all pole diameters (16–18 mm typical) |
+
+### Electronics Placement on Pole
+
+```
+        GATE SIDE (front)
+        ═══════════════════
+              │
+    ┌─────────┴─────────┐
+    │    POLE SHAFT      │  ← Gate impacts hit HERE
+    │   (Al or Carbon)   │
+    └─────────┬─────────┘
+              │
+        ═══════════════════
+        BACK SIDE (trailing)
+              │
+    ┌─────────┴─────────┐
+    │  ┌───────────────┐ │
+    │  │ SGC DEVICE    │ │  ← Shielded from impact
+    │  │ (electronics) │ │
+    │  └───────────────┘ │
+    └───────────────────┘
+         Strap wraps
+         around pole + device
+```
+
+### Enclosure Construction
+
+Two injection-molded or 3D-printed halves (top/bottom or front/back) with an O-ring groove around the perimeter. The two halves are screwed together (screws outside the O-ring seal — IP67 maintained). The pole strap passes through slots in the enclosure or wraps externally.
+
+- **Prototype:** 3D-printed (FDM or SLA), ABS or PC-like resin. ~€5–10 per shell
+- **Production:** Injection-molded ABS or PC. Single-cavity tooling, no complex slides. ~€2–4/unit at 5k+, tooling ~€3–5k
+
+### Arming Button Placement
+
+The piezo button mounts in a **Ø16 mm panel cutout** on the **outward or top face** of
+the enclosure (never the pole-facing side), raised 3–5 mm so the back of a glove finds
+it blind. Nut + O-ring seals the cutout to IP69K. The SK6812 LED strip points
+outward/upward adjacent to the button, so the athlete sees the arm confirmation
+(green chase) as they press.
+
+```
+        OUTWARD face (button + LED)
+        ┌──────────────────────────┐
+        │  [BUTTON]  ●●●●●  LEDs   │
+        │                          │
+        └──────────────────────────┘
+              POLE SHAFT (back)
+```
+
+The button is a self-sealed unit (piezo behind a solid metal face) — no moving part
+penetrates the enclosure wall, so IP67 is preserved without a rubber boot. Each device
+arms on its own button press (no cross-pole interaction needed).
+
+### Thermal Considerations
+
+| Condition | Behavior |
+|-----------|----------|
+| −20°C to −10°C | Battery derated ~25%. LDOs and MCU rated to −40°C — no issue |
+| Qi charging (any temp) | BQ25100 manages charge current. NTC on battery lead provides temp monitoring |
+| Summer storage | Self-discharge ~5%/month. Shelf life ~6–8 months before recharge needed |
+
+### Manufacturing Notes (Pole Mount)
+
+- **Assembly:** PCB + battery placed in enclosure half → O-ring seated → second half screwed on → strap attached. No potting required (pole shaft absorbs impact, device is shielded)
+- **Battery:** user/service-replaceable via the 3-pin JST-ACH connector (not potted or soldered) — deliberate for extreme cold-weather duty. Emergency hard power cut = open the shell (4 screws, outside the O-ring seal) and unplug/re-plug the battery. Zero magnets in the product.
+- **Calibration:** BMM150 figure-8 after final assembly; BLE advertising verified
+- **Packaging:** Retail box with quick-start card, Qi charging pad, spare strap
+
+---
+
+## 8bis. Enclosure — Forearm Guard (⚠️ v2 / Future Development)
+
+*Preserved from v2.0 hardware design. The forearm guard form factor is deferred to v2 as a premium product variant. The same electronics module (pole-mount PCB) fits inside a larger protective shell with EVA foam padding and velcro straps.
+Key additions for v2: LDC1612 cross-arm proximity arming, 200g shock rating, injection-molded PC shell with potting.*
+
+### Mechanical Design (v2)
 
 | Parameter | Value | Reference |
 |-----------|-------|-----------|
@@ -618,7 +738,7 @@ LED draw ~15 mA @ 5V → ~85 mW load on battery (~23 mA @ 3.7V after efficiency)
 | Shock | 200 g | H09 — internal potting for impact resistance |
 | Strap | Elastic forearm band + quick-release clip | Forearm mounting |
 
-### Thermal Considerations
+### Thermal Considerations (v2)
 
 | Condition | Behavior |
 |-----------|----------|
@@ -626,7 +746,7 @@ LED draw ~15 mA @ 5V → ~85 mW load on battery (~23 mA @ 3.7V after efficiency)
 | Qi charging (any temp) | BQ25100 manages charge current. NTC on battery lead provides temp monitoring |
 | Summer storage | Self-discharge ~5%/month. Shelf life ~6–8 months before recharge needed |
 
-### Manufacturing Notes
+### Manufacturing Notes (v2)
 
 - **Prototype:** 3D-printed (MJF or SLA), translucent polycarbonate-like resin. ~$15–20 per shell
 - **Production:** Injection-molded PC. Tooling amortized over 5000+ units (~$6/unit at volume)
@@ -699,11 +819,12 @@ LED draw ~15 mA @ 5V → ~85 mW load on battery (~23 mA @ 3.7V after efficiency)
 |-----------|---------|------|----------|-------|
 | BHI SPI1 | BHI260AP, Flash U7 | P0.03–05 (SCK/MOSI/MISO), P0.26 (Flash CS), P0.31 (BHI CS) | SPI Mode 0 | ≤ 8 MHz |
 | User SPI | RFID (v2), UWB (v2) | P0.11 (SCK), P0.27 (MOSI), P0.28 (MISO), P0.20 (RFID CS), P0.29 (UWB CS) | SPI Mode 0 | ≤ 8 MHz |
-| I2C0 / Wire | LDC1612 | P0.22 (SDA), P0.23 (SCL) | I²C Fast-mode | 400 kHz |
+| I2C0 / Wire | LDC1612 (⚠️ v2 only) | P0.22 (SDA), P0.23 (SCL) | I²C Fast-mode | 400 kHz |
 | I2C1 / Wire1 | RGB LED, BQ25120A | P0.15 (SDA), P0.16 (SCL) | I²C Fast-mode | 400 kHz |
 | BLE | Phone | nRF52 internal RF | BLE 5.0, LE 2M PHY | ≤ 2 Mbps |
 | BHI260AP INT | nRF52832 | P0.14 | GPIO rising edge | Managed by BHY2 |
-| LDC1612 INTB | nRF52832 | P0.02 | GPIO rising edge | Wake from SLEEP |
+| Piezo Button (v1) | Arming | P0.02 | GPIO IN, internal pull-up, edge interrupt | Pulse 20–1000 ms |
+| LDC1612 INTB (v2) | nRF52832 | P0.02 | GPIO rising edge | Wake from SLEEP |
 | RGB LED strip | 5× SK6812-mini (custom PCB) | P0.19 | Single-wire NZR | 800 kHz |
 | Boost EN | MT3608 EN pin | P0.24* | GPIO OUT | HIGH = 5V active |
 | Beeper PWM | Piezo transducer | P0.09 | GPIO PWM | ~4 kHz |
@@ -722,17 +843,18 @@ In v2, RFID_EN takes P0.24 and boost EN must move to another free GPIO (P0.20 or
 |----------------------|---------------------|---------------------------|
 | H01 (−20°C to +40°C) | §7 Power, §8 Enclosure | LDOs + MCU rated −40°C; Li-Po derated |
 | H02 (≥ 8h at −10°C) | §7 Session Budget | 600 mAh → ~11 sessions without RFID (v1) |
-| H03 (IP67 sealed) | §8 Enclosure | Polycarbonate shell, no ports, surface transducer |
-| H04 (inductive through shell) | §3 LDC1612, §8 Target disc | Passive copper/iron disc in opposite strap — cross-arm proximity, no moving parts |
-| H05 (< 16 mm thick) | §8 Enclosure | PCB 0.8mm + battery + Qi coil stack |
-| H06 (≤ 40 g) | BOM | ~25 g electronics + 10 g enclosure + strap |
+| H03 (IP67 sealed) | §8 Enclosure | ABS/PC shell, O-ring, no ports, surface transducer |
+| H04 (inductive through shell) | §3 LDC1612 (⚠️ v2 only) | Passive copper/iron disc in opposite strap — cross-arm proximity, no moving parts. v1 uses piezo-button arming (H14) |
+| H05 (< 16 mm thick) | §8bis (⚠️ v2 only) | Forearm guard form factor. v1 pole mount: ~25 mm total |
+| H06 (≤ 50 g) | BOM | ~25 g electronics + 15 g enclosure + 10 g strap (pole mount v1) |
 | H07 (≥ 10 runs Flash) | §1 MX25R1635F | 2 MB → ~18 runs compressed |
 | H08 (no ferromagnetic near BMM150) | §9 Keepout Zones | > 10 mm Qi coil, > 10 mm RFID antenna |
-| H09 (200 g shock) | §8 Enclosure | Internal potting, 0.8 mm PCB |
+| H09 (200 g shock) | §8bis (⚠️ v2 only) | Forearm guard potting. v1: pole shaft shields device from impacts |
 | H10 (Qi charging, IP67) | §7 Power Tree | Qi coil → BQ25100, sealed enclosure |
-| H11 (UHF RFID module) | §5 RFID Subsystem | Impinj E310 module, SPI, ceramic antenna |
-| H12 (RFID not interfere with BMM150) | §5 Antenna Keepout | > 10 mm separation + ground plane |
+| H11 (UHF RFID module) | §5 RFID Subsystem (⚠️ v2 only) | Impinj E310 module, SPI, ceramic antenna |
+| H12 (RFID not interfere with BMM150) | §5 Antenna Keepout (⚠️ v2 only) | > 10 mm separation + ground plane |
 | H13 (DW3000 unpopulated footprint) | §6 UWB Footprint | QFN pad + CS + VDD MOSFET, no IC loaded |
+| H14 (button arming) | §3 Piezo Pushbutton, §8 Enclosure | Langir 16 mm piezo button on P0.02; single press to arm (F03); 5 presses in 3 s = factory reset (F42) |
 
 ---
 

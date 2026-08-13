@@ -1,5 +1,6 @@
-# SGC — PCB Layout Design (v3.0 — Nicla Sense ME Replica)
+# SGC — PCB Layout Design (v3.1 — Nicla Sense ME Replica)
 
+*2026-08-12 — v3.1: Arming = Langir 16 mm piezo button on P0.02 (edge interrupt). LDC1612 + coil marked v2-only (DNP in v1). See sgc_architecture_hardware.md v2.2 + sgc_bom.md v4.0.*
 *2026-06-16 — v3.0: Complete redesign. Custom PCB = strict Nicla Sense ME replica.
 All Nicla internal connections replicated exactly. SGC peripherals added using only
 free ANNA-B112 GPIOs. BHI260AP/BMP390 via Arduino_BHY2 (SPI P0.03–P0.05).
@@ -36,7 +37,7 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 │                                                          │
 │  ─────────────── SGC Peripherals ─────────────────      │
 │                                                          │
-│  [ LDC1612 (U1) ]  [ LDC Coil (L1) 14mm ]              │
+│  [ LDC1612 (U1) ]  [ LDC Coil (L1) 14mm ]  (v2 only)   │
 │  [ WSON-12      ]  [ PCB spiral trace  ]                │
 │                                                          │
 │  [ SK6812 ×5 ][ Beeper ][ Qi Detect ][ 5V Boost ]     │
@@ -61,12 +62,13 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 
 ### I2C Buses
 - **I2C0 (P0.15/P0.16):** Nicla stock — IS31FL3194 + BQ25120A. No SGC devices.
-- **I2C1 (P0.22/P0.23):** LDC1612. 2.2k pull-ups near the MCU.
+- **I2C1 (P0.22/P0.23):** LDC1612 (⚠️ v2 only). 2.2k pull-ups near the MCU.
+  Arming in v1 is the piezo button on P0.02 (edge interrupt).
 
-### LDC1612 Coil
+### LDC1612 Coil (⚠️ v2 only — DNP in v1)
 - 14 mm diameter, 2-layer PCB trace spiral
 - Keepout zone: > 10 mm from any ferrous components, > 5 mm from BHI260AP (contains BMM150 magnetometer)
-- Placed near edge of PCB for cross-arm proximity detection
+- Placed near edge of PCB for cross-arm proximity detection (v2 forearm guard)
 
 ### Qi Receiver (IP6833) + Coil
 - IP6833 QFN-28 placed near Qi coil terminals for shortest AC traces (< 10 mm)
@@ -119,13 +121,13 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 | SGC_SPI_SCK | ANNA-B112 pin 34 | RFID, UWB | < 40 mm | v2 only |
 | SGC_SPI_MOSI | ANNA-B112 pin 29 | RFID, UWB | < 40 mm | v2 only |
 | SGC_SPI_MISO | ANNA-B112 pin 28 | RFID, UWB | < 40 mm | v2 only |
-| I2C1_SDA | ANNA-B112 pin 36 | LDC1612 | < 30 mm | |
-| I2C1_SCL | ANNA-B112 pin 37 | LDC1612 | < 30 mm | |
+| I2C1_SDA | ANNA-B112 pin 36 | LDC1612 (v2) | < 30 mm | |
+| I2C1_SCL | ANNA-B112 pin 37 | LDC1612 (v2) | < 30 mm | |
 | LED_DIN | ANNA-B112 pin 35 | SK6812 D1 | < 20 mm | NZR 800 kHz, via level shifter |
 | BOOST_EN | ANNA-B112 GPIO | MT3608 EN | < 20 mm | HIGH = 5V active |
 | BEEPER | ANNA-B112 pin 21 | BZ1 | < 30 mm | PWM ~4 kHz |
 | QI_DETECT | ANNA-B112 pin 22 | Qi receiver | < 20 mm | |
-| LDC_INTB | ANNA-B112 pin 20 | LDC1612 INTB | < 15 mm | Interrupt, active LOW |
+| BUTTON | ANNA-B112 pin 20 | Langir piezo button | < 15 mm | Falling edge, interrupt |
 | RFID_CS (v2) | ANNA-B112 pin 45 | RFID /CS | < 40 mm | |
 | UWB_CS (v2) | ANNA-B112 pin 27 | DW3000 /CS | < 40 mm | |
 
@@ -133,7 +135,7 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 
 | Layer | Contents |
 |-------|----------|
-| Top (L1) | Components, signals, LDC coil |
+| Top (L1) | Components, signals (LDC coil v2-only) |
 | GND (L2) | Solid ground plane (no splits) |
 | PWR (L3) | 3.3V + 1.8V power planes, split |
 | Bottom (L4) | Qi coil, minimal routing, ground pour |

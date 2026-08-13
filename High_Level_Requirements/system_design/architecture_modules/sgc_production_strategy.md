@@ -1,7 +1,8 @@
-# SGC — Production Strategy (v1.3)
+# SGC — Production Strategy (v1.5 — Pole-Mount)
 
+*2026-08-12 — v1.5: Arming changed from magnetic reed switch (rejected — magnet de-calibrates BMM150) to a Langir 16 mm piezo pushbutton on P0.02. BOM + cost tables updated (button ~€7–12 vs reed ~€0.80).*
+*2026-08-11 — v1.4: AD-017 pole-mount pivot. Simplified mechanical — no injection molding, potting, foam padding, or strap assembly. Forearm guard deferred to v2. Cost estimates updated for pole-mount form factor.*
 *2026-06-29 — v1.3: Detailed cost breakdown (electronics + mechanical per phase), added Section 10 — Selling Price & Margin analysis.*
-
 *2026-06-29 — v1.2: Added Section 5 — Mechanical Design (forearm guard, polycarbonate shell, potting, emergency port/power cut, production phasing for enclosure).*
 *2026-06-29 — v1.1: Added phased ramp-up strategy (P0–P3). Steady-state 200/month is a target, not the starting point.*
 *2026-06-29 — v1.0: Initial version. Captures strategy for producing ~200 units/month using off-the-shelf Nicla Sense ME + custom companion carrier PCB, side-by-side mounting.*
@@ -146,7 +147,7 @@ The Nicla Sense ME sits **next to** the companion carrier PCB on the same plane.
 │  │ Sense ME         │◄──►│  Carrier PCB              │  │
 │  │ (off-the-shelf)  │    │                           │  │
 │  │                  │    │  ┌─────────────────────┐  │  │
-│  │  nRF52832        │    │  │ LDC1612 (I²C 0x2A) │  │  │
+│  │  nRF52832        │    │  │ Button pad (P0.02) │  │  │
 │  │  BHI260AP        │    │  │ 5V Boost SOT-23    │  │  │
 │  │  BMP390          │    │  │ Level Shifter      │  │  │
 │  │  BQ25120A        │    │  │ SK6812 ×5 header   │  │  │
@@ -167,143 +168,122 @@ Nicla pins are brought out via its edge headers/castellated pads to the companio
 
 ---
 
-## 5. Mechanical Design — The Forearm Guard
+## 5. Mechanical Design — Pole Mount (v1 Primary)
 
-The product is **first and foremost a forearm protector** for ski racers. Gate impacts at 80+ km/h are the primary physical threat. Performance timing is the differentiating feature — but protection is the non-negotiable baseline.
+The v1 device clips to the upper ski pole shaft, just below the handgrip.
+Electronics face the back (trailing side), shielded from gate impacts by the pole shaft itself.
+No potting, no foam padding, no injection-molded shell — just a small sealed enclosure + strap.
 
 ### 5.1 Product Identity
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              SGC FOREARM GUARD                       │
+│              SGC POLE TIMER                          │
 │                                                      │
-│   Protection first ── Timing as the plus             │
+│   Personal timing for every ski racer                │
 │                                                      │
-│   Protects the athlete from slalom gate impacts      │
+│   Clips to your ski pole, below the grip             │
 │   Measures split/run times via BLE to phone          │
-│   Visible status via RGB LEDs through shell          │
+│   Dual devices (one per pole) for full timing        │
+│   Zero course infrastructure needed                  │
 └─────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Layer Stack (cross-section)
+### 5.2 Enclosure Construction
+
+Two identical injection-molded or 3D-printed ABS/PC halves with an O-ring groove around the perimeter.
+Screws sit outside the O-ring seal → IP67 maintained without potting.
 
 ```
-  OUTSIDE (gate side)
-  ┌──────────────────────────────────┐
-  │ ① Polycarbonate shell (2-3 mm)  │  ← Transparent, impact-resistant
-  │    - Curved to forearm contour   │     Gate hits THIS surface
-  │    - Translucent for LED glow    │
-  ├──────────────────────────────────┤
-  │ ② Electronics (potted)          │  ← Epoxy/silicone potting
-  │    Nicla + Carrier PCB + Battery │     Waterproof, shockproof
-  │    SK6812 LEDs facing shell      │     No moving parts
-  ├──────────────────────────────────┤
-  │ ③ Padding (EVA foam, 5-8 mm)   │  ← Closed-cell, impact absorption
-  │    - Conforms to athlete's arm   │     Comfort + protection
-  │    - Velcro straps               │
-  └──────────────────────────────────┘
-  INSIDE (athlete's forearm)
+  TOP HALF (faces athlete / upward)
+  ┌──────────────────────────┐
+  │  ┌────────────────────┐  │
+  │  │  SK6812 LEDs ×5    │  │  ← Visible through translucent wall
+  │  │  (chase animation)  │  │
+  │  └────────────────────┘  │
+  │  ┌────────────────────┐  │
+  │  │  Piezo Button       │  │  ← Top end, outward face
+  │  └────────────────────┘  │
+  ├──────────────────────────┤  ← O-ring groove (seal)
+  │  ┌────────────────────┐  │
+  │  │  PCB + Battery      │  │  ← Internal cavity
+  │  │  Beeper (faces pole) │  │
+  │  └────────────────────┘  │
+  └──────────────────────────┘
+  BOTTOM HALF (faces pole shaft)
 ```
 
-### 5.3 Materials
+### 5.3 Pole Mounting
 
-| Layer | Material | Rationale |
-|-------|----------|-----------|
-| Outer shell | **Polycarbonate (PC)** | High impact resistance (250× glass), transparent for LEDs, -40°C to +120°C range, UV-stabilized grades available |
-| Potting | **Epoxy** or **silicone** | IP67 sealing, vibration dampening, thermal conduction, tamper-proof |
-| Padding | **Closed-cell EVA foam** | Water-resistant (won't absorb sweat/snow), progressive impact absorption, comfortable |
-| Straps | **Silicone-coated elastic** | Non-slip on ski suit, adjustable, cold-flexible |
+- **Method:** Silicone-coated elastic strap with quick-release buckle, wrapping around the pole shaft AND the device body
+- **One size fits all:** Strap tension accommodates standard pole diameters (16–18 mm)
+- **Non-slip:** Silicone coating grips the pole; no clamp mechanism needed for a ~50g device
+- **Quick removal:** Unbuckle for charging, re-attach in seconds
 
-### 5.4 Emergency Features
+### 5.4 Emergency Reset & Power Cut (zero magnets)
 
-Two critical safety features accessible without destroying the sealed enclosure:
+The piezo button doubles as the reset input:
+- **Factory reset:** 5 presses within 3 s → firmware performs factory reset (F42)
+- **Hard power cut (emergency, firmware hung):** the battery is on a JST connector —
+  open the enclosure (4 screws, outside the O-ring seal) and unplug/re-plug the battery
+  to hard-reset a frozen device. No magnet, no second switch.
 
-#### Emergency Programming Port
+The battery is **replaceable** (JST connector, not potted or soldered) — deliberate for
+the extreme conditions the device will see: cold-weather LiPo degradation makes a
+user/service-swappable battery the right call.
 
-A small, waterproof-accessible SWD interface for field recovery:
-
-- **Pogo-pin pad area** on the PCB, aligned with a sealed access port in the shell
-- **Waterproof plug** (silicone gasket, screw-on cap) normally sealed
-- Accessed ONLY when firmware is bricked or needs field update without disassembly
-- SWD pins (SWDIO, SWCLK, GND, VCC) exposed on gold-plated pads
-- Magnetic or threaded cap — tool-required to prevent accidental opening
-
-```
-  Polycarbonate shell
-  ┌────────────────────┐
-  │  ○ ○ ○ ○          │  ← Pogo-pad area (4 pads)
-  │  ▼ plug            │  ← Sealed port (normally covered)
-  └────────────────────┘
-       │
-       ▼
-  ┌────────────────┐
-  │  SWD  GND  VCC │  ← Gold pads on PCB
-  │  SWCLK SWDIO    │
-  └────────────────┘
-```
-
-#### Emergency Power Cut
-
-A physical way to kill power if the device locks up (no software dependency):
-
-- **Magnetic reed switch** (normally-closed) in series with battery positive rail
-- Strong magnet held against marked spot on shell → opens circuit → hard power-off
-- No mechanical penetration of the IP67 seal
-- After removal of magnet: circuit closes → device reboots cleanly
-- Alternative: **Physical latching switch** behind a secondary sealed port (simpler but less elegant)
-
-```
-  Battery (+) ──→ Reed Switch (NC) ──→ System Power
-                       │
-                  Magnet here
-                  (marked on shell)
-                  opens circuit
-```
-
-### 5.5 Assembly Sequence
+### 5.5 Assembly Sequence (Pole Mount)
 
 1. **PCB assembly** (EMS): Carrier PCB + components + Nicla mounted
 2. **Firmware flash + QA** (bed-of-nails, SWD)
 3. **Battery connect** → power-on self-test
-4. **Potting:** Electronics placed in shell cavity, epoxy/silicone poured, cured
-5. **Padding attachment:** EVA foam cut to shape, adhesive-bonded to inner shell face
-6. **Straps:** Velcro straps riveted or looped through shell slots
-7. **Final QC:** Waterproof test (IP67), LED visibility check, BLE range test, impact test (sample batch)
-8. **Packaging:** Retail box with quick-start card, charging cable, spare strap set
+4. **Enclosure assembly:** PCB+battery placed in bottom half → O-ring seated → top half screwed on (4 screws outside O-ring)
+5. **Strap:** Elastic strap threaded through slots or wrapped externally
+6. **Final QC:** Waterproof test (IP67 pressure decay), LED visibility, button activation, BLE range, BMM150 figure-8 cal
+7. **Packaging:** Retail box with quick-start card, Qi charging pad, spare strap
 
 ### 5.6 Enclosure Dimensions (target)
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| Length | ~180-220 mm | Covers mid-forearm to wrist |
-| Width | ~60-80 mm | Fits under ski suit sleeve |
-| Thickness | ~15-20 mm total | Shell + electronics + padding |
-| Weight | ~150-250 g | Including battery, target < 300g |
-| Curvature | Radius ~50-70 mm | Matches average adult forearm |
+| Length (along pole) | ~70 mm | PCB + battery in series |
+| Width | ~25 mm | PCB width + enclosure walls |
+| Height (off pole) | ~25 mm | PCB + battery + enclosure walls |
+| Weight | ≤ 50 g | Electronics + enclosure + strap |
 
-### 5.7 Production Phasing for Mechanical
+### 5.7 Production Phasing for Mechanical (Pole Mount)
 
-| Phase | Shell | Padding | Straps | Potting |
-|-------|-------|---------|--------|---------|
-| P0 (prototype) | 3D printed PC-like resin or vacuum-formed PC sheet | Cut EVA sheet, double-sided tape | Off-shelf velcro straps | Manual epoxy pour |
-| P1 (pilot) | Small-run vacuum-formed PC, CNC trimmed | Die-cut EVA foam | Custom elastic with silicone print | Manual or low-pressure dispensing |
-| P2 (first season) | Injection-molded PC (simple 2-part mold) | Die-cut EVA, adhesive jig | Custom straps, riveted | Automated dispensing, curing oven |
-| P3 (steady state) | Injection-molded PC (multi-cavity, textured finish) | Die-cut EVA, automated placement | Overmolded strap anchors | 2-part silicone, automated dispensing + vacuum degas |
+| Phase | Shell | Strap | Assembly |
+|-------|-------|-------|----------|
+| P0 (prototype) | 3D-printed ABS/PC, 2 parts + O-ring | Off-shelf silicone strap with buckle | Manual, 4 screws |
+| P1 (pilot) | 3D-printed or small-run molded | Custom elastic with silicone print | Manual, jig-assisted |
+| P2 (first season) | Injection-molded ABS, single-cavity tooling (~€3–5k) | Custom strap, bulk order | Jig + pneumatic screwdriver |
+| P3 (steady state) | Injection-molded, multi-cavity | Overmolded strap anchors | Semi-automated assembly |
 
 ---
 
-## 6. Companion Carrier PCB — Bill of Materials
+## 5bis. Mechanical Design — Forearm Guard (⚠️ v2 / Future Development)
+
+*Preserved from v1.3. The forearm guard form factor is deferred to v2 as a premium product variant
+reusing the same electronics module. Adds LDC1612 cross-arm proximity arming, 200g shock rating,
+injection-molded PC shell with potting, and EVA foam padding.
+See §5 for the v1 pole-mount mechanical design.*
+
+---
+
+## 6. Companion Carrier PCB — Bill of Materials (v1 Pole Mount)
 
 | Ref | Component | Package | Qty | Purpose |
 |-----|-----------|---------|-----|---------|
-| U_QI | IP6833 Qi Receiver | QFN-28 4×4mm | 1 | 5W Qi wireless power receiver (see §6.2) |
+| U_QI | IP6833 Qi Receiver | QFN-28 4×4mm | 1 | 5W Qi wireless power receiver |
 | L_QI | Qi receiver coil 24 µH | WPC A11 48×32mm | 1 | Wound wire + ferrite shield |
 | C_AC1/2 | 22 nF, 50V, NP0/C0G | 0603 | 2 | Qi resonant capacitors |
 | C_RECT | 22 µF, 16V, X5R | 0805 | 1 | Rectifier output filter |
 | C_BOOT | 100 nF, 16V, X5R | 0603 | 1 | Bootstrap capacitor |
-| U1 | LDC1612 | WSON-12 | 1 | Inductive proximity sensor |
-| L1 | PCB trace coil | 14mm spiral | 1 | LDC1612 sensing coil |
-| U2 | MT3608 Boost Converter | SOT-23-6 | 1 | 5V rail for SK6812 LEDs (see §6.1) |
+| SW1 | Langir 16mm piezo button | Ø16mm panel | 1 | Arming (v1). On P0.02, edge interrupt, NO pulse 20–1000 ms |
+| U1 | LDC1612 (⚠️ v2 only, unpopulated) | WSON-12 | (0) | Forearm guard arming. Footprint retained, no IC loaded in v1 |
+| L1 | PCB trace coil (⚠️ v2 only) | 14mm spiral | (0) | LDC1612 sensing coil. Not routed in v1 pole-mount PCB |
+| U2 | MT3608 Boost Converter | SOT-23-6 | 1 | 5V rail for SK6812 LEDs |
 | L_Boost | 4.7 µH power inductor, Isat ≥ 2A | 0805/1206 | 1 | Boost inductor |
 | C_IN | 10 µF, 10V, X5R | 0805 | 1 | Boost input decoupling |
 | C_OUT | 22 µF, 10V, X5R | 0805 | 1 | Boost output filter |
@@ -317,75 +297,12 @@ A physical way to kill power if the device locks up (no software dependency):
 | R1-R4 | 2.2kΩ pull-up × 2, 10kΩ × 2 | 0603 | 4 | I²C pull-ups, misc |
 | C1-C4 | 100nF, 10µF decoupling | 0603 | 4 | Power decoupling |
 
-### 6.1 5V Boost Rationale
-
-**Why MCP1640/TPS61322x were rejected:**
-- MCP1640: 350 mA peak switch current is insufficient. From 3.0V Li-Po → 5V @ 300 mA:
-  I_sw_peak ≈ (5V × 0.3A) / (3.0V × 0.85 η) + 0.1A ripple ≈ 0.69 A >> 0.35 A limit.
-- TPS61322x: Fixed-output variants exist but harder to source at JLCPCB;
-  lower switch current variants less suited for 5× SK6812 at full brightness.
-
-**MT3608 selected (Aerosemi, SOT-23-6):**
-- Input: 2.0–24 V → works with depleted battery (3.0V cutoff)
-- Switch current: 4 A peak → massive headroom for 300 mA LED load
-- Fixed 1.2 MHz switching → 4.7 µH inductor (0805, ~$0.05)
-- Vout = 0.6V × (1 + 75k/10k) = 5.1 V through external feedback divider
-- EN pin → nRF52 GPIO for software power gate (shutdown ~2 µA)
-- 65 µA quiescent in PFM light-load mode, ~88% efficiency at 300 mA load
-- Temp range: −40 to +85 °C
-- LCSC #C84817, JLCPCB basic part, ~$0.08–0.15 (volume). Widely second-sourced.
-
-**5× SK6812-mini at full white:** ~60 mA per LED → 300 mA total peak at 5 V.
-Sequential animation reduces average to ~15 mA. Boost sized for full worst case.
-
-**Drop-in alternatives:**
-
-| IC | Sw. I | Vin min | Cost | Notes |
-|----|-------|---------|------|-------|
-| FP6291 | 2.5 A | 2.6 V | ~$0.10 | Higher Vin min, less depleted-battery headroom |
-| TPS61023 | 3.7 A | 0.5 V | ~$0.45 | TI quality, SOT-563 (tiny, harder to hand-solder) |
-
-### 6.2 Qi Wireless Receiver Rationale
-
-The companion carrier PCB hosts the Qi charging front-end because:
-- The off-the-shelf Nicla Sense ME does NOT have built-in Qi charging
-  (it charges via USB-C only, using its BQ25120A).
-- The battery lives on the carrier PCB; charging must happen there.
-- The Qi receiver's 5V output feeds the Nicla's VIN pin → BQ25120A IN → charges battery.
-
-**IP6833 selected (Injoinic, QFN-28):**
-- QFN-28 at 4×4mm, 0.4mm pitch — JLCPCB-assemblable (unlike BQ51013B's DSBGA)
-- WPC Qi BPP (5W) compliant, works with any Qi charging pad
-- Integrated full-bridge synchronous rectifier (no external diodes)
-- Integrated 5V LDO (up to 1.6A) — feeds BQ25120A IN at max 300mA charge rate
-- Integrated 32-bit MCU handles Qi protocol (ASK modulation, FSK demod, FOD)
-- Minimal BOM: coil, resonant caps, filter caps — ~6 passives total
-- LCSC available, ~$1-2 (volume)
-- Temp range: −40 to +85°C
-
-**Qi coil:** Würth 760308101 (24 µH, WPC A11) or equivalent wound coil with ferrite
-backing. Wound coil gives 75-80% system efficiency vs ~60% for PCB spiral.
-
-**For P0 prototype:** Use a pre-built BQ51013B module (Adafruit #1901 or generic,
-$5-15). Solder V+ and GND pads to the Nicla replica PCB's Qi input.
-
-### Level Shifter Rationale
-
-- Nicla's nRF52832 outputs 3.3V logic
-- SK6812 (WS2812-compatible) requires 5V logic, especially in cold temps where margin shrinks
-- 74AHCT1G125 in SOT-23-5: single channel, fast enough for 800 kHz NZR
-- Alternative: Dedicated level shifter IC like TXB0101 (auto-direction, but slightly slower)
-
-### No 5V for Nicla
-
-- Nicla is powered directly from the LiPo battery via its VIN pin
-- Nicla's onboard BQ25120A handles charging via USB-C
-- Qi receiver 5V output → Nicla VIN pin → BQ25120A IN → charges battery
-- 5V boost only powers the LED strip data + power rails
+**v1 BOM delta vs forearm guard:** LDC1612 and its PCB coil removed → saves ~€3-5 in components.
+Piezo button (Langir 16mm) added → ~€7-12 per unit (single qty), ~€6-7 @ 1000+.
 
 ---
 
-## 7. Production Flow (Phase 3 — Steady State)
+## 7. Production Flow (Pole Mount — Phase 3)
 
 ### 7.1 Sourcing
 
@@ -393,74 +310,57 @@ $5-15). Solder V+ and GND pads to the Nicla replica PCB's Qi input.
 |------|--------|-------|
 | Nicla Sense ME | Arrow / DigiKey / OKdo | Wholesale batches of 200 |
 | Carrier PCB | JLCPCB / PCBWay | Panelized, ENIG finish |
-| Components | LCSC / Mouser | BOM parts for carrier PCB |
+| Components | LCSC / Mouser | BOM parts for carrier PCB (no LDC1612 in v1) |
 | Battery | Grepow / Ultralife | Sub-zero LiPo, -20°C rated |
-| Polycarbonate shell | Local injection molder | Multi-cavity tooling amortized |
-| EVA foam | Foam converter / die-cutter | Closed-cell, custom shape |
-| Straps | Textile supplier | Silicone-coated elastic + Velcro |
-| Potting compound | Epoxy/silicone distributor | 2-part, production drums |
+| Enclosure (ABS/PC, 2 halves) | Local injection molder or 3D print service | Single-cavity tooling |
+| O-ring | Standard supplier | Silicone, -40°C rated |
+| Strap + buckle | Textile supplier | Silicone-coated elastic |
+| Piezo button (Langir 16mm) | Langir / distributor | Ø16mm panel, ×1 per device |
 
 ### 7.2 Assembly (EMS Partner)
 
-1. **Carrier PCB fabrication:** Panelized in grids (e.g., 20-50 boards per panel) for efficient pick-and-place
-2. **SMT assembly:** Automated pick-and-place for all carrier PCB components (LDC1612, boost, shifter, SK6812, passives)
-3. **Reflow soldering:** Standard lead-free reflow profile
-4. **Nicla attachment:** Nicla connected via flex/headers — NOT reflow-soldered on top
-5. **Panel depanelization:** V-score or mouse-bite breakaway
+1. **Carrier PCB fabrication:** Panelized for pick-and-place
+2. **SMT assembly:** Automated for all components (boost, shifter, SK6812, passives); button is panel-mounted, hand-wired at final assembly
+3. **Reflow soldering:** Standard lead-free profile
+4. **Nicla attachment:** Nicla connected via flex/headers
+5. **Panel depanelization**
 
 ### 7.3 Firmware Flashing & QA
 
-- **Bed-of-nails test fixture** with pogo pins on SWD (SWDIO, SWCLK, GND, VCC)
-- **Flashing:** Compiled `.bin` or `.hex` (Mbed OS + SGC application merged) flashed via SWD using OpenOCD / pyOCD
+- **Bed-of-nails test fixture** with pogo pins on SWD + power
+- **Flashing:** via SWD using OpenOCD / pyOCD
 - **QA routine per unit:**
-  1. I²C scan — verify LDC1612 responds at 0x2A
-  2. LDC1612 register read — confirm sensor alive
-  3. SK6812 test pattern — chase sequence, verify all 5 LEDs illuminate
-  4. Beeper test — short beep
-  5. BLE advertising check — verify device broadcasts
+  1. Button test — press → GPIO P0.02 falling-edge pulse captured
+  2. SK6812 test pattern — chase sequence, verify all 5 LEDs
+  3. Beeper test — short beep
+  4. BLE advertising check — verify device broadcasts
+  5. BMM150 calibration check
 
-### 7.4 Mechanical Assembly
+### 7.4 Mechanical Assembly (Pole Mount)
 
-1. **Shell prep:** PC shell cleaned, LED window area masked if needed
-2. **Potting:** Electronics placed in shell cavity, 2-part silicone/epoxy dispensed, vacuum degassed, cured
-3. **Quality check:** Visual inspection for bubbles/voids in potting
-4. **Foam:** EVA padding die-cut, adhesive-backed, applied to inner shell face
-5. **Straps:** Velcro straps riveted or looped through shell slots
-6. **Final QC:** Waterproof test (IP67 pressure decay), LED visibility, BLE range, impact test (sample batch)
-7. **Packaging:** Retail box with quick-start card, USB-C charging cable, spare strap set
+1. **Enclosure prep:** Two ABS/PC halves cleaned
+2. **PCB + battery placed** in bottom half
+3. **O-ring seated** in groove
+4. **Top half screwed on** (4 screws, outside O-ring seal)
+5. **Strap threaded** through enclosure slots
+6. **Final QC:** IP67 pressure decay test, LED visibility, BLE range
+7. **Packaging:** Retail box with quick-start card, Qi pad, spare strap
 
 ---
 
 ## 8. Seasonal Inventory Strategy (Phase 3 Only)
 
-> ⚠️ **This section applies ONLY after Phase 3 is reached.** Phases 0–2 use build-to-order / small batches with minimal inventory. Do NOT stockpile before demand is validated.
+> ⚠️ **This section applies ONLY after Phase 3 is reached.** Phases 0–2 use build-to-order / small batches with minimal inventory.
 
 Ski product = **highly seasonal demand** (October–March peak).
-
-```
-Month    J  F  M  A  M  J  J  A  S  O  N  D
-Sales    ████████████░░░░░░░░░░░░████████████
-Prod.    ████████████████████████████████████
-Stock    →→→→→→→→→→→→→→→BUILD←←←←←←←←←←←←
-```
 
 - **Produce year-round** at steady 200/month
 - **Stockpile** during spring/summer → ~1,200 units by autumn
 - **Deplete stock** during winter sales peak
-- Benefits: smooths cash flow, avoids factory rush fees, ensures component availability
-
-### Phase 2 Inventory (Small Batches)
-
-During Phase 2, inventory is intentionally minimal:
-
-- Produce in 50-unit batches triggered by actual orders
-- Buffer: ~20-30 units for warranty replacements + demo units
-- Total inventory never exceeds ~80 units at any time
-- Re-order when buffer drops below 15 units
 
 ---
 
-## 9. Cost Estimate by Phase
+## 9. Cost Estimate by Phase (Pole Mount v1)
 
 ### Phase 3 (Steady State — 200/month)
 
@@ -470,129 +370,112 @@ During Phase 2, inventory is intentionally minimal:
 |------|-----------|-------|
 | Nicla Sense ME | ~€65 | Wholesale pricing |
 | Carrier PCB (fab) | ~€2-3 | Panelized, 4-layer |
-| Components (BOM) | ~€8-12 | LDC1612, boost, shifter, LEDs, passives |
+| Components (BOM, no LDC1612) | ~€5-9 | Boost, shifter, SK6812, passives |
+| Piezo button (Langir 16mm) | ~€6-10 | Panel-mount, ×1 per device |
 | EMS assembly | ~€5-8 | SMT + test fixture amortized |
 | Battery (sub-zero) | ~€8-15 | Grepow/Ultralife |
 | Flashing + QA (electronics) | ~€2-3 | Bed-of-nails, per-unit test |
-| **Electronics subtotal** | **~€90-106** | |
+| **Electronics subtotal** | **~€87-103** | |
 
-**Mechanical:**
+**Mechanical (Pole Mount):**
 
 | Item | Unit Cost | Notes |
 |------|-----------|-------|
-| PC shell (injection molded) | ~€3-6 | Multi-cavity tooling amortized over 5k+ units |
-| EVA foam padding (die-cut) | ~€1-2 | Closed-cell, custom shape, adhesive-backed |
-| Velcro straps (pair) | ~€2-4 | Silicone-coated elastic + Velcro, custom length |
-| Potting compound (2-part silicone) | ~€3-5 | Production drums, ~15-25ml per unit |
-| Mechanical assembly labor | ~€4-8 | Potting, foam, straps, QC |
-| Packaging (retail box) | ~€2-3 | Cardboard + insert, quick-start card, cable |
-| **Mechanical subtotal** | **~€15-28** | |
+| ABS/PC enclosure (2 halves, inj. molded) | ~€1-3 | Single-cavity tooling ~€3-5k amortized over 5k+ |
+| O-ring (silicone) | ~€0.20-0.50 | Standard size |
+| Silicone strap + buckle | ~€1-2 | Custom length |
+| Screws (4× stainless) | ~€0.10 | |
+| Assembly labor (screw + strap + QC) | ~€2-4 | Simple, no potting |
+| Packaging (retail box + Qi pad) | ~€3-5 | Includes Qi pad, spare strap |
+| **Mechanical subtotal** | **~€7-15** | |
 
-| **TOTAL COGS (Phase 3)** | **~€105-134** | |
+| **TOTAL COGS (Phase 3, pole mount)** | **~€94-118** | |
+
+**Kit price (2 devices = 2 poles):** ~€188-236 COGS
 
 ### Phase 2 (First Season — 50/batch)
 
 | Item | Unit Cost | Notes |
 |------|-----------|-------|
 | Nicla Sense ME | ~€65-70 | Smaller order qty |
-| Carrier PCB (fab) | ~€5-8 | Small batch |
-| Components (BOM) | ~€10-15 | Lower qty pricing |
-| EMS assembly | ~€8-12 | Smaller batches |
-| Battery (sub-zero) | ~€10-18 | Lower qty |
-| Flashing + QA (electronics) | ~€3-5 | Semi-automated |
-| PC shell (injection molded, 2-part) | ~€8-15 | Simpler tooling, lower amortization |
-| EVA foam + straps | ~€4-8 | Die-cut, custom |
-| Potting + mechanical assembly | ~€8-15 | Automated dispensing, manual assembly |
-| Packaging | ~€3-5 | Basic retail |
-| **TOTAL COGS (Phase 2)** | **~€124-181** | |
+| Carrier PCB + components + assembly | ~€20-30 | Small batch |
+| Battery | ~€10-18 | Lower qty |
+| Flashing + QA | ~€3-5 | Semi-automated |
+| Enclosure (3D-printed or small-run molded) | ~€3-8 | |
+| Strap + assembly + packaging | ~€5-10 | |
+| **TOTAL COGS (Phase 2)** | **~€106-141** | |
 
 ### Phase 1 (Pilot — 20-50 units)
 
 | Item | Unit Cost | Notes |
 |------|-----------|-------|
-| Nicla Sense ME | ~€70-75 | Retail-ish pricing |
-| Carrier PCB (fab) | ~€8-15 | Proto fab or very small batch |
-| Components (BOM) | ~€12-20 | Low qty, possible MOQ waste |
-| Assembly (manual/EMS small) | ~€15-25 | |
-| Battery (sub-zero) | ~€12-20 | Low qty |
-| Flashing + QA | ~€5-10 | Manual flashing |
-| PC shell (vacuum-formed) | ~€10-20 | Small-run, CNC trimmed |
-| EVA foam + straps | ~€5-12 | Hand-cut foam, off-shelf straps |
-| Potting + mechanical assembly | ~€10-20 | Manual epoxy pour |
-| Packaging | ~€3-5 | Basic |
-| **TOTAL COGS (Phase 1)** | **~€150-222** | |
+| Nicla Sense ME | ~€70-75 | Retail-ish |
+| Carrier PCB + components + manual assembly | ~€30-50 | Proto/low volume |
+| Battery | ~€12-20 | Low qty |
+| 3D-printed enclosure + O-ring | ~€5-15 | |
+| Strap + assembly + packaging | ~€5-10 | |
+| **TOTAL COGS (Phase 1)** | **~€122-170** | |
 
 ### Phase 0 (Prototype — 5-10 units)
 
 | Item | Unit Cost | Notes |
 |------|-----------|-------|
-| Already have PCBs | ~€0 | Existing custom PCB stock |
-| Components (BOM) | ~€15-25 | Already sourced for dev |
-| Assembly | ~€0 | Manual in-house (time cost only) |
-| Battery | ~€15-25 | Few units |
-| Shell (3D printed / vacuum-formed) | ~€15-40 | Proto enclosure |
-| Foam + straps | ~€5-10 | Hand-cut, off-shelf |
-| Potting | ~€5-10 | Manual |
-| **Total per unit** | **~€55-110** | Mostly already sunk |
-| **Total P0 outlay** | **~€550-1,100** | Incremental for 10 units |
+| Already have PCBs | ~€0 | Existing stock |
+| Components + battery | ~€20-35 | Already sourced for dev |
+| 3D-printed enclosure + O-ring | ~€5-10 | |
+| Strap | ~€2-5 | |
+| **Total per unit** | **~€27-50** | Mostly already sunk |
+| **Total P0 outlay** | **~€270-500** | Incremental for 10 units |
 
 ---
 
-## 10. Selling Price & Margin
+## 10. Selling Price & Margin (Pole Mount v1)
 
 ### Market Positioning
 
-SGC occupies a unique space:
+SGC is a **personal ski timing device** — no course infrastructure, no professional timing crew.
+Clips to the pole and times every run.
 
 | Category | Comparable | Price Range |
 |----------|-----------|-------------|
-| Forearm guard (basic) | POC, Komperdell, LEKI | €30-80 |
 | Ski training tech | Carv (pressure inserts) | €200-300 |
 | Sports watch | Garmin Fenix, Polar Vantage | €400-900 |
 | Professional timing | Swiss Timing, Brower | €5,000-50,000+ |
-| **SGC** | **Protection + personal timing** | **€249-349** |
-
-SGC replaces the forearm guard AND provides timing that previously required 
-thousands in professional equipment or imprecise manual stopwatches.
+| **SGC Pole Timer** | **Personal timing, zero infrastructure** | **€149-199** |
 
 ### Recommended Retail Prices
 
-| Phase | Consumer (B2C) | Club/Bulk (B2B, 5+) | Rationale |
-|-------|---------------|---------------------|-----------|
-| P1 (Pilot) | €199 | €169 | Introductory pricing, early adopter feedback |
-| P2 (First Season) | €249 | €199 | Proven value, still building reputation |
-| P3 (Steady State) | €299 | €249 | Established product, full feature set |
-| P3 Pro (v2, +UWB) | €349 | €299 | Professional features (pinpoint timing) |
+| Phase | Single Device (B2C) | 2-Device Kit (B2C) | Club/Bulk Kit (B2B, 5+) | Rationale |
+|-------|--------------------|-------------------|------------------------|-----------|
+| P1 (Pilot) | €99 | €169 | €139 | Introductory, early adopter |
+| P2 (First Season) | €119 | €199 | €169 | Proven value |
+| P3 (Steady State) | €149 | €249 | €199 | Established product |
+| P3 Forearm Guard (v2) | — | €299 | €249 | Premium protection variant |
 
-### Gross Margin
+### Gross Margin (Kit)
 
-| Phase | COGS | B2C Price | Gross Margin | B2B Price | Gross Margin |
-|-------|------|-----------|-------------|-----------|-------------|
-| P1 (worst case) | ~€222 | €199 | **-10%** ⚠️ | €169 | -24% ⚠️ |
-| P1 (best case) | ~€150 | €199 | **25%** | €169 | 11% |
-| P2 (mid case) | ~€150 | €249 | **40%** | €199 | 25% |
-| P3 (mid case) | ~€120 | €299 | **60%** | €249 | 52% |
-| P3 Pro (mid case) | ~€140 | €349 | **60%** | €299 | 53% |
+| Phase | COGS/Kit | B2C Price | Gross Margin | B2B Price | Gross Margin |
+|-------|----------|-----------|-------------|-----------|-------------|
+| P1 (worst case) | ~€340 | €169 | **-50%** ⚠️ | €139 | -59% ⚠️ |
+| P1 (best case) | ~€244 | €169 | **-31%** ⚠️ | €139 | -43% ⚠️ |
+| P2 (mid case) | ~€247 | €199 | **-19%** ⚠️ | €169 | -32% ⚠️ |
+| P3 (mid case) | ~€212 | €249 | **15%** | €199 | -6% ⚠️ |
 
-> ⚠️ **P1 is not profitable at B2B pricing.** P1 units should be sold B2C only,
-> or treated as marketing investment (free/discounted to key influencers).
-> Profitability starts at P2 with real volumes.
+> ⚠️ **P1–P2 are NOT profitable.** Treated as market validation investment.
+> Profitability starts at P3, and only if Nicla wholesale pricing and volume discounts materialize.
+> Key profit driver: replace Nicla with custom nRF52832 PCB at P3 → saves ~€50/device → COGS drops to ~€60-80/kit → margin 60%+.
 
 ### Revenue Scenarios (per season)
 
-| Scenario | Phase | Units | Avg Price | Revenue | COGS | Gross Profit |
-|----------|-------|-------|-----------|---------|------|-------------|
-| Pilot only | P1 | 30 | €199 | €5,970 | €5,000 | €970 |
-| First season | P2 | 150 | €230 (mix) | €34,500 | €22,500 | €12,000 |
-| Steady state | P3 | 600 (3mo peak) | €270 (mix) | €162,000 | €72,000 | €90,000 |
+| Scenario | Phase | Kits | Avg Price | Revenue | COGS | Gross Profit |
+|----------|-------|------|-----------|---------|------|-------------|
+| Pilot only | P1 | 15 | €169 | €2,535 | €4,000 | -€1,465 |
+| First season | P2 | 75 | €190 | €14,250 | €18,500 | -€4,250 |
+| Steady state | P3 | 300 | €235 | €70,500 | €63,600 | €6,900 |
 
-### Price Ceiling Factors
-
-- **Competition:** No direct competitor for "forearm guard + personal timing" — unique niche gives pricing power
-- **Perceived value:** A ski racer already spends €50-80 on a forearm guard. Adding personal timing (normally inaccessible below €1,000+) justifies the premium
-- **Club budgets:** Ski clubs are price-sensitive but invest in performance tools. €249 B2B for a device that lasts multiple seasons is a coach-level decision, not board-level
-- **Warranty cost:** 2-year warranty at <5% return rate = ~€6-7/unit reserve
-- **Swiss made / Alps engineering:** Story matters. "Engineered in the Swiss Alps, tested by Masters racers" supports premium pricing
+> **Note:** These numbers assume off-the-shelf Nicla at ~€65 wholesale. True profitability requires
+a custom nRF52832 PCB (no Nicla) — achievable at P3+ but not earlier due to MOQ constraints.
+See §4 Architecture for the Nicla → custom PCB migration path.
 
 ---
 
