@@ -22,7 +22,7 @@ Usage:
   python sgc_stream_simulator.py COM8 --duration 60 --gates 40 --seed 123
 
 Binary frame format (little-endian, 16 bytes):
-  RawFrame: 7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2).
+  RawFrame: 7×int16 (quat Q14 + accel mm/s²) + 1×uint16 (baro Pa/2).
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
@@ -355,7 +355,7 @@ def pack_frame(frame: GSFrame) -> bytes:
     """Pack a GSFrame into 16-byte RawFrame wire format.
 
     Format identical to firmware RawFrame (ring_buffer.h):
-      7×int16 (quat Q30 + accel) + 1×uint16 (baro Pa/2) = 16 bytes.
+      7×int16 (quat Q14 + accel mm/s²) + 1×uint16 (baro Pa/2) = 16 bytes.
       No sync word - dedicated point-to-point link, fixed frame size.
     """
     def _i16(v: float) -> int:

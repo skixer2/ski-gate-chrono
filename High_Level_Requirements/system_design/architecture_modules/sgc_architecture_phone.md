@@ -113,7 +113,7 @@ class MergedGate {
 class SensorFrame {
   final int msFromStart;           // time delta accumulated
   final double qW, qX, qY, qZ;    // quaternion (normalized)
-  final double laX, laY, laZ;     // linear acceleration (m/s²)
+  final double laX, laY, laZ;     // linear acceleration (mm/s²) — matches FW LACC wire
   final double baroPressurePa;    // barometric pressure (Pa)
 }
 ```
@@ -513,8 +513,9 @@ class ImpactDetector {
     int lastImpactIdx = -COOLDOWN_SAMPLES;
     
     // Pre-compute acceleration magnitude for all frames
+    // LA is mm/s² on the wire (|g| ≈ 9810), not m/s².
     List<double> mags = frames.map((f) =>
-      sqrt(f.laX * f.laX + f.laY * f.laY + f.laZ * f.laZ) / 9.81
+      sqrt(f.laX * f.laX + f.laY * f.laY + f.laZ * f.laZ) / 9810.0
     ).toList();
     
     for (int i = baselineWindow; i < frames.length; i++) {

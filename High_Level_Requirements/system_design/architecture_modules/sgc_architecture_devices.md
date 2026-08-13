@@ -66,7 +66,7 @@
 #define RING_SIZE 500
 
 struct RawFrame {
-    int16_t q_w, q_x, q_y, q_z;  // quaternion (Q30 fixed-point) — 8 bytes
+    int16_t q_w, q_x, q_y, q_z;  // quaternion Q14 (÷16384 → unit) — 8 bytes
     int16_t la_x, la_y, la_z;    // linear acceleration (mm/s²) — 6 bytes
     uint16_t baro_pa_div4;       // barometric pressure (Pa/4) — 2 bytes
     // Total: 16 bytes stored in ring buffer
