@@ -59,7 +59,7 @@ Get-ChildItem test_*.py | % { py sgc_test_harness.py --port COM8 $_ --run-id $ru
 | **U07–U08** | `test_end_detector.py` | Flat end / no false end on ascent | Keep. |
 | **U12** | `test_flash.py` | SPI erase/program top-of-chip self-test | Keep (I04). Addr via layout. |
 | **U13** | `test_flash.py` | Run cycle increments storage | Keep (light F08). |
-| **S02** | `test_s02_factory_reset.py` | Factory R + **flash_map** geometry | Full only (destructive). |
+| **S02** | `test_s02_factory_reset.py` | Factory R + **required** `flash_map` size→slots | Full only (destructive). **2 MB→8 today**; same table 4 MB→16 / 8 MB→32 when that chip is fitted. |
 | **U16–U19** | `test_sensor_injection.py` | T/B/Q/L inject + echo Pa | Keep. **U19** is the known 4.90 flake. |
 
 ---
