@@ -1171,8 +1171,10 @@ void loop()
     }
 
     /* ── Feed sensors (10 ms). Start det is fed inside feed_sensors() ARMED
-       path from the same frame written to the ring (v4.86). No second poll. ── */
-    if (now - g_last_sensor_ms >= 10) {
+       path from the same frame written to the ring (v4.86). No second poll.
+       V4.96+: skip entirely while BLE FT is active — production path reads
+       BHY2 sensor objects (same SPI bus as flash). ── */
+    if (!sgc_ble_ft_active() && now - g_last_sensor_ms >= 10) {
         feed_sensors();
         g_last_sensor_ms += 10;
         if ((int32_t)(now - g_last_sensor_ms) > 50)
@@ -1184,8 +1186,10 @@ void loop()
        This keeps a fresh ambient cache for status/diagnostics and refreshes the
        test-mode default frame when no manual B and no stream (so a desk arm
        without inject uses room pressure, not hard-coded 101325).
-       NEVER push ambient into g_test_frame during stream — S03 owns P0. */
+       NEVER push ambient into g_test_frame during stream — S03 owns P0.
+       NEVER during BLE FT (SPI race with flash). */
     if (!g_stream_active
+        && !sgc_ble_ft_active()
         && (g_sm.state() == DeviceState::IDLE || g_sm.state() == DeviceState::SLEEP)
         && (g_last_ambient_ms == 0
             || (now - g_last_ambient_ms) >= AMBIENT_IDLE_MS)) {
