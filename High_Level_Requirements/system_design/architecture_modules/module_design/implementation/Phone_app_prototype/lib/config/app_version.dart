@@ -13,4 +13,6 @@
 ///   1.4  – CRC32 validation on download + local open (BLE corruption diagnostic)
 ///   1.5  – Auto-retry on CRC failure (BLE GATT notification loss recovery)
 ///   1.6  – Abort navigation on CRC fail (no more "No gates detected" from corrupt data)
-const String APP_VERSION = '1.6';
+///   1.7  – validateCRC computes over payload only (skip 16-byte RunHeader),
+///          matching firmware close_run(); was always failing on BLE downloads
+const String APP_VERSION = '1.7';

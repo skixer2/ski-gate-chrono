@@ -181,17 +181,21 @@ class Decompressor {
   }
 
   /// Validate CRC at end of data buffer (trailing 6 bytes: magic + CRC32).
-  /// Note: BLE file transfer protocol uses separate CRC characteristic (ABCC).
-  /// This method is for offline/legacy file validation.
+  ///
+  /// Firmware `close_run()` (RawRunStore, Opt A) computes the trailer CRC over
+  /// the compressed payload ONLY — it excludes the 16-byte RunHeader and the
+  /// 6-byte trailer. The header is written via a separate program_raw() call
+  /// and never fed into m_run_crc.
   bool validateCRC(Uint8List data) {
     final len = data.length;
-    if (len < 6) return false;
+    if (len < 22) return false; // 16-byte header + 6-byte trailer minimum
     if (data[len - 6] != 0xC3 || data[len - 5] != 0x32) return false;
     final storedCrc = (data[len - 4]) |
         (data[len - 3] << 8) |
         (data[len - 2] << 16) |
         (data[len - 1] << 24);
-    final computedCrc = _crc32(data.sublist(0, len - 6));
+    // Skip the 16-byte RunHeader: CRC covers payload bytes [16, len-6).
+    final computedCrc = _crc32(data.sublist(16, len - 6));
     return storedCrc == computedCrc;
   }
 
