@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "4.93"
+#define FW_VERSION "4.94"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only

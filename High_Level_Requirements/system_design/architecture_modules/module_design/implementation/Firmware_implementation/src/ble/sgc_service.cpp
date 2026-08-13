@@ -169,8 +169,21 @@ void sgc_ble_init()
 void sgc_ble_update_state(DeviceState s)
 {
     switch (s) {
-    case DeviceState::IDLE: case DeviceState::POST_RUN: BLE.advertise(); break;
-    default: BLE.stopAdvertise(); break;  /* SLEEP/ARMED/LOGGING — save power, prevent brown-out */
+    case DeviceState::IDLE:
+    case DeviceState::POST_RUN:
+        /* V4.94: bare BLE.advertise() after stopAdvertise() (SLEEP/ARMED/
+           LOGGING) is often a no-op on ArduinoBLE/Cordio — phone keeps
+           scanning empty while serial already shows st=IDLE. Hard cycle:
+           stop → restore name + advertised service → advertise. */
+        BLE.stopAdvertise();
+        BLE.setLocalName(g_dev_name);
+        BLE.setAdvertisedService(svc);
+        BLE.advertise();
+        break;
+    default:
+        /* SLEEP/ARMED/LOGGING — save power, prevent brown-out */
+        BLE.stopAdvertise();
+        break;
     }
     uint8_t sf = char_state.value() & 0xE0;
     char_state.writeValue(sf | (static_cast<uint8_t>(s) & 0x1F));
