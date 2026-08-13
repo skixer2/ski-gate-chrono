@@ -1,6 +1,10 @@
 /**
  * @file    file_transfer.cpp
  * @brief   BLE file transfer — RawRunStore API (Opt A, v4.63).
+ *
+ * V4.93: 20 B chunks (min ATT payload) to avoid HCI ACL hang / truncate.
+ * V4.95: 25 ms cadence + BLE.poll() after each notify; progress JSON;
+ *        abort cleanly on disconnect; ft_done only after full stream.
  */
 
 #include "file_transfer.h"
@@ -24,37 +28,56 @@ static uint32_t  g_ft_offset  = 0;
 static uint32_t  g_ft_size    = 0;
 static uint16_t  g_ft_run_id  = 0;
 static uint32_t  g_ft_crc     = 0;
+static uint32_t  g_ft_chunks  = 0;
+static uint32_t  g_ft_start_ms = 0;
+
+/* Single ATT notification payload at min MTU 23: opcode+handle leave 20 B.
+   Keep 20 until we have a reliable negotiated-MTU path (ATT max often stays 23
+   on this Cordio build even if the phone requests 247). */
+static constexpr size_t   FT_CHUNK_SIZE = 20;
+static constexpr uint32_t FT_CHUNK_MS   = 25;   /* was 20 — extra headroom for ACL */
+static constexpr uint32_t FT_PROG_EVERY = 50;   /* serial progress every N chunks */
 
 void sgc_ble_transfer_init() {}
+
 void sgc_ble_transfer_poll()
 {
     if (g_ft_state != FT_STREAMING) return;
-    if (!BLE.connected()) return;
+
+    if (!BLE.connected()) {
+        g_ft_state = FT_IDLE;
+        json_begin();
+        json_kv("ev", "ft_abort");
+        Serial.print(','); json_kv("reason", "disconnect");
+        Serial.print(','); json_kv("off", (long)g_ft_offset);
+        Serial.print(','); json_kv("sz", (long)g_ft_size);
+        Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+        json_end();
+        return;
+    }
 
     static uint32_t last_chunk_ms = 0;
     uint32_t now = millis();
-    if (now - last_chunk_ms < 20) return;
+    if (now - last_chunk_ms < FT_CHUNK_MS) return;
     last_chunk_ms = now;
 
-    /* V4.93: 20 B = single-ATT-packet, fits the minimum negotiated MTU (23,
-       i.e. 23-3 payload). A 128 B chunk was silently TRUNCATED to mtu-3 by
-       ATT.handleNotify() when the negotiated MTU < 131, and larger writes
-       stressed the HCI ACL flow control (sendAclPkt spins in
-       while(_pendingPkt>=_maxPkt) poll()) → blocked loop() → device hung
-       → LINK_SUPERVISION_TIMEOUT. */
-    const size_t chunk_size = 20;
-    uint8_t buf[chunk_size];
+    uint8_t buf[FT_CHUNK_SIZE];
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
-    size_t send_len = (remaining > chunk_size) ? chunk_size : remaining;
+    size_t send_len = (remaining > FT_CHUNK_SIZE) ? FT_CHUNK_SIZE : remaining;
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
         uint32_t final_crc = RawRunStore::crc32_finalize(g_ft_crc);
         sgc_ble_ft_crc_char()->writeValue(final_crc);
+        BLE.poll();
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_DONE);
+        BLE.poll();
         json_begin();
         json_kv("ev", "ft_done");
         Serial.print(','); json_kv("crc", (long)final_crc);
+        Serial.print(','); json_kv("sz", (long)g_ft_size);
+        Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+        Serial.print(','); json_kv("ms", (long)(millis() - g_ft_start_ms));
         json_end();
         return;
     }
@@ -62,13 +85,34 @@ void sgc_ble_transfer_poll()
     if (!g_runs.read_run_data(g_ft_run_id, g_ft_offset, buf, send_len)) {
         g_ft_state = FT_ERROR;
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        BLE.poll();
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "read_fail");
+        Serial.print(','); json_kv("off", (long)g_ft_offset);
+        json_end();
         return;
     }
 
     for (size_t i = 0; i < send_len; i++)
         g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[i]);
+
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
+    /* Drain HCI after each notify so sendAclPkt flow-control cannot spin
+       the next writeValue with a full pending queue. */
+    BLE.poll();
+
     g_ft_offset += send_len;
+    g_ft_chunks++;
+
+    if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
+        json_begin();
+        json_kv("ev", "ft_prog");
+        Serial.print(','); json_kv("off", (long)g_ft_offset);
+        Serial.print(','); json_kv("sz", (long)g_ft_size);
+        Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+        json_end();
+    }
 }
 
 void sgc_ble_ft_on_request(uint16_t run_id)
@@ -77,6 +121,15 @@ void sgc_ble_ft_on_request(uint16_t run_id)
     json_kv("ev", "ft_request");
     Serial.print(','); json_kv("run", (long)run_id);
     json_end();
+
+    /* Abort any in-flight transfer cleanly. */
+    if (g_ft_state == FT_STREAMING) {
+        g_ft_state = FT_IDLE;
+        json_begin();
+        json_kv("ev", "ft_abort");
+        Serial.print(','); json_kv("reason", "new_request");
+        json_end();
+    }
 
     const RunEntry* entry = nullptr;
     for (uint16_t i = 0; i < g_runs.run_count(); i++) {
@@ -89,6 +142,12 @@ void sgc_ble_ft_on_request(uint16_t run_id)
 
     if (!entry) {
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        BLE.poll();
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "no_run");
+        Serial.print(','); json_kv("run", (long)run_id);
+        json_end();
         return;
     }
 
@@ -105,20 +164,41 @@ void sgc_ble_ft_on_request(uint16_t run_id)
         Serial.print(','); json_kv("data_size", (long)hdr.data_size);
         json_end();
         sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        BLE.poll();
         return;
     }
 
-    g_ft_run_id = run_id;
-    g_ft_size   = sizeof(RunHeader) + hdr.data_size + CRC32_TRAILER_SIZE;
-    g_ft_offset = 0;
-    g_ft_crc    = 0xFFFFFFFF;
-    g_ft_state  = FT_STREAMING;
+    /* Prefer RAM index size (authoritative after close_run). */
+    uint32_t data_sz = hdr.data_size;
+    if (data_sz == 0)
+        data_sz = entry->compressed_size;
+    if (data_sz == 0 || data_sz > 200000) {
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "bad_size");
+        Serial.print(','); json_kv("sz", (long)data_sz);
+        json_end();
+        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        BLE.poll();
+        return;
+    }
+
+    g_ft_run_id   = run_id;
+    g_ft_size     = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
+    g_ft_offset   = 0;
+    g_ft_crc      = 0xFFFFFFFF;
+    g_ft_chunks   = 0;
+    g_ft_start_ms = millis();
+    g_ft_state    = FT_STREAMING;
     sgc_ble_ft_status_char()->writeValue((uint8_t)FT_STREAMING);
+    BLE.poll();
 
     json_begin();
     json_kv("ev", "ft_start");
     Serial.print(','); json_kv("run", (long)run_id);
     Serial.print(','); json_kv("sz", (long)g_ft_size);
+    Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
+    Serial.print(','); json_kv("cad_ms", (long)FT_CHUNK_MS);
     json_end();
 }
 

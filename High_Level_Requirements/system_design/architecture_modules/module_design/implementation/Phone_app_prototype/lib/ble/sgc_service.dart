@@ -130,19 +130,46 @@ class SGCService {
 
     final buf = BytesBuilder();
     final c = Completer<Uint8List>();
-    final sub = chunkChar.onValueReceived.listen((v) => buf.add(v));
+    var lastLog = DateTime.now();
+    final chunkSub = chunkChar.onValueReceived.listen((v) {
+      buf.add(v);
+      final now = DateTime.now();
+      if (now.difference(lastLog).inSeconds >= 2) {
+        lastLog = now;
+        debugPrint('[SGC] FT recv ${buf.length} bytes…');
+      }
+    });
+    StreamSubscription<List<int>>? statusSub;
+    statusSub = statusChar.onValueReceived.listen((v) {
+      if (v.isEmpty || c.isCompleted) return;
+      final st = v[0];
+      if (st == 2) {
+        // FT_DONE
+        debugPrint('[SGC] FT_DONE at ${buf.length} bytes');
+        c.complete(buf.toBytes());
+      } else if (st == 3) {
+        // FT_ERROR
+        debugPrint('[SGC] FT_ERROR at ${buf.length} bytes');
+        c.complete(buf.toBytes());
+      }
+    });
     await chunkChar.setNotifyValue(true);
     await statusChar.setNotifyValue(true);
 
-    statusChar.onValueReceived.listen((v) {
-      if (v.isNotEmpty && v[0] == 2 && !c.isCompleted) c.complete(buf.toBytes());
-    });
-
     final req = ByteData(2)..setUint16(0, runId, Endian.little);
     await _writeChar(charFtRequest, req.buffer.asUint8List());
+    debugPrint('[SGC] FT request run=$runId (timeout 120s)');
 
-    final data = await c.future.timeout(Duration(seconds: 60), onTimeout: () => buf.toBytes());
-    sub.cancel();
+    // FW 4.95: ~25 ms × (size/20) → ~41 s for 32 KB + BLE overhead; 60 s was tight.
+    final data = await c.future.timeout(
+      const Duration(seconds: 120),
+      onTimeout: () {
+        debugPrint('[SGC] FT timeout at ${buf.length} bytes');
+        return buf.toBytes();
+      },
+    );
+    await chunkSub.cancel();
+    await statusSub.cancel();
     try { await chunkChar.setNotifyValue(false); } catch (_) {}
     try { await statusChar.setNotifyValue(false); } catch (_) {}
     return data;
