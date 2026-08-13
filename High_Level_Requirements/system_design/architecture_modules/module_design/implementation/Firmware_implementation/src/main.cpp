@@ -1087,7 +1087,15 @@ void loop()
         g_led.update();
         handle_serial();  /* 'p' / status still needed */
     } else {
-        BHY2.update(); sgc_ble_poll(); sgc_ble_transfer_poll();
+        /* V4.96: while streaming a run over BLE, suspend BHY2.update().
+           BHI260AP (CS p31) and MX25R flash (CS p26) share SPI bus p3/p4/p5
+           via SEPARATE mbed::SPI objects → no shared lock. Alternating
+           BHY2.update() (every loop) with read_run_data() (FT chunk) raced the
+           bus and wedged the SPI peripheral after a few seconds → loop() hung
+           → device unresponsive → LINK_SUPERVISION_TIMEOUT. Sensor data is not
+           needed during a download (device is in IDLE). */
+        if (!sgc_ble_ft_active()) BHY2.update();
+        sgc_ble_poll(); sgc_ble_transfer_poll();
         g_led.update(); g_ldc.tick();
         handle_serial();
     }

@@ -39,6 +39,7 @@ static constexpr uint32_t FT_CHUNK_MS   = 25;   /* was 20 — extra headroom for
 static constexpr uint32_t FT_PROG_EVERY = 50;   /* serial progress every N chunks */
 
 void sgc_ble_transfer_init() {}
+bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
 
 void sgc_ble_transfer_poll()
 {
