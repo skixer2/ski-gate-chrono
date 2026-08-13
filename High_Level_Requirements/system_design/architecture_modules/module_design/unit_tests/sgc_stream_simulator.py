@@ -26,7 +26,7 @@ Binary frame format (little-endian, 16 bytes):
   Pull model: firmware sends 0x3F request, PC responds with one frame.
 """
 
-SIM_VERSION = "2.50.0"  # integrity: auto-retry i/?/h on hex_err bad_id/no_args
+SIM_VERSION = "2.51.0"  # GS synth: stronger turns + pole impacts for app detector
 
 import argparse
 import hashlib
@@ -164,28 +164,34 @@ def generate_gs_run(duration_s: float = 50.0,
                     start_altitude_m: float = 1800.0,
                     finish_altitude_m: float = 1400.0,
                     gate_count: int = 30,
-                    gate_impact_strength: float = 8000.0,
+                    gate_impact_strength: float = 28000.0,
                     seed: int = 0) -> List[GSFrame]:
     """
     Generate a realistic GS run as sensor frames at 100 Hz.
+
+    LA units match firmware / BHY2 LACC wire format: **mm/s²** (int16).
+    Phone ImpactDetector expects peaks ≳ 2.5× |g| baseline → gate hits need
+    ~25–35k mm/s² lateral (not the old 8k, which never crossed threshold).
 
     Phase timeline:
       t = 0.0 - 2.0s  : Still at start gate (preparation)
       t = 2.0 - 2.8s  : 4 pole pushes (acceleration spikes)
       t = 2.8 - 3.0s  : Brief pause
-      t = 3.0 - 45.0s : Descent with gate impacts
+      t = 3.0 - 45.0s : Descent — alternating carved turns + pole impacts
       t = 45.0 - 50.0s: Finish flat - deceleration, baro levels off
 
+    Turns: yaw/roll oscillate with period = gate spacing so app ω zero-crossings
+    land between gates (Bronze tier turn counting). Impacts fire at gate apex.
+
     Start detector fires when descent reaches 2.0m from P0 (~18.9 Pa at 1800m).
-    With smoothstep, this occurs at ~t=4.7s, ~1.7s after descent begins.
 
     Args:
         duration_s: Total run duration
         start_altitude_m: Starting altitude (m)
         finish_altitude_m: Finish altitude (m)
         gate_count: Number of gates
-        gate_impact_strength: Peak lateral accel (mm/s²)
-        seed: Deterministic seed for noise (0 = use frame index as seed)
+        gate_impact_strength: Peak lateral accel (mm/s²), default 28000 (~2.9 g)
+        seed: Deterministic seed for noise
 
     Returns:
         List of GSFrame, one per 10ms at 100Hz.
@@ -197,7 +203,7 @@ def generate_gs_run(duration_s: float = 50.0,
     scale = duration_s / 50.0
     push_start    = 2.0 * scale
     descent_start = 3.0 * scale
-    finish_start  = max(descent_start + 1.0, duration_s - 5.0 * scale)  # at least 1s descent, last 10% flat
+    finish_start  = max(descent_start + 1.0, duration_s - 5.0 * scale)
 
     total_descent = start_altitude_m - finish_altitude_m
     descent_duration = max(0.1, finish_start - descent_start)
@@ -212,6 +218,15 @@ def generate_gs_run(duration_s: float = 50.0,
             jitter = _det_hash(seed, f"gate_{i}") % 400 - 200
             t_gate += jitter / 1000.0  # ±0.2s jitter
         gate_times.append(t_gate)
+
+    # Mean gate period drives carve frequency (half-cycle per gate)
+    if len(gate_times) >= 2:
+        mean_gate_period = (gate_times[-1] - gate_times[0]) / max(len(gate_times) - 1, 1)
+    else:
+        mean_gate_period = 1.5 * scale
+    mean_gate_period = max(0.4, mean_gate_period)
+    # phase so gate i lands near sin apex: sin(2π (t-t0)/T + π/2) peak at t0
+    carve_omega = math.pi / mean_gate_period  # rad/s — one half-turn per gate
 
     # Pole push times (scaled)
     push_times = [push_start + 0.0, push_start + 0.2 * scale,
@@ -236,72 +251,90 @@ def generate_gs_run(duration_s: float = 50.0,
         # Deterministic sensor noise (±0.01 hPa)
         pressure_hpa += _det_hash(seed, f"baro", i) % 201 / 10000.0 - 0.01
 
+        # Carve phase relative to first gate (0 at first gate apex)
+        carve_phase = carve_omega * (t - first_gate_t) + (math.pi / 2.0)
+        turn_dir = math.sin(carve_phase)  # +1 left apex, -1 right apex
+
+        speed_factor = 0.0
+        if descent_start <= t < finish_start:
+            speed_factor = min(1.0, (t - descent_start) / (2.0 * scale))
+        elif t >= finish_start:
+            speed_factor = max(0.0, 1.0 - (t - finish_start) / (3.0 * scale))
+
         # -- Quaternion (orientation) -------------------------
         if t < push_start:
-            # Still at gate - slight forward lean (~20 deg  pitch)
+            # Still at gate - slight forward lean (~20 deg pitch)
             qw, qx, qy, qz = 0.985, 0.0, 0.174, 0.0
         else:
-            speed_factor = 0.0
-            if descent_start <= t < finish_start:
-                speed_factor = min(1.0, (t - descent_start) / (3.0 * scale))
+            # Stronger carved orientation so app ω(t) has clear peaks/troughs
+            pitch = 0.20 - 0.04 * speed_factor
+            roll = 0.35 * turn_dir * speed_factor          # ±20° bank
+            yaw = 0.45 * math.sin(carve_phase - 0.35) * speed_factor  # heading swing
 
-            pitch = 0.174 - 0.05 * speed_factor
-            roll = math.sin(t * 2.5) * 0.05 * speed_factor
-
-            cp2, sp2 = math.cos(pitch / 2), math.sin(pitch / 2)
-            cr2, sr2 = math.cos(roll / 2), math.sin(roll / 2)
-
-            qw = cp2 * cr2
-            qx = sr2 * cp2
-            qy = sp2 * cr2
-            qz = -sp2 * sr2
+            # ZYX yaw-pitch-roll → quaternion
+            cy, sy = math.cos(yaw / 2), math.sin(yaw / 2)
+            cp, sp = math.cos(pitch / 2), math.sin(pitch / 2)
+            cr, sr = math.cos(roll / 2), math.sin(roll / 2)
+            qw = cr * cp * cy + sr * sp * sy
+            qx = sr * cp * cy - cr * sp * sy
+            qy = cr * sp * cy + sr * cp * sy
+            qz = cr * cp * sy - sr * sp * cy
 
             mag = math.sqrt(qw**2 + qx**2 + qy**2 + qz**2)
             if mag > 0:
                 qw, qx, qy, qz = qw / mag, qx / mag, qy / mag, qz / mag
 
-        # -- Linear acceleration ------------------------------
-        lax, lay, laz = 0.0, 0.0, -9810.0  # gravity baseline (mm/s²)
+        # -- Linear acceleration (mm/s², firmware wire units) ---
+        lax, lay, laz = 0.0, 0.0, -9810.0  # gravity baseline
 
-        # Pole pushes
+        # Pole pushes at start (forward + up impulse)
         for pt in push_times:
             dt = t - pt
-            if 0.0 <= dt < 0.08:
-                push = math.exp(-((dt - 0.04) ** 2) / 0.0003)
-                lax += 15000.0 * push
-                laz += 5000.0 * push
+            if 0.0 <= dt < 0.10:
+                push = math.exp(-((dt - 0.04) ** 2) / 0.00035)
+                lax += 18000.0 * push
+                laz += 6000.0 * push
 
-        # Descent dynamics
+        # Descent carve dynamics (centripetal + edging)
         if descent_start <= t < finish_start:
             frac = (t - descent_start) / descent_duration
-            carve_phase = t * 1.8
-            turn_factor = 0.5 + 0.5 * math.cos(carve_phase)
+            amp = min(1.0, frac * 4.0) * max(speed_factor, 0.3)
 
-            lax += 3500.0 * turn_factor
-            lay += 5000.0 * math.sin(carve_phase) * min(1.0, frac * 3)
-            laz += 1500.0 * abs(math.sin(carve_phase))
+            lax += 4000.0 * (0.6 + 0.4 * abs(turn_dir)) * amp
+            lay += 9000.0 * turn_dir * amp
+            laz += 2500.0 * abs(turn_dir) * amp
 
-        # Gate impacts
+        # Gate / pole impacts — short, hard spike at each gate time
+        # Width ~80–100 ms so delta-encoder emits T3 keyframes, not crushed T1.
         for gi, gt in enumerate(gate_times):
             dt = t - gt
-            if 0.0 <= dt < 0.06:
-                impact = math.exp(-((dt - 0.02) ** 2) / 0.00008)
+            if -0.02 <= dt < 0.10:
+                # dual-lobe: pre-load + contact
+                impact = math.exp(-((dt - 0.025) ** 2) / 0.00012)
+                impact += 0.35 * math.exp(-((dt - 0.055) ** 2) / 0.00020)
                 direction = 1.0 if gi % 2 == 0 else -1.0
-                lay += direction * gate_impact_strength * impact
-                lax -= gate_impact_strength * 0.3 * impact
-                laz += gate_impact_strength * 0.2 * impact
+                peak = gate_impact_strength
+                lay += direction * peak * impact
+                lax -= peak * 0.25 * impact
+                laz += peak * 0.35 * impact  # upward jolt through forearm
 
         # Finish flatline deceleration
         if t >= finish_start:
             decel_frac = min(1.0, (t - finish_start) / 3.0)
             sf = smoothstep(decel_frac)
             lax *= (1.0 - sf * 0.9)
-            laz = lerp(laz, -9810.0, sf * 0.3)
+            lay *= (1.0 - sf)
+            laz = lerp(laz, -9810.0, sf * 0.5)
 
-        # Deterministic accel noise (±100 mm/s²)
-        lax += _det_hash(seed, f"accel_x", i) % 201 - 100
-        lay += _det_hash(seed, f"accel_y", i) % 201 - 100
-        laz += _det_hash(seed, f"accel_z", i) % 201 - 100
+        # Deterministic accel noise (±150 mm/s²) — keep << impact peaks
+        lax += _det_hash(seed, f"accel_x", i) % 301 - 150
+        lay += _det_hash(seed, f"accel_y", i) % 301 - 150
+        laz += _det_hash(seed, f"accel_z", i) % 301 - 150
+
+        # Clamp to int16 range used on the wire
+        lax = max(-32767.0, min(32767.0, lax))
+        lay = max(-32767.0, min(32767.0, lay))
+        laz = max(-32767.0, min(32767.0, laz))
 
         frames.append(GSFrame(
             frame_num=i,
@@ -1288,7 +1321,7 @@ class SGCDevice:
 def run_full_test(port: str,
                   duration_s: float = 50.0,
                   gate_count: int = 30,
-                  gate_strength: float = 8000.0,
+                  gate_strength: float = 28000.0,
                   seed: int = 0,
                   pre_fill: int = 30,
                   save_path: Optional[str] = None,
@@ -1463,8 +1496,8 @@ Examples:
                         help="Run duration in seconds (default: 50)")
     parser.add_argument("--gates", type=int, default=30,
                         help="Number of gates (default: 30)")
-    parser.add_argument("--gate-strength", type=float, default=8000.0,
-                        help="Gate impact strength mm/s² (default: 8000)")
+    parser.add_argument("--gate-strength", type=float, default=28000.0,
+                        help="Gate impact strength mm/s² (default: 28000 ≈ 2.9 g)")
     parser.add_argument("--seed", type=int, default=0,
                         help="Deterministic seed for noise (0=use frame index, "
                              "same seed=same data)")

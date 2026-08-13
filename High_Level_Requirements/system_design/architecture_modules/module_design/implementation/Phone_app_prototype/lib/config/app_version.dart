@@ -17,4 +17,5 @@
 ///          matching firmware close_run(); was always failing on BLE downloads
 ///   1.8  – FT download timeout 60→120 s + progress/FT_ERROR logs (match FW 4.95
 ///          20 B @ 25 ms ~41 s for 32 KB); complete on status 2 or 3
-const String APP_VERSION = '1.8';
+///   1.9  – ImpactDetector |g| = 9810 mm/s² (was 9.81) — matches firmware LA units
+const String APP_VERSION = '1.9';

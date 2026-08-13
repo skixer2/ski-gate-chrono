@@ -13,12 +13,18 @@ class ImpactDetector {
   final int baselineWindow;
   static const int cooldownSamples = 20;
 
+  /// Firmware / BHY2 LACC wire units are **mm/s²** (int16). |g| ≈ 9810 mm/s².
+  /// (Was incorrectly 9.81 — treated LA as m/s² and inflated "g" by 1000×.)
+  static const double gMmPerS2 = 9810.0;
+
   ImpactDetector({required this.multiplier, required this.baselineWindow});
 
   List<ImpactEvent> detect(List<SensorFrame> frames) {
     final impacts = <ImpactEvent>[];
     int lastImpactIdx = -cooldownSamples;
-    final mags = frames.map((f) => sqrt(f.laX * f.laX + f.laY * f.laY + f.laZ * f.laZ) / 9.81).toList();
+    final mags = frames
+        .map((f) => sqrt(f.laX * f.laX + f.laY * f.laY + f.laZ * f.laZ) / gMmPerS2)
+        .toList();
 
     for (int i = baselineWindow; i < frames.length; i++) {
       final window = mags.sublist(i - baselineWindow, i).toList()..sort();
