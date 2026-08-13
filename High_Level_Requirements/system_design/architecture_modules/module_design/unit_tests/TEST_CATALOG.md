@@ -1,6 +1,12 @@
-# SGC Test Catalog (device serial) — 2026-08-12
+# SGC Test Catalog (device serial) — 2026-08-13
 
-**FW baseline:** 4.90 · **Port:** COM8 · **Harness:** `sgc_test_harness.py`
+**FW baseline:** 5.01 · **Port:** COM8 · **Harness:** `sgc_test_harness.py`
+
+*5.01 notes:* pre-roll still 3000/4000; self-test/config/index at **top-of-chip**
+(not hardcoded 0x1FE000 forever). Boot emits `flash_map` (`slots` 8/16/32).
+U12 comment updated; **U12b** (destructive) asserts `flash_map`. S02 soft-checks
+layout on reset. No change needed to S03–S06 ring math. BLE hold-idle (5.00)
+has **no** serial automated test yet.
 
 Maps every automated device test to a **keep / merge / drop** decision.  
 Phone/BLE/cloud (📱 I01–I03, Dart) are out of scope here.
@@ -51,7 +57,8 @@ Get-ChildItem test_*.py | % { py sgc_test_harness.py --port COM8 $_ --run-id $ru
 | **U01–U03** | `test_state_machine.py` | SLEEP/IDLE/ARMED + full natural cycle | Keep. U03 = start+end path (not force-`l`). |
 | **U04–U06** | `test_start_detector.py` | 2.5 m / 3 m / no false start | Keep. |
 | **U07–U08** | `test_end_detector.py` | Flat end / no false end on ascent | Keep. |
-| **U12** | `test_flash.py` | SPI erase/program reserved sector | Keep (I04). |
+| **U12** | `test_flash.py` | SPI erase/program top-of-chip self-test | Keep (I04). Addr via layout. |
+| **U12b** | `test_flash.py` | Boot `flash_map` geometry (destructive R) | Keep in **full** only — wipes runs. |
 | **U13** | `test_flash.py` | Run cycle increments storage | Keep (light F08). |
 | **U16–U19** | `test_sensor_injection.py` | T/B/Q/L inject + echo Pa | Keep. **U19** is the known 4.90 flake. |
 
