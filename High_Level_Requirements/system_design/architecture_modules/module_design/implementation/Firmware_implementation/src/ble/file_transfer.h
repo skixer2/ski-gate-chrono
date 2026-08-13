@@ -5,7 +5,9 @@
  * Protocol:
  *   Phone reads Run List (ABC9) → JSON array of {id,ts,size,side}
  *   Phone writes run_id to FT Request (ABCA)
- *   Device reads run from flash, streams 244-byte chunks via FT Chunk (ABCB)
+ *   Device reads run from flash, streams chunks via FT Chunk (ABCB).
+ *   V4.93: chunk_size=20 (min ATT payload) + 20 ms cadence — avoids HCI ACL
+ *   spin hang / LINK_SUPERVISION_TIMEOUT on small negotiated MTU. Char max=244.
  *   Device sets FT Status (ABCD) = 2 (complete), writes CRC to FT CRC (ABCC)
  *   Phone reads FT CRC, verifies against local CRC32
  */

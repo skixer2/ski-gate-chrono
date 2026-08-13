@@ -33,10 +33,16 @@ void sgc_ble_transfer_poll()
 
     static uint32_t last_chunk_ms = 0;
     uint32_t now = millis();
-    if (now - last_chunk_ms < 30) return;  /* V4.10: relaxed from 20ms */
+    if (now - last_chunk_ms < 20) return;
     last_chunk_ms = now;
 
-    const size_t chunk_size = 128;  /* V4.10: reduced for BLE reliability */
+    /* V4.93: 20 B = single-ATT-packet, fits the minimum negotiated MTU (23,
+       i.e. 23-3 payload). A 128 B chunk was silently TRUNCATED to mtu-3 by
+       ATT.handleNotify() when the negotiated MTU < 131, and larger writes
+       stressed the HCI ACL flow control (sendAclPkt spins in
+       while(_pendingPkt>=_maxPkt) poll()) → blocked loop() → device hung
+       → LINK_SUPERVISION_TIMEOUT. */
+    const size_t chunk_size = 20;
     uint8_t buf[chunk_size];
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
     size_t send_len = (remaining > chunk_size) ? chunk_size : remaining;
