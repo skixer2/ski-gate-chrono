@@ -1,11 +1,12 @@
 """
-S02 — Factory reset via serial R (destructive).
+S02 — Factory reset via serial R (destructive) + v5.01 flash_map check.
 
 Picked up by Get-ChildItem test_*.py full loop.
 Not in smoke/core (wipes runs).
 
 Pass criteria (device):
   - factory_reset (+ optional reboot) ACK
+  - if flash_map seen: slots in 8..32; size_kb=2048 → slots=8
   - after settle: IDLE, runs=0, total_runs=0
 
 Note: FW emits factory_reset then reboot in one burst; do not require a
@@ -13,7 +14,7 @@ second wait for reboot after the command step already drained it.
 """
 from sgc_test_harness import TestStep, TestScenario
 
-TEST_VERSION = "2.26.1"
+TEST_VERSION = "2.27.0"
 
 
 def _reset_and_catch_events(h, _):
