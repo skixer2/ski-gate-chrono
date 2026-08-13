@@ -218,9 +218,14 @@ P0.29, P0.30 (if v2 not populated).
 | Accel ODR | 200 Hz | 2× fusion rate |
 | Gyro ODR | 400 Hz | 4× fusion rate |
 | Fusion ODR | 100 Hz | Target logging rate (F01) |
-| Output 1 | Rotation Vector (quaternion, 4×int16) | Fused 9-axis orientation |
-| Output 2 | Linear Acceleration (3×int16, mm/s²) | Accel with gravity removed |
+| Output 1 | Rotation Vector (quaternion, 4×int16 **Q14**) | Fused 9-axis orientation (÷16384 → unit) |
+| Output 2 | Linear Acceleration (3×int16, **mm/s²**) | Accel with gravity removed (LACC) |
 | Calibration | Figure-8 for 10s, accuracy ≥ 2 required for arming (F51) | BHY2 handles cal internally |
+| Accel physical FS | BHI260AP typically up to **±16 g** | Internal; FW does not call `setRange` |
+| LACC wire ceiling | **±32767 mm/s² ≈ ±3.34 g** | int16 storage limit (protocol) |
+| Gyro physical FS | BHI260AP typically **±2000 dps** | Used **inside fusion only** — not logged |
+| Expected ski LA | poles/carves ~0.5–3 g peaks; design target < 3 g | 4000 mm/s² ≈ 0.41 g — well inside |
+| Expected rates | turns ~tens of dps; impacts < few hundred dps | Well inside ±2000 dps gyro |
 
 The BHI260AP on the Nicla is connected via internal SPI1 (not I²C). The Arduino_BHY2 library
 handles all low-level communication, firmware upload, and sensor fusion internally.

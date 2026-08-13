@@ -1020,8 +1020,12 @@ void setup()
            dominates the main loop and feed_sensors collapses to ~40 Hz
            (S04 measured 41.9 fps @ v4.58). Request the rates we actually
            consume at 10 ms feed ticks. */
-        rotation.begin(100.0f, 0);     /* RV @ 100 Hz */
-        lin_acc.begin(100.0f, 0);     /* linear accel @ 100 Hz */
+        /* Rates only — no setRange(). LACC virtual sensor → int16 mm/s²
+           (Arduino_BHY2 scale 1.0). Wire ceiling ±32767 mm/s² ≈ ±3.34 g.
+           Physical BHI260 accel ~±16 g / gyro ~±2000 dps stay on hub defaults;
+           gyro is fusion-internal only (we log RV + LACC, not raw gyro). */
+        rotation.begin(100.0f, 0);     /* RV @ 100 Hz → store as Q14 */
+        lin_acc.begin(100.0f, 0);     /* LACC @ 100 Hz → mm/s² int16 */
         pressure.begin(100.0f, 0);    /* baro virtual @ 100 Hz */
         temperature.begin(1.0f, 0);   /* header only — not per-frame */
     }
