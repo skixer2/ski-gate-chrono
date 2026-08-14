@@ -19,10 +19,10 @@ Phone/BLE/cloud (📱 I01–I03, Dart) are out of scope here.
 |------|------|------------------------------|-------|
 | **smoke** | After every FW flash | `test_sensor_injection.py` + `test_flash.py` + `test_s04_bhy2_rate.py` | ~2–3 min |
 | **core** | Daily / before claim “green” | smoke + `test_s03` + `test_s05` + `test_s06` + `test_start_detector` + `test_state_machine` | ~8–12 min |
-| **full** | Release / tag candidate | all `test_*.py` in harness loop | ~15–25 min |
+| **full** | Release / tag candidate | `.\run_full.ps1` (all keep/merge `test_*.py`, S02 near end) | ~15–25 min |
 | **device-only** | Rate/pre-roll bench | `system_tests/run_device_suite.py COM8 -R --with-s03` | ~5–8 min |
 
-**Fast path:** `.\run_smoke.ps1` / `.\run_core.ps1` (in `unit_tests/`) run these
+**Fast path:** `.\run_smoke.ps1` / `.\run_core.ps1` / `.\run_full.ps1` (in `unit_tests/`) run these
 tiers and auto-push results to the coordinator — see `tmp_test_results/README.md`.
 
 ```powershell

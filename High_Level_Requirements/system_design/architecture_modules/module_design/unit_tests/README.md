@@ -8,8 +8,8 @@ Default day-to-day = **core**, not full `Get-ChildItem test_*.py`.
 Lead Systems Coordinator owns the ledger; automated gates stay in TEST_CATALOG.
 
 **Result drop folder:** **[tmp_test_results/](tmp_test_results/)** — harness **v2.27+** writes
-`--run-id` / `--ts` artifacts there automatically (no manual copy into `unit_tests/` root).
-Override: `--results-dir .` for legacy cwd. Loose files: `py stage_test_results.py`.
+`--run-id` / `--ts` artifacts there. Prefer **`run_smoke.ps1` / `run_core.ps1`** (auto-push).
+Cleanup: `cleanup_test_results.ps1` / `py cleanup_test_results.py`. Harness **v2.28** optional `--push`.
 
 ```
 unit_tests/          ← Module unit tests + device system wrappers (test_*.py)
@@ -34,12 +34,14 @@ From `unit_tests/` on the PC with Nicla on COM8:
 ```powershell
 .\run_smoke.ps1     # smoke tier: run + auto-push results to the coordinator
 .\run_core.ps1      # core tier:  run + auto-push
+.\run_full.ps1      # full tier:  release/tag only + auto-push
 ```
 
-`run_smoke.ps1` / `run_core.ps1` set the `run_` id, run the tier files from
-TEST_CATALOG, and **always** push `tmp_test_results/run_*` to the OpenClaw host
-at the end (even on failure, so the coordinator gets the fail logs). Options:
-`-SkipPush` (run, no push), `-Port COM7`, `-Clean` (prune old runs first).
+`run_smoke.ps1` / `run_core.ps1` / `run_full.ps1` set the `run_` id, run the tier
+files from TEST_CATALOG, and **always** push `tmp_test_results/run_*` to the
+OpenClaw host at the end (even on failure, so the coordinator gets the fail
+logs). Options: `-SkipPush` (run, no push), `-Port COM7`, `-Clean` (prune old
+runs first).
 
 Manual equivalent (full tier only — prefer the wrappers):
 

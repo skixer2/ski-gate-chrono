@@ -13,6 +13,7 @@ OpenClaw host, so the coordinator sees them without a manual push:
 .\run_smoke.ps1 -SkipPush    # run only, no push
 .\run_smoke.ps1 -Clean       # prune old runs first (keep 15), then run + push
 .\run_core.ps1               # core tier + auto-push
+.\run_full.ps1               # full tier (release/tag only) + auto-push
 ```
 
 `run_smoke.ps1` / `run_core.ps1` push even when tests fail (the coordinator
@@ -20,15 +21,27 @@ needs fail logs). Add `-Port COM7` to change the serial port.
 
 ## How files get here
 
-From harness **v2.27.0+**, any run with `--run-id` or `--ts` writes here by default:
+**Preferred (auto-push at end):**
+
+```powershell
+.\run_smoke.ps1              # smoke + push
+.\run_core.ps1               # core + push
+.\run_smoke.ps1 -Clean       # prune old runs first (keep 15), then smoke + push
+.\run_smoke.ps1 -SkipPush    # local only
+```
+
+From harness **v2.27.0+**, any run with `--run-id` or `--ts` writes here by default.
+Harness **v2.28+** can also `--push` / `SGC_RESULTS_AUTO_PUSH=1` (optional; wrappers
+already push once at the end).
+
+Manual loop:
 
 ```powershell
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 foreach ($t in 'test_sensor_injection.py','test_flash.py','test_s04_bhy2_rate.py') {
   py sgc_test_harness.py --port COM8 $t --run-id $runId
 }
-# → tmp_test_results/run_….md
-# → tmp_test_results/run_…_test_….log
+.\push_test_results.ps1 -RunId $runId
 ```
 
 | Override | Effect |
@@ -137,8 +150,18 @@ py cleanup_test_results.py --keep-runs 15 --max-age-days 7
 `--keep-runs 15` before the tests. The coordinator may also prune after ledger
 capture (see `test_ledger/TEST_LEDGER.md`).
 
-## Hygiene
+## Cleanup / hygiene
+
+```powershell
+.\cleanup_test_results.ps1                 # keep 10 run groups, drop >14 days
+.\cleanup_test_results.ps1 -KeepRuns 15
+.\cleanup_test_results.ps1 -DryRun
+py cleanup_test_results.py --keep-runs 10 --max-age-days 14
+```
+
+Never deletes `README.md` / `secrets*.env`. Safe after coordinator has read a run.
+`run_smoke.ps1 -Clean` prunes (keep 15) before the suite.
 
 - Treat as **scratch**: safe to delete old `run_*` after ledger/history capture.
 - `*.log` is gitignored repo-wide; prefer not committing large dumps.
-- Coordinator reads latest `run_*.md` + failing `*.log` when you say “smoke done”.
+- Coordinator reads latest `run_*.md` + failing `*.log` after auto-push.
