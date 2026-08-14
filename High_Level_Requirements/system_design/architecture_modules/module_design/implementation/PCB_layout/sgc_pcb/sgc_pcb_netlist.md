@@ -1,4 +1,6 @@
-# SGC — Wiring Netlist (v4.3 — Nicla Sense ME Replica)
+# SGC — Wiring Netlist (v4.4 — Nicla Sense ME Replica)
+
+*2026-08-14 — v4.4: Optional **DNP external RTC** added (RV-3028-C7 @ 0x52 on `Wire` P0.22/P0.23) + coin cell holder BT1 + 0 Ω tie R_RTC0 + decoupling caps — all DNP. See Sheet 9.*
 
 *2026-08-14 — v4.3: MD1 module swapped ANNA-B112 (nRF52832) → ANNA-B412 (u-blox nRF52833, 128 KB RAM, BT 5.1, integrated antenna). Module pad numbers below remain B112-derived placeholders until the B412 datasheet pin table is verified. See `anna_b412_migration.md`.*
 
@@ -290,6 +292,50 @@ charging needs **no extra charging IC** — just a receptacle wired as a sink + 
 
 ---
 
+## Sheet 9: External RTC (DNP — Optional Backup Time)
+
+**Not populated in v1.** Footprint + net present for future backup time (primary =
+phone `ABC0` BLE sync). Part: Micro Crystal **RV-3028-C7** (I²C, integrated XTAL,
+address 0x52, DFN-8 3.2×1.5×0.8 mm).
+
+### U12 (RV-3028-C7 — I²C RTC) ⚠️ DNP
+
+| Pin | Name | Net | Connect To |
+|-----|------|-----|------------|
+| 7 | VDD | VCC_3V3 | 3.3 V rail, C_RTC1 (100 nF → GND, DNP) |
+| 6 | VBACKUP | VBACKUP | BT1 (+) **or** R_RTC0 (0 Ω → VCC_3V3, DNP); C_RTC2 (100 nF → GND, DNP) |
+| 4 | SDA | I2C1_SDA | P0.22, R15 (shared LDC1612 pull-up) |
+| 3 | SCL | I2C1_SCL | P0.23, R16 (shared LDC1612 pull-up) |
+| 2 | /INT | RTC_INT | test point / unconnected pad (DNP — no GPIO assigned) |
+| 1 | CLKOUT | — | unconnected (DNP) |
+| 8 | EVI | GND | tie to GND (event input unused) |
+| 5 | VSS | GND | GND plane |
+
+> **Net-label note:** `I2C1_SDA`/`I2C1_SCL` in the schematic are the **P0.22/P0.23**
+> bus (`Wire` / I2C0 in the architecture doc). The schematic/netlist label convention
+> (I2C0=P0.15/P0.16, I2C1=P0.22/P0.23) differs from the architecture doc's Arduino
+> convention (I2C0=`Wire`=P0.22/P0.23); both refer to the same physical pins. Resolve
+> the label mismatch during the B412 pin-table verification pass.
+
+### BT1 (Coin Cell Holder — CR1220, 2-pad SMD) ⚠️ DNP
+
+| Pin | Net | Connect To |
+|-----|-----|------------|
+| + | VBACKUP | U12 pin 6 |
+| − | GND | GND plane |
+
+- **Population options:** populate **BT1** (coin cell) for true battery backup, **or**
+  populate **R_RTC0** (0 Ω) to tie VBACKUP→VCC_3V3 ("no backup until populated").
+  Leave **both** DNP in v1.
+
+### RTC_INT — spare GPIO note (B412)
+
+Left as a test point. ANNA-B412 (nRF52833) exposes more GPIOs than the B112; after
+the datasheet pin table is verified, a spare P0/P1 pin can optionally route to
+`RTC_INT`. No pin steal from BUTTON / BEEPER / LED / v2 CS in v1.
+
+---
+
 ## Component Reference
 
 | Ref | Component | Footprint | Notes |
@@ -316,3 +362,8 @@ charging needs **no extra charging IC** — just a receptacle wired as a sink + 
 | J2 | USB-C (GCT USB4085) | mid-mount SMD + TH stakes | SGC addition — USB-C charging (replaces Qi) |
 | R_CC1, R_CC2 | 5.1 kΩ (1%) | 0402 | SGC addition — USB-C CC sink pull-downs |
 | C_USB | 10 µF, 10V, X5R | 0805 | SGC addition — USB VBUS bulk |
+| U12 | RV-3028-C7 | DFN-8 / SON-8 (3.2×1.5×0.8 mm) | SGC addition — I²C RTC @ 0x52 (⚠️ DNP) |
+| BT1 | Coin cell holder (CR1220) | 2-pad SMD, 12.5 mm | SGC addition — RTC VBACKUP (⚠️ DNP) |
+| R_RTC0 | 0 Ω | 0603 | SGC addition — RTC VBAT↔VDD tie option (⚠️ DNP) |
+| C_RTC1 | 100 nF, 10V, X5R | 0603 | SGC addition — RTC VDD decoupling (⚠️ DNP) |
+| C_RTC2 | 100 nF, 10V, X5R | 0603 | SGC addition — RTC VBACKUP decoupling (⚠️ DNP) |

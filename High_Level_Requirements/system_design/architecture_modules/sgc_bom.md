@@ -1,4 +1,6 @@
-# SGC — Bill of Materials (v4.3 — ANNA-B412 module)
+# SGC — Bill of Materials (v4.4 — ANNA-B412 module)
+
+*2026-08-14 — v4.4: Optional **DNP external RTC** footprint added (RV-3028-C7 @ 0x52 on `Wire` P0.22/P0.23) + coin cell holder + 0 Ω tie + decoupling caps — all DNP. Primary time stays phone `ABC0` BLE sync. See the "Optional DNP — External RTC" section below.*
 
 *2026-08-14 — v4.3: Production MD1 module swapped ANNA-B112 (nRF52832) → ANNA-B412 (u-blox nRF52833, 128 KB RAM, BT 5.1, integrated antenna). Pin map retained as design intent; module land pattern to be verified vs B412 datasheet. See `anna_b412_migration.md`.*
 
@@ -87,6 +89,29 @@ benefits at half the price and still in active production from Langir.
 - **Antenna:** integrated — no external ANT matching network unless the B412 datasheet requires one.
 - **Migration:** replaces ANNA-B112 (nRF52832). Pin map retained as design intent; land pattern must be verified against the u-blox ANNA-B412 datasheet.
 - See `anna_b412_migration.md`.
+
+## Optional DNP — External RTC (⚠️ NOT POPULATED in v1)
+
+Reserved footprint for a future **backup time** source. Primary time = phone `ABC0`
+BLE sync. **No parts are loaded in v1** — these are DNP lines only (footprint + net
+present on the PCB). See `sgc_architecture_hardware.md` §12.
+
+| Ref | Component | Spec / Part | Qty | Status |
+|-----|-----------|-------------|-----|--------|
+| U12 | **RTC** | Micro Crystal **RV-3028-C7** (I²C, integrated XTAL, 0x52, DFN-8 3.2×1.5×0.8 mm) | 1 | **DNP** |
+| BT1 | **Coin cell holder** | CR1220 2-pad SMD (12.5 mm) — VBACKUP | 1 | **DNP** |
+| R_RTC0 | 0 Ω jumper | 0603 — VBAT↔VDD tie (populate only if no coin cell) | 1 | **DNP** |
+| C_RTC1 | 100 nF, 10 V, X5R | 0603 — VDD decoupling | 1 | **DNP** |
+| C_RTC2 | 100 nF, 10 V, X5R | 0603 — VBACKUP decoupling | 1 | **DNP** |
+
+- **Bus:** `Wire` (I2C0) P0.22/P0.23, address **0x52** — no clash: LDC1612 0x2A on the
+  same bus; IS31FL3194 0x53 on `Wire1` (P0.15/P0.16), a different bus.
+- **Backup options:** populate **BT1** (coin cell) for true battery backup, **or**
+  populate **R_RTC0** (0 Ω) to tie VBAT→VDD ("no backup until populated").
+- **/INT (`RTC_INT`):** unconnected test point (DNP) — no GPIO assigned; a spare B412
+  GPIO may be routed later after the datasheet pin table is verified.
+- **Cost:** RV-3028-C7 ~$1.50 single / ~$1.00 @100; coin cell holder ~$0.30; passives
+  negligible. **$0 in v1 (all DNP).**
 
 ## Enclosure + Mechanical
 

@@ -52,6 +52,10 @@ SYMBOLS = [
     # ── Sheet 5: v2 (unpopulated) ──
     ("sgc_pcb_symbols:PMOS_Gate", "Q1", "PMOS_RFID", "Package_TO_SOT_SMD:SOT-23", 900, 500, 0, True),
     ("sgc_pcb_symbols:PMOS_Gate", "Q2", "PMOS_UWB",  "Package_TO_SOT_SMD:SOT-23", 900, 600, 0, True),
+
+    # ── Sheet 6: External RTC (DNP — optional backup time) ──
+    ("sgc_pcb_symbols:RV3028-C7",        "U12", "RV-3028-C7",    "SGC:RV3028-C7_DFN-8",      400, 800, 0, True),  # DNP — I2C RTC @ 0x52 on Wire (P0.22/P0.23)
+    ("sgc_pcb_symbols:Coin_Cell_Holder", "BT1", "CR1220_Holder", "SGC:Coin_Cell_Holder_CR1220", 200, 800, 0, True),  # DNP — RTC VBACKUP coin cell
 ]
 
 # Passives laid out explicitly (resistors + capacitors + inductor)
@@ -83,6 +87,9 @@ PASSIVES = [
     ("R_CC1", "5.1k", "Resistor_SMD:R_0402_1005Metric", 900, -600, False),  # USB-C CC1 sink pull-down
     ("R_CC2", "5.1k", "Resistor_SMD:R_0402_1005Metric", 900, -650, False),  # USB-C CC2 sink pull-down
     ("C_USB", "10uF", "Capacitor_SMD:C_0805_2012Metric", 900, -700, False),  # USB VBUS bulk
+    ("C_RTC1", "100n", "Capacitor_SMD:C_0603_1608Metric", 400, 700, True),  # RTC VDD decoup (DNP)
+    ("C_RTC2", "100n", "Capacitor_SMD:C_0603_1608Metric", 400, 650, True),  # RTC VBACKUP decoup (DNP)
+    ("R_RTC0", "0R",   "Resistor_SMD:R_0603_1608Metric",  500, 700, True),  # RTC VBAT↔VDD tie option (DNP)
 ]
 
 # ---------------------------------------------------------------------------
@@ -107,6 +114,8 @@ GLOBAL_LABELS = [
     ("LED_DIN", 450, 1000), ("BOOST_EN", 550, 1000),
     # v2
     ("RFID_CS", 150, 1100), ("RFID_EN", 250, 1100), ("UWB_CS", 350, 1100), ("UWB_PWR", 450, 1100),
+    # RTC (DNP)
+    ("VBACKUP", 650, 900), ("RTC_INT", 650, 1000),
 ]
 
 # ---------------------------------------------------------------------------
@@ -119,6 +128,7 @@ TEXTS = [
     ("Sheet 3 — Peripherals: SK6812 ×5 + Level Shifter + Beeper (DNP)", 100, 750, 80),
     ("Sheet 4 — Power: Boost MT3608 + Battery JST + USB-C Charging (Qi DNP)", 600, -150, 80),
     ("Sheet 5 — v2 Peripherals (UNPOPULATED): RFID + UWB power gates", 900, 700, 80),
+    ("Sheet 6 — External RTC (DNP): RV-3028-C7 I2C @ 0x52 on Wire (P0.22/P0.23)", 400, 900, 80),
 ]
 
 # ---------------------------------------------------------------------------

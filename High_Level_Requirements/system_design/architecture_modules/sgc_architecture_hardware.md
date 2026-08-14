@@ -1,4 +1,6 @@
-# SGC — Architecture: Hardware (v2.3 — ANNA-B412 module)
+# SGC — Architecture: Hardware (v2.4 — ANNA-B412 module)
+
+*2026-08-14 — v2.4: Optional **DNP external RTC** footprint added (Micro Crystal RV-3028-C7, I²C @ 0x52 on `Wire` P0.22/P0.23). Primary time stays phone `ABC0` BLE sync; RTC is optional backup only. GPIO note corrected for ANNA-B412 (nRF52833 has more GPIOs than the B112 — "v2 = zero spare" is a B112/Nicla-replica budget, not a B412 ceiling). See §12.*
 
 *2026-08-14 — v2.3: Production MD1 module swapped from **ANNA-B112 (nRF52832)** to **ANNA-B412 (u-blox nRF52833, 128 KB RAM / 512 KB Flash, BT 5.1, integrated antenna)**. Nicla-replica P0.xx GPIO map retained as design intent; module LGA pad numbers remain B112-derived placeholders until the B412 datasheet pin table is verified. Firmware stays Nicla/nRF52832 until a separate BSP-port task. See `anna_b412_migration.md`.*
 
@@ -115,10 +117,12 @@ added using only free ANNA-B412 GPIOs.
 
                    ╔══════ SGC Peripherals (added on custom PCB) ═══╗
                    ║                                               ║
-                   ║  I2C1 bus (P0.22/P0.23):                     ║
-                   ║    ┌─────────┐                                ║
-                   ║    │ LDC1612 │  Inductive proximity            ║
-                   ║    │ 0x2A    │  INTB → P0.02                  ║
+                   ║  I2C bus (P0.22/P0.23, `Wire`):             ║
+                   ║    ┌─────────┐   ┌────────────┐               ║
+                   ║    │ LDC1612 │   │ RV-3028-C7 │ ⚠️ DNP         ║
+                   ║    │ 0x2A    │   │ RTC 0x52   │               ║
+                   ║    │ INTB→   │   └────────────┘               ║
+                   ║    │ P0.02   │                                ║
                    ║    └─────────┘                                ║
                    ║                                               ║
                    ║  GPIO pins (free ANNA-B412 GPIOs):            ║
@@ -199,7 +203,7 @@ Assigned to free ANNA-B412 GPIOs not consumed by the Nicla replica.
 | P0.30 | *(spare)* | `UWB_PWR` | A1 header |
 
 **v1 net: 4 GPIOs** (P0.02, P0.09, P0.10, P0.19). 4 spare.
-**v2 net: 8 GPIOs used.** Zero spare.
+**v2 net: 8 GPIOs used.** Zero spare *(B112 / Nicla-replica pin budget only — see §12: ANNA-B412 / nRF52833 exposes more GPIOs, so spare P0/P1 pins are likely after the B412 datasheet pin table is verified).*
 
 ### Shared Buses
 
@@ -207,7 +211,7 @@ Assigned to free ANNA-B412 GPIOs not consumed by the Nicla replica.
 |-----|------|---------------|---------|
 | Internal SPI1 | P0.03 (SCK), P0.04 (MOSI), P0.05 (MISO) | `SPI1` | BHI260AP (CS P0.31), Flash U7 (CS P0.26) — BHY2-managed + SPIF BlockDevice |
 | User SPI | P0.11 (SCK), P0.27 (MOSI), P0.28 (MISO) | `SPI` | RFID v2 (CS P0.20), UWB v2 (CS P0.29) — Arduino SPI header |
-| I2C0 / Wire | P0.22 (SDA), P0.23 (SCL) | `Wire` | LDC1612 @ 0x2A — Nicla external I²C header |
+| I2C0 / Wire | P0.22 (SDA), P0.23 (SCL) | `Wire` | LDC1612 @ 0x2A, RV-3028-C7 RTC @ 0x52 (⚠️ DNP) — Nicla external I²C header |
 | I2C1 / Wire1 | P0.15 (SDA), P0.16 (SCL) | `Wire1` | BQ25120A PMIC, RGB LED IS31FL3194 @ 0x53 — Nicla internal |
 
 ### I²C Bus Address Map
@@ -217,6 +221,7 @@ Assigned to free ANNA-B412 GPIOs not consumed by the Nicla replica.
 | BHI260AP | *(via BHY2/SPI1)* | Internal SPI1 | Managed by Arduino_BHY2 library (SPI, not I²C) |
 | BMP390 | *(via BHY2)* | BHI260AP sub-sensor | Internal to BHI260AP sensor hub |
 | LDC1612 | 0x2A | I2C0 / Wire (P0.22/P0.23) | SGC addition — external I²C header |
+| RV-3028-C7 RTC | 0x52 | I2C0 / Wire (P0.22/P0.23) | ⚠️ DNP — optional backup time (see §12) |
 | RGB LED | 0x53 | I2C1 / Wire1 (P0.15/P0.16) | IS31FL3194 driver (Nicla stock) |
 | BQ25120A | *(via Wire1)* | I2C1 / Wire1 (P0.15/P0.16) | PMIC charger IC (Nicla stock) |
 
@@ -848,6 +853,7 @@ Key additions for v2: LDC1612 cross-arm proximity arming, 200g shock rating, inj
 | BHI SPI1 | BHI260AP, Flash U7 | P0.03–05 (SCK/MOSI/MISO), P0.26 (Flash CS), P0.31 (BHI CS) | SPI Mode 0 | ≤ 8 MHz |
 | User SPI | RFID (v2), UWB (v2) | P0.11 (SCK), P0.27 (MOSI), P0.28 (MISO), P0.20 (RFID CS), P0.29 (UWB CS) | SPI Mode 0 | ≤ 8 MHz |
 | I2C0 / Wire | LDC1612 (⚠️ v2 only) | P0.22 (SDA), P0.23 (SCL) | I²C Fast-mode | 400 kHz |
+| I2C0 / Wire | RV-3028-C7 RTC (⚠️ DNP) | P0.22 (SDA), P0.23 (SCL) | I²C Fast-mode | 400 kHz |
 | I2C1 / Wire1 | RGB LED, BQ25120A | P0.15 (SDA), P0.16 (SCL) | I²C Fast-mode | 400 kHz |
 | BLE | Phone | nRF52 internal RF | BLE 5.1, LE 2M PHY | ≤ 2 Mbps |
 | BHI260AP INT | nRF52833 | P0.14 | GPIO rising edge | Managed by BHY2 |
@@ -883,6 +889,59 @@ In v2, RFID_EN takes P0.24 and boost EN must move to another free GPIO (P0.20 or
 | H12 (RFID not interfere with BMM150) | §5 Antenna Keepout (⚠️ v2 only) | > 10 mm separation + ground plane |
 | H13 (DW3000 unpopulated footprint) | §6 UWB Footprint | QFN pad + CS + VDD MOSFET, no IC loaded |
 | H14 (button arming) | §3 Piezo Pushbutton, §8 Enclosure | Langir 16 mm piezo button on P0.02; single press to arm (F03); 5 presses in 3 s = factory reset (F42) |
+
+---
+
+## 12. External RTC (DNP — Optional Backup Time)
+
+**Time architecture:** the phone's `ABC0` BLE sync (GATT) is the **primary** time
+source — the device sets its wall clock from the phone on connect, and run timestamps
+are phone-epoch based. An external RTC is **optional backup only**, for future use
+cases (offline/absolute timestamps, alarm scheduling, or time keeping across a
+battery swap when no phone is present).
+
+**Not populated in v1.** Footprint + net + I²C wiring are present on the carrier PCB,
+but no RTC IC, no coin cell, and no RTC passives are loaded.
+
+### Part — Micro Crystal RV-3028-C7 (primary recommendation)
+
+| Parameter | Value |
+|-----------|-------|
+| Type | I²C RTC with **integrated** 32.768 kHz crystal (no external XTAL) |
+| Package | DFN-8 / SON-8, 3.2 × 1.5 × 0.8 mm |
+| I²C address | **0x52** (7-bit, fixed) |
+| VDD | 1.1 – 5.5 V → tied to 3.3 V rail |
+| VBACKUP | backup supply → coin cell (DNP) **or** 0 Ω tie to VDD (DNP) |
+| Timekeeping current | **45 nA** typ @ 3 V (60 nA max) |
+| Accuracy | factory-calibrated ±1 ppm @ 25 °C |
+| /INT | open-drain, active-low → `RTC_INT` (test point / unconnected, DNP) |
+| Extra | alarm, periodic timer, event timestamp (EVI), 32-bit UNIX counter |
+
+**Alternatives (same I²C class, NOT pin-compatible):** PCF8523 (NXP, 0x68, needs an
+external crystal) and DS3231M (Maxim/Analog Devices, 0x68, integrated TCXO, SOIC —
+larger). RV-3028-C7 chosen for smallest package + integrated crystal + lowest Iq.
+
+### Bus & address (no clash)
+
+- **Bus:** `Wire` (I2C0) — **P0.22 (SDA) / P0.23 (SCL)** — the same bus as the
+  LDC1612 (⚠️ v2 only). Pull-ups are the existing R15/R16 (2.2 kΩ → 3.3 V) on this bus.
+- **Address check:** RV-3028-C7 = **0x52** vs LDC1612 = **0x2A** → no clash on `Wire`.
+  IS31FL3194 = **0x53** is on `Wire1` (P0.15/P0.16), a *different* bus, so the
+  numerically-adjacent 0x52/0x53 do **not** collide.
+- **Power:** VDD → 3.3 V rail (C_RTC1 100 nF decoupling, DNP). VBACKUP → coin cell
+  holder BT1 (DNP) **or** 0 Ω tie to VDD (R_RTC0, DNP — "no backup until populated";
+  the RTC then holds time only while the system is powered).
+- **/INT (`RTC_INT`):** left as a DNP **test point / unconnected pad** — *not* wired
+  to BUTTON / BEEPER / LED / any locked GPIO. See GPIO note below.
+
+### GPIO note (ANNA-B412 — more pins possible)
+
+The "v2 = zero spare GPIO" figure in §2 is a **B112 / Nicla-replica** pin budget.
+The production module is **ANNA-B412 (nRF52833)**, which has **more GPIOs** than the
+nRF52832 (~42 vs ~32). After the u-blox ANNA-B412 datasheet pin table is verified,
+additional P0/P1 pins are likely available — a spare one can optionally be routed to
+`RTC_INT` if a wake/interrupt source is ever wanted. Until then `RTC_INT` stays an
+unconnected test point (no pin steal from BUTTON, BEEPER, LED, or v2 RFID/UWB CS).
 
 ---
 

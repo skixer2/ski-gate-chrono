@@ -40,3 +40,20 @@ Production MD1 BLE module changes from **ANNA-B112** (nRF52832) to **ANNA-B412**
 2. Verify Arduino_BHY2 + Cordio BLE on nRF52833.
 3. Re-map module LGA pad numbers against the u-blox ANNA-B412 datasheet pin table.
 4. Re-run S03 / S04 / S05 / S06 device suite on B412 hardware.
+
+## RTC DNP intent (2026-08-14)
+
+An optional **DNP external RTC** footprint is reserved on the carrier PCB for a future
+backup time source (primary time stays phone `ABC0` BLE sync).
+
+- **Part:** Micro Crystal **RV-3028-C7** — I²C, integrated crystal, address **0x52**,
+  DFN-8 (3.2 × 1.5 × 0.8 mm), 45 nA timekeeping. Chosen for small size + lowest Iq
+  (vs PCF8523 needing an external XTAL, or larger DS3231M).
+- **Bus:** `Wire` (I2C0) **P0.22/P0.23**, alongside the LDC1612 (0x2A) — no address
+  clash (IS31FL3194 0x53 is on `Wire1` P0.15/P0.16, a different bus).
+- **Power:** VDD → 3.3 V rail; VBACKUP → coin cell holder BT1 (DNP) **or** 0 Ω tie to
+  VDD (R_RTC0, DNP — "no backup until populated").
+- **/INT (`RTC_INT`):** left as an unconnected test point — a spare B412 GPIO (more
+  available vs B112) can be routed later after the datasheet pin table is verified.
+- **Not populated in v1** — DNP lines only. See `sgc_architecture_hardware.md` §12 and
+  `sgc_bom.md` "Optional DNP — External RTC".
