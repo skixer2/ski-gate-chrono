@@ -3,18 +3,20 @@
   (generator "kicad_symbol_editor")
   (generator_version "8.0")
 
-  ;; ── ANNA-B112 Module (nRF52832 + BLE) ──
-  (symbol "ANNA-B112"
+  ;; ── ANNA-B412 Module (nRF52833 + BLE 5.1) ──
+  ;; PINOUT IS A B112-DERIVED PLACEHOLDER — re-verify every pad number/name
+  ;; against the u-blox ANNA-B412 datasheet before layout.
+  (symbol "ANNA-B412"
     (in_bom yes) (on_board yes)
     (property "Reference" "MD" (at -17.78 -40.64 0) (effects (font (size 1.27 1.27))))
-    (property "Value" "ANNA-B112" (at 5.08 40.64 0) (effects (font (size 1.27 1.27))))
-    (property "Footprint" "SGC:ANNA-B112" (at 0 -45.72 0) (effects (font (size 1.27 1.27)) hide))
-    (property "Datasheet" "https://www.u-blox.com/en/product/anna-b112-module" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
-    (property "Description" "u-blox ANNA-B112 nRF52832 + BLE module, 52-pin LGA" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
-    (symbol "ANNA-B112_0_1"
+    (property "Value" "ANNA-B412" (at 5.08 40.64 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "SGC:ANNA-B412" (at 0 -45.72 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.u-blox.com/en/product/anna-b412-module" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "u-blox ANNA-B412 nRF52833 + BLE 5.1 module, 52-pin LGA (pinout placeholder — verify vs B412 datasheet)" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "ANNA-B412_0_1"
       (rectangle (start -17.78 38.1) (end 17.78 -38.1) (stroke (width 0.254) (type default)) (fill (type background)))
     )
-    (symbol "ANNA-B112_1_1"
+    (symbol "ANNA-B412_1_1"
       ;; Left side pins
       (pin bidirectional line (at -22.86 33.02 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "1"))
       (pin bidirectional line (at -22.86 27.94 0) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "4"))

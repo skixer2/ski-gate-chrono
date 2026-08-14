@@ -18,7 +18,10 @@ import datetime
 # Coordinates in mils. 100 mil grid. Left column x=100, right column x=600.
 SYMBOLS = [
     # ── Sheet 1: MCU Core ──
-    ("sgc_pcb_symbols:ANNA-B112", "MD1", "ANNA-B112", "SGC:ANNA-B112", 200, 300, 0, False),
+    # MD1 = ANNA-B412 (u-blox nRF52833, integrated antenna). Symbol pinout is a
+    # B112-derived placeholder — designer MUST verify land pattern/pad map vs the
+    # u-blox ANNA-B412 datasheet before layout.
+    ("sgc_pcb_symbols:ANNA-B412", "MD1", "ANNA-B412", "SGC:ANNA-B412", 200, 300, 0, False),
     ("Device:Crystal",             "Y1",  "32.768kHz", "Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm", 150, 200, 0, False),  # XL1/XL2 — was missing from schematic
     ("sgc_pcb_symbols:BHI260AP",   "U5",  "BHI260AP",  "SGC:BHI260AP_LGA-44", 600, 300, 0, False),
     ("sgc_pcb_symbols:BMP390",     "U6",  "BMP390",    "SGC:BMP390_LGA-10",   800, 300, 0, False),
@@ -111,7 +114,7 @@ GLOBAL_LABELS = [
 # ---------------------------------------------------------------------------
 TEXTS = [
     ("SGC — Custom PCB: Nicla Sense ME Replica (v1 pole-mount)", 200, 1200, 100),
-    ("Sheet 1 — MCU Core: ANNA-B112 + BHI260AP + BMP390 + Flash + RGB + Charger", 200, 400, 80),
+    ("Sheet 1 — MCU Core: ANNA-B412 + BHI260AP + BMP390 + Flash + RGB + Charger", 200, 400, 80),
     ("Sheet 2 — Sensors: Langir Piezo Button (v1 arming) + LDC1612 (v2, DNP)", 100, -200, 80),
     ("Sheet 3 — Peripherals: SK6812 ×5 + Level Shifter + Beeper (DNP)", 100, 750, 80),
     ("Sheet 4 — Power: Boost MT3608 + Battery JST + USB-C Charging (Qi DNP)", 600, -150, 80),
@@ -161,8 +164,8 @@ def main():
     out.append('  (paper "A3")')
     out.append('  (title_block')
     out.append('    (title "SGC — Ski Gate Chrono")')
-    out.append('    (date "2026-08-13")')
-    out.append('    (rev "v4.2")')
+    out.append('    (date "2026-08-14")')
+    out.append('    (rev "v4.3")')
     out.append('    (company "VYT Solutions")')
     out.append('    (comment 1 "Custom PCB — Nicla Sense ME Replica")')
     out.append('    (comment 2 "22 × 55 mm, 4-layer FR4, 0.8 mm — 8 MB flash + USB-C charging")')

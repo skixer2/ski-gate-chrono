@@ -1,4 +1,6 @@
-# SGC — Architecture: Hardware (v2.2 — Pole-Mount)
+# SGC — Architecture: Hardware (v2.3 — ANNA-B412 module)
+
+*2026-08-14 — v2.3: Production MD1 module swapped from **ANNA-B112 (nRF52832)** to **ANNA-B412 (u-blox nRF52833, 128 KB RAM / 512 KB Flash, BT 5.1, integrated antenna)**. Nicla-replica P0.xx GPIO map retained as design intent; module LGA pad numbers remain B112-derived placeholders until the B412 datasheet pin table is verified. Firmware stays Nicla/nRF52832 until a separate BSP-port task. See `anna_b412_migration.md`.*
 
 *2026-08-12 — v2.2: Arming changed from magnetic reed switch (rejected — magnet field de-calibrates the BMM150 magnetometer in the BHI260AP) to a Langir 16 mm piezoelectric pushbutton on P0.02. LDC1612 dropped from active BOM (footprint retained for v2). See sgc_bom.md v4.0.*
 
@@ -18,18 +20,36 @@
 
 ---
 
-### Terminology: ANNA-B112 Module vs Carrier PCB
+### Terminology: ANNA-B412 Module vs Carrier PCB
 
-The **ANNA-B112** is a pre-certified module (nRF52832 + BLE antenna in a single SMD package).
+The **ANNA-B412** is a pre-certified module (u-blox, nRF52833 + BLE 5.1 integrated antenna in a single SMD package).
 It is NOT a bare chip — it's a complete subsystem that gets soldered onto a larger PCB.
 
 That larger PCB is the **carrier PCB** (custom SGC board, 22 × 55 mm, 4-layer) which:
-- **Carries** the ANNA-B112 module as a mounted component
+- **Carries** the ANNA-B412 module as a mounted component
 - **Adds** all SGC peripherals: LDC1612 proximity, SK6812 × 5, beeper (DNP), USB-C charging, MOSFET power gating, BQ25120 charger
 - **Replicates** the Nicla Sense ME wiring exactly (BHI260AP, BMP390, Flash MX25R6435F, IS31FL3194)
 - **Reserves** footprint for v2 (RFID Impinj E310 + UWB DW3000, not populated)
 
-**Analogy:** ANNA-B112 = "brain", carrier PCB = "body" providing power, sensors, and actuators.
+**Analogy:** ANNA-B412 = "brain", carrier PCB = "body" providing power, sensors, and actuators.
+
+#### Migration from ANNA-B112
+
+| Property | ANNA-B112 (old) | ANNA-B412 (new) |
+|----------|-----------------|-----------------|
+| SoC | nRF52832 | nRF52833 |
+| RAM | 64 KB | 128 KB |
+| Flash | 512 KB | 512 KB |
+| Bluetooth | 5.0 | 5.1 |
+| Antenna | integrated | integrated (same class as Nicla Sense ME) |
+| Body | 6.5 × 6.5 × 1.2 mm | 6.5 × 6.5 × 1.2 mm (same class) |
+| Pinout | 52-pin LGA | may differ — design carrier to B412 datasheet |
+
+The SGC uses the **same peripheral set** (BHI260AP, BMP390, MX25R6435F, IS31FL3194,
+BQ25120A, SK6812 × 5, piezo button). The B412's 128 KB RAM relaxes the Cordio BLE
+heap constraint that limited the nRF52832. Pinout may differ from the B112 — the
+carrier is being designed, so it is laid out to the **B412 datasheet**. Firmware
+remains Nicla/nRF52832 until a separate BSP-port task.
 
 ### Production Architecture (200 units/month)
 
@@ -53,15 +73,15 @@ For the production phase, the approach shifts from a ground-up Nicla replica to 
 
 The custom PCB is a **strict replica** of the Arduino Nicla Sense ME.
 All Nicla internal connections are preserved exactly. SGC peripherals are
-added using only free ANNA-B112 GPIOs.
+added using only free ANNA-B412 GPIOs.
 
 ```
                    ╔══════════ Nicla Sense ME (replica) ═══════════╗
                    ║                                              ║
                    ║  ┌──────────────────────────────────────┐   ║
-                   ║  │      ANNA-B112 (nRF52832 + BLE)      │   ║
-                   ║  │   64 MHz Cortex-M4, 512 KB Flash     │   ║
-                   ║  │              64 KB RAM               │   ║
+                   ║  │      ANNA-B412 (nRF52833 + BLE 5.1)   │   ║
+                   ║  │   64 MHz Cortex-M4F, 512 KB Flash    │   ║
+                   ║  │              128 KB RAM              │   ║
                    ║  └──┬───┬───┬───┬───┬───┬───┬───┬──────┘   ║
                    ║     │   │   │   │   │   │   │   │          ║
                    ║  SPI│   │I2C│I2C│   │   │   │   │          ║
@@ -101,7 +121,7 @@ added using only free ANNA-B112 GPIOs.
                    ║    │ 0x2A    │  INTB → P0.02                  ║
                    ║    └─────────┘                                ║
                    ║                                               ║
-                   ║  GPIO pins (free ANNA-B112 GPIOs):            ║
+                   ║  GPIO pins (free ANNA-B412 GPIOs):            ║
                    ║    P0.02 → BUTTON     (piezo, edge intr)     ║
                    ║    P0.09 → BEEPER     (PWM piezo)             ║
                    ║    P0.10 → QI_DETECT  (Qi presence)           ║
@@ -129,7 +149,7 @@ added using only free ANNA-B112 GPIOs.
   Nicla's external header SPI, routed internally on custom PCB.
   CS P0.20 (RFID), CS P0.29 (UWB).
 - **6 GPIOs unavailable:** P0.06, P0.07, P0.08, P0.12, P0.13, P0.17 are not broken
-  out from the ANNA-B112 module (ANNA-B112 datasheet Table 7).
+  out from the module (B112 datasheet Table 7 reference — re-verify vs B412 datasheet).
 
 ---
 
@@ -147,11 +167,11 @@ These match the Nicla Sense ME exactly. Custom PCB copies this wiring.
 | P0.04 | SPI MOSI | Internal SPI → BHI260AP (U5) + Flash U7 |
 | P0.05 | SPI MISO | Internal SPI → BHI260AP (U5) + Flash U7 |
 | P0.11 | SPI SCK | External SPI header (J1-6), shared M2 bus |
-| P0.14 | BHI260AP HIRQ/INT | Interrupt from BHI260AP to nRF52832 |
+| P0.14 | BHI260AP HIRQ/INT | Interrupt from BHI260AP to nRF52833 |
 | P0.15 | I2C1 SDA (Wire1) | RGB LED (IS31FL3194) + BQ25120A charger |
 | P0.16 | I2C1 SCL (Wire1) | RGB LED + charger |
 | P0.18 | System reset | BQ25120 MR (reset network) |
-| P0.21 | RESET_N | ANNA-B112 module reset (pin 12) |
+| P0.21 | RESET_N | ANNA-B412 module reset (pad 12 — B112 ref, verify vs B412 datasheet) |
 | P0.22 | I2C0 SDA (Wire) | External I2C header (J2-1) / ESLOV |
 | P0.23 | I2C0 SCL (Wire) | External I2C header (J2-2) / ESLOV |
 | P0.25 | Charge disable | BQ25120 CD |
@@ -160,12 +180,12 @@ These match the Nicla Sense ME exactly. Custom PCB copies this wiring.
 | P0.28 | SPI MISO | External SPI header (J1-5), shared M2 bus |
 | P0.31 | BHI260AP CS | Chip select for BHI260AP sensor hub |
 
-🔒 **Not broken out from ANNA-B112 module** (ANNA-B112 datasheet Table 7):
+🔒 **Not broken out from module** (B112 datasheet Table 7 reference — re-verify vs B412 datasheet):
 P0.06, P0.07, P0.08, P0.12, P0.13, P0.17 — these have no pads on the module package.
 
 ### Category B — SGC-Specific Pin Assignments
 
-Assigned to free ANNA-B112 GPIOs not consumed by the Nicla replica.
+Assigned to free ANNA-B412 GPIOs not consumed by the Nicla replica.
 
 | GPIO | SGC v1 (core) | SGC v2 (RFID + UWB) | Nicla original |
 |------|--------------|---------------------|----------------|
@@ -200,7 +220,7 @@ Assigned to free ANNA-B112 GPIOs not consumed by the Nicla replica.
 | RGB LED | 0x53 | I2C1 / Wire1 (P0.15/P0.16) | IS31FL3194 driver (Nicla stock) |
 | BQ25120A | *(via Wire1)* | I2C1 / Wire1 (P0.15/P0.16) | PMIC charger IC (Nicla stock) |
 
-### Unused ANNA-B112 GPIOs (available for future)
+### Unused ANNA-B412 GPIOs (available for future)
 
 P0.09, P0.20 (if v2 not populated), P0.24 (if v2 not populated),
 P0.29, P0.30 (if v2 not populated).
@@ -406,7 +426,7 @@ Qi Charging Pad (5W, any Qi-compliant transmitter)
    600 mAh, 3.7V Li-Po
    Integrated NTC (3-wire: BAT+, BAT−/GND, NTC)
         │
-        ├──► 3.3V LDO (TPS7A05 or similar) → VDD_nRF (nRF52832, Flash, Beeper)
+        ├──► 3.3V LDO (TPS7A05 or similar) → VDD_nRF (nRF52833, Flash, Beeper)
         │
         ├──► 1.8V LDO → VDD_Sensors (BHI260AP, BMP390, LDC1612)
         │
@@ -459,7 +479,7 @@ from the Li-Po battery, independent of the LDO-regulated digital rails.
 
 **Feedback calculation:** Vout = Vref × (1 + R1/R2) = 0.6 × (1 + 75k/10k) = 5.1 V
 
-**EN pin control:** The boost EN pin is driven by an nRF52832 GPIO
+**EN pin control:** The boost EN pin is driven by an nRF52833 GPIO
 (P0.24 or any free pin). Firmware holds EN LOW during SLEEP (shutdown, ~2 µA),
 HIGH during ARMED/LOGGING/POST_RUN (LED active). This eliminates the ~65 µA
 boost quiescent draw when LEDs are off.
@@ -798,7 +818,7 @@ Key additions for v2: LDC1612 cross-arm proximity arming, 200g shock rating, inj
 │  (edge, near vent)        │                          │
 ├───────────────────────────┼──────────────────────────┤
 │                           │                          │
-│  nRF52832                 │  RGB LED Strip           │
+│  nRF52833                 │  RGB LED Strip           │
 │  (center-bottom)          │  5× SK6812-mini along    │
 │                           │  top edge, spaced ~3mm   │
 │                           │  (sequential animation)  │
@@ -829,10 +849,10 @@ Key additions for v2: LDC1612 cross-arm proximity arming, 200g shock rating, inj
 | User SPI | RFID (v2), UWB (v2) | P0.11 (SCK), P0.27 (MOSI), P0.28 (MISO), P0.20 (RFID CS), P0.29 (UWB CS) | SPI Mode 0 | ≤ 8 MHz |
 | I2C0 / Wire | LDC1612 (⚠️ v2 only) | P0.22 (SDA), P0.23 (SCL) | I²C Fast-mode | 400 kHz |
 | I2C1 / Wire1 | RGB LED, BQ25120A | P0.15 (SDA), P0.16 (SCL) | I²C Fast-mode | 400 kHz |
-| BLE | Phone | nRF52 internal RF | BLE 5.0, LE 2M PHY | ≤ 2 Mbps |
-| BHI260AP INT | nRF52832 | P0.14 | GPIO rising edge | Managed by BHY2 |
+| BLE | Phone | nRF52 internal RF | BLE 5.1, LE 2M PHY | ≤ 2 Mbps |
+| BHI260AP INT | nRF52833 | P0.14 | GPIO rising edge | Managed by BHY2 |
 | Piezo Button (v1) | Arming | P0.02 | GPIO IN, internal pull-up, edge interrupt | Pulse 20–1000 ms |
-| LDC1612 INTB (v2) | nRF52832 | P0.02 | GPIO rising edge | Wake from SLEEP |
+| LDC1612 INTB (v2) | nRF52833 | P0.02 | GPIO rising edge | Wake from SLEEP |
 | RGB LED strip | 5× SK6812-mini (custom PCB) | P0.19 | Single-wire NZR | 800 kHz |
 | Boost EN | MT3608 EN pin | P0.24* | GPIO OUT | HIGH = 5V active |
 | Beeper PWM | Piezo transducer | P0.09 | GPIO PWM | ~4 kHz |

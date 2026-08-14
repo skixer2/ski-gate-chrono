@@ -1,4 +1,6 @@
-# SGC — Bill of Materials (v4.2 — Langir piezo)
+# SGC — Bill of Materials (v4.3 — ANNA-B412 module)
+
+*2026-08-14 — v4.3: Production MD1 module swapped ANNA-B112 (nRF52832) → ANNA-B412 (u-blox nRF52833, 128 KB RAM, BT 5.1, integrated antenna). Pin map retained as design intent; module land pattern to be verified vs B412 datasheet. See `anna_b412_migration.md`.*
 
 *2026-08-13 — v4.2: Flash U7 committed to MX25R6435F (8 MB, pin-compatible, firmware
 auto-detects size). USB-C charging added as active SGC line (GCT USB4085 + CC pull-downs
@@ -65,7 +67,8 @@ benefits at half the price and still in active production from Langir.
 - LDC-specific passives: 100 nF + 33 pF tank cap + 2× 2.2 kΩ I²C pull-ups (reflected in #6)
 
 **Not included in SGC BOM (part of Nicla replica):**
-- nRF52832 (ANNA-B112 module), BHI260AP, BMP390, BMM150, BME688 — already on Nicla
+- MD1 BLE module — **ANNA-B412** (u-blox, nRF52833, integrated antenna) — replaces ANNA-B112
+- BHI260AP, BMP390, BMM150, BME688 — already on Nicla
 - MX25R6435F Flash U7 (8 MB) — pin-compatible swap from MX25R1635F (2 MB). Same SOIC-8
   pinout, same JEDEC SPI command set + SFDP. Firmware auto-detects size (SPIFBlockDevice
   SFDP); layout re-mapped for 8 MB (pre-roll stays 0x0000–0x13FFF).
@@ -73,6 +76,17 @@ benefits at half the price and still in active production from Langir.
 - Battery (Renata ICP622540PMT) — ⚠️ provisional; JST 3-pin connector may change per cell
 - Qi coil / IP6833 receiver — ⚠️ DROPPED (DNP); USB-C + IP67 cap as mechanical alternative
 - 32 kHz + 32 MHz crystals — Nicla stock
+
+### MD1 — Production BLE Module
+
+| Ref | Component | Manufacturer | MPN | Qty | Status |
+|-----|-----------|-------------|-----|-----|--------|
+| MD1 | ANNA-B412 | u-blox | ANNA-B412 (confirm exact ordering code, e.g. ANNA-B412-00B) | 1 | Active |
+
+- **SoC:** nRF52833 (128 KB RAM / 512 KB Flash), Bluetooth 5.1.
+- **Antenna:** integrated — no external ANT matching network unless the B412 datasheet requires one.
+- **Migration:** replaces ANNA-B112 (nRF52832). Pin map retained as design intent; land pattern must be verified against the u-blox ANNA-B412 datasheet.
+- See `anna_b412_migration.md`.
 
 ## Enclosure + Mechanical
 

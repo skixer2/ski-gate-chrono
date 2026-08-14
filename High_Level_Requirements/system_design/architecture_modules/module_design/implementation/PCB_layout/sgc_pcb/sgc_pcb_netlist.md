@@ -1,4 +1,6 @@
-# SGC — Wiring Netlist (v4.2 — Nicla Sense ME Replica)
+# SGC — Wiring Netlist (v4.3 — Nicla Sense ME Replica)
+
+*2026-08-14 — v4.3: MD1 module swapped ANNA-B112 (nRF52832) → ANNA-B412 (u-blox nRF52833, 128 KB RAM, BT 5.1, integrated antenna). Module pad numbers below remain B112-derived placeholders until the B412 datasheet pin table is verified. See `anna_b412_migration.md`.*
 
 *2026-08-13 — v4.2: Flash U7 swapped to MX25R6435F (8 MB, pin-compatible; size
 auto-detected in firmware). USB-C charging added (J2 GCT USB4085 + CC pull-downs);
@@ -15,14 +17,16 @@ All Nicla internal connections replicated exactly. SGC peripherals added using o
 free ANNA-B112 GPIOs. BHI260AP/BMP390 on BHY2-managed SPI (P0.03–P0.05).
 Flash = Nicla's MX25R1635F U7 (CS P0.26). No external flash IC.*
 
-*Reference: config.h v2.0, sgc_architecture_hardware.md v2.0, ANNA-B112 datasheet Table 7.*
+*Reference: config.h v2.0, sgc_architecture_hardware.md v2.3, ANNA-B112 datasheet Table 7 (pad numbers — re-verify vs ANNA-B412 datasheet).*
 
 ---
 
-## Sheet 1: Nicla Replica — MCU + Core Peripherals (ANNA-B112 Module)
+## Sheet 1: Nicla Replica — MCU + Core Peripherals (ANNA-B412 Module)
 
-The ANNA-B112 module (MD1) contains the nRF52832 + BLE antenna. This is the
-same module used on the stock Nicla Sense ME. All pin connections match exactly.
+The ANNA-B412 module (MD1) contains the nRF52833 + BLE 5.1 integrated antenna.
+This replaces the ANNA-B112 used on the stock Nicla Sense ME. The P0.xx GPIO
+connections below are design intent; module pad numbers are B112-derived and
+must be re-verified against the B412 datasheet.
 
 | Module Pin | nRF52 GPIO | Net Name | Connect To |
 |-----------|-----------|----------|------------|
@@ -40,12 +44,12 @@ same module used on the stock Nicla Sense ME. All pin connections match exactly.
 | 14 | P0.15 | I2C0_SDA | IS31FL3194 (U8) SDA, BQ25120 (U9) SDA, R7(2.2k→3.3V) |
 | 15 | P0.16 | I2C0_SCL | IS31FL3194 (U8) SCL, BQ25120 (U9) SCL, R8(2.2k→3.3V) |
 | 30 | P0.25 | CHG_DIS | BQ25120 CD |
-| — | P0.06 | NC | **Not broken out from ANNA-B112 module** |
-| — | P0.07 | NC | **Not broken out from ANNA-B112 module** |
-| — | P0.08 | NC | **Not broken out from ANNA-B112 module** |
-| — | P0.12 | NC | **Not broken out from ANNA-B112 module** |
-| — | P0.13 | NC | **Not broken out from ANNA-B112 module** |
-| — | P0.17 | NC | **Not broken out from ANNA-B112 module** |
+| — | P0.06 | NC | **Not broken out from module (B112 ref — verify vs B412 datasheet)** |
+| — | P0.07 | NC | **Not broken out from module (B112 ref — verify vs B412 datasheet)** |
+| — | P0.08 | NC | **Not broken out from module (B112 ref — verify vs B412 datasheet)** |
+| — | P0.12 | NC | **Not broken out from module (B112 ref — verify vs B412 datasheet)** |
+| — | P0.13 | NC | **Not broken out from module (B112 ref — verify vs B412 datasheet)** |
+| — | P0.17 | NC | **Not broken out from module (B112 ref — verify vs B412 datasheet)** |
 | 4,7-8,10-11,32-33,41-44,46-48,49-52 | — | GND | Solid GND plane |
 
 ## Sheet 2: Nicla Replica — External Headers (available as GPIO on custom PCB)
@@ -290,7 +294,7 @@ charging needs **no extra charging IC** — just a receptacle wired as a sink + 
 
 | Ref | Component | Footprint | Notes |
 |-----|-----------|-----------|-------|
-| MD1 | ANNA-B112 | Module, 52-pin LGA | nRF52832 + BLE |
+| MD1 | ANNA-B412 | Module, 52-pin LGA (verify vs B412 datasheet) | nRF52833 + BLE 5.1, integrated antenna |
 | U1 | LDC1612DNTR | WSON-12 | ⚠️ v2 only (DNP in v1) |
 | U2 | RFID (Impinj E310) | (v2, unpopulated) | v2 only |
 | U3 | DW3000 | QFN-40 | v2 only |

@@ -1,4 +1,6 @@
-# SGC — Production Strategy (v1.5 — Pole-Mount)
+# SGC — Production Strategy (v1.6 — ANNA-B412 module)
+
+*2026-08-14 — v1.6: Production MD1 BLE module swapped ANNA-B112 (nRF52832) → ANNA-B412 (u-blox nRF52833, integrated antenna) on the custom replica PCB. Off-the-shelf Nicla (P0–P2) unchanged. See `anna_b412_migration.md`.*
 
 *2026-08-12 — v1.5: Arming changed from magnetic reed switch (rejected — magnet de-calibrates BMM150) to a Langir 16 mm piezo pushbutton on P0.02. BOM + cost tables updated (button ~€7–12 vs reed ~€0.80).*
 *2026-08-11 — v1.4: AD-017 pole-mount pivot. Simplified mechanical — no injection molding, potting, foam padding, or strap assembly. Forearm guard deferred to v2. Cost estimates updated for pole-mount form factor.*
@@ -18,7 +20,7 @@
 | Parameter | Value |
 |-----------|-------|
 | Quantity | 5–10 units |
-| Hardware | Existing custom PCB (ANNA-B112, Nicla replica) |
+| Hardware | Existing custom PCB (ANNA-B412, Nicla replica) |
 | Assembly | Manual / in-house |
 | Cost per unit | ~€100–150 (manual labor, one-off parts) |
 | Total investment | ~€500–1,500 |
@@ -466,7 +468,7 @@ Clips to the pole and times every run.
 
 > ⚠️ **P1–P2 are NOT profitable.** Treated as market validation investment.
 > Profitability starts at P3, and only if Nicla wholesale pricing and volume discounts materialize.
-> Key profit driver: replace Nicla with custom nRF52832 PCB at P3 → saves ~€50/device → COGS drops to ~€60-80/kit → margin 60%+.
+> Key profit driver: replace Nicla with custom ANNA-B412 (nRF52833) PCB at P3 → saves ~€50/device → COGS drops to ~€60-80/kit → margin 60%+.
 
 ### Revenue Scenarios (per season)
 
@@ -477,7 +479,7 @@ Clips to the pole and times every run.
 | Steady state | P3 | 300 | €235 | €70,500 | €63,600 | €6,900 |
 
 > **Note:** These numbers assume off-the-shelf Nicla at ~€65 wholesale. True profitability requires
-a custom nRF52832 PCB (no Nicla) — achievable at P3+ but not earlier due to MOQ constraints.
+a custom ANNA-B412 (nRF52833) PCB (no Nicla) — achievable at P3+ but not earlier due to MOQ constraints.
 See §4 Architecture for the Nicla → custom PCB migration path.
 
 ---
