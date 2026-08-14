@@ -261,6 +261,7 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | T-003 | **PENDING** | catalog baseline 5.03 + harness 2.27 note |
 | T-004 | **DONE** | harness → `tmp_test_results/` auto staging (v2.27) |
 | T-005 | **OPEN** | harden U13/`?` expect against stray `cmd B` (D-007) |
+| T-006 | **IN PROGRESS** | PC→VPS push of `tmp_test_results` via SSH **key** (no password in repo); DeepSeek |
 
 ### 5.03 implementation review (coordinator)
 

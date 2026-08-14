@@ -39,6 +39,17 @@ Get-ChildItem test_*.py | ForEach-Object {   # full tier only
 }
 ```
 
+### Push results to the coordinator (SSH)
+
+After a smoke/core loop, push `tmp_test_results/run_*` to the OpenClaw host so the
+Lead Systems Coordinator can read them (one-time key setup in
+[`tmp_test_results/README.md`](tmp_test_results/README.md)):
+
+```powershell
+.\push_test_results.ps1 -RunId $runId
+```
+
+
 Full `test_*.py` picks up **S02–S06** wrappers + all units (including long U20).
 
 | File | Layer | Duration (order) |

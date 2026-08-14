@@ -53,3 +53,9 @@ High_Level_Requirements/system_design/architecture_modules/module_design/unit_te
 
 # Raw hex dumps (runtime test artifacts)
 High_Level_Requirements/system_design/system_tests/results/*.txt
+
+# SSH keys / secrets (never commit)
+**/secrets.env
+**/*_sgc
+**/id_ed25519_sgc
+**/id_ed25519_sgc.pub
