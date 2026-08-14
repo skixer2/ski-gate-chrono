@@ -9,13 +9,13 @@
 
 #include "file_transfer.h"
 #include "../config.h"
+#include "sgc_service.h"
 #include "../storage/raw_run_store.h"
 #include "../test_json.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
 
-/* V5.07: extern from main.cpp */
-extern void request_ble_radio_restart(const char* why);
+/* V5.07: request_ble_radio_restart declared in sgc_service.h */
 
 extern "C" {
     BLECharacteristic*              sgc_ble_ft_chunk_char();
