@@ -27,6 +27,9 @@ extern StateMachine g_sm;
 
 static bool g_central_connected = false;
 
+/* V5.07: last BLE activity timestamp for zombie link detection */
+static uint32_t g_last_ble_activity_ms = 0;
+
 #define SGC_UUID(base16) "5347" base16 "-0000-1000-8000-00805F9B34FB"
 static BLEService svc(SGC_UUID("0000"));
 
@@ -124,6 +127,7 @@ static void on_time_written(BLEDevice c, BLECharacteristic ch) {
     if (epoch > 1000000000u) {   /* sanity: reject pre-2001 garbage */
         g_epoch_at_sync  = epoch;
         g_millis_at_sync = millis();
+        g_last_ble_activity_ms = millis();  // V5.07
     }
 }
 static void on_dev_name_written(BLEDevice c, BLECharacteristic ch) {
@@ -132,20 +136,24 @@ static void on_dev_name_written(BLEDevice c, BLECharacteristic ch) {
     int len = v.length(); if (len > 20) len = 20;
     memcpy(g_dev_name, v.c_str(), len); g_dev_name[len] = '\0';
     BLE.setLocalName(g_dev_name); sgc_ble_config_save();
+    g_last_ble_activity_ms = millis();  // V5.07
 }
 static void on_arm_side_written(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;
     g_arm_side = char_arm_side.value() ? 1 : 0; sgc_ble_config_save();
+    g_last_ble_activity_ms = millis();  // V5.07
 }
 static void on_discipline_written(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;
     uint8_t v = char_discipline.value(); if (v > 3) v = 1;
     g_discipline = v; sgc_ble_config_save();
+    g_last_ble_activity_ms = millis();  // V5.07
 }
 static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;
     extern void sgc_ble_ft_on_request(uint16_t);
     sgc_ble_ft_on_request(char_ft_req.value());
+    g_last_ble_activity_ms = millis();  // V5.07
 }
 
 void sgc_ble_restart_advertising(const char* why)
@@ -202,6 +210,7 @@ static void on_ble_connected(BLEDevice central)
 {
     g_central_connected = true;
     g_sm.set_hold_idle(true);
+    g_last_ble_activity_ms = millis();  // V5.07
     json_begin();
     json_kv("ev", "ble_conn");
     Serial.print(','); json_kv("addr", central.address().c_str());
@@ -212,6 +221,7 @@ static void on_ble_disconnected(BLEDevice central)
 {
     (void)central;
     g_central_connected = false;
+    g_last_ble_activity_ms = millis();  // V5.07: prevent immediate zombie re-trigger after real disconnect
     /* Abort FT first so sgc_ble_ft_active() clears before hold_idle. */
     sgc_ble_ft_abort("disconnect");
     g_sm.set_hold_idle(false);
@@ -275,6 +285,8 @@ void sgc_ble_init()
     BLE.setLocalName(g_dev_name);
     BLE.setAdvertisedService(svc);
     BLE.advertise();
+
+    g_last_ble_activity_ms = millis();  // V5.07: boot counts as activity
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
@@ -331,6 +343,8 @@ bool sgc_ble_radio_restart(const char* why)
     DeviceState st = g_sm.state();
     if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
         BLE.advertise();
+
+    g_last_ble_activity_ms = millis();  // V5.07: fresh start after radio restart
 
     json_begin();
     json_kv("ev", "ble_radio");
@@ -425,3 +439,7 @@ extern "C" {
     BLECharacteristic* sgc_ble_ft_status_char() { return &char_transfer; }
     BLEUnsignedIntCharacteristic* sgc_ble_ft_crc_char() { return &char_ft_crc; }
 }
+
+/* V5.07: BLE activity tracking for zombie link detection */
+uint32_t sgc_ble_last_activity_ms() { return g_last_ble_activity_ms; }
+void     sgc_ble_touch_activity()   { g_last_ble_activity_ms = millis(); }

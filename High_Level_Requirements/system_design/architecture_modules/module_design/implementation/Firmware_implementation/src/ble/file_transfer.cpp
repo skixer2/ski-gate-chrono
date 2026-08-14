@@ -14,6 +14,9 @@
 #include <ArduinoBLE.h>
 #include <Arduino.h>
 
+/* V5.07: extern from main.cpp */
+extern void request_ble_radio_restart(const char* why);
+
 extern "C" {
     BLECharacteristic*              sgc_ble_ft_chunk_char();
     BLECharacteristic*              sgc_ble_ft_status_char();
@@ -81,6 +84,7 @@ void sgc_ble_transfer_poll()
             BLE.disconnect();
             BLE.poll();
         }
+        request_ble_radio_restart("ft_stall");  // V5.07: radio restart after FT stall
         return;
     }
 
@@ -131,6 +135,7 @@ void sgc_ble_transfer_poll()
     g_ft_offset += send_len;
     g_ft_chunks++;
     g_ft_last_prog_ms = now;
+    sgc_ble_touch_activity();  // V5.07: chunk sent = phone is active
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
         json_begin();
@@ -144,6 +149,7 @@ void sgc_ble_transfer_poll()
 
 void sgc_ble_ft_on_request(uint16_t run_id)
 {
+    sgc_ble_touch_activity();  // V5.07: request counts as BLE activity
     json_begin();
     json_kv("ev", "ft_request");
     Serial.print(','); json_kv("run", (long)run_id);

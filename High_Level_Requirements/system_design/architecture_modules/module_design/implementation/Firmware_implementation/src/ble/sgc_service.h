@@ -25,6 +25,8 @@ bool sgc_ble_radio_restart(const char* why = nullptr);
 /** True while a central is connected (updated on connect/disconnect events). */
 bool sgc_ble_central_connected();
 
+void request_ble_radio_restart(const char* why = nullptr);  // V5.07: declared here for file_transfer.cpp
+
 void sgc_ble_set_battery(uint8_t pct);
 void sgc_ble_set_cal(uint8_t cal);
 void sgc_ble_set_run_count(uint16_t count);
@@ -32,6 +34,9 @@ void sgc_ble_set_transfer(uint8_t status);
 void sgc_ble_set_flash_used(uint8_t pct);
 void sgc_ble_set_charging(uint8_t status);
 void sgc_ble_set_sensor_status(uint8_t bitfield);
+
+uint32_t sgc_ble_last_activity_ms();    // V5.07: last BLE activity timestamp
+void     sgc_ble_touch_activity();      // V5.07: mark BLE active now
 
 void sgc_ble_config_load();
 void sgc_ble_config_save();

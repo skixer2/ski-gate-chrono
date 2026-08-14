@@ -117,7 +117,7 @@ extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress A
 static bool        g_ble_radio_restart_pending = false;
 static const char* g_ble_radio_restart_why     = "stream_end";
 
-static void request_ble_radio_restart(const char* why)
+void request_ble_radio_restart(const char* why)
 {
     g_ble_radio_restart_pending = true;
     g_ble_radio_restart_why     = why;
@@ -1149,6 +1149,16 @@ void loop()
            forever / stop being scannable. */
         if (sgc_ble_central_connected() && !BLE.connected())
             sgc_ble_force_recover("desync");
+        /* V5.07: zombie BLE link detection. If g_central_connected is true but
+           no BLE activity (GATT write / connect / FT chunk) for >30s, the phone
+           is gone but Cordio still thinks the link is alive. Force a hard radio
+           restart — soft force_recover can't clear a zombie Cordio link. */
+        if (sgc_ble_central_connected() && !sgc_ble_ft_active()) {
+            uint32_t idle = millis() - sgc_ble_last_activity_ms();
+            if (idle > BLE_ZOMBIE_TIMEOUT_MS) {
+                request_ble_radio_restart("zombie");
+            }
+        }
         /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
         g_sm.set_hold_idle(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
         g_led.update(); g_ldc.tick();

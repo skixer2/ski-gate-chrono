@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "5.06"
+#define FW_VERSION "5.07"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
@@ -34,7 +34,10 @@ static constexpr uint32_t ARM_TIMEOUT_MS         = 30000;   /* 30 s armed → id
 static constexpr uint32_t POST_RUN_COOLDOWN_MS   = 10000;   /* 10 s before re-arm  */
 static constexpr uint32_t MAX_LOG_DURATION_MS    = 150000;  /* 150 s log limit → POST_RUN (overridable via BLE) */
 /* BLE FT watchdog: abort if no progress for this long (phone gone / wedge). */
-static constexpr uint32_t FT_STALL_TIMEOUT_MS    = 15000;
+static constexpr uint32_t FT_STALL_TIMEOUT_MS    = 8000;   // 8s — faster abort on stuck FT
+
+/* Zombie BLE link: 30s no BLE activity (GATT write / connect / FT chunk) = dead phone. */
+static constexpr uint32_t BLE_ZOMBIE_TIMEOUT_MS  = 30000;
 
 /* --- Detector thresholds (per design spec) --- */
 static constexpr float    SPEED_THRESHOLD_MPS     = 1.5f;    /* m/s for 200ms window */
