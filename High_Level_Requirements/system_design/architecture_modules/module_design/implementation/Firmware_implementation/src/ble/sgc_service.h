@@ -17,6 +17,8 @@ void sgc_ble_update_state(DeviceState s);
 void sgc_ble_poll();
 /** Hard stop→name→service→advertise (Cordio needs full cycle after link drop). */
 void sgc_ble_restart_advertising(const char* why = nullptr);
+/** Force-clear any zombie BLE link + sticky hold, then re-ADV when discoverable. */
+void sgc_ble_force_recover(const char* why = nullptr);
 /** True while a central is connected (updated on connect/disconnect events). */
 bool sgc_ble_central_connected();
 

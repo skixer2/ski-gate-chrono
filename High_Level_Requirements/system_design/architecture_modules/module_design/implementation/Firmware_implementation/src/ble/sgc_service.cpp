@@ -166,6 +166,36 @@ void sgc_ble_restart_advertising(const char* why)
     }
 }
 
+void sgc_ble_force_recover(const char* why)
+{
+    /* V5.03: force-clear any zombie / half-open BLE link and the sticky
+       hold_idle flag, then re-advertise only when the state wants to be
+       discoverable (IDLE / POST_RUN). NEVER call from on_ble_disconnected —
+       that handler already runs its own teardown; use this from serial,
+       state entry, or the main-loop desync heal instead. */
+    const char* reason = why ? why : "state";
+
+    sgc_ble_ft_abort(reason);
+    BLE.stopAdvertise();
+    if (BLE.connected()) {
+        BLE.disconnect();
+        /* A few short polls let Cordio finish link teardown. Non-blocking. */
+        for (int i = 0; i < 3 && BLE.connected(); i++) BLE.poll();
+    }
+    g_central_connected = false;
+    g_sm.set_hold_idle(false);
+
+    DeviceState st = g_sm.state();
+    if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
+        sgc_ble_restart_advertising(reason);
+
+    json_begin();
+    json_kv("ev", "ble_recover");
+    Serial.print(','); json_kv("why", reason);
+    Serial.print(','); json_kv("st", StateMachine::state_name_for(st));
+    json_end();
+}
+
 bool sgc_ble_central_connected() { return g_central_connected; }
 
 static void on_ble_connected(BLEDevice central)
@@ -247,26 +277,21 @@ void sgc_ble_update_state(DeviceState s)
     switch (s) {
     case DeviceState::IDLE:
     case DeviceState::POST_RUN:
-        /* V4.94/V5.00: bare advertise after stop is often a no-op on Cordio.
-           If still connected (app killed mid-session), disconnect first so
-           ADV actually restarts and phone can scan again. */
-        if (!BLE.connected())
-            sgc_ble_restart_advertising(nullptr);
-        else {
-            /* Stay connected — do not kick the phone on IDLE refresh. */
+        /* V5.03: only keep the link when BOTH the connect event fired and
+           Cordio agrees we're connected. Any desync (flag vs link) or a
+           missing connection → full recovery + re-ADV so the phone can scan
+           again after an app kill / BLE toggle. */
+        if (g_central_connected && BLE.connected()) {
+            /* Truly connected — keep link, refresh name only (don't kick). */
             BLE.setLocalName(g_dev_name);
+        } else {
+            sgc_ble_force_recover(nullptr);
         }
         break;
     case DeviceState::SLEEP:
-        /* Drop link + ADV so we do not sit half-connected with ADV off. */
-        sgc_ble_ft_abort("sleep");
-        BLE.stopAdvertise();
-        if (BLE.connected()) {
-            BLE.disconnect();
-            BLE.poll();
-        }
-        g_central_connected = false;
-        g_sm.set_hold_idle(false);
+        /* V5.03: full teardown via force_recover — clears zombie link and
+           sticky hold; ADV stays off because SLEEP is not discoverable. */
+        sgc_ble_force_recover("sleep");
         break;
     default:
         /* ARMED/LOGGING — save power, prevent brown-out; keep link if any */

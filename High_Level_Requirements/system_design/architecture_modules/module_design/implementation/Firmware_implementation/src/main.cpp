@@ -231,7 +231,13 @@ void handle_serial()
     }
 
     switch (c) {
-    case 'i': g_sm.force_state(DeviceState::IDLE); break;
+    case 'i':
+        g_sm.force_state(DeviceState::IDLE);
+        /* V5.03: always recover BLE on manual wake — clears zombie link /
+           sticky hold and re-ADVs even if already IDLE (force_state no-ops
+           on the same state, so this guarantees the bench can re-scan). */
+        sgc_ble_force_recover("serial_i");
+        break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
             /* Minimal test fork: enable serial frame source. Everything
@@ -769,7 +775,8 @@ static void on_state_transition(DeviceState from, DeviceState to)
         json_end();
     }
     if (to == DeviceState::POST_RUN) {
-        BLE.advertise();
+        /* V5.03: ADV handled by sgc_ble_update_state (force_recover path) —
+           no bare advertise() here. */
         if (g_stream_active) {
             g_stream_active = false;
             json_begin(); json_kv("ev", "stream_end");
@@ -1115,6 +1122,11 @@ void loop()
            needed during a download (device is in IDLE). */
         if (!sgc_ble_ft_active()) BHY2.update();
         sgc_ble_poll(); sgc_ble_transfer_poll();
+        /* V5.03: desync heal — connect flag set but link gone means the
+           disconnect event was missed; force-recover so we don't hold IDLE
+           forever / stop being scannable. */
+        if (sgc_ble_central_connected() && !BLE.connected())
+            sgc_ble_force_recover("desync");
         /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
         g_sm.set_hold_idle(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
         g_led.update(); g_ldc.tick();

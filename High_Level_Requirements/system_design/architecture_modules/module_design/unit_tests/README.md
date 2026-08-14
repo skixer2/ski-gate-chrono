@@ -3,9 +3,14 @@
 **What to run:** see **[TEST_CATALOG.md](TEST_CATALOG.md)** (smoke / core / full).
 Default day-to-day = **core**, not full `Get-ChildItem test_*.py`.
 
+**Cross-stack debug notebook:** **[test_ledger/TEST_LEDGER.md](test_ledger/TEST_LEDGER.md)**  
+(architecture map, active manual/BLE case, serial+Flutter logs, coordinator task queue).
+Lead Systems Coordinator owns the ledger; automated gates stay in TEST_CATALOG.
+
 ```
 unit_tests/          ← Module unit tests + device system wrappers (test_*.py)
   TEST_CATALOG.md    ← keep/merge/drop + tiers (source of truth)
+  test_ledger/       ← Unified Test Ledger (active case + logs + tasks)
   sgc_test_harness.py
   test_state_machine.py … test_edge_cases.py   ← U01+ (JSON steps)
   test_s02_factory_reset.py                    ← S02 serial R
