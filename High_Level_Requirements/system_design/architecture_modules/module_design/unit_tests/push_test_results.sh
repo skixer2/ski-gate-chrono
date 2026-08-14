@@ -15,10 +15,11 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_DIR="${LOCAL_DIR:-$HERE/tmp_test_results}"
 
-REMOTE_HOST="${SGC_RESULTS_HOST:-72.60.88.60}"   # example only
+# Hostinger: OpenClaw is in Docker; host path is under /root/.openclaw/workspace
+REMOTE_HOST="${SGC_RESULTS_HOST:-72.60.88.60}"
 REMOTE_PORT="${SGC_RESULTS_PORT:-22}"
-REMOTE_USER="${SGC_RESULTS_USER:-node}"          # "ubuntu" is an alternative
-REMOTE_PATH="${SGC_RESULTS_PATH:-/home/node/.openclaw/workspace/ski_gate_chrono/High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/tmp_test_results}"
+REMOTE_USER="${SGC_RESULTS_USER:-root}"
+REMOTE_PATH="${SGC_RESULTS_PATH:-/root/.openclaw/workspace/ski_gate_chrono/High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/tmp_test_results}"
 IDENTITY_FILE="${SGC_RESULTS_KEY:-$HOME/.ssh/id_ed25519_sgc}"
 
 ALL=0
