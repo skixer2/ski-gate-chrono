@@ -22,6 +22,9 @@ Phone/BLE/cloud (📱 I01–I03, Dart) are out of scope here.
 | **full** | Release / tag candidate | all `test_*.py` in harness loop | ~15–25 min |
 | **device-only** | Rate/pre-roll bench | `system_tests/run_device_suite.py COM8 -R --with-s03` | ~5–8 min |
 
+**Fast path:** `.\run_smoke.ps1` / `.\run_core.ps1` (in `unit_tests/`) run these
+tiers and auto-push results to the coordinator — see `tmp_test_results/README.md`.
+
 ```powershell
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 # smoke

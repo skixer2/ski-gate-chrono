@@ -3,10 +3,10 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-14 07:06 UTC  
+**Last updated:** 2026-08-14 08:56 UTC  
 **Current baselines:** FW **5.03** · App **1.10** · HW **v4.2** · Port **COM8** · Harness **2.27**  
-**Last harness:** `run_20260814_0900` smoke — inject+S04 PASS, **U13 8/9 flake** (see D-007)  
-**Results dir:** `unit_tests/tmp_test_results/`
+**Last harness:** `run_20260814_0911` smoke **ALL PASS** (via SSH push)  
+**Results dir:** `unit_tests/tmp_test_results/` · push: `push_test_results.ps1` (root@VPS key)
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
 (firmware · Flutter · BLE · hardware). Automated catalogs stay in
@@ -248,7 +248,7 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | D-004 | P2 | U19 inject flake historically | serial/inject | **PASS** on 0829 |
 | D-005 | P3 | No automated serial test for BLE hold-idle / re-ADV | BLE 5.00 | Manual only |
 | **D-006** | **P0** | Zombie BLE connected: no auto-sleep, not scannable | `sgc_ble_force_recover` | **CLOSED PASS on 5.03** (hard reset once, then multi app reconnect + auto SLEEP) |
-| **D-007** | **P2** | U13 step "Record initial runs" got `cmd B p=0` instead of `status` | harness serial RX race after enable_test_mode / residual stream | **OPEN** — rest of U13 + S04 green on 0900 |
+| **D-007** | **P2** | U13 step "Record initial runs" got `cmd B p=0` instead of `status` | harness serial RX race | **WATCH** — flake on 0900; **PASS 10/10** on 0911 |
 
 ---
 
@@ -261,7 +261,7 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | T-003 | **PENDING** | catalog baseline 5.03 + harness 2.27 note |
 | T-004 | **DONE** | harness → `tmp_test_results/` auto staging (v2.27) |
 | T-005 | **OPEN** | harden U13/`?` expect against stray `cmd B` (D-007) |
-| T-006 | **IN PROGRESS** | PC→VPS push of `tmp_test_results` via SSH **key** (no password in repo); DeepSeek |
+| T-006 | **DONE** | PC→VPS `push_test_results.ps1/.sh` via SSH **key** (no password); DeepSeek + review/push |
 
 ### 5.03 implementation review (coordinator)
 
@@ -290,6 +290,7 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | TC-2026-08-14-001 | 2026-08-14 | FW 5.02 boot + smoke | **PASS smoke** | §2b |
 | TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2 (close after core) |
 | run_20260814_0900 | 2026-08-14 | Smoke 5.03 | inject+S04 PASS; flash **9/10** U13 flake | `tmp_test_results/` |
+| run_20260814_0911 | 2026-08-14 | Smoke 5.03 | **ALL PASS** 21+10+1 | `tmp_test_results/` (SSH push OK) |
 
 Snapshots: `test_ledger/history/`  
 Optional deep-dive cases: `test_ledger/cases/TC-….md`
@@ -304,12 +305,10 @@ cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\a
 pio run -t upload -e nicla
 pio device monitor -b 115200
 
-# Smoke
+# Smoke (run + auto-push results to the coordinator)
 cd ..\..\..\unit_tests   # adjust to unit_tests path on PC
-$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
-foreach ($t in 'test_sensor_injection.py','test_flash.py','test_s04_bhy2_rate.py') {
-  py sgc_test_harness.py --port COM8 $t --run-id $runId
-}
+.\run_smoke.ps1          # -SkipPush to skip push, -Clean to prune old runs first
+# Core tier: .\run_core.ps1
 ```
 
 Path note: JP PC canonical tree may be `F:\Documents\Progetti\ski-gate-chrono`; workspace mirror is under OpenClaw `ski_gate_chrono/`.

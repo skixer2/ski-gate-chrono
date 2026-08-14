@@ -3,6 +3,21 @@
 **Purpose:** Automatic landing zone for smoke/core/full artifacts so the Lead
 Systems Coordinator can read them without manual copy into `unit_tests/` root.
 
+## Fast path (recommended)
+
+Use the tier wrappers — they run the tests **and auto-push** the results to the
+OpenClaw host, so the coordinator sees them without a manual push:
+
+```powershell
+.\run_smoke.ps1              # smoke tier + auto-push (port COM8)
+.\run_smoke.ps1 -SkipPush    # run only, no push
+.\run_smoke.ps1 -Clean       # prune old runs first (keep 15), then run + push
+.\run_core.ps1               # core tier + auto-push
+```
+
+`run_smoke.ps1` / `run_core.ps1` push even when tests fail (the coordinator
+needs fail logs). Add `-Port COM7` to change the serial port.
+
 ## How files get here
 
 From harness **v2.27.0+**, any run with `--run-id` or `--ts` writes here by default:
@@ -104,6 +119,23 @@ See `secrets.example.env` for the placeholder template — copy to `secrets.env`
   coordinator, not git.
 - Never commit `secrets.env`, `*.pem`, or `id_*` private keys. `.gitignore` covers
   these patterns; don't remove those lines.
+
+## Cleanup
+
+Prune old `run_*` artifacts so the drop folder does not grow forever. Keeps the
+**10** most recent run groups (and anything newer than **14** days); deletes the
+rest. Never touches `README.md` or `secrets*.env`.
+
+```powershell
+py cleanup_test_results.py --dry-run    # preview what would be deleted
+py cleanup_test_results.py              # keep 10 runs / 14 days
+py cleanup_test_results.py --keep-runs 15 --max-age-days 7
+.\cleanup_test_results.ps1 -KeepRuns 15
+```
+
+`run_smoke.ps1 -Clean` (or `run_core.ps1 -Clean`) runs this automatically with
+`--keep-runs 15` before the tests. The coordinator may also prune after ledger
+capture (see `test_ledger/TEST_LEDGER.md`).
 
 ## Hygiene
 

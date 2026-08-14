@@ -32,17 +32,29 @@ system_design/system_tests/   ← Device system scripts (S03–S06 bodies)
 From `unit_tests/` on the PC with Nicla on COM8:
 
 ```powershell
+.\run_smoke.ps1     # smoke tier: run + auto-push results to the coordinator
+.\run_core.ps1      # core tier:  run + auto-push
+```
+
+`run_smoke.ps1` / `run_core.ps1` set the `run_` id, run the tier files from
+TEST_CATALOG, and **always** push `tmp_test_results/run_*` to the OpenClaw host
+at the end (even on failure, so the coordinator gets the fail logs). Options:
+`-SkipPush` (run, no push), `-Port COM7`, `-Clean` (prune old runs first).
+
+Manual equivalent (full tier only — prefer the wrappers):
+
+```powershell
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
-# See TEST_CATALOG.md for smoke / core file lists
-Get-ChildItem test_*.py | ForEach-Object {   # full tier only
+Get-ChildItem test_*.py | ForEach-Object {
   py sgc_test_harness.py --port COM8 $_ --run-id $runId
 }
+.\push_test_results.ps1 -RunId $runId
 ```
 
 ### Push results to the coordinator (SSH)
 
-After a smoke/core loop, push `tmp_test_results/run_*` to the OpenClaw host so the
-Lead Systems Coordinator can read them (one-time key setup in
+Automatic with `run_smoke.ps1` / `run_core.ps1`. Run manually only if you used a
+raw loop above (one-time key setup in
 [`tmp_test_results/README.md`](tmp_test_results/README.md)):
 
 ```powershell

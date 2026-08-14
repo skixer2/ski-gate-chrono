@@ -19,7 +19,7 @@ Aligned with FW ≥4.80 / Opt-A linear pre-roll:
 Protocol: see json_protocol.md for full spec.
 """
 
-HARNESS_VERSION = "2.27.0"
+HARNESS_VERSION = "2.28.0"
 # Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on IDLE).
 MIN_FW_VERSION = (4, 82)
 
@@ -41,6 +41,7 @@ import serial
 import serial.tools.list_ports
 import time
 import argparse
+import subprocess
 import traceback
 from dataclasses import dataclass, field
 from typing import Optional, Callable, List, Dict, Any, Union
@@ -679,6 +680,38 @@ def enter_logging_via_start(h: SGCTestHarness,
     return h.wait_for_state('LOGGING', timeout_ms=8000)
 
 
+def _env_flag(name: str) -> bool:
+    """True if env var is set to a truthy value (1/true/yes/on)."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def spawn_auto_push(run_id: str, script_dir: str) -> None:
+    """Spawn the SSH push helper for a finished --run-id run, non-fatally.
+
+    Triggered by --push or SGC_RESULTS_AUTO_PUSH=1. Never affects exit code.
+    """
+    if not run_id:
+        return
+    try:
+        if os.name == "nt":
+            ps1 = os.path.join(script_dir, "push_test_results.ps1")
+            if not os.path.exists(ps1):
+                print("NOTE: auto-push skipped (missing %s)" % ps1)
+                return
+            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                   "-File", ps1, "-RunId", run_id]
+        else:
+            sh = os.path.join(script_dir, "push_test_results.sh")
+            if not os.path.exists(sh):
+                print("NOTE: auto-push skipped (missing %s)" % sh)
+                return
+            cmd = ["bash", sh, run_id]
+        print("Auto-push: spawning %s" % " ".join(cmd))
+        subprocess.Popen(cmd)
+    except Exception as e:
+        print("WARNING: auto-push failed to spawn: %s" % e)
+
+
 def main():
     parser = argparse.ArgumentParser(description='SGC Test Harness v2 (JSON protocol)')
     parser.add_argument('scenario', nargs='?', help='Test scenario file')
@@ -697,6 +730,9 @@ def main():
     parser.add_argument('--results-dir', default=None, metavar='DIR',
         help='Directory for --run-id / --ts outputs (default: tmp_test_results, '
              'or RESULTS_DIR env). Use "." to write into cwd (legacy).')
+    parser.add_argument('--push', action='store_true',
+        help='After a --run-id run, auto-push artifacts to the OpenClaw host. '
+             'Off by default; set SGC_RESULTS_AUTO_PUSH=1 to always push.')
     args = parser.parse_args()
 
     # Resolve results directory once (absolute under unit_tests when relative).
@@ -865,6 +901,10 @@ def main():
             verb = 'Saved to' if (args.ts and not args.run_id) else (
                 'appended to' if not is_new else 'saved to')
             print(f"Results {verb} {out_path}")
+
+        # Optional auto-push (off in bare harness; on in run_smoke/run_core wrappers).
+        if args.run_id and (args.push or _env_flag("SGC_RESULTS_AUTO_PUSH")):
+            spawn_auto_push(args.run_id, _script_dir)
 
         sys.exit(0 if all_ok else 1)
     finally:
