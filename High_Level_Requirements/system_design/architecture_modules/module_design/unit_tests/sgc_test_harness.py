@@ -19,9 +19,13 @@ Aligned with FW ≥4.80 / Opt-A linear pre-roll:
 Protocol: see json_protocol.md for full spec.
 """
 
-HARNESS_VERSION = "2.26.0"
+HARNESS_VERSION = "2.27.0"
 # Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on IDLE).
 MIN_FW_VERSION = (4, 82)
+
+# Default drop folder for --run-id artifacts (coordinator staging / analysis).
+# Override with --results-dir PATH, or RESULTS_DIR env, or "" / "." for cwd.
+DEFAULT_RESULTS_DIR = "tmp_test_results"
 
 import os
 import sys
@@ -688,8 +692,23 @@ def main():
         help='Timestamp output files: one file per run (e.g. results_20260622_1703.md)')
     parser.add_argument('--run-id', default=None, metavar='NAME',
         help='Run ID for multi-invocation aggregation. Summary .md appends across '
-             'invocations; each test gets NAME_<test>.log.')
+             'invocations; each test gets NAME_<test>.log. Files land under '
+             'tmp_test_results/ (see --results-dir).')
+    parser.add_argument('--results-dir', default=None, metavar='DIR',
+        help='Directory for --run-id / --ts outputs (default: tmp_test_results, '
+             'or RESULTS_DIR env). Use "." to write into cwd (legacy).')
     args = parser.parse_args()
+
+    # Resolve results directory once (absolute under unit_tests when relative).
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    _rd = args.results_dir
+    if _rd is None:
+        _rd = os.environ.get('RESULTS_DIR', DEFAULT_RESULTS_DIR)
+    if _rd in ('', '.'):
+        results_dir = os.getcwd()
+    else:
+        results_dir = _rd if os.path.isabs(_rd) else os.path.join(_script_dir, _rd)
+    args._results_dir = results_dir
 
     if args.list:
         for p in serial.tools.list_ports.comports():
@@ -719,26 +738,47 @@ def main():
 
     # ── Output naming ──────────────────────────────────────────
     run_stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M')
+    results_dir = getattr(args, '_results_dir', os.getcwd())
+
+    def _in_results(name):
+        """Place artifact under results_dir unless caller passed an absolute path."""
+        if not name:
+            return name
+        if os.path.isabs(name):
+            return name
+        # Keep explicit relative subpaths the user gave; still root under results_dir
+        return os.path.join(results_dir, name)
+
+    if args.run_id or args.ts:
+        try:
+            os.makedirs(results_dir, exist_ok=True)
+        except OSError as e:
+            print(f"WARNING: cannot create results dir {results_dir}: {e}")
+
     if args.run_id:
         # Multi-invocation mode: summary .md appends, per-test .log files
         test_tag = os.path.splitext(os.path.basename(args.scenario))[0]
         if not args.output:
-            args.output = f"{args.run_id}.md"
+            args.output = _in_results(f"{args.run_id}.md")
+        else:
+            args.output = _in_results(args.output)
         if not args.log:
-            args.log = f"{args.run_id}_{test_tag}.log"
+            args.log = _in_results(f"{args.run_id}_{test_tag}.log")
+        else:
+            args.log = _in_results(args.log)
     elif args.ts:
         # Single-invocation timestamped mode
         def _ts_name(base):
             name, ext = os.path.splitext(base)
             return f"{name}_{run_stamp}{ext}"
         if not args.output:
-            args.output = f"results_{run_stamp}.md"
+            args.output = _in_results(f"results_{run_stamp}.md")
         else:
-            args.output = _ts_name(args.output)
+            args.output = _in_results(_ts_name(args.output))
         if not args.log:
-            args.log = f"results_{run_stamp}.log"
+            args.log = _in_results(f"results_{run_stamp}.log")
         else:
-            args.log = _ts_name(args.log)
+            args.log = _in_results(_ts_name(args.log))
 
     # Determine output modes
     if args.run_id:

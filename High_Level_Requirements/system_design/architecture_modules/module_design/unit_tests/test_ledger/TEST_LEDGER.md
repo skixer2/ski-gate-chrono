@@ -3,9 +3,10 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-14 06:42 UTC  
-**Current baselines:** FW **5.03** (in tree, unflashed) · App **1.10** · HW **v4.2** · Port **COM8**  
-**Last harness:** `run_20260814_0829` smoke **ALL PASS** on **5.02** (after manual reset)
+**Last updated:** 2026-08-14 07:06 UTC  
+**Current baselines:** FW **5.03** · App **1.10** · HW **v4.2** · Port **COM8** · Harness **2.27**  
+**Last harness:** `run_20260814_0900` smoke — inject+S04 PASS, **U13 8/9 flake** (see D-007)  
+**Results dir:** `unit_tests/tmp_test_results/`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
 (firmware · Flutter · BLE · hardware). Automated catalogs stay in
@@ -132,7 +133,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | **Opened** | 2026-08-14 |
 | **Owner** | Lead Systems Coordinator |
 | **Parent** | TC-2026-08-14-001 smoke PASS; BLE leg failed |
-| **Code status** | **IMPLEMENTED** in workspace — await JP flash + bench |
+| **Code status** | **BENCH OK** — scannable after app kill/reopen; auto SLEEP works |
 
 ### Hypothesis
 
@@ -172,10 +173,10 @@ V5.00 hold-idle + connect handlers are correct in intent, but recovery is incomp
 
 | Field | Value |
 |-------|--------|
-| **Result** | `OPEN` — code in tree, **bench pending** |
+| **Result** | **PASS (BLE recover)** — smoke separate (U13 flake) |
 | **Root cause** | Incomplete BLE link teardown + ADV restart while `BLE.connected()` sticky; hold_idle latches sleep |
-| **Fix version** | **5.03** implemented (`sgc_ble_force_recover`) |
-| **Follow-ups** | flash 5.03 → serial `i` → app scan → smoke; then core + FT |
+| **Fix version** | **5.03** (`sgc_ble_force_recover`) |
+| **Follow-ups** | core tier; BLE FT; optional de-dupe double `ble_recover` on boot IDLE |
 
 ---
 
@@ -193,50 +194,47 @@ V5.00 hold-idle + connect handlers are correct in intent, but recovery is incomp
 
 ## 3. Component Logs
 
-### 3.1 Hardware serial output
+### 3.1 Hardware serial output (5.03 BLE OK)
 
 ```text
-# First smoke attempt (wedged — no FW version, then mid-boot after reset during U16):
-WARNING: could not read FW version (got None)
-U16 FAIL until device reboot mid-run:
-← {"ev": "boot", "ver": "5.02", "rr": 4}
-← {"ev": "led", "strip": 10, "timing_only": 0, "pin": 12}
-← {"ev": "preroll_prep", "arm_cap": 3000, "total": 4000, "keep": 1000, "why": "boot"}
-← {"ev": "init", "sub": "ble", "ok": 1}
-← {"ev": "init", "sub": "raw_store"}
-← {"ev": "raw_store", "ok": 1, "slots": 8, "slot_kb": 244, "chip_kb": 2048, "runs": 4}
-← {"ev": "init", "sub": "raw_store_res", "ok": 1}
-(KeyboardInterrupt — JP stopped; HW reset; re-ran smoke)
-
-# Second smoke — clean. Status sample U13:
-{"ev": "status", "st": "IDLE", ..., "runs": 4, "ver": "5.02", "tm": 1, ...}
-# S04 end:
-{"ev": "run_saved", "id": 0, "fr": 2119, "sz": 15298, "dur_ms": 21296, "fps10": 995, "ok": 1, "store": "raw", "we": 0, "runs": 1, "total": 1}
+{"ev":"flash_map","size_kb":2048,"slots":8,"slot_kb":244,"cfg":2080768,"idx":2084864,"preroll_end":81920}
+{"ev":"raw_store","ok":1,"slots":8,"slot_kb":244,"chip_kb":2048,"runs":1}
+{"ev":"st","from":"SLEEP","to":"IDLE"}
+{"ev":"ble_adv","why":"state"}
+{"ev":"ble_recover","why":"state","st":"IDLE"}   # boot double-fire — cosmetic
+{"ev":"ready","st":"IDLE","runs":1,"ver":"5.03","used_pct":12}
+{"ev":"ble_conn","addr":"43:80:d1:f0:fb:e9"}
+{"ev":"ble_adv","why":"disconnect"}
+{"ev":"ble_disc","st":"IDLE"}
+… multiple app reconnect cycles …
+{"ev":"timeout","from":"IDLE","to":"SLEEP"}
+{"ev":"ble_recover","why":"sleep","st":"SLEEP"}
+{"ev":"st","from":"SLEEP","to":"IDLE"}
+{"ev":"ble_recover","why":"serial_i","st":"IDLE"}
 ```
 
 ### 3.2 Flutter / logcat
 
 ```text
-(no logcat paste — JP report: SGC never appeared in scan after app close +
- phone BLE restart + device IDLE/SLEEP/IDLE serial cycling)
+JP: after hard reset, SGC found; close/reopen app many times — OK.
+(First attempt without phone BLE/app restart was a false start.)
 ```
 
 ### 3.3 PC harness summary
 
 ```text
-run_20260814_0829  FW 5.02  Harness v2.26.0
-U16 4/4  U17 7/7  U18 5/5  U19 5/5  PASS
-U12 1/1  U13 9/9  PASS
-S04 PASS 99.5 fps store=raw we=0
-OVERALL smoke: ALL TESTS PASSED
-Prerequisite: manual reset button before successful run
+run_20260814_0900  FW 5.03  Harness v2.26.0
+test_sensor_injection  ✅ 21/21
+test_flash             ❌ 9/10  (U12 PASS; U13 step2 got cmd B instead of status)
+test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 ```
 
 ### 3.4 Attachments / paths
 
 | Kind | Path |
 |------|------|
-| Harness results | PC `unit_tests/run_20260814_0829.md` |
+| Smoke 0900 | `unit_tests/tmp_test_results/run_20260814_0900*` |
+| Prior 5.02 | `run_20260814_0829` (PC; may not be in workspace) |
 
 ---
 
@@ -249,7 +247,8 @@ Prerequisite: manual reset button before successful run
 | D-003 | P2 | S03 dump `bad_id` intermittent | host parse race | Mitigated SIM 2.50.0 retry |
 | D-004 | P2 | U19 inject flake historically | serial/inject | **PASS** on 0829 |
 | D-005 | P3 | No automated serial test for BLE hold-idle / re-ADV | BLE 5.00 | Manual only |
-| **D-006** | **P0** | Zombie BLE connected: no auto-sleep, not scannable; HW reset needed for smoke | `sgc_service.cpp` / hold_idle / main ADV | **Code 5.03 ready — bench confirm** |
+| **D-006** | **P0** | Zombie BLE connected: no auto-sleep, not scannable | `sgc_ble_force_recover` | **CLOSED PASS on 5.03** (hard reset once, then multi app reconnect + auto SLEEP) |
+| **D-007** | **P2** | U13 step "Record initial runs" got `cmd B p=0` instead of `status` | harness serial RX race after enable_test_mode / residual stream | **OPEN** — rest of U13 + S04 green on 0900 |
 
 ---
 
@@ -257,9 +256,11 @@ Prerequisite: manual reset button before successful run
 
 | ID | Status | Notes |
 |----|--------|-------|
-| T-001 | **DONE** (code review OK) | `sgc_ble_force_recover` + FW 5.03 |
-| T-002 | **DONE** (code review OK) | wired SLEEP/IDLE/serial `i`/desync/main POST_RUN |
-| T-003 | **PENDING** | catalog baseline bump after JP confirms flash |
+| T-001 | **DONE** | `sgc_ble_force_recover` + FW 5.03 |
+| T-002 | **DONE** | wired SLEEP/IDLE/serial `i`/desync/main POST_RUN |
+| T-003 | **PENDING** | catalog baseline 5.03 + harness 2.27 note |
+| T-004 | **DONE** | harness → `tmp_test_results/` auto staging (v2.27) |
+| T-005 | **OPEN** | harden U13/`?` expect against stray `cmd B` (D-007) |
 
 ### 5.03 implementation review (coordinator)
 
@@ -286,7 +287,8 @@ Prerequisite: manual reset button before successful run
 | Case ID | Date | Title | Result | Archive |
 |---------|------|-------|--------|---------|
 | TC-2026-08-14-001 | 2026-08-14 | FW 5.02 boot + smoke | **PASS smoke** | §2b |
-| TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **OPEN** | _(active §2)_ |
+| TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2 (close after core) |
+| run_20260814_0900 | 2026-08-14 | Smoke 5.03 | inject+S04 PASS; flash **9/10** U13 flake | `tmp_test_results/` |
 
 Snapshots: `test_ledger/history/`  
 Optional deep-dive cases: `test_ledger/cases/TC-….md`

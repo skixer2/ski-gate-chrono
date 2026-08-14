@@ -7,6 +7,10 @@ Default day-to-day = **core**, not full `Get-ChildItem test_*.py`.
 (architecture map, active manual/BLE case, serial+Flutter logs, coordinator task queue).
 Lead Systems Coordinator owns the ledger; automated gates stay in TEST_CATALOG.
 
+**Result drop folder:** **[tmp_test_results/](tmp_test_results/)** — harness **v2.27+** writes
+`--run-id` / `--ts` artifacts there automatically (no manual copy into `unit_tests/` root).
+Override: `--results-dir .` for legacy cwd. Loose files: `py stage_test_results.py`.
+
 ```
 unit_tests/          ← Module unit tests + device system wrappers (test_*.py)
   TEST_CATALOG.md    ← keep/merge/drop + tiers (source of truth)
