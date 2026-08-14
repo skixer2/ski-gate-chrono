@@ -19,6 +19,9 @@ void sgc_ble_poll();
 void sgc_ble_restart_advertising(const char* why = nullptr);
 /** Force-clear any zombie BLE link + sticky hold, then re-ADV when discoverable. */
 void sgc_ble_force_recover(const char* why = nullptr);
+/** Hard radio restart: BLE.end()/begin() + re-add GATT. Serial/stream-end only
+ *  (never from a BLE event handler). Returns true on success. */
+bool sgc_ble_radio_restart(const char* why = nullptr);
 /** True while a central is connected (updated on connect/disconnect events). */
 bool sgc_ble_central_connected();
 

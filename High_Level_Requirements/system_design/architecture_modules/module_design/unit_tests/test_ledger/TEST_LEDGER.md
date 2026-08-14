@@ -3,10 +3,10 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-14 08:56 UTC  
-**Current baselines:** FW **5.03** · App **1.10** · HW **v4.2** · Port **COM8** · Harness **2.27**  
-**Last harness:** `run_20260814_0911` smoke **ALL PASS** (via SSH push)  
-**Results dir:** `unit_tests/tmp_test_results/` · push: `push_test_results.ps1` (root@VPS key)
+**Last updated:** 2026-08-14 09:52 UTC  
+**Current baselines:** FW **5.03** (tip) · App **1.10** · HW **v4.2** · Port **COM8** · Harness **2.28**  
+**Last harness:** smoke `0911`/`1113` ALL PASS; **post-S03 BLE invisible** (D-008)  
+**Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
 (firmware · Flutter · BLE · hardware). Automated catalogs stay in
@@ -244,6 +244,7 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 |----|-----|---------|----------------|--------|
 | D-001 | P0 | Boot crash after BLE on 5.01 index load/persist | `raw_run_store.cpp` 4 KB stack | **PASS on bench 5.02** (smoke) |
 | D-002 | P1 | BLE FT hang if BHY2 SPI during transfer | shared SPI0 | Fixed 4.97; regression-watch |
+| D-TIME | P2 | Run ts_utc stuck at 1970 | ABC0 no-op / create_run | **PASS bench** — after phone connect, S03 run time correct (4.99 path) |
 | D-003 | P2 | S03 dump `bad_id` intermittent | host parse race | Mitigated SIM 2.50.0 retry |
 | D-004 | P2 | U19 inject flake historically | serial/inject | **PASS** on 0829 |
 | D-005 | P3 | No automated serial test for BLE hold-idle / re-ADV | BLE 5.00 | Manual only |

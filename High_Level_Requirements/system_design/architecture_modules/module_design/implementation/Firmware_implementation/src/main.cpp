@@ -112,6 +112,17 @@ static bool g_force_logging = false;
 static bool g_bench_drain = false;
 extern bool g_manual_frame;      /* from test_mode.cpp: set by B/Q/L, suppress ARM→stream */
 
+/* V5.04: one-shot hard BLE radio restart (BLE.end/begin) requested by serial
+   'i', stream-end, or stream escape. Consumed once at the bottom of loop(). */
+static bool        g_ble_radio_restart_pending = false;
+static const char* g_ble_radio_restart_why     = "stream_end";
+
+static void request_ble_radio_restart(const char* why)
+{
+    g_ble_radio_restart_pending = true;
+    g_ble_radio_restart_why     = why;
+}
+
 
 /* Stream mode: pull model — firmware requests frames via 0x3F,
    PC responds with one 16-byte RawFrame. No parser state needed. */
@@ -237,6 +248,10 @@ void handle_serial()
            sticky hold and re-ADVs even if already IDLE (force_state no-ops
            on the same state, so this guarantees the bench can re-scan). */
         sgc_ble_force_recover("serial_i");
+        /* V5.04: JP bench — soft recover alone fails after S03 stream stress.
+           Escalate to a hard radio restart (BLE.end/begin) so the phone can
+           re-scan without a hardware reset. */
+        request_ble_radio_restart("serial_i");
         break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
@@ -298,7 +313,11 @@ void handle_serial()
         }
         break;
     case 'p': g_sm.force_state(DeviceState::POST_RUN); break;
-    case 's': g_sm.force_state(DeviceState::SLEEP); break;
+    case 's':
+        /* V5.04: SLEEP entry already force_recovers (stop ADV + drop link) via
+           sgc_ble_update_state; next 'i' hard-restarts the radio to come back. */
+        g_sm.force_state(DeviceState::SLEEP);
+        break;
     case 'O': {
         /* Toggle Nicla onboard RGB (I2C). Default OFF when strip path is built-in.
            Use during bench if you want visible ARMED/LOGGING without a strip. */
@@ -635,6 +654,36 @@ void handle_serial()
 }
 
 /* ================================================================== */
+/* V5.04 stream escape: while g_stream_active, handle_serial() is skipped
+   (16B pull frames look like commands). A wedged stream (PC gone / desync)
+   must not lock out serial forever. Accept ONLY the 3 single-byte state cmds
+   that are safe to steal mid-stream ('i','s','p'); anything else is left
+   untouched so feed_sensors()' pull parser stays aligned. */
+static void handle_serial_stream_escape()
+{
+    if (!Serial.available()) return;
+    int b = Serial.peek();
+    if (b != 'i' && b != 's' && b != 'p') return;   /* leave it for the pull path */
+
+    Serial.read();                                   /* consume escape byte */
+    g_stream_active = false;
+    json_begin(); json_kv("ev", "stream_end");
+    Serial.print(','); json_kv("frames", (long)g_stream_frames);
+    Serial.print(','); json_kv("reason", "serial_escape");
+    json_end();
+    test_stream_reset();  /* zeroes g_stream_frames + pull flags */
+
+    if (b == 'i') {
+        g_sm.force_state(DeviceState::IDLE);
+        request_ble_radio_restart("serial_i");
+    } else if (b == 's') {
+        g_sm.force_state(DeviceState::SLEEP);
+    } else {
+        g_sm.force_state(DeviceState::POST_RUN);
+    }
+}
+
+/* ================================================================== */
 void flash_test()
 {
     /* Use reserved sector — never pre-roll (0x0000) or run slots.
@@ -704,6 +753,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
             json_end();
             g_stream_frames = 0;
             test_stream_reset(); /* pull flags only — keeps g_manual_frame */
+            request_ble_radio_restart("stream_end");
         }
         /* JP: prepare_preroll on enter IDLE from ARMED (timeout/cancel) or
            POST_RUN (after run). Erase 3000-slot buffer off the fill path so
@@ -788,6 +838,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
                 Serial.print(','); json_kv("logging", logf);
             }
             json_end();
+            request_ble_radio_restart("stream_end");
         }
         flush_page_buffer();
 
@@ -1102,8 +1153,11 @@ void loop()
            Pull frames are raw 16B; payload bytes look like cmds ('a','l',
            0x3F inside LE quats, etc.). Stealing even one byte desyncs the
            pull parser → garbage baro → start_det never locks P0 → ARM_TIMEOUT
-           (S03 flake on 4.82–4.84). Exit stream via end det / timeout / POST_RUN. */
+           (S03 flake on 4.82–4.84). Exit stream via end det / timeout / POST_RUN.
+           V5.04: still peek for the 3 safe single-byte escapes so a wedged
+           stream cannot lock out serial (handle_serial_stream_escape). */
         g_led.update();  /* athlete must see ARMED/LOGGING */
+        handle_serial_stream_escape();
     } else if (loop_st == DeviceState::LOGGING) {
         /* Real BHY2 LOGGING: keep LED blink (RED_CHASE). show_onboard_blink
            only hits I2C on on/off edges (~few Hz), not every sample.
@@ -1135,6 +1189,14 @@ void loop()
 
     /* ── Unified state machine (runs regardless of stream mode) ── */
     g_sm.tick();
+
+    /* V5.04: consume a one-shot hard BLE radio restart (serial 'i' / stream
+       end / escape). Runs here, outside BLE.poll and transition callbacks, so
+       BLE.end() tears down the radio in a safe context. */
+    if (g_ble_radio_restart_pending) {
+        g_ble_radio_restart_pending = false;
+        sgc_ble_radio_restart(g_ble_radio_restart_why);
+    }
 
     /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ── */
     if (!g_stream_active && loop_st != DeviceState::LOGGING) {

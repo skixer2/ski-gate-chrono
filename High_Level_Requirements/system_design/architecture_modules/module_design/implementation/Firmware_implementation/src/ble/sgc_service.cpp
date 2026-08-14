@@ -230,7 +230,11 @@ static void on_ble_disconnected(BLEDevice central)
 /*  Init                                                             */
 /* ═══════════════════════════════════════════════════════════════ */
 
-void sgc_ble_init()
+/* Structural GATT registration: characteristics + service + event handlers.
+   Idempotent across BLE.end()/begin() — clearAttributes() empties the service's
+   characteristic list and the GATT attribute table each cycle, and our static
+   service/characteristic objects are refcounted so they are never freed. */
+static void sgc_ble_add_service()
 {
     svc.addCharacteristic(char_time);       svc.addCharacteristic(char_dev_name);
     svc.addCharacteristic(char_arm_side);   svc.addCharacteristic(char_discipline);
@@ -253,6 +257,11 @@ void sgc_ble_init()
        and hard-restart advertising (app kill left zombie link + no ADV). */
     BLE.setEventHandler(BLEConnected, on_ble_connected);
     BLE.setEventHandler(BLEDisconnected, on_ble_disconnected);
+}
+
+void sgc_ble_init()
+{
+    sgc_ble_add_service();
 
     sgc_ble_config_load();
 
@@ -266,6 +275,69 @@ void sgc_ble_init()
     BLE.setLocalName(g_dev_name);
     BLE.setAdvertisedService(svc);
     BLE.advertise();
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  Hard radio restart                                                */
+/* ═══════════════════════════════════════════════════════════════ */
+
+bool sgc_ble_radio_restart(const char* why)
+{
+    const char* reason = why ? why : "hard";
+
+    /* Hard path ONLY — never call from a BLE event handler (that runs inside
+       BLE.poll()/HCI dispatch; BLE.end() tears down the very stack that is
+       dispatching it). Use from serial, stream-end, or recovery escalation. */
+    sgc_ble_ft_abort(reason);
+    BLE.stopAdvertise();
+    if (BLE.connected()) {
+        BLE.disconnect();
+        /* A few short polls let Cordio finish link teardown. */
+        for (int i = 0; i < 3 && BLE.connected(); i++) BLE.poll();
+    }
+    g_central_connected = false;
+    g_sm.set_hold_idle(false);
+
+    BLE.end();
+
+    /* Bounded settle so Cordio finishes thread/driver teardown. ~30 ms, no
+       multi-second stall. */
+    uint32_t settle = millis();
+    while ((int32_t)(millis() - settle) < 30) {
+        delay(1);
+    }
+
+    if (!BLE.begin()) {
+        json_begin();
+        json_kv("ev", "ble_radio");
+        Serial.print(','); json_kv("why", reason);
+        Serial.print(','); json_kv_bool("ok", false);
+        json_end();
+        return false;
+    }
+
+    /* Re-register GATT + persisted config on the fresh radio. */
+    sgc_ble_add_service();
+    sgc_ble_config_load();
+
+    /* Repopulate run telemetry (ABC8/ABC9/ABC7) from current g_runs — do NOT
+       zero like the boot path. */
+    sgc_ble_set_run_count(g_runs.run_count());
+    sgc_ble_set_flash_used(g_runs.flash_used_pct());
+    sgc_ble_set_transfer(0);
+
+    BLE.setLocalName(g_dev_name);
+    BLE.setAdvertisedService(svc);
+    DeviceState st = g_sm.state();
+    if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
+        BLE.advertise();
+
+    json_begin();
+    json_kv("ev", "ble_radio");
+    Serial.print(','); json_kv("why", reason);
+    Serial.print(','); json_kv_bool("ok", true);
+    json_end();
+    return true;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
