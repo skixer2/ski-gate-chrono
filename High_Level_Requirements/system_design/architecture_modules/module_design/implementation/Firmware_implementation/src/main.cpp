@@ -981,6 +981,26 @@ void setup()
     Serial.flush();
     delay(50);
 
+    /* V5.08: Hardware watchdog timer — independent of CPU. If loop() blocks
+       >5s (e.g. writeValue stuck inside Cordio HCI), WDT reboots the device.
+       This is the ONLY recovery path when the main loop is stuck inside a
+       blocking call. Software watchdogs (FT stall, zombie) can't fire because
+       they run inside loop(). WDT runs in hardware, independent of CPU.
+       
+       WDT notes:
+       - 5s timeout: safe for flash erase (~2-3s/sector) and BLE radio_restart (~50ms)
+       - PAUSE on HALT (debugger) — doesn't interfere with platformio debugging
+       - RUN in SLEEP — WDT stays active during WFE/WFI (important: device sleeps in IDLE)
+       - Fed every loop() iteration (~100 Hz normally, ~10 Hz during FT)
+       - If writeValue() blocks: WDT fires → device reboots → BLE re-inits → scannable again
+       - Reboot reason will show in boot JSON: "rr" field (RESETREAS bit 8 = WDT)
+    */
+    NRF_WDT->CONFIG = (WDT_CONFIG_HALT_Pause << WDT_CONFIG_HALT_Pos) |
+                      (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos);
+    NRF_WDT->CRV = (WDT_TIMEOUT_MS * 32768) / 1000;  // ms → WDT clock ticks (32.768 kHz)
+    NRF_WDT->RREN |= WDT_RREN_RR0_Msk;  // enable reload register 0
+    NRF_WDT->TASKS_START = 1;
+
     /* ── LED (onboard and/or SK6812 bench/production strip) ── */
     g_led.begin();
     json_begin();
@@ -1111,6 +1131,11 @@ void loop()
     static uint32_t g_factory_confirm_start = 0;
     static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
     static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
+
+    /* V5.08: feed hardware watchdog as the FIRST LINE. If loop() blocks
+       anywhere (e.g. writeValue stuck inside Cordio HCI), the WDT isn't
+       fed, and after 5s the device reboots. */
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     /* ── Path split by mode/state for max LOGGING sample rate ──
        Stream: skip BHY2/BLE/LDC (USB pull path).
