@@ -654,36 +654,6 @@ void handle_serial()
 }
 
 /* ================================================================== */
-/* V5.04 stream escape: while g_stream_active, handle_serial() is skipped
-   (16B pull frames look like commands). A wedged stream (PC gone / desync)
-   must not lock out serial forever. Accept ONLY the 3 single-byte state cmds
-   that are safe to steal mid-stream ('i','s','p'); anything else is left
-   untouched so feed_sensors()' pull parser stays aligned. */
-static void handle_serial_stream_escape()
-{
-    if (!Serial.available()) return;
-    int b = Serial.peek();
-    if (b != 'i' && b != 's' && b != 'p') return;   /* leave it for the pull path */
-
-    Serial.read();                                   /* consume escape byte */
-    g_stream_active = false;
-    json_begin(); json_kv("ev", "stream_end");
-    Serial.print(','); json_kv("frames", (long)g_stream_frames);
-    Serial.print(','); json_kv("reason", "serial_escape");
-    json_end();
-    test_stream_reset();  /* zeroes g_stream_frames + pull flags */
-
-    if (b == 'i') {
-        g_sm.force_state(DeviceState::IDLE);
-        request_ble_radio_restart("serial_i");
-    } else if (b == 's') {
-        g_sm.force_state(DeviceState::SLEEP);
-    } else {
-        g_sm.force_state(DeviceState::POST_RUN);
-    }
-}
-
-/* ================================================================== */
 void flash_test()
 {
     /* Use reserved sector — never pre-roll (0x0000) or run slots.
@@ -1149,15 +1119,13 @@ void loop()
        Else: full peripheral service. */
     DeviceState loop_st = g_sm.state();
     if (g_stream_active) {
-        /* v4.85: do NOT handle_serial while streaming.
-           Pull frames are raw 16B; payload bytes look like cmds ('a','l',
-           0x3F inside LE quats, etc.). Stealing even one byte desyncs the
-           pull parser → garbage baro → start_det never locks P0 → ARM_TIMEOUT
-           (S03 flake on 4.82–4.84). Exit stream via end det / timeout / POST_RUN.
-           V5.04: still peek for the 3 safe single-byte escapes so a wedged
-           stream cannot lock out serial (handle_serial_stream_escape). */
+        /* v4.85 + v5.05: do NOT touch Serial while streaming — no handle_serial,
+           no escape peek. Pull frames are raw 16B; payload bytes look like cmds
+           ('i','s','p', 0x3F inside LE quats, etc.). Stealing even one byte
+           desyncs the pull parser → garbage baro → start_det never locks P0 →
+           ARM_TIMEOUT (S03 flake on 4.82–4.84, regression on 5.04). Stream exits
+           only via end det / ARM_TIMEOUT / POST_RUN / state transitions. */
         g_led.update();  /* athlete must see ARMED/LOGGING */
-        handle_serial_stream_escape();
     } else if (loop_st == DeviceState::LOGGING) {
         /* Real BHY2 LOGGING: keep LED blink (RED_CHASE). show_onboard_blink
            only hits I2C on on/off edges (~few Hz), not every sample.
