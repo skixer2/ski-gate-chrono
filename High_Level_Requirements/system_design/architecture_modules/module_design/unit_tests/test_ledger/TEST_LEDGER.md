@@ -51,7 +51,7 @@ OUT OF SCOPE: <explicit non-goals>
 
 | Layer | Technology | Location (repo) | Notes |
 |-------|------------|-----------------|-------|
-| **Device FW** | C++ / PlatformIO / Arduino_BHY2 / ArduinoBLE (Cordio) on **nRF52832** | `implementation/Firmware_implementation/` | Nicla Sense ME today; production = ANNA-B112 + SGC carrier |
+| **Device FW** | C++ / PlatformIO / Arduino_BHY2 / ArduinoBLE (Cordio) on **nRF52832** | `implementation/Firmware_implementation/` | Nicla Sense ME today; production = ANNA-B412 + SGC carrier |
 | **Sensors** | BHI260AP (IMU/fusion), BMP390 (baro), LDC1612 (prox arm) | FW `src/sensors`, `src/state_machine` | SPI0 shared: BHI260 CS + MX25R CS — **no concurrent SPI** |
 | **Flash** | MX25R1635F **2 MB** (bench Nicla) / BOM path **MX25R6435F 8 MB** | `src/storage/*` | SFDP size → layout (v5.01+); pre-roll **fixed** `0x0000–0x13FFF` |
 | **Phone app** | **Flutter** · Android target | `implementation/Phone_app_prototype/` | iOS not primary |

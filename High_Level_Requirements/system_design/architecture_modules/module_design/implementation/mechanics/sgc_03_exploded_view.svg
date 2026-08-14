@@ -26,7 +26,7 @@
 <rect x="462" y="393" width="96" height="5" fill="#bdc3c7"/>
 <rect x="455" y="200" width="110" height="80" rx="5" fill="#c8e8ff" fill-opacity="0.7" stroke="#4a90d9" stroke-width="2"/>
 <rect x="462" y="235" width="96" height="30" rx="2" fill="#2d5016" stroke="#1a3a0a" stroke-width="1"/>
-<text x="510" y="245" text-anchor="middle" class="dim" fill="#fff">PCB (ANNA-B112, BHI260AP,</text>
+<text x="510" y="245" text-anchor="middle" class="dim" fill="#fff">PCB (ANNA-B412, BHI260AP,</text>
 <text x="510" y="255" text-anchor="middle" class="dim" fill="#fff">BMP390, BQ25120A, LDC1612)</text>
 <rect x="475" y="215" width="40" height="18" rx="3" fill="#f0c040" stroke="#c09020" stroke-width="0.5"/>
 <text x="495" y="227" text-anchor="middle" class="dim" fill="#a07010">LiPo</text>

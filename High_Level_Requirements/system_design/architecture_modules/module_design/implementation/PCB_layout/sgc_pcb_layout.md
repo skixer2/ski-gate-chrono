@@ -1,9 +1,11 @@
-# SGC — PCB Layout Design (v3.1 — Nicla Sense ME Replica)
+# SGC — PCB Layout Design (v3.2 — ANNA-B412 module)
+
+*2026-08-14 — v3.2: MD1 module swapped ANNA-B112 (nRF52832) → ANNA-B412 (u-blox nRF52833, integrated antenna). Routing-table pad numbers below remain ANNA-B112-derived placeholders; re-verify vs B412 datasheet. See `anna_b412_migration.md`.*
 
 *2026-08-12 — v3.1: Arming = Langir 16 mm piezo button on P0.02 (edge interrupt). LDC1612 + coil marked v2-only (DNP in v1). See sgc_architecture_hardware.md v2.2 + sgc_bom.md v4.0.*
 *2026-06-16 — v3.0: Complete redesign. Custom PCB = strict Nicla Sense ME replica.
 All Nicla internal connections replicated exactly. SGC peripherals added using only
-free ANNA-B112 GPIOs. BHI260AP/BMP390 via Arduino_BHY2 (SPI P0.03–P0.05).
+free ANNA-B412 GPIOs. BHI260AP/BMP390 via Arduino_BHY2 (SPI P0.03–P0.05).
 Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring.*
 
 *2026-06-15 — v1.1: SPI pins updated to match Nicla variant defaults.*
@@ -15,7 +17,7 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 | Parameter | Value |
 |-----------|-------|
 | Base design | Arduino Nicla Sense ME replica |
-| MCU module | ANNA-B112 (nRF52832 + BLE) |
+| MCU module | ANNA-B412 (nRF52833 + BLE 5.1, integrated antenna) |
 | Dimensions | ~22 × 55 mm |
 | Layers | 4 (Signal-Top, GND, Power, Signal-Bottom) |
 | Thickness | 0.8 mm |
@@ -27,8 +29,8 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  [   ANNA-B112 Module (MD1)  ]    [ BHI260AP (U5) ]      │
-│  [   nRF52832 + BLE Antenna  ]    [ LGA-44       ]      │
+│  [   ANNA-B412 Module (MD1)  ]    [ BHI260AP (U5) ]      │
+│  [   nRF52833 + BLE 5.1 Ant  ]    [ LGA-44       ]      │
 │                                                          │
 │  [ 32k XTAL ] [ Flash U7  ]  [ BQ25120 (U9) ]           │
 │  [ Y1       ] [ MX25R1635F]  [ Charger IC  ]            │
@@ -115,21 +117,21 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 
 | Signal | Source | Dest | Length | Notes |
 |--------|--------|------|--------|-------|
-| BHI_SPI_SCK | ANNA-B112 pin 19 | BHI260AP, Flash U7 | < 25 mm | BHY2 managed |
-| BHI_SPI_MOSI | ANNA-B112 pin 24 | BHI260AP, Flash U7 | < 25 mm | |
-| BHI_SPI_MISO | ANNA-B112 pin 23 | BHI260AP, Flash U7 | < 25 mm | |
-| SGC_SPI_SCK | ANNA-B112 pin 34 | RFID, UWB | < 40 mm | v2 only |
-| SGC_SPI_MOSI | ANNA-B112 pin 29 | RFID, UWB | < 40 mm | v2 only |
-| SGC_SPI_MISO | ANNA-B112 pin 28 | RFID, UWB | < 40 mm | v2 only |
-| I2C1_SDA | ANNA-B112 pin 36 | LDC1612 (v2) | < 30 mm | |
-| I2C1_SCL | ANNA-B112 pin 37 | LDC1612 (v2) | < 30 mm | |
-| LED_DIN | ANNA-B112 pin 35 | SK6812 D1 | < 20 mm | NZR 800 kHz, via level shifter |
-| BOOST_EN | ANNA-B112 GPIO | MT3608 EN | < 20 mm | HIGH = 5V active |
-| BEEPER | ANNA-B112 pin 21 | BZ1 | < 30 mm | PWM ~4 kHz |
-| QI_DETECT | ANNA-B112 pin 22 | Qi receiver | < 20 mm | |
-| BUTTON | ANNA-B112 pin 20 | Langir piezo button | < 15 mm | Falling edge, interrupt |
-| RFID_CS (v2) | ANNA-B112 pin 45 | RFID /CS | < 40 mm | |
-| UWB_CS (v2) | ANNA-B112 pin 27 | DW3000 /CS | < 40 mm | |
+| BHI_SPI_SCK | MD1 pad (B112 ref) 19 | BHI260AP, Flash U7 | < 25 mm | BHY2 managed |
+| BHI_SPI_MOSI | MD1 pad (B112 ref) 24 | BHI260AP, Flash U7 | < 25 mm | |
+| BHI_SPI_MISO | MD1 pad (B112 ref) 23 | BHI260AP, Flash U7 | < 25 mm | |
+| SGC_SPI_SCK | MD1 pad (B112 ref) 34 | RFID, UWB | < 40 mm | v2 only |
+| SGC_SPI_MOSI | MD1 pad (B112 ref) 29 | RFID, UWB | < 40 mm | v2 only |
+| SGC_SPI_MISO | MD1 pad (B112 ref) 28 | RFID, UWB | < 40 mm | v2 only |
+| I2C1_SDA | MD1 pad (B112 ref) 36 | LDC1612 (v2) | < 30 mm | |
+| I2C1_SCL | MD1 pad (B112 ref) 37 | LDC1612 (v2) | < 30 mm | |
+| LED_DIN | MD1 pad (B112 ref) 35 | SK6812 D1 | < 20 mm | NZR 800 kHz, via level shifter |
+| BOOST_EN | ANNA-B412 GPIO | MT3608 EN | < 20 mm | HIGH = 5V active |
+| BEEPER | MD1 pad (B112 ref) 21 | BZ1 | < 30 mm | PWM ~4 kHz |
+| QI_DETECT | MD1 pad (B112 ref) 22 | Qi receiver | < 20 mm | |
+| BUTTON | MD1 pad (B112 ref) 20 | Langir piezo button | < 15 mm | Falling edge, interrupt |
+| RFID_CS (v2) | MD1 pad (B112 ref) 45 | RFID /CS | < 40 mm | |
+| UWB_CS (v2) | MD1 pad (B112 ref) 27 | DW3000 /CS | < 40 mm | |
 
 ## 5. Layers
 

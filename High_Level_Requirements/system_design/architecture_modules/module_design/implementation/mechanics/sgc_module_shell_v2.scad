@@ -101,7 +101,7 @@ module pcb_inside() {
     translate([WALL + 3, WALL + 3, WALL])
       cube([MOD_LEN - 20 - WALL - 3, MOD_W - 2*WALL - 6, 1.6]);
 
-  // ANNA-B112 module on PCB (center of PCB area)
+  // ANNA-B412 module on PCB (center of PCB area)
   color("#333")
     translate([WALL + 12, MOD_W/2 - 6, WALL + 1.6])
       cube([14, 12, 2.8]);

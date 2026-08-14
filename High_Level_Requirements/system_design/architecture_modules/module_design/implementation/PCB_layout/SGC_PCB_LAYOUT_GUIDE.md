@@ -1,5 +1,7 @@
 # SGC — PCB Layout Guide (v1 Pole-Mount)
 
+*2026-08-14 — MD1 module = ANNA-B412 (u-blox nRF52833, integrated antenna). Land pattern must be verified against the u-blox ANNA-B412 datasheet before layout. See `anna_b412_migration.md`.*
+
 *2026-08-12 — Companion to `sgc_pcb.kicad_pro`, `symbols/sgc_pcb_symbols.kicad_sym`, and
 `sgc_pcb_netlist.md`. This is the step-by-step recipe to turn the SGC netlist into a
 fabrication-ready 4-layer board in **KiCad 8**.*
@@ -82,7 +84,7 @@ TOP EDGE (toward grip)
 │  BHI260AP (U5)            │  BMP390 (U6)     │  ← sensors, center
 │  + 32k XTAL              │                  │
 ├─────────────────────────────────────────────┤
-│  ANNA-B112 (MD1)         │  MX25R1635F (U7) │  ← MCU + flash, center-bottom
+│  ANNA-B412 (MD1)         │  MX25R1635F (U7) │  ← MCU + flash, center-bottom
 │  + BLE antenna edge      │                  │
 ├─────────────────────────────────────────────┤
 │  BQ25120A (U9) │  MT3608 (U4) │ IP6833 (U11)│  ← power, bottom
@@ -93,7 +95,7 @@ BOTTOM EDGE (Qi coil faces athlete, away from pole)
 
 ### Placement rules
 
-1. **ANNA-B112 antenna** → place module so the BLE antenna edge faces **outward/upward**
+1. **ANNA-B412 antenna** → place module so the BLE antenna edge faces **outward/upward**
    away from copper. Keep a **> 5 mm copper keepout** under and around the antenna.
    No components in the antenna near-field.
 2. **BHI260AP** → center, away from Qi coil (> 10 mm) and boost inductor (> 5 mm).
@@ -156,7 +158,7 @@ BQ25120A → VBAT ──┬── 3.3V LDO → VCC_3V3  (nRF52, flash, beeper, I
 | BMM150 (in BHI260AP) | Qi coil ferrite | **> 10 mm** | magnetic interference |
 | BMM150 | boost inductor (4.7 µH) | **> 5 mm** | stray field |
 | Button input (P0.02) | boost SW node, Qi coil | **> 10 mm** | noise false-trigger |
-| ANNA-B112 antenna | any copper/component | **> 5 mm** | BLE range |
+| ANNA-B412 antenna | any copper/component | **> 5 mm** | BLE range |
 | Qi coil | ground plane under it | no copper | eddy-current loss |
 | LDC1612 coil (v2) | copper planes | > 5 mm | eddy currents |
 
@@ -183,7 +185,7 @@ BQ25120A → VBAT ──┬── 3.3V LDO → VCC_3V3  (nRF52, flash, beeper, I
 | 3D STEP | *Export → STEP* | enclosure CAD fit check |
 
 **JLCPCB notes:** choose ENIG finish, 4-layer 0.8 mm, 1 oz outer. Upload Gerber + drill +
-BOM + CPL for SMT assembly. Flag the ANNA-B112, BHI260AP, BQ25120A, and IP6833 as
+BOM + CPL for SMT assembly. Flag the ANNA-B412, BHI260AP, BQ25120A, and IP6833 as
 *extended/library parts* if you want JLCPCB to source them (else supply on reel).
 The Langir button is panel-mounted — ordered separately, wired by hand at final assembly.
 
