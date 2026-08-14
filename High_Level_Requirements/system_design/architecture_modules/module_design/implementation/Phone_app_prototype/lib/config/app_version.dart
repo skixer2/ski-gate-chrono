@@ -20,4 +20,8 @@
 ///   1.9  – ImpactDetector |g| = 9810 mm/s² (was 9.81) — matches firmware LA units
 ///   1.10 – Download ALL missing runs (not just latest): track device vs local
 ///          run ids; "Download Missing Runs (N)" offers every undownloaded run
-const String APP_VERSION = '1.10';
+///   1.11 – Composite run identity (id+ts) so recycled run ids after device
+///          reset are not treated as already-downloaded; BLE connection
+///          lifecycle fixes (disconnect listener, GATT cache clear, clean
+///          rescan) so a device HW reset no longer requires a full app restart
+const String APP_VERSION = '1.11';

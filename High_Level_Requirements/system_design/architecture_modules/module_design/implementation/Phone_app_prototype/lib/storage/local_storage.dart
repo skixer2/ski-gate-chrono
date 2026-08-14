@@ -89,10 +89,13 @@ class LocalStorage {
       savedAt: DateTime.now(),
     );
 
-    // Update index
+    // Update index.
+    // Composite identity: a run is uniquely identified by (id, timestamp).
+    // After a device HW reset, run ids are recycled but timestamps differ,
+    // so replace only when BOTH id and timestamp match — otherwise keep the
+    // older entry as a distinct physical run.
     final runs = await listAll();
-    // Replace existing entry for same runId if present
-    runs.removeWhere((r) => r.id == runId);
+    runs.removeWhere((r) => r.id == runId && r.timestamp == result.header.startTimestamp);
     runs.add(saved);
     runs.sort((a, b) => b.savedAt.compareTo(a.savedAt)); // newest first
     await _writeIndex(runs);

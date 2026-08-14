@@ -29,15 +29,33 @@ class _RunListScreenState extends State<RunListScreen> {
   bool _isDownloading = false;
   List<SavedRun> _localRuns = [];
   List<RunMetadata> _deviceRuns = []; // runs present on the connected device
+  StreamSubscription<bool>? _connSub;
 
   @override
   void initState() {
     super.initState();
     _loadLocalRuns();
+    // React to unexpected BLE drops so the UI is never stuck "connected".
+    _connSub = _ble.connectionStream.listen(_onConnectionChanged);
+  }
+
+  void _onConnectionChanged(bool connected) {
+    if (connected) return;
+    debugPrint('[SGC] BLE disconnected — clearing connected UI state');
+    if (!mounted) return;
+    setState(() {
+      _sgc = null;
+      _config = null;
+      _runCount = 0;
+      _deviceRuns = [];
+      _isConnecting = false;
+      _isDownloading = false;
+    });
   }
 
   @override
   void dispose() {
+    _connSub?.cancel();
     FlutterBluePlus.stopScan();  // clean up if tab switched mid-scan
     _ble.dispose();
     super.dispose();
@@ -46,6 +64,21 @@ class _RunListScreenState extends State<RunListScreen> {
   Future<void> _scanDevices() async {
     if (_isScanning) return;
     _isScanning = true;
+
+    // Clean any prior scan + held connection before starting fresh (T-008).
+    try { await FlutterBluePlus.stopScan(); } catch (_) {}
+    if (_ble.isConnected) {
+      debugPrint('[SGC] scan: disconnecting previous device first');
+      await _ble.disconnect();
+      if (mounted) {
+        setState(() {
+          _sgc = null;
+          _config = null;
+          _runCount = 0;
+          _deviceRuns = [];
+        });
+      }
+    }
 
     final permStatus = await _ble.checkPermissions();
     if (!mounted) { _isScanning = false; return; }
@@ -148,11 +181,14 @@ class _RunListScreenState extends State<RunListScreen> {
 
   Future<void> _disconnect() async {
     await _ble.disconnect();
-    setState(() {
-      _sgc = null;
-      _config = null;
-      _runCount = 0;
-    });
+    if (mounted) {
+      setState(() {
+        _sgc = null;
+        _config = null;
+        _runCount = 0;
+        _deviceRuns = [];
+      });
+    }
   }
 
   Future<void> _loadLocalRuns() async {
@@ -161,9 +197,13 @@ class _RunListScreenState extends State<RunListScreen> {
   }
 
   /// Device runs not yet present in local storage.
+  ///
+  /// Composite identity: a device run is missing unless a local SavedRun has
+  /// BOTH the same id AND the same timestamp. Run ids are recycled after a
+  /// device reset, so id alone would falsely mark new runs as downloaded.
   List<RunMetadata> get _missingRuns {
-    final localIds = _localRuns.map((r) => r.id).toSet();
-    return _deviceRuns.where((r) => !localIds.contains(r.id)).toList();
+    final localKeys = _localRuns.map((r) => (r.id, r.timestamp)).toSet();
+    return _deviceRuns.where((r) => !localKeys.contains((r.id, r.timestamp))).toList();
   }
 
   Future<void> _openLocalRun(SavedRun run) async {
