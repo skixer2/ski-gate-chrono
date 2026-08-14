@@ -23,6 +23,13 @@ bool     g_manual_frame = false; /* set by B/Q/L — suppress ARM→stream */
 static bool     g_stream_eof = false;     /* stop requesting after PC stops responding */
 static bool     g_stream_had_data = false; /* set after first successful frame */
 
+/* Consecutive no-response timeouts after had_data before declaring EOF.
+   5 × 100 ms ≈ 500 ms of zero PC response = real end-of-stream. A single
+   USB/timing glitch (S03 mid-stream false EOF, seed 45) survives because
+   the streak resets on the next successful pull. */
+static const uint8_t STREAM_EOF_STREAK = 5;
+static uint8_t g_stream_timeout_streak = 0;
+
 /* ── Init ───────────────────────────────────────────────────── */
 void test_mode_init() {}
 
@@ -123,6 +130,7 @@ bool test_stream_has_data() { return g_stream_had_data; }
 void test_stream_reset() {
     g_stream_eof = false;
     g_stream_had_data = false;
+    g_stream_timeout_streak = 0;
     g_stream_frames = 0;
     invalidate_pressure_for_stream();
 }
@@ -169,10 +177,15 @@ bool test_request_frame(uint32_t timeout_ms)
                    Before first frame: keep waiting next tick.
                    After first frame: do NOT wipe last good baro — start_det
                    needs a stable sample; zeroing caused S03 ARMED timeouts. */
-                if (g_stream_had_data)
-                    g_stream_eof = true;
-                else
+                /* EOF only after a sustained run of no-response timeouts —
+                   a single hiccup must not kill the stream mid-run. */
+                if (g_stream_had_data) {
+                    g_stream_timeout_streak++;
+                    if (g_stream_timeout_streak >= STREAM_EOF_STREAK)
+                        g_stream_eof = true;
+                } else {
                     invalidate_pressure_for_stream();
+                }
                 return false;
             }
         }
@@ -192,6 +205,7 @@ bool test_request_frame(uint32_t timeout_ms)
 
     memcpy(&g_test_frame, buf, sizeof(RawFrame));
     g_stream_had_data = true;  /* PC is alive */
+    g_stream_timeout_streak = 0; /* good pull → reset EOF streak */
     g_stream_frames++;
     return true;
 }
@@ -356,6 +370,7 @@ bool test_mode_handle_serial(char c)
         g_stream_frames = 0;
         g_stream_eof = false;
         g_stream_had_data = false;
+        g_stream_timeout_streak = 0;
         g_manual_frame = false;  /* stream mode → auto frames, not manual */
         json_begin(); json_kv("ev", "cmd");
         Serial.print(','); json_kv("cmd", "S");
