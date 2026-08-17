@@ -995,11 +995,8 @@ void setup()
        - If writeValue() blocks: WDT fires → device reboots → BLE re-inits → scannable again
        - Reboot reason will show in boot JSON: "rr" field (RESETREAS bit 8 = WDT)
     */
-    NRF_WDT->CONFIG = (WDT_CONFIG_HALT_Pause << WDT_CONFIG_HALT_Pos) |
-                      (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos);
-    NRF_WDT->CRV = (WDT_TIMEOUT_MS * 32768) / 1000;  // ms → WDT clock ticks (32.768 kHz)
-    NRF_WDT->RREN |= WDT_RREN_RR0_Msk;  // enable reload register 0
-    NRF_WDT->TASKS_START = 1;
+    /* V5.09: WDT start moved to AFTER all init completes (was before init
+       in 5.08, causing a boot loop — BHY2.begin + preroll erase take >5s). */
 
     /* ── LED (onboard and/or SK6812 bench/production strip) ── */
     g_led.begin();
@@ -1120,6 +1117,15 @@ void setup()
     Serial.print(','); json_kv("ver", FW_VERSION);
     Serial.print(','); json_kv("used_pct", (long)g_runs.flash_used_pct());
     json_end();
+
+    /* V5.09: Start hardware watchdog AFTER all init completes.
+       5.08 started it before init → BHY2.begin + preroll erase took >5s
+       → WDT fired during boot → infinite boot loop (rr:2). */
+    NRF_WDT->CONFIG = (WDT_CONFIG_HALT_Pause << WDT_CONFIG_HALT_Pos) |
+                      (WDT_CONFIG_SLEEP_Run << WDT_CONFIG_SLEEP_Pos);
+    NRF_WDT->CRV = (WDT_TIMEOUT_MS * 32768) / 1000;  // ms → WDT clock ticks (32.768 kHz)
+    NRF_WDT->RREN |= WDT_RREN_RR0_Msk;  // enable reload register 0
+    NRF_WDT->TASKS_START = 1;
 }
 
 /* ================================================================== */
