@@ -331,7 +331,7 @@ bool sgc_ble_radio_restart(const char* why)
         Serial.print(','); json_kv("why", reason);
         Serial.print(','); json_kv_bool("ok", false);
         Serial.print(','); json_kv("retry", retries);
-        Serial.print(','); json_kv("reboot", 1);
+        Serial.print(','); json_kv("reboot", (long)1);
         json_end();
         Serial.flush();
         delay(50);        /* let JSON drain before radio reset */
