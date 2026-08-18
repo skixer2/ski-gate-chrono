@@ -1192,11 +1192,12 @@ void loop()
            forever / stop being scannable. */
         if (sgc_ble_central_connected() && !BLE.connected())
             sgc_ble_force_recover("desync");
-        /* V5.07: zombie BLE link detection. If g_central_connected is true but
-           no BLE activity (GATT write / connect / FT chunk) for >30s, the phone
-           is gone but Cordio still thinks the link is alive. Force a hard radio
-           restart — soft force_recover can't clear a zombie Cordio link. */
-        if (sgc_ble_central_connected() && !sgc_ble_ft_active()) {
+        /* V5.17: zombie BLE link detection — only fire on phantom links (phone
+           gone, BLE.connected() false). Do NOT fire on live-but-idle connections
+           (athlete navigating the app takes >30s). The desync check above
+           handles the first soft-recover attempt; zombie escalates to hard
+           radio restart only if the link is truly dead. */
+        if (sgc_ble_central_connected() && !BLE.connected() && !sgc_ble_ft_active()) {
             uint32_t idle = millis() - sgc_ble_last_activity_ms();
             if (idle > BLE_ZOMBIE_TIMEOUT_MS) {
                 request_ble_radio_restart("zombie");
