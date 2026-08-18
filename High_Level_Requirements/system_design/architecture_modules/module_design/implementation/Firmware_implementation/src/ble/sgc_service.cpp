@@ -312,18 +312,25 @@ bool sgc_ble_radio_restart(const char* why)
 
     BLE.end();
 
-    /* Bounded settle so Cordio finishes thread/driver teardown. ~30 ms, no
-       multi-second stall. */
+    /* V5.15 T-008b: longer settle after heavy FT (244 B chunks); one retry. */
     uint32_t settle = millis();
-    while ((int32_t)(millis() - settle) < 30) {
+    while ((int32_t)(millis() - settle) < 100) {
         delay(1);
     }
 
-    if (!BLE.begin()) {
+    bool began = BLE.begin();
+    long retries = 0;
+    if (!began) {
+        delay(300);
+        began = BLE.begin();
+        retries = 1;
+    }
+    if (!began) {
         json_begin();
         json_kv("ev", "ble_radio");
         Serial.print(','); json_kv("why", reason);
         Serial.print(','); json_kv_bool("ok", false);
+        Serial.print(','); json_kv("retry", retries);
         json_end();
         return false;
     }
@@ -350,6 +357,7 @@ bool sgc_ble_radio_restart(const char* why)
     json_kv("ev", "ble_radio");
     Serial.print(','); json_kv("why", reason);
     Serial.print(','); json_kv_bool("ok", true);
+    Serial.print(','); json_kv("retry", retries);
     json_end();
     return true;
 }

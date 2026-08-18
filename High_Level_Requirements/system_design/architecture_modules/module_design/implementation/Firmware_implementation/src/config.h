@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "5.14"
+#define FW_VERSION "5.15"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
@@ -35,7 +35,8 @@
    This is the ONLY recovery path when the main loop is stuck inside a
    blocking call. Software watchdogs (FT stall, zombie) can't fire because
    they run inside loop(). WDT runs in hardware, independent of CPU.
-   Timeout = 5s: safe for flash erase (~2-3s/sector) and BLE radio_restart (~50ms). */
+   Timeout = 5s: safe for flash erase (~2-3s/sector) and BLE radio_restart
+   (~100–400 ms with V5.15 settle+retry; still << 5s). */
 static constexpr uint32_t WDT_TIMEOUT_MS = 5000;
 static constexpr uint32_t SLEEP_TIMEOUT_MS       = 120000;  /* 2 min idle → sleep */
 static constexpr uint32_t ARM_TIMEOUT_MS         = 30000;   /* 30 s armed → idle  */

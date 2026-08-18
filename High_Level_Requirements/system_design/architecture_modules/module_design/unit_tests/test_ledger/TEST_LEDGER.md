@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-14 09:52 UTC  
-**Current baselines:** FW **5.03** (tip) · App **1.10** · HW **v4.2** · Port **COM8** · Harness **2.28**  
-**Last harness:** smoke `0911`/`1113` ALL PASS; **post-S03 BLE invisible** (D-008)  
+**Last updated:** 2026-08-18 11:45 UTC  
+**Current baselines:** FW **5.15** (code ready — flash pending) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** smoke green last claimed on **5.03** (`0911`/`1113`); 5.15 not yet smoke-tested  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -119,70 +119,124 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — BLE zombie / no ADV after app disconnect (blocks phone path)*
+*Status: **OPEN** — FT download hang at ~5 chunks; `ble_radio` restart regression*
 
 ### Meta
 
 | Field | Value |
 |-------|--------|
-| **Case ID** | `TC-2026-08-14-002` |
-| **Title** | BLE stuck “connected” → no sleep, not scannable |
-| **Objective** | After phone disconnect / app kill / BLE toggle, device must clear link, release hold_idle, re-ADV in IDLE so app can scan; serial `s`/`i` must recover without HW reset |
-| **Baseline under test** | FW **5.03** (code ready), App **1.10**, Nicla COM8 |
+| **Case ID** | `TC-2026-08-15-001` |
+| **Title** | BLE FT download stall + `ble_radio` ok=0 regression (FW 5.14) |
+| **Objective** | FT download must complete without stall; `ble_radio` restart must recover the stack on zombie/stall; no hard reboot required after flash |
+| **Baseline under test** | FW **5.15** (code ready) · App **1.11** (unbuilt) · Nicla COM8 |
 | **Priority** | **P0** |
-| **Opened** | 2026-08-14 |
+| **Opened** | 2026-08-15 |
 | **Owner** | Lead Systems Coordinator |
-| **Parent** | TC-2026-08-14-001 smoke PASS; BLE leg failed |
-| **Code status** | **BENCH OK** — scannable after app kill/reopen; auto SLEEP works |
+| **Parent** | TC-2026-08-14-002 (BLE zombie PASS 5.03) |
 
-### Hypothesis
+### Timeline (2026-08-18, FW 5.14)
 
-V5.00 hold-idle + connect handlers are correct in intent, but recovery is incomplete:
+#### Attempt 1 — after PlatformIO flash (warm reset)
 
-1. `main` loop keeps `hold_idle = central_flag || BLE.connected() || ft` → if Cordio leaves a **zombie link**, IDLE never times out to SLEEP (matches JP: never slept).
-2. `sgc_ble_update_state(IDLE|POST_RUN)`: if `BLE.connected()` → **only** `setLocalName`, **no** `restart_advertising` → phone scan empty while “logically IDLE”.
-3. Serial `s`→SLEEP tries `disconnect` + clear flags; if disconnect is incomplete / events missed, `i`→IDLE still sees connected → still no ADV.
-4. First smoke attempt needed **HW reset** and harness got `FW version None` until reboot — same wedged BLE/stack class of failure.
-5. `main.cpp` POST_RUN still calls bare `BLE.advertise()` (known Cordio no-op class) — secondary inconsistency.
+```text
+Phone:  FT CMD_START run=0
+        5 × writeCharacteristic → GATT_SUCCESS
+        6th write → GATT_ERROR 133 → LINK_SUPERVISION_TIMEOUT → disconnect
+        FT chunk timeout at offset=976
+        CRC FAILED (976 bytes, 4 chunks)
 
-### Manual steps already done (JP)
+Device: ft_start run=0 sz=38780 chunk=244
+        ft_abort reason="stall" off=1220 chunks=5
+        ble_radio why="ft_stall" ok=0    ← radio restart FAILED
+        ble_adv why="desync"             ← fell through to desync recovery
+```
 
-1. Smoke after manual reset button → green (see §3).  
-2. App scan for SGC: **not visible**.  
-3. Closed app, phone BLE restart, device serial IDLE↔SLEEP↔IDLE: **still no SGC**, device **did not auto-sleep** (stuck hold / connected).
+- FT stalled after 5 chunks (1220 B device / 976 B phone — off-by-one chunk).
+- `ble_radio` restart path returns **ok=0** — does not recover the radio.
+- This was **the first connection after flashing 5.14** — no prior BLE cycles.
 
-### Expected after fix (FW 5.03 target)
+#### Attempt 2 — after hard button reboot (power-on reset)
 
-| Check | Expect |
-|-------|--------|
-| Kill app while connected | serial `ble_disc` within ~1–2 s (or force-recover path) |
-| After disc in IDLE | `ble_adv` / scannable; hold_idle false; can IDLE→SLEEP in 120 s if no link |
-| Serial `i` anytime | force recover + ADV if IDLE/POST_RUN discoverable |
-| Serial `s` | drop link, ADV off, hold clear |
-| App scan after recover | SGC visible without HW reset |
-| Smoke | still green |
+```text
+Device: boot ver=5.14 → IDLE → ble_conn
+        ft_start run=0 sz=38780 chunk=244
+        ft_prog off=4880  chunks=20
+        ft_prog off=9760  chunks=40
+        ft_prog off=14640 chunks=60
+        ft_prog off=19520 chunks=80
+        ft_prog off=24400 chunks=100
+        ft_prog off=29280 chunks=120
+        ft_prog off=34160 chunks=140
+        ft_done crc=564206195 sz=38780 chunks=159 ms=11600
+        ble_radio why="zombie" ok=0      ← still fails after successful FT
+```
 
-### Observed behavior
+- **FT complete ✅** — 38780 B, 159 chunks, 11.6 s, CRC 0x21A5B233.
+- Clean linear progress (20/40/60/80/100/120/140).
+- `ble_radio` ok=0 **still fails** even after successful FT.
 
-1. Smoke `run_20260814_0829`: U16–U19, U12–U13, S04 **ALL PASS** on FW 5.02 after **manual reset**.  
-2. S04: **99.5 fps**, `store=raw`, `we=0`, ver=5.02.  
-3. `raw_store` earlier boot fragment: `ok:1 slots=8 slot_kb=244 chip_kb=2048`.  
-4. BLE: **not discoverable**; sleep inhibited → **zombie connected / hold_idle**.
+### Root cause analysis
+
+#### Issue A: FT stall after flash (warm reset)
+
+**Root cause:** nRF52 warm reset (NVIC_SystemReset after PlatformIO upload) preserves
+static RAM. Cordio BLE stack statics from the previous firmware survive into the
+new firmware's boot. `BLE.begin()` does not fully reinitialize because internal
+state thinks it's already up → stack can't sustain FT → supervision timeout at
+chunk 5.
+
+**Evidence:** Hard button reboot (true POR, RAM cleared) → same FW, same transfer
+→ succeeds cleanly. The only variable is reset type.
+
+**Known from TOOLS.md:** "nRF52 warm reset preserves static RAM —
+NVIC_SystemReset does NOT reinitialize BSS/.data."
+
+#### Issue B: `ble_radio` ok=0 regression (5.14)
+
+The `ble_radio` restart path (added FW 5.07 to recover Cordio radio without full
+reboot) returns **ok=0** in both scenarios:
+- `why="ft_stall"` — after FT stall
+- `why="zombie"` — after successful FT (post-done cleanup)
+
+This is a **regression from 5.10** where the radio restart was reported working
+(or at least attempting). Something changed between 5.10 and 5.14 that broke it.
+
+**Status:** Under investigation — subagent spawned to diff 5.10→5.14 `ble_radio`
+code path.
+
+### Open questions
+
+1. **Software POR:** Can we trigger a true power-on reset via software on nRF52,
+   or must we document "hard reboot after flash" as a required step?
+2. **`ble_radio` fix:** What changed between 5.10 and 5.14 in the radio restart
+   path? Why does it return ok=0?
+3. **Warm-reset BLE deinit:** Does calling `BLE.end()` before `BLE.begin()` in
+   `setup()` (when warm reset detected via `NRF_POWER->RESETREAS`) fix the
+   stall?
 
 ### Verdict
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PASS (BLE recover)** — smoke separate (U13 flake) |
-| **Root cause** | Incomplete BLE link teardown + ADV restart while `BLE.connected()` sticky; hold_idle latches sleep |
-| **Fix version** | **5.03** (`sgc_ble_force_recover`) |
-| **Follow-ups** | core tier; BLE FT; optional de-dupe double `ble_recover` on boot IDLE |
+| **Result** | **PARTIAL** — FT code correct (hard reboot); FW **5.15** code ready for warm-reset + radio retry; **flash/validate pending** |
+| **FT code** | ✅ Correct — 38780 B transferred, CRC OK on 5.14 POR |
+| **Warm reset** | 🔧 **5.15 T-008a** — `ble_warm_deinit` + `BLE.end()` before begin when `!(rr&1)` |
+| **`ble_radio`** | 🔧 **5.15 T-008b** — settle 100 ms + one 300 ms `BLE.begin` retry; `retry` field in JSON |
+| **Next** | Flash 5.15 warm (no button) → FT full; check `ble_radio ok=1`; then hard POR sanity |
 
 ---
 
 ## 2b. Closed / parked this session
 
-### TC-2026-08-14-001 — FW 5.02 boot + smoke (layout/stack)
+### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
+
+| Field | Value |
+|-------|--------|
+| **Result** | **PASS (5.03)** — `sgc_ble_force_recover` fixed zombie link + ADV restart |
+| **Fix** | `sgc_ble_force_recover` in `ble/sgc_service.cpp` |
+| **Closed** | 2026-08-14 |
+
+### TC-2026-08-14-001 — FW 5.02 boot + smoke
 
 | Field | Value |
 |-------|--------|
@@ -242,14 +296,16 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 
 | ID | Sev | Symptom | Suspected area | Status |
 |----|-----|---------|----------------|--------|
+| **D-008** | **P0** | `ble_radio` restart returns ok=0 on FW 5.14 (both stall and zombie paths) | Heavy 244 B FT; 30 ms settle insufficient (fn unchanged 5.10→5.14) | **CODE READY 5.15** — T-008b settle+retry; needs flash proof |
+| **D-009** | **P0** | FT stall after flash (warm reset) — Cordio statics survive NVIC_SystemReset | nRF52 warm reset; `BLE.begin()` doesn't fully reinit | **CODE READY 5.15** — T-008a warm deinit; needs flash proof |
 | D-001 | P0 | Boot crash after BLE on 5.01 index load/persist | `raw_run_store.cpp` 4 KB stack | **PASS on bench 5.02** (smoke) |
 | D-002 | P1 | BLE FT hang if BHY2 SPI during transfer | shared SPI0 | Fixed 4.97; regression-watch |
 | D-TIME | P2 | Run ts_utc stuck at 1970 | ABC0 no-op / create_run | **PASS bench** — after phone connect, S03 run time correct (4.99 path) |
 | D-003 | P2 | S03 dump `bad_id` intermittent | host parse race | Mitigated SIM 2.50.0 retry |
 | D-004 | P2 | U19 inject flake historically | serial/inject | **PASS** on 0829 |
 | D-005 | P3 | No automated serial test for BLE hold-idle / re-ADV | BLE 5.00 | Manual only |
-| **D-006** | **P0** | Zombie BLE connected: no auto-sleep, not scannable | `sgc_ble_force_recover` | **CLOSED PASS on 5.03** (hard reset once, then multi app reconnect + auto SLEEP) |
-| **D-007** | **P2** | U13 step "Record initial runs" got `cmd B p=0` instead of `status` | harness serial RX race | **WATCH** — flake on 0900; **PASS 10/10** on 0911 |
+| D-006 | P0 | Zombie BLE connected: no auto-sleep, not scannable | `sgc_ble_force_recover` | **CLOSED PASS on 5.03** |
+| D-007 | P2 | U13 step "Record initial runs" got `cmd B p=0` instead of `status` | harness serial RX race | **WATCH** — flake on 0900; **PASS 10/10** on 0911 |
 
 ---
 
@@ -263,6 +319,11 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | T-004 | **DONE** | harness → `tmp_test_results/` auto staging (v2.27) |
 | T-005 | **OPEN** | harden U13/`?` expect against stray `cmd B` (D-007) |
 | T-006 | **DONE** | PC→VPS `push_test_results.ps1/.sh` via SSH **key** (no password); DeepSeek + review/push |
+| **T-007** | **DONE** | RCA: `sgc_ble_radio_restart` unchanged 5.10→5.14; load profile changed (20 B→244 B). Report: `investigations/T-007_ble_radio_investigation.md` |
+| **T-008** | **CODE READY** | FW **5.15** T-008a+b applied in tree (coordinator direct — subagent net fail). No push yet |
+| **T-008a** | **CODE READY** | `main.cpp` setup: if `!(rr&1)` → emit `ble_warm_deinit`, `BLE.end()`+100 ms, then `BLE.begin()` |
+| **T-008b** | **CODE READY** | `sgc_service.cpp`: settle 30→100 ms; retry `BLE.begin` once after 300 ms; JSON `retry` field |
+| **T-009** | **OPEN** | Validate FW 5.15: warm flash FT without button POR; hard reboot FT; expect `ble_radio` ok=1 (retry 0 or 1) |
 
 ### 5.03 implementation review (coordinator)
 
@@ -289,9 +350,11 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | Case ID | Date | Title | Result | Archive |
 |---------|------|-------|--------|---------|
 | TC-2026-08-14-001 | 2026-08-14 | FW 5.02 boot + smoke | **PASS smoke** | §2b |
-| TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2 (close after core) |
+| TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2b (closed) |
+| TC-2026-08-15-001 | 2026-08-15 | FT download hang + `ble_radio` regression | **OPEN** (5.14) | §2 (active) |
 | run_20260814_0900 | 2026-08-14 | Smoke 5.03 | inject+S04 PASS; flash **9/10** U13 flake | `tmp_test_results/` |
 | run_20260814_0911 | 2026-08-14 | Smoke 5.03 | **ALL PASS** 21+10+1 | `tmp_test_results/` (SSH push OK) |
+| 2026-08-18 FT | 2026-08-18 | FW 5.14 FT warm-reset stall + hard-reboot success | FT ✅ after POR; `ble_radio` ❌ | §2 + §3 |
 
 Snapshots: `test_ledger/history/`  
 Optional deep-dive cases: `test_ledger/cases/TC-….md`

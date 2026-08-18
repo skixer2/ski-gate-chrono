@@ -1039,6 +1039,18 @@ void setup()
     g_ldc.enable_interrupt();
     g_ldc.force_recalibrate();  /* auto-calibrate baseline to current reading on every boot */
 
+    /* V5.15 T-008a: warm reset preserves Cordio statics — tear down before begin.
+       RESETREAS bit 0 = power-on. Soft/WDT/flash resets leave bit 0 clear. */
+    bool is_power_on = (rr & 0x01u) != 0;
+    if (!is_power_on) {
+        json_begin();
+        json_kv("ev", "ble_warm_deinit");
+        Serial.print(','); json_kv("rr", (long)rr);
+        json_end();
+        BLE.end();
+        delay(100);
+    }
+
     /* ── BLE first — needs heap for thread before BHY2 exhausts it ── */
     json_begin();
     json_kv("ev", "init");
