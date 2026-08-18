@@ -127,6 +127,19 @@ void sgc_ble_transfer_poll()
     for (size_t i = 0; i < send_len; i++)
         g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[i]);
 
+    /* V5.12: check link before writeValue. If the phone disconnected (LINK_SUPERVISION_TIMEOUT,
+       phone killed app, etc.), BLE.poll() above has already fired on_ble_disconnected which
+       cleared g_central_connected. Abort FT cleanly instead of blocking on a dead HCI buffer
+       (which would trigger the hardware WDT reboot). */
+    if (!BLE.connected()) {
+        sgc_ble_ft_abort("link_gone");
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "link_gone");
+        json_end();
+        return;
+    }
+
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
     /* Drain HCI after each notify so sendAclPkt flow-control cannot spin
        the next writeValue with a full pending queue. */
