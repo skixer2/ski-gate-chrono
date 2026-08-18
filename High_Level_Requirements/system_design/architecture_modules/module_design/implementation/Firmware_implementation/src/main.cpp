@@ -245,13 +245,16 @@ void handle_serial()
     case 'i':
         g_sm.force_state(DeviceState::IDLE);
         /* V5.03: always recover BLE on manual wake — clears zombie link /
-           sticky hold and re-ADVs even if already IDLE (force_state no-ops
-           on the same state, so this guarantees the bench can re-scan). */
+           sticky hold and re-ADVs even if already IDLE. */
         sgc_ble_force_recover("serial_i");
-        /* V5.04: JP bench — soft recover alone fails after S03 stream stress.
-           Escalate to a hard radio restart (BLE.end/begin) so the phone can
-           re-scan without a hardware reset. */
-        request_ble_radio_restart("serial_i");
+        /* V5.18: only hard-restart radio if BLE is actually wedged (phantom
+           link: g_central_connected but BLE.connected() false). Prevents
+           T-008c NVIC_SystemReset reboot when 'i' is used to wake from
+           SLEEP (test script wakeup, normal use). The zombie check in
+           main loop also gates on !BLE.connected() since 5.17. */
+        if (sgc_ble_central_connected() && !BLE.connected()) {
+            request_ble_radio_restart("serial_i");
+        }
         break;
     case 'a':
         if (g_sm.state() == DeviceState::IDLE) {
