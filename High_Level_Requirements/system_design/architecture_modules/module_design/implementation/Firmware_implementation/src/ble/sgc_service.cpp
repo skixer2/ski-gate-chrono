@@ -331,8 +331,12 @@ bool sgc_ble_radio_restart(const char* why)
         Serial.print(','); json_kv("why", reason);
         Serial.print(','); json_kv_bool("ok", false);
         Serial.print(','); json_kv("retry", retries);
+        Serial.print(','); json_kv("reboot", 1);
         json_end();
-        return false;
+        Serial.flush();
+        delay(50);        /* let JSON drain before radio reset */
+        NVIC_SystemReset();   /* V5.16 T-008c: reboot — warm_deinit (T-008a) ensures clean BLE init */
+        return false;          /* never reached — keeps compiler happy */
     }
 
     /* Re-register GATT + persisted config on the fresh radio. */
