@@ -1144,16 +1144,19 @@ class SGCDevice:
             return hd, he, chunks, other
 
         # Transient parse races on CDC (4.90): hex_err bad_id / no_args while
-        # the run is fine. Retry sequence: i -> ? (loop free) -> h <id> raw.
+        # the run is fine. Retry sequence: ? (loop free) -> h <id> raw.
+        # V5.16+: do NOT send 'i' — it triggers a hard BLE radio restart
+        # (BLE.end/begin) which can reboot the device (T-008c NVIC_SystemReset)
+        # and break the hex dump. The device is already in IDLE after the run.
         # Permanent reasons (no_run, bad_size, read_fail) fail immediately.
         TRANSIENT_HEX_ERR = frozenset({"bad_id", "no_args"})
         MAX_DUMP_ATTEMPTS = 3
 
         def _ready_for_dump():
-            # Ensure IDLE and let POST_RUN->IDLE prepare_preroll finish (can take
-            # several seconds for full pre-roll erase). Then clear RX and dump.
-            self.send_cmd('i', wait_ms=300)
-            self.drain_responses(0.5)
+            # Wait for IDLE — let POST_RUN->IDLE prepare_preroll finish (can
+            # take several seconds for full pre-roll erase). Clear RX and dump.
+            # V5.16+: do NOT send 'i' — it triggers hard BLE radio restart
+            # which can reboot the device (T-008c) and break the hex dump.
             t_wait0 = time.time()
             while time.time() - t_wait0 < 20.0:
                 self.send_cmd('?', wait_ms=50)
@@ -1172,7 +1175,7 @@ class SGCDevice:
             else:
                 reason = (hex_err or {}).get('reason', 'no_response')
                 print(f"   Retry {attempt}/{MAX_DUMP_ATTEMPTS} after hex_err/no data "
-                      f"(reason={reason}): i / ? / h {run_id} raw")
+                      f"(reason={reason}): ? / h {run_id} raw")
             _ready_for_dump()
             # Longer post-write wait so FW can finish reading the full line (v4.79+)
             self.send_cmd(f'h {run_id} raw', wait_ms=400)
