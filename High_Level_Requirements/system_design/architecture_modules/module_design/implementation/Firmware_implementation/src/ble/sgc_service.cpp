@@ -51,7 +51,7 @@ static BLECharacteristic        char_run_info (SGC_UUID("ABC8"), BLERead | BLENo
 static BLECharacteristic        char_run_list (SGC_UUID("ABC9"), BLERead, 512);            // heap (JSON)
 
 /* ── File transfer ────────────────────────────────────────────── */
-static BLEUnsignedShortCharacteristic char_ft_req (SGC_UUID("ABCA"), BLEWrite);
+static BLECharacteristic        char_ft_req (SGC_UUID("ABCA"), BLEWrite, 8);
 static BLECharacteristic        char_ft_chunk  (SGC_UUID("ABCB"), BLENotify, 244);
 static BLEUnsignedIntCharacteristic  char_ft_crc  (SGC_UUID("ABCC"), BLERead);
 static BLEByteCharacteristic    char_transfer  (SGC_UUID("ABCD"), BLERead | BLENotify);
@@ -150,9 +150,9 @@ static void on_discipline_written(BLEDevice c, BLECharacteristic ch) {
     g_last_ble_activity_ms = millis();  // V5.07
 }
 static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
-    (void)c; (void)ch;
-    extern void sgc_ble_ft_on_request(uint16_t);
-    sgc_ble_ft_on_request(char_ft_req.value());
+    (void)c;
+    extern void sgc_ble_ft_on_request(const uint8_t*, int);
+    sgc_ble_ft_on_request(ch.value(), ch.valueLength());
     g_last_ble_activity_ms = millis();  // V5.07
 }
 

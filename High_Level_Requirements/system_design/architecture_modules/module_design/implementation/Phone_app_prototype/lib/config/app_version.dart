@@ -28,4 +28,8 @@
 ///          a longer BLE supervision timeout (~2-5s instead of phone default
 ///          ~500ms). Fixes LINK_SUPERVISION_TIMEOUT during FT downloads
 ///          (TC-2026-08-15-001).
-const String APP_VERSION = '1.12';
+///   1.13 – Rewrite FT download as phone-pull request-response: phone writes
+///          chunk offset to ABCA, device responds with one notification on
+///          ABCB. Eliminates GATT queue overflow that hung transfers after
+///          ~14 KB at ~400 B/s push ceiling. Adds CRC32 read from ABCC.
+const String APP_VERSION = '1.13';
