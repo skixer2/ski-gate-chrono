@@ -36,12 +36,13 @@ static uint32_t  g_ft_chunks  = 0;
 static uint32_t  g_ft_start_ms = 0;
 static uint32_t  g_ft_last_prog_ms = 0;  /* stall watchdog */
 
-/* Single ATT notification payload at min MTU 23: opcode+handle leave 20 B.
-   Keep 20 until we have a reliable negotiated-MTU path (ATT max often stays 23
-   on this Cordio build even if the phone requests 247). */
-static constexpr size_t   FT_CHUNK_SIZE = 20;
+/* V5.13: use full negotiated MTU. Phone confirms MTU=247 (onConfigureMTU status=0),
+   so ATT payload = 247 - 3 = 244 B per notification. This reduces total packets
+   12x (1939 → 159 for a 38 KB run), eliminating ACL buffer exhaustion that caused
+   the FT hang at ~700 chunks (TC-2026-08-15-001). Transfer time ~8s vs ~97s. */
+static constexpr size_t   FT_CHUNK_SIZE = 244;
 static constexpr uint32_t FT_CHUNK_MS   = 50;   /* was 25 — halve rate to reduce phone BLE pressure (5.10) */
-static constexpr uint32_t FT_PROG_EVERY = 50;   /* serial progress every N chunks */
+static constexpr uint32_t FT_PROG_EVERY = 20;   /* progress every N chunks (20×244=4880 B) */
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
