@@ -363,12 +363,13 @@ void sgc_ble_update_state(DeviceState s)
     switch (s) {
     case DeviceState::IDLE:
     case DeviceState::POST_RUN:
-        /* V5.03: only keep the link when BOTH the connect event fired and
-           Cordio agrees we're connected. Any desync (flag vs link) or a
-           missing connection → full recovery + re-ADV so the phone can scan
-           again after an app kill / BLE toggle. */
-        if (g_central_connected && BLE.connected()) {
-            /* Truly connected — keep link, refresh name only (don't kick). */
+        /* V5.11: trust g_central_connected here. BLE.connected() lags by one
+           poll cycle after on_ble_connected fires, causing a race where
+           update_state(IDLE) sees connected=false and force-recovers — killing
+           the fresh link. The main-loop desync heal (g_central_connected &&
+           !BLE.connected() after timeout) still catches real zombie links. */
+        if (g_central_connected) {
+            /* Connect event fired — keep link, refresh name only. */
             BLE.setLocalName(g_dev_name);
         } else {
             sgc_ble_force_recover(nullptr);
