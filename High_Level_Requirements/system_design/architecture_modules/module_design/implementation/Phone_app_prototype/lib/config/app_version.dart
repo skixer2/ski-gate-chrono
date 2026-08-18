@@ -24,4 +24,8 @@
 ///          reset are not treated as already-downloaded; BLE connection
 ///          lifecycle fixes (disconnect listener, GATT cache clear, clean
 ///          rescan) so a device HW reset no longer requires a full app restart
-const String APP_VERSION = '1.11';
+///   1.12 – requestConnectionPriority(balanced) after MTU request to negotiate
+///          a longer BLE supervision timeout (~2-5s instead of phone default
+///          ~500ms). Fixes LINK_SUPERVISION_TIMEOUT during FT downloads
+///          (TC-2026-08-15-001).
+const String APP_VERSION = '1.12';

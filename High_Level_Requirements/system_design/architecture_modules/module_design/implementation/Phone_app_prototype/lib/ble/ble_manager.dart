@@ -118,6 +118,13 @@ class BLEManager {
 
     try {
       _mtu = await device.requestMtu(247);
+      try {
+        await device.requestConnectionPriority(
+            connectionPriorityRequest: ConnectionPriority.balanced);
+        debugPrint('[BLE] requestConnectionPriority(balanced) OK');
+      } catch (e) {
+        debugPrint('[BLE] requestConnectionPriority failed: $e');
+      }
       _services = await device.discoverServices();
     } catch (e) {
       debugPrint('[BLE] post-connect setup failed: $e');

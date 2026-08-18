@@ -40,7 +40,7 @@ static uint32_t  g_ft_last_prog_ms = 0;  /* stall watchdog */
    Keep 20 until we have a reliable negotiated-MTU path (ATT max often stays 23
    on this Cordio build even if the phone requests 247). */
 static constexpr size_t   FT_CHUNK_SIZE = 20;
-static constexpr uint32_t FT_CHUNK_MS   = 25;   /* was 20 — extra headroom for ACL */
+static constexpr uint32_t FT_CHUNK_MS   = 50;   /* was 25 — halve rate to reduce phone BLE pressure (5.10) */
 static constexpr uint32_t FT_PROG_EVERY = 50;   /* serial progress every N chunks */
 
 void sgc_ble_transfer_init() {}
