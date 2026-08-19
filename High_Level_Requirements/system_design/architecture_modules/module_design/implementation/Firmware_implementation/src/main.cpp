@@ -185,8 +185,6 @@ void apply_state_visuals(DeviceState s)
 {
     switch (s) {
     case DeviceState::SLEEP:
-        g_led.set_pattern(LedPattern::OFF); break;
-    case DeviceState::IDLE:
         g_led.set_pattern(LedPattern::BLUE_SLOW_FLOW); break;
     case DeviceState::ARMED:
         g_led.set_pattern(LedPattern::GREEN_CHASE); beep_on(); break;
@@ -205,7 +203,8 @@ void apply_state_visuals(DeviceState s)
 /* ================================================================== */
 /* Read rest of current command line into buf (excluding the already-consumed
    first character). Waits up to wait_ms for the terminating newline.
-   Returns length written (0 if timeout / empty). */
+   Returns length written. Returns (size_t)-1 if the newline never arrived
+   within wait_ms (line timeout). Returns 0 if the line was empty (just \n). */
 static size_t read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
 {
     size_t n = 0;
@@ -218,7 +217,7 @@ static size_t read_rest_of_line(char* buf, size_t cap, uint32_t wait_ms)
         if (n + 1 < cap) buf[n++] = c;
     }
     if (n < cap) buf[n] = '\0';
-    return n;
+    return (size_t)-1;  /* timeout — newline never arrived */
 }
 
 void handle_serial()
@@ -232,18 +231,23 @@ void handle_serial()
 
     if (test_mode_handle_serial(c)) return;
 
-    /* V4.45/v4.79: for 'h', buffer the full line first so arg parsing does
-       not race USB CDC (partial packet with only 'h'). Wait up to 500 ms
-       for " <id> raw\n" — 50 ms was too short after long stream + preroll. */
+    /* V4.45/v5.19: for 'h', buffer the full line first so arg parsing does
+       not race USB CDC (partial packet with only 'h'). Wait for newline
+       with 2 s safety timeout — this is now line-oriented like the 'L' command.
+       read_rest_of_line returns (size_t)-1 on timeout (no newline in 2 s). */
     char h_args[40];
     h_args[0] = '\0';
+    size_t h_len = 0;
+    bool h_line_timeout = false;
     if (c == 'h') {
-        read_rest_of_line(h_args, sizeof(h_args), 500);
+        h_len = read_rest_of_line(h_args, sizeof(h_args), 2000);
+        h_line_timeout = (h_len == (size_t)-1);
+        if (h_line_timeout) h_args[0] = '\0';  /* ensure NUL for safety */
     }
 
     switch (c) {
     case 'i':
-        g_sm.force_state(DeviceState::IDLE);
+        g_sm.force_state(DeviceState::SLEEP);
         /* V5.03: always recover BLE on manual wake — clears zombie link /
            sticky hold and re-ADVs even if already IDLE. */
         sgc_ble_force_recover("serial_i");
@@ -257,7 +261,7 @@ void handle_serial()
         }
         break;
     case 'a':
-        if (g_sm.state() == DeviceState::IDLE) {
+        if (g_sm.state() == DeviceState::SLEEP) {
             /* Minimal test fork: enable serial frame source. Everything
                else (start detector, ring, LOGGING) is the real path.
                Manual B/Q/L keeps g_manual_frame → no stream (unit inject).
@@ -364,6 +368,9 @@ void handle_serial()
            no chunks during the integrity check. */
         const char* p = h_args;
         while (*p == ' ' || *p == '\t') p++;
+        if (h_line_timeout) {
+            json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","line_timeout"); json_end(); return;
+        }
         if (*p == '\0') {
             json_begin(); json_kv("ev","hex_err"); Serial.print(','); json_kv("reason","no_args"); json_end(); return;
         }
@@ -712,7 +719,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
 
     json_state_evt(g_sm.state_name_for(from), g_sm.state_name());
 
-    if (to == DeviceState::IDLE) {
+    if (to == DeviceState::SLEEP) {
         /* Sample ambient ASAP on enter IDLE (then every AMBIENT_IDLE_MS). */
         g_last_ambient_ms = 0;
         /* Drop stream on any path into IDLE (cancel/timeout/cooldown).
@@ -1109,7 +1116,7 @@ void setup()
     bhy2_cal_hook_init();
 
     g_sm.on_transition(on_state_transition);  /* V4.41: synchronous handlers */
-    g_sm.force_state(DeviceState::IDLE);
+    g_sm.force_state(DeviceState::SLEEP);
     /* V4.03: Reset timestamps to current millis(). On nRF52 warm resets
        (NVIC_SystemReset), static variables retain their values. If
        g_last_baro_ms was e.g. 45000 from before reset and millis()
@@ -1207,7 +1214,7 @@ void loop()
             }
         }
         /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
-        g_sm.set_hold_idle(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
+        g_sm.set_hold_sleep(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
         g_led.update(); g_ldc.tick();
         handle_serial();
     }
@@ -1230,11 +1237,11 @@ void loop()
             json_kv("ev", "wake");
             Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
             json_end();
-            g_sm.force_state(DeviceState::IDLE);
+            g_sm.force_state(DeviceState::SLEEP);
         }
 
         /* ── LDC1612 proximity arming (F03) ── */
-        if (g_ldc.is_armed() && g_sm.state() == DeviceState::IDLE) {
+        if (g_ldc.is_armed() && g_sm.state() == DeviceState::SLEEP) {
             if (g_sm.can_arm()) {
                 json_begin();
                 json_kv("ev", "prox_arm");
@@ -1244,7 +1251,7 @@ void loop()
             }
         }
         /* ── Factory reset with confirmation ── */
-        if (g_ldc.is_factory_hold() && g_sm.state() == DeviceState::IDLE) {
+        if (g_ldc.is_factory_hold() && g_sm.state() == DeviceState::SLEEP) {
             if (!g_factory_confirming) {
                 g_factory_confirming    = true;
                 g_factory_confirm_start = now;
@@ -1310,7 +1317,7 @@ void loop()
        NEVER during BLE FT (SPI race with flash). */
     if (!g_stream_active
         && !sgc_ble_ft_active()
-        && (g_sm.state() == DeviceState::IDLE || g_sm.state() == DeviceState::SLEEP)
+        && (g_sm.state() == DeviceState::SLEEP || g_sm.state() == DeviceState::SLEEP)
         && (g_last_ambient_ms == 0
             || (now - g_last_ambient_ms) >= AMBIENT_IDLE_MS)) {
         float hpa = pressure.value();  /* BHY2 SENSOR_ID_BARO, hPa */

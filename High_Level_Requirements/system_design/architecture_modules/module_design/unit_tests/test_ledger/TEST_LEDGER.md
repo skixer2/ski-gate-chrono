@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-18 11:45 UTC  
-**Current baselines:** FW **5.15** (code ready — flash pending) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** smoke green last claimed on **5.03** (`0911`/`1113`); 5.15 not yet smoke-tested  
+**Last updated:** 2026-08-19 06:15 UTC  
+**Current baselines:** FW **5.16** (T-008a+b+c — self-recovery confirmed) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** smoke green last claimed on **5.03** (`0911`/`1113`); 5.16 S03+FT confirmed manual  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -121,6 +121,10 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 *Status: **OPEN** — FT download hang at ~5 chunks; `ble_radio` restart regression*
 
+> **Architecture work in progress:** ADR-004 (Sleep Reachability, IDLE Removal & System Off)
+> — see `adr_004_sleep_reachability.md`. Task list T1–T19 defined in ADR.
+> **T1 DONE** (coordinator), **T10 DONE** (coordinator), **T19 DONE** (subagent). Build pending on JP's PC.
+
 ### Meta
 
 | Field | Value |
@@ -128,7 +132,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | **Case ID** | `TC-2026-08-15-001` |
 | **Title** | BLE FT download stall + `ble_radio` ok=0 regression (FW 5.14) |
 | **Objective** | FT download must complete without stall; `ble_radio` restart must recover the stack on zombie/stall; no hard reboot required after flash |
-| **Baseline under test** | FW **5.15** (code ready) · App **1.11** (unbuilt) · Nicla COM8 |
+| **Baseline under test** | FW **5.16** (self-recovery confirmed) · App **1.11** (unbuilt) · Nicla COM8 |
 | **Priority** | **P0** |
 | **Opened** | 2026-08-15 |
 | **Owner** | Lead Systems Coordinator |
@@ -218,11 +222,13 @@ code path.
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PARTIAL** — FT code correct (hard reboot); FW **5.15** code ready for warm-reset + radio retry; **flash/validate pending** |
-| **FT code** | ✅ Correct — 38780 B transferred, CRC OK on 5.14 POR |
-| **Warm reset** | 🔧 **5.15 T-008a** — `ble_warm_deinit` + `BLE.end()` before begin when `!(rr&1)` |
-| **`ble_radio`** | 🔧 **5.15 T-008b** — settle 100 ms + one 300 ms `BLE.begin` retry; `retry` field in JSON |
-| **Next** | Flash 5.15 warm (no button) → FT full; check `ble_radio ok=1`; then hard POR sanity |
+| **Result** | **PASS** — T-008a warm_deinit ✅, T-008b zombie ok:1 ✅, T-008c NVIC self-recovery ✅, FT after recovery ✅ |
+| **FT code** | ✅ Correct — 38780 B transferred, CRC OK on 5.14 POR; 38434 B on 5.16 after recovery |
+| **Warm reset** | ✅ **5.15 T-008a CONFIRMED** — `ble_warm_deinit rr:6` → `init ble ok:1` (every warm boot) |
+| **`ble_radio` zombie** | ✅ **5.15 T-008b CONFIRMED** — `ble_radio why:"zombie" ok:1 retry:0` (was ok:0 on 5.14) |
+| **`ble_radio` active** | ⚠️ `serial_i`/`ft_stall` still fail (ok:0 retry:1) — but T-008c reboots → clean recovery |
+| **T-008c NVIC** | ✅ **5.16 CONFIRMED** — `reboot:1` → boot → warm_deinit → BLE ok → phone reconnects → FT OK |
+| **Next** | Optional: first-connection miss (phone-side, low pri); S03 integrity KO (D-003 known) |
 
 ---
 
@@ -296,8 +302,8 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 
 | ID | Sev | Symptom | Suspected area | Status |
 |----|-----|---------|----------------|--------|
-| **D-008** | **P0** | `ble_radio` restart returns ok=0 on FW 5.14 (both stall and zombie paths) | Heavy 244 B FT; 30 ms settle insufficient (fn unchanged 5.10→5.14) | **CODE READY 5.15** — T-008b settle+retry; needs flash proof |
-| **D-009** | **P0** | FT stall after flash (warm reset) — Cordio statics survive NVIC_SystemReset | nRF52 warm reset; `BLE.begin()` doesn't fully reinit | **CODE READY 5.15** — T-008a warm deinit; needs flash proof |
+| **D-008** | **P0→CODE MITIGATED** | `ble_radio` restart returns ok=0 after heavy traffic | Heavy 244 B FT; BLE.end() can't drain Cordio pending HCI | **T-008c: NVIC_SystemReset fallback (5.16)** — self-recovery confirmed. Zombie path fixed by T-008b. Active-traffic path reboots. |
+| **D-009** | **P0→CLOSED** | FT stall after flash (warm reset) — Cordio statics survive | nRF52 warm reset | **T-008a warm_deinit (5.15) CONFIRMED** — BLE ok:1 on every warm boot |
 | D-001 | P0 | Boot crash after BLE on 5.01 index load/persist | `raw_run_store.cpp` 4 KB stack | **PASS on bench 5.02** (smoke) |
 | D-002 | P1 | BLE FT hang if BHY2 SPI during transfer | shared SPI0 | Fixed 4.97; regression-watch |
 | D-TIME | P2 | Run ts_utc stuck at 1970 | ABC0 no-op / create_run | **PASS bench** — after phone connect, S03 run time correct (4.99 path) |
@@ -319,11 +325,11 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | T-004 | **DONE** | harness → `tmp_test_results/` auto staging (v2.27) |
 | T-005 | **OPEN** | harden U13/`?` expect against stray `cmd B` (D-007) |
 | T-006 | **DONE** | PC→VPS `push_test_results.ps1/.sh` via SSH **key** (no password); DeepSeek + review/push |
-| **T-007** | **DONE** | RCA: `sgc_ble_radio_restart` unchanged 5.10→5.14; load profile changed (20 B→244 B). Report: `investigations/T-007_ble_radio_investigation.md` |
-| **T-008** | **CODE READY** | FW **5.15** T-008a+b applied in tree (coordinator direct — subagent net fail). No push yet |
-| **T-008a** | **CODE READY** | `main.cpp` setup: if `!(rr&1)` → emit `ble_warm_deinit`, `BLE.end()`+100 ms, then `BLE.begin()` |
-| **T-008b** | **CODE READY** | `sgc_service.cpp`: settle 30→100 ms; retry `BLE.begin` once after 300 ms; JSON `retry` field |
-| **T-009** | **OPEN** | Validate FW 5.15: warm flash FT without button POR; hard reboot FT; expect `ble_radio` ok=1 (retry 0 or 1) |
+| **T-008** | **DONE** | FW 5.15 T-008a+b + FW 5.16 T-008c — confirmed on bench |
+| **T-008a** | **DONE ✅** | warm_deinit on every warm boot → BLE ok:1 (rr:2, rr:4, rr:6) |
+| **T-008b** | **DONE ✅** | zombie: ok:1 retry:0. Active traffic: ok:0 → T-008c catches. |
+| **T-008c** | **DONE ✅** | NVIC_SystemReset fallback — `reboot:1` → clean recovery → FT OK |
+| **T-009** | **DONE** | 5.16 validated: S03 OK, FT OK after self-recovery. Full smoke not run. |
 
 ### 5.03 implementation review (coordinator)
 

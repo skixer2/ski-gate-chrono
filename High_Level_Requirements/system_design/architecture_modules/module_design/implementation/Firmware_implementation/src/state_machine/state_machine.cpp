@@ -16,7 +16,7 @@ StateMachine::StateMachine()
       m_state_entered_ms(0),
       m_allow_rearm(true),
       m_cooldown_notified(false),
-      m_hold_idle(false),
+      m_hold_sleep(false),
       m_on_transition(nullptr)
 {
 }
@@ -31,7 +31,6 @@ const char* StateMachine::state_name_for(DeviceState s)
 {
     switch (s) {
     case DeviceState::SLEEP:    return "SLEEP";
-    case DeviceState::IDLE:     return "IDLE";
     case DeviceState::ARMED:    return "ARMED";
     case DeviceState::LOGGING:  return "LOGGING";
     case DeviceState::POST_RUN: return "POST_RUN";
@@ -42,7 +41,7 @@ const char* StateMachine::state_name_for(DeviceState s)
 /* ------------------------------------------------------------------ */
 bool StateMachine::can_arm() const
 {
-    return (m_state == DeviceState::IDLE) || m_allow_rearm;
+    return (m_state == DeviceState::SLEEP) || m_allow_rearm;
 }
 
 /* ------------------------------------------------------------------ */
@@ -52,7 +51,6 @@ void StateMachine::force_state(DeviceState s)
 
     switch (s) {
     case DeviceState::SLEEP:
-    case DeviceState::IDLE:
         break;
     case DeviceState::ARMED:
         if (!can_arm()) {
@@ -99,9 +97,6 @@ void StateMachine::enter_state(DeviceState s)
     case DeviceState::SLEEP:
         m_allow_rearm = true;
         break;
-    case DeviceState::IDLE:
-        m_allow_rearm = true;
-        break;
     case DeviceState::ARMED:
     case DeviceState::LOGGING:
         break;
@@ -129,20 +124,11 @@ void StateMachine::check_timeouts()
     uint32_t elapsed = millis() - m_state_entered_ms;
 
     switch (m_state) {
-    case DeviceState::IDLE:
-        /* V5.00: phone connected or BLE FT in progress — keep IDLE so ADV
-           policy and GATT stay usable; sleep would stopAdvertise and leave
-           a zombie link after app kill. */
-        if (m_hold_idle)
+    case DeviceState::SLEEP:
+        /* V5.00: phone connected or BLE FT in progress — keep SLEEP (no SYSTEM_OFF).
+           Sleep would stop advertise and leave a zombie link after app kill. */
+        if (m_hold_sleep)
             break;
-        if (elapsed >= SLEEP_TIMEOUT_MS) {
-            json_begin();
-            json_kv("ev", "timeout");
-            Serial.print(','); json_kv("from", "IDLE");
-            Serial.print(','); json_kv("to", "SLEEP");
-            json_end();
-            enter_state(DeviceState::SLEEP);
-        }
         break;
 
     case DeviceState::ARMED:
@@ -150,9 +136,9 @@ void StateMachine::check_timeouts()
             json_begin();
             json_kv("ev", "timeout");
             Serial.print(','); json_kv("from", "ARMED");
-            Serial.print(','); json_kv("to", "IDLE");
+            Serial.print(','); json_kv("to", "SLEEP");
             json_end();
-            enter_state(DeviceState::IDLE);
+            enter_state(DeviceState::SLEEP);
         }
         break;
 
@@ -162,9 +148,9 @@ void StateMachine::check_timeouts()
             json_begin();
             json_kv("ev", "cooldown");
             Serial.print(','); json_kv("from", "POST_RUN");
-            Serial.print(','); json_kv("to", "IDLE");
+            Serial.print(','); json_kv("to", "SLEEP");
             json_end();
-            enter_state(DeviceState::IDLE);
+            enter_state(DeviceState::SLEEP);
         }
         break;
 
@@ -177,9 +163,6 @@ void StateMachine::check_timeouts()
             json_end();
             enter_state(DeviceState::POST_RUN);
         }
-        break;
-
-    case DeviceState::SLEEP:
         break;
     }
 }

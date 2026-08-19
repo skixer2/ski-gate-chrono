@@ -177,7 +177,7 @@ void sgc_ble_restart_advertising(const char* why)
 void sgc_ble_force_recover(const char* why)
 {
     /* V5.03: force-clear any zombie / half-open BLE link and the sticky
-       hold_idle flag, then re-advertise only when the state wants to be
+       hold_sleep flag, then re-advertise only when the state wants to be
        discoverable (IDLE / POST_RUN). NEVER call from on_ble_disconnected —
        that handler already runs its own teardown; use this from serial,
        state entry, or the main-loop desync heal instead. */
@@ -191,10 +191,10 @@ void sgc_ble_force_recover(const char* why)
         for (int i = 0; i < 3 && BLE.connected(); i++) BLE.poll();
     }
     g_central_connected = false;
-    g_sm.set_hold_idle(false);
+    g_sm.set_hold_sleep(false);
 
     DeviceState st = g_sm.state();
-    if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
+    if (st == DeviceState::SLEEP || st == DeviceState::POST_RUN)
         sgc_ble_restart_advertising(reason);
 
     json_begin();
@@ -209,7 +209,7 @@ bool sgc_ble_central_connected() { return g_central_connected; }
 static void on_ble_connected(BLEDevice central)
 {
     g_central_connected = true;
-    g_sm.set_hold_idle(true);
+    g_sm.set_hold_sleep(true);
     g_last_ble_activity_ms = millis();  // V5.07
     json_begin();
     json_kv("ev", "ble_conn");
@@ -222,13 +222,13 @@ static void on_ble_disconnected(BLEDevice central)
     (void)central;
     g_central_connected = false;
     g_last_ble_activity_ms = millis();  // V5.07: prevent immediate zombie re-trigger after real disconnect
-    /* Abort FT first so sgc_ble_ft_active() clears before hold_idle. */
+    /* Abort FT first so sgc_ble_ft_active() clears before hold_sleep. */
     sgc_ble_ft_abort("disconnect");
-    g_sm.set_hold_idle(false);
+    g_sm.set_hold_sleep(false);
     /* Re-ADV only when discoverable states want it. SLEEP intentionally drops
        the link with ADV off — do not fight that path (disconnect is ours). */
     DeviceState st = g_sm.state();
-    if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
+    if (st == DeviceState::SLEEP || st == DeviceState::POST_RUN)
         sgc_ble_restart_advertising("disconnect");
     json_begin();
     json_kv("ev", "ble_disc");
@@ -308,7 +308,7 @@ bool sgc_ble_radio_restart(const char* why)
         for (int i = 0; i < 3 && BLE.connected(); i++) BLE.poll();
     }
     g_central_connected = false;
-    g_sm.set_hold_idle(false);
+    g_sm.set_hold_sleep(false);
 
     BLE.end();
 
@@ -352,7 +352,7 @@ bool sgc_ble_radio_restart(const char* why)
     BLE.setLocalName(g_dev_name);
     BLE.setAdvertisedService(svc);
     DeviceState st = g_sm.state();
-    if (st == DeviceState::IDLE || st == DeviceState::POST_RUN)
+    if (st == DeviceState::SLEEP || st == DeviceState::POST_RUN)
         BLE.advertise();
 
     g_last_ble_activity_ms = millis();  // V5.07: fresh start after radio restart
@@ -373,11 +373,10 @@ bool sgc_ble_radio_restart(const char* why)
 void sgc_ble_update_state(DeviceState s)
 {
     switch (s) {
-    case DeviceState::IDLE:
     case DeviceState::POST_RUN:
         /* V5.11: trust g_central_connected here. BLE.connected() lags by one
            poll cycle after on_ble_connected fires, causing a race where
-           update_state(IDLE) sees connected=false and force-recovers — killing
+           update_state sees connected=false and force-recovers — killing
            the fresh link. The main-loop desync heal (g_central_connected &&
            !BLE.connected() after timeout) still catches real zombie links. */
         if (g_central_connected) {
@@ -388,9 +387,14 @@ void sgc_ble_update_state(DeviceState s)
         }
         break;
     case DeviceState::SLEEP:
-        /* V5.03: full teardown via force_recover — clears zombie link and
-           sticky hold; ADV stays off because SLEEP is not discoverable. */
-        sgc_ble_force_recover("sleep");
+        /* V5.19: SLEEP is now the primary waiting state — keep advertising
+           (slow interval). T3 will change to 2 s interval; for now keep
+           default. Do NOT force_recover. */
+        if (g_central_connected) {
+            BLE.setLocalName(g_dev_name);
+        } else {
+            BLE.advertise();
+        }
         break;
     default:
         /* ARMED/LOGGING — save power, prevent brown-out; keep link if any */

@@ -2,10 +2,11 @@
  * @file    state_machine.h
  * @brief   SGC device state machine — SD §1 transitions.
  *
- *   SLEEP  ←timeout──── IDLE ──proximity──→ ARMED ──descent──→ LOGGING ──flatline──→ POST_RUN
- *     ↑                    ↑                    │                                  │
- *     └──timeout───────────┘                    └───timeout──→ IDLE                 └──cooldown──→ IDLE
+ *   SLEEP ──proximity──→ ARMED ──descent──→ LOGGING ──flatline──→ POST_RUN ──cooldown──→ SLEEP
+ *    │                                                       │
+ *    └──timeout──→ SLEEP                                    └──timeout──→ POST_RUN
  *
+ * V5.19: IDLE state removed. SLEEP is the primary waiting state.
  * Phase 5: transitions are triggered via serial commands (no real sensors yet).
  * V4.41: on_transition callback makes state transitions synchronous —
  *        handlers run immediately inside force_state(), eliminating
@@ -18,8 +19,7 @@
 
 enum class DeviceState : uint8_t
 {
-    SLEEP    = 0xFF,  /* BLE-off during sleep — not exposed via ABC4 */
-    IDLE     = 0,
+    SLEEP    = 0xFF,  /* Primary waiting state — ADV + sensors warm */
     ARMED    = 1,
     LOGGING  = 2,
     POST_RUN = 3,
@@ -42,9 +42,9 @@ public:
     /** Called every loop iteration — handles timeouts */
     void tick();
 
-    /** V5.00: while BLE central is connected (or FT active), do not IDLE→SLEEP. */
-    void set_hold_idle(bool hold) { m_hold_idle = hold; }
-    bool hold_idle() const { return m_hold_idle; }
+    /** V5.00: while BLE central is connected (or FT active), do not SLEEP→SYSTEM_OFF. */
+    void set_hold_sleep(bool hold) { m_hold_sleep = hold; }
+    bool hold_sleep() const { return m_hold_sleep; }
 
     /* Accessors */
     DeviceState state() const { return m_state; }
@@ -61,6 +61,6 @@ private:
     uint32_t    m_state_entered_ms;
     bool        m_allow_rearm;
     bool        m_cooldown_notified;   /* one-shot: avoid cooldown message spam */
-    bool        m_hold_idle;          /* BLE connected / FT — stay IDLE */
+    bool        m_hold_sleep;       /* BLE connected / FT — stay SLEEP (prevent SYSTEM_OFF) */
     TransitionCallback m_on_transition;
 };
