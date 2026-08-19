@@ -83,6 +83,19 @@ void enter_system_off()
     // This ensures we don't have stale wake sources latched
     NRF_GPIO->LATCH = 0xFFFFFFFF;
     
+    // Debug: log pin states right before System Off
+    json_begin();
+    json_kv("ev", "sys_off_prep");
+    Serial.print(",");
+    json_kv("pin2", (long)((NRF_GPIO->IN >> 2) & 1));   // LDC INTB state
+    Serial.print(",");
+    json_kv("pin14", (long)((NRF_GPIO->IN >> 14) & 1));  // BHI260 INT state
+    Serial.print(",");
+    json_kv("latch", (long)NRF_GPIO->LATCH);
+    json_end();
+    Serial.flush();
+    delay(50);
+    
     // Enter System Off - this is a one-way operation
     nrf_power_system_off();
 }
