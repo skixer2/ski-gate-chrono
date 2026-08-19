@@ -23,6 +23,43 @@
 #include <stdlib.h>
 #include <string.h>
 
+// T6: nRF52 GPIO SENSE configuration for wake pins
+#include "nrf.h"
+#if defined(ARDUINO_ARCH_NRF52)
+#include "nrf_gpio.h"
+#endif
+
+/* T6: Enter System Off — defined in main.cpp, called from state_machine.cpp */
+void enter_system_off();
+
+/* ================================================================== */
+
+/**
+ * T6: Enter System Off mode with GPIO SENSE configured for wake.
+ * Wake sources: P0.02 (LDC INTB) and P0.14 (BHI260 INT)
+ * Both pins are active-low, edge-triggered, configured with GPIO SENSE_LOW.
+ * This is a one-way operation — device only wakes via full reset.
+ */
+void enter_system_off()
+{
+    // Stop BLE advertising (clean teardown)
+    BLE.stopAdvertise();
+    BLE.end();
+    
+    // T6: Configure GPIO SENSE on P0.02 (LDC INTB) - active-low wake
+    nrf_gpio_cfg_sense_input(2, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+    
+    // T6: Configure GPIO SENSE on P0.14 (BHI260 INT) - active-low wake  
+    nrf_gpio_cfg_sense_input(14, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+    
+    // T6: Clear LATCH register before entering System Off
+    // This ensures we don't have stale wake sources latched
+    NRF_GPIO->LATCH = 0xFFFFFFFF;
+    
+    // Enter System Off - this is a one-way operation
+    nrf_power_system_off();
+}
+
 /* Always emit exactly 2 lowercase hex digits (0-padded). */
 static void print_hex2(uint8_t b)
 {

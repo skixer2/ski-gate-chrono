@@ -10,6 +10,9 @@
 #include "test_json.h"
 #include <Arduino.h>
 
+/* T6: defined in main.cpp — enter System Off with GPIO SENSE wake */
+void enter_system_off();
+
 /* ------------------------------------------------------------------ */
 StateMachine::StateMachine()
     : m_state(DeviceState::SLEEP),
@@ -129,6 +132,18 @@ void StateMachine::check_timeouts()
            Sleep would stop advertise and leave a zombie link after app kill. */
         if (m_hold_sleep)
             break;
+        /* T4: After 1 h in SLEEP with no connection, enter System Off */
+        if (elapsed >= SLEEP_SYSTEM_OFF_MS) {
+            json_begin();
+            json_kv("ev", "timeout");
+            Serial.print(','); json_kv("from", "SLEEP");
+            Serial.print(','); json_kv("to", "SYSTEM_OFF");
+            json_end();
+            // Flush serial before power off
+            Serial.flush();
+            delay(100);
+            enter_system_off();
+        }
         break;
 
     case DeviceState::ARMED:

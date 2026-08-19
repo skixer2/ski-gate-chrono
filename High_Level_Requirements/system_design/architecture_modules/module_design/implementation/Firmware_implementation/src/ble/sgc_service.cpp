@@ -383,16 +383,19 @@ void sgc_ble_update_state(DeviceState s)
             /* Connect event fired — keep link, refresh name only. */
             BLE.setLocalName(g_dev_name);
         } else {
+            /* Restore default advertising interval before advertising. */
+            BLE.setAdvertisingInterval(160);  // 160 * 0.625 ms = 100 ms default
             sgc_ble_force_recover(nullptr);
         }
         break;
     case DeviceState::SLEEP:
-        /* V5.19: SLEEP is now the primary waiting state — keep advertising
-           (slow interval). T3 will change to 2 s interval; for now keep
-           default. Do NOT force_recover. */
+        /* T3: SLEEP is now the primary waiting state — advertise at slow
+           interval (~2 s = 3200 units * 0.625 ms = 2000 ms) to save power.
+           Do NOT force_recover — just set interval and advertise. */
         if (g_central_connected) {
             BLE.setLocalName(g_dev_name);
         } else {
+            BLE.setAdvertisingInterval(3200);  // 3200 * 0.625 ms = 2000 ms
             BLE.advertise();
         }
         break;
