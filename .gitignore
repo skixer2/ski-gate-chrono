@@ -59,3 +59,4 @@ High_Level_Requirements/system_design/system_tests/results/*.txt
 **/*_sgc
 **/id_ed25519_sgc
 **/id_ed25519_sgc.pub
+tmp_test_results/
