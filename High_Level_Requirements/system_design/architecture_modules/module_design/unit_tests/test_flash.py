@@ -49,7 +49,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Record initial runs", '?', 300,
             expect_json={"ev": "status"}),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait pre-roll samples", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -58,10 +58,10 @@ SCENARIOS.append(TestScenario(
         TestStep("End run (force POST_RUN) + wait run_saved", 'p', 600,
             on_response=lambda h, _: h.wait_for_json_event(
                 "run_saved", timeout_ms=10000) is not None),
-        TestStep("Wait cooldown → IDLE",
-            poll_state='IDLE', timeout_ms=20000),
-        TestStep("Verify back to IDLE", '?', 300,
-            expect_json={"st": "IDLE"}),
+        TestStep("Wait cooldown → SLEEP",
+            poll_state='SLEEP', timeout_ms=20000),
+        TestStep("Verify back to SLEEP", '?', 300,
+            expect_json={"st": "SLEEP"}),
         TestStep("Check runs incremented", '?', 300,
             expect_json=lambda d: d.get("runs", 0) >= 1),
     ]

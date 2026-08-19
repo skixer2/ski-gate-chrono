@@ -10,7 +10,7 @@ Pass criteria (device):
       2048 KB (2 MB) → 8 slots   ← today's Nicla / MX25R1635F
       4096 KB (4 MB) → 16 slots  ← when MX25R3235F is fitted
       8192 KB (8 MB) → 32 slots  ← when MX25R6435F is fitted
-  - after settle: IDLE, runs=0, total_runs=0
+  - after settle: SLEEP, runs=0, total_runs=0
 
 Note: FW emits factory_reset then reboot in one burst; do not require a
 second wait for reboot after the command step already drained it.
@@ -99,16 +99,16 @@ SCENARIOS = [
         setup_commands=['i'],
         teardown_commands=[],
         steps=[
-            TestStep("Verify IDLE", '?', 400,
-                expect_json={"ev": "status", "st": "IDLE"}),
+            TestStep("Verify SLEEP", '?', 400,
+                expect_json={"ev": "status", "st": "SLEEP"}),
             TestStep("Trigger factory reset", None, 100,
                 on_response=_reset_and_catch_events),
             # Boot + full-slot prepare can take several seconds
             TestStep("Wait post-reboot settle", None, 8000),
-            TestStep("Verify wiped + IDLE", '?', 2000,
+            TestStep("Verify wiped + SLEEP", '?', 2000,
                 expect_json=lambda d: (
                     d.get("ev") == "status"
-                    and d.get("st") == "IDLE"
+                    and d.get("st") == "SLEEP"
                     and int(d.get("runs") or 0) == 0
                     and int(d.get("total_runs") or 0) == 0
                 )),

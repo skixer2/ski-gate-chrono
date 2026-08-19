@@ -21,9 +21,9 @@ SCENARIOS.append(TestScenario(
     name="I01 — BLE initialized",
     setup_commands=['i'],
     steps=[
-        TestStep("Verify device in IDLE (BLE advertising)", '?', 200, expect_json={"st": "IDLE"}),
+        TestStep("Verify device in IDLE (BLE advertising)", '?', 200, expect_json={"st": "SLEEP"}),
         TestStep("Verify state reported via BLE (serial echo)",
-            '?', 200, expect_json={"st": "IDLE"}),
+            '?', 200, expect_json={"st": "SLEEP"}),
     ]
 ))
 

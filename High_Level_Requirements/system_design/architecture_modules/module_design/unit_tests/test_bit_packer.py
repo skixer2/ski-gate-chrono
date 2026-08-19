@@ -30,7 +30,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set sea-level pressure", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait for pre-roll samples", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -44,8 +44,8 @@ SCENARIOS.append(TestScenario(
         TestStep("Force POST_RUN", 'p', 500,
             expect_json={"ev": "st", "from": "LOGGING", "to": "POST_RUN"}),
         TestStep("Verify POST_RUN (or already cooling)", '?', 300,
-            expect_json=lambda d: d.get("st") in ("POST_RUN", "IDLE")),
-        TestStep("Wait IDLE", poll_state='IDLE', timeout_ms=20000),
+            expect_json=lambda d: d.get("st") in ("POST_RUN", "SLEEP")),
+        TestStep("Wait SLEEP", poll_state='SLEEP', timeout_ms=20000),
     ]
 ))
 
@@ -61,19 +61,19 @@ SCENARIOS.append(TestScenario(
         TestStep("Set gentle rotation (T1 packets)", 'Q 0.9 0.1 0.0 0.4', 200,
             expect_json={"ev": "cmd", "cmd": "Q"}),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Check ARMED promptly", '?', 300,
             expect_json={"st": "ARMED"}),
-        TestStep("→ IDLE", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
+        TestStep("→ SLEEP", 'i', 400,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
         # Type 3: large jump (impact anchor)
         TestStep("Set large rotation change (T3 anchor)", 'Q 0.5 0.5 0.5 0.5', 200,
             expect_json={"ev": "cmd", "cmd": "Q"}),
         TestStep("Arm again", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Check ARMED", '?', 300,
             expect_json={"st": "ARMED"}),
-        TestStep("Return to IDLE", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
+        TestStep("Return to SLEEP", 'i', 400,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))

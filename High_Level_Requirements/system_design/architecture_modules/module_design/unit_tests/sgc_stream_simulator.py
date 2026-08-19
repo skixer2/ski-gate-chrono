@@ -440,9 +440,9 @@ class SGCDevice:
     # -- Orchestration steps ----------------------------------
 
     def wakeup(self) -> bool:
-        """Wake device from SLEEP and bring to IDLE."""
+        """Wake device from SLEEP and bring to SLEEP."""
         print("\n-- Wakeup --")
-        # Send 'i' to force IDLE (works from any state)
+        # Send 'i' to force SLEEP (works from any state)
         self.send_cmd('i', wait_ms=500)
         resp = self.drain_responses(1.0)
         for r in resp:
@@ -453,14 +453,14 @@ class SGCDevice:
                 print(f"  Status: state={r.get('st', '?')} batt={r.get('bat', '?')}% "
                       f"runs={r.get('runs', '?')} flash={r.get('wh', '?')}")
 
-        # Verify in IDLE
+        # Verify in SLEEP
         self.send_cmd('?', wait_ms=300)
         resp2 = self.drain_responses(1.0)
         for r in resp2:
             if r.get("ev") == "status":
                 st = r.get("st", "")
-                if st == "IDLE":
-                    print(f"  Device in IDLE OK (batt={r.get('bat')}%, "
+                if st == "SLEEP":
+                    print(f"  Device in SLEEP OK (batt={r.get('bat')}%, "
                           f"runs={r.get('runs')} flash_used={r.get('wh')})")
                     return True
                 else:
@@ -1147,13 +1147,13 @@ class SGCDevice:
         # the run is fine. Retry sequence: ? (loop free) -> h <id> raw.
         # V5.16+: do NOT send 'i' — it triggers a hard BLE radio restart
         # (BLE.end/begin) which can reboot the device (T-008c NVIC_SystemReset)
-        # and break the hex dump. The device is already in IDLE after the run.
+        # and break the hex dump. The device is already in SLEEP after the run.
         # Permanent reasons (no_run, bad_size, read_fail) fail immediately.
         TRANSIENT_HEX_ERR = frozenset({"bad_id", "no_args"})
         MAX_DUMP_ATTEMPTS = 3
 
         def _ready_for_dump():
-            # Wait for IDLE — let POST_RUN->IDLE prepare_preroll finish (can
+            # Wait for SLEEP — let POST_RUN->SLEEP prepare_preroll finish (can
             # take several seconds for full pre-roll erase). Clear RX and dump.
             # V5.16+: do NOT send 'i' — it triggers hard BLE radio restart
             # which can reboot the device (T-008c) and break the hex dump.
@@ -1347,7 +1347,7 @@ def run_full_test(port: str,
 
         # -- Step 1: Wakeup ---------------------------------
         if not device.wakeup():
-            print("WARN Could not confirm IDLE state, proceeding anyway...")
+            print("WARN Could not confirm SLEEP state, proceeding anyway...")
 
         # -- Step 2: Factory reset filesystem (opt-in via -R) --
         if factory_reset:
@@ -1358,7 +1358,7 @@ def run_full_test(port: str,
             time.sleep(1.0)
             device.connect()  # reconnect after reboot
             if not device.wakeup():
-                print("WARN Could not confirm IDLE after reset, proceeding...")
+                print("WARN Could not confirm SLEEP after reset, proceeding...")
         else:
             print("\n-- Factory Reset: SKIPPED (pass -R to erase flash first) --")
 

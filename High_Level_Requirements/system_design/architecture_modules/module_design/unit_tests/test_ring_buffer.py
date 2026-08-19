@@ -29,7 +29,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set sea-level baseline", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Poll until ring has samples", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -40,8 +40,8 @@ SCENARIOS.append(TestScenario(
                 and int(d.get("rm") or 0) == ARM_FILL_CAP
                 and int(d.get("r") or 0) >= UNIT_RING_READY
             )),
-        TestStep("Return to IDLE", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
+        TestStep("Return to SLEEP", 'i', 400,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
 
@@ -54,7 +54,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Enable test mode", None, 150,
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Arm device", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait for first fill milestone", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -69,8 +69,8 @@ SCENARIOS.append(TestScenario(
                 and int(d.get("rm") or 0) == ARM_FILL_CAP
                 and int(d.get("r") or 0) >= PREROLL_KEEP
             )),
-        TestStep("Return to IDLE", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
+        TestStep("Return to SLEEP", 'i', 400,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
 
@@ -83,7 +83,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Enable test mode", None, 150,
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Arm first time", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Fill past ready", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -92,18 +92,18 @@ SCENARIOS.append(TestScenario(
                 d.get("st") == "ARMED"
                 and int(d.get("r") or 0) >= UNIT_RING_READY
             )),
-        TestStep("Return to IDLE", 'i', 800,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
-        # prepare_preroll erases on enter IDLE — next arm starts at r≈0
+        TestStep("Return to SLEEP", 'i', 800,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+        # prepare_preroll erases on enter SLEEP — next arm starts at r≈0
         TestStep("Arm second time", 'a', 400,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Ring should be below previous fill (reset)",
             '?', 200,
             expect_json=lambda d: (
                 d.get("st") == "ARMED"
                 and int(d.get("r") or 0) < UNIT_RING_READY
             )),
-        TestStep("Return to IDLE", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
+        TestStep("Return to SLEEP", 'i', 400,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))

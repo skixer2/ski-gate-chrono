@@ -53,7 +53,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set pressure baseline", 'B 101000', 300,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Enter LOGGING via start detector", None, 100,
             on_response=lambda h, _: _arm_and_start_logging(h, 101000.0, 36.0)),
         # Hold flat: end det samples 0.5 Hz × 10 = 5 s window, dp=0 → end
@@ -61,8 +61,8 @@ SCENARIOS.append(TestScenario(
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Wait for end_detected → POST_RUN",
             poll_state='POST_RUN', poll_interval_ms=300, timeout_ms=20000),
-        TestStep("Wait cooldown → IDLE",
-            poll_state='IDLE', timeout_ms=20000),
+        TestStep("Wait cooldown → SLEEP",
+            poll_state='SLEEP', timeout_ms=20000),
     ]
 ))
 
@@ -77,7 +77,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set pressure baseline", 'B 101000', 300,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 500,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Enter LOGGING via start detector", None, 100,
             on_response=lambda h, _: _arm_and_start_logging(h, 101000.0, 36.0)),
         # Keep P falling for >5 s window so oldest > current (ascent).
@@ -85,9 +85,9 @@ SCENARIOS.append(TestScenario(
             on_response=lambda h, _: _keep_ascent(h, 100900.0, 10, -6.0, 450)),
         TestStep("Still LOGGING under ascent", '?', 300,
             expect_json={"st": "LOGGING"}),
-        # Flatten → dp→0 over 5 s window → end → cooldown → IDLE
+        # Flatten → dp→0 over 5 s window → end → cooldown → SLEEP
         TestStep("Hold flat at ascent level", 'B 100840', 200),
-        TestStep("Wait POST_RUN + cooldown → IDLE",
-            poll_state='IDLE', timeout_ms=30000),
+        TestStep("Wait POST_RUN + cooldown → SLEEP",
+            poll_state='SLEEP', timeout_ms=30000),
     ]
 ))

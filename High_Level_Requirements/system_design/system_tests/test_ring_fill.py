@@ -139,7 +139,7 @@ def main() -> int:
             time.sleep(0.7)
             read_json_lines(ser, 0.2)
             st = status(ser)
-            if st and st.get("st") == "IDLE":
+            if st and st.get("st") == "SLEEP":
                 print(f"  ready ({time.perf_counter()-t0w:.1f}s) rm={st.get('rm')}")
                 ver = st.get("ver") or ver
                 break

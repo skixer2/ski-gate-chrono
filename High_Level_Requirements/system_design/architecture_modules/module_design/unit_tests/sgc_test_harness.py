@@ -20,7 +20,7 @@ Protocol: see json_protocol.md for full spec.
 """
 
 HARNESS_VERSION = "2.28.0"
-# Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on IDLE).
+# Unit scenarios require FW ≥ this (manual_frame survives POST_RUN, stream cleared on SLEEP).
 MIN_FW_VERSION = (4, 82)
 
 # Default drop folder for --run-id artifacts (coordinator staging / analysis).
@@ -394,7 +394,7 @@ class SGCTestHarness:
         print(f"{'='*60}")
 
         # ── Setup ───────────────────────────────────────────────
-        # prepare_preroll erases 20 flash sectors on ARMED→IDLE (~0.5–2 s).
+        # prepare_preroll erases 20 flash sectors on ARMED→SLEEP (~0.5–2 s).
         # Short sleeps drop the following 'a' into the erase window.
         for cmd in scenario.setup_commands:
             if self.verbose:
@@ -441,7 +441,7 @@ class SGCTestHarness:
                             time.sleep(step.wait_ms / 1000.0)
 
                         # Determine read timeout. State transitions that may
-                        # emit preroll_prep (ARMED→IDLE erase) need longer.
+                        # emit preroll_prep (ARMED→SLEEP erase) need longer.
                         # flash self-test = 2× sector erase + program.
                         read_to = step.timeout_ms
                         cmd0 = (step.command or '').strip()[:1].lower()
@@ -472,18 +472,18 @@ class SGCTestHarness:
                                     passed = True
                                     json_data = o
                                     break
-                            # Fallback: ARMED→IDLE may drop st on USB during
+                            # Fallback: ARMED→SLEEP may drop st on USB during
                             # long erase; if we saw preroll_prep or device is
-                            # already IDLE, accept the expected st transition.
+                            # already SLEEP, accept the expected st transition.
                             if (not passed and cmd0 == 'i'
                                     and isinstance(step.expect_json, dict)
                                     and step.expect_json.get('ev') == 'st'
-                                    and step.expect_json.get('to') == 'IDLE'):
+                                    and step.expect_json.get('to') == 'SLEEP'):
                                 if any(o.get('ev') == 'preroll_prep' for o in objs):
                                     passed = True
                                 else:
                                     st_now = self.query_state()
-                                    if st_now == 'IDLE':
+                                    if st_now == 'SLEEP':
                                         passed = True
                         elif not step.on_response:
                             # ── legacy string matching ─────────────
@@ -558,10 +558,10 @@ UNIT_RING_READY = 200
 
 
 def force_state(h: SGCTestHarness, state: str):
-    cmds = {'SLEEP': 's', 'IDLE': 'i', 'ARMED': 'a', 'LOGGING': 'l', 'POST_RUN': 'p'}
+    cmds = {'SLEEP': 's', 'SLEEP': 'i', 'ARMED': 'a', 'LOGGING': 'l', 'POST_RUN': 'p'}
     cmd = cmds.get(state.upper(), 'i')
     h.send(cmd)
-    # IDLE may run prepare_preroll (20 sector erase)
+    # SLEEP may run prepare_preroll (20 sector erase)
     time.sleep(1.5 if cmd == 'i' else 0.4)
     h.drain_serial(200)
 
@@ -575,7 +575,7 @@ def enable_test_mode(h: SGCTestHarness) -> bool:
     prior run on FW≤4.80 where POST_RUN cleared g_manual_frame, and still
     good hygiene on 4.81+ so every scenario starts from known inject state.
     """
-    # Return to IDLE first so any sticky stream is dropped (FW≥4.81).
+    # Return to SLEEP first so any sticky stream is dropped (FW≥4.81).
     h.send('i')
     time.sleep(0.4)
     h.drain_serial(800)

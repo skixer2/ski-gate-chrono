@@ -27,7 +27,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set sea-level baseline", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 600,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait for ring samples (P0 latch)", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -38,11 +38,11 @@ SCENARIOS.append(TestScenario(
                 h, 101325, 101355, 10, 100)),
         TestStep("Wait for LOGGING transition",
             poll_state='LOGGING', timeout_ms=8000),
-        # Drain LOGGING → POST_RUN → IDLE so next scenario starts clean
+        # Drain LOGGING → POST_RUN → SLEEP so next scenario starts clean
         TestStep("Force POST_RUN cleanup", 'p', 500,
             expect_json={"ev": "st", "from": "LOGGING", "to": "POST_RUN"}),
-        TestStep("Wait IDLE after cooldown",
-            poll_state='IDLE', timeout_ms=20000),
+        TestStep("Wait SLEEP after cooldown",
+            poll_state='SLEEP', timeout_ms=20000),
     ]
 ))
 
@@ -57,7 +57,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set baseline", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 600,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait for ring samples (P0 latch)", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -70,8 +70,8 @@ SCENARIOS.append(TestScenario(
             poll_state='LOGGING', timeout_ms=8000),
         TestStep("Force POST_RUN cleanup", 'p', 500,
             expect_json={"ev": "st", "from": "LOGGING", "to": "POST_RUN"}),
-        TestStep("Wait IDLE after cooldown",
-            poll_state='IDLE', timeout_ms=20000),
+        TestStep("Wait SLEEP after cooldown",
+            poll_state='SLEEP', timeout_ms=20000),
     ]
 ))
 
@@ -86,14 +86,14 @@ SCENARIOS.append(TestScenario(
         TestStep("Sync baseline with synthetic pressure", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 600,
-            expect_json={"ev": "st", "from": "IDLE", "to": "ARMED"}),
+            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait for ring samples", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
         TestStep("Hold flat for 5s", 'B 101325', 5000),
         TestStep("Should still be ARMED", '?', 300,
             expect_json={"st": "ARMED"}),
-        TestStep("Return to IDLE", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "IDLE"}),
+        TestStep("Return to SLEEP", 'i', 400,
+            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
