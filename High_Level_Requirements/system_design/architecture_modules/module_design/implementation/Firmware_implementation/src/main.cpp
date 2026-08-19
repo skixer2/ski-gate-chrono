@@ -40,6 +40,9 @@
 enum WakeSource { WAKE_UNKNOWN, WAKE_LDC, WAKE_BHI260 };
 WakeSource g_wake_source = WAKE_UNKNOWN;
 
+/* V5.24: LDC cooldown after serial 'i' to prevent immediate re-arm */
+uint32_t g_ldc_cooldown_until = 0;
+
 /* T6/T7/T8: Enter System Off — defined in main.cpp, called from state_machine.cpp */
 void enter_system_off();
 
@@ -329,6 +332,8 @@ void handle_serial()
     switch (c) {
     case 'i':
         g_sm.force_state(DeviceState::SLEEP);
+        /* V5.24: 3 s LDC cooldown to prevent immediate re-arm from lingering proximity */
+        g_ldc_cooldown_until = millis() + 3000;
         /* V5.03: always recover BLE on manual wake — clears zombie link /
            sticky hold and re-ADVs even if already IDLE. */
         sgc_ble_force_recover("serial_i");
@@ -1063,13 +1068,16 @@ void setup()
 
     /* ── T7: Wake source detection (LATCH) + RESETREAS FIRST ──
        Read LATCH immediately (before any GPIO reconfig), then clear it.
-       Only trust g_wake_source if we woke from System Off (RESETREAS_OFF). */
+       Only trust g_wake_source if we woke from System Off (RESETREAS_OFF).
+       V5.24: Also verify the pin is actually LOW (active interrupt) —
+       LATCH can retain stale bits from previous wake cycles. */
     {
         uint32_t latched = NRF_GPIO->LATCH;
-        if (latched & (1u << 2)) {
-            g_wake_source = WAKE_LDC;       // P0.02 = LDC INTB
-        } else if (latched & (1u << 14)) {
-            g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT
+        uint32_t pin_in = NRF_GPIO->IN;
+        if ((latched & (1u << 2)) && !(pin_in & (1u << 2))) {
+            g_wake_source = WAKE_LDC;       // P0.02 = LDC INTB, pin is LOW (active)
+        } else if ((latched & (1u << 14)) && !(pin_in & (1u << 14))) {
+            g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT, pin is LOW (active)
         }
         // Clear LATCH for next wake
         NRF_GPIO->LATCH = 0xFFFFFFFF;
@@ -1350,9 +1358,14 @@ void loop()
         sgc_ble_radio_restart(g_ble_radio_restart_why);
     }
 
-    /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ── */
+    /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ──
+       V5.24: 3 s cooldown after serial 'i' to prevent immediate re-arm
+       when the athlete's hand is still near the LDC sensor. */
+    if (g_ldc_cooldown_until && millis() >= g_ldc_cooldown_until) {
+        g_ldc_cooldown_until = 0;  /* cooldown expired */
+    }
     if (!g_stream_active && loop_st != DeviceState::LOGGING) {
-        if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP) {
+        if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP && !g_ldc_cooldown_until) {
             json_begin();
             json_kv("ev", "wake");
             Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
