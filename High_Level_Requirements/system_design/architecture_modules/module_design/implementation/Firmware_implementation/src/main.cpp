@@ -22,14 +22,25 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "test_json.h"  /* needed for enter_system_off() json_begin/end */
 
-// T6: nRF52 GPIO SENSE configuration for wake pins
+/* T6/T7/T8: nRF52 GPIO SENSE and LATCH configuration for wake pins */
 #include "nrf.h"
 #if defined(ARDUINO_ARCH_NRF52)
 #include "nrf_gpio.h"
 #endif
 
-/* T6: Enter System Off — defined in main.cpp, called from state_machine.cpp */
+/* ================================================================== */
+
+/**
+ * T7: Wake source detection — identifies which GPIO pin woke the device from System Off.
+ * Read NRF_GPIO->LATCH at boot (P0.02 = LDC INTB, P0.14 = BHI260 INT).
+ * Store in g_wake_source after verifying System Off wake via RESETREAS OFF bit.
+ */
+enum WakeSource { WAKE_UNKNOWN, WAKE_LDC, WAKE_BHI260 };
+WakeSource g_wake_source = WAKE_UNKNOWN;
+
+/* T6/T7/T8: Enter System Off — defined in main.cpp, called from state_machine.cpp */
 void enter_system_off();
 
 /* ================================================================== */
@@ -45,6 +56,22 @@ void enter_system_off()
     // Stop BLE advertising (clean teardown)
     BLE.stopAdvertise();
     BLE.end();
+    
+    // T9: Configure BHI260AP any-motion wake-up sensor before System Off
+    // This enables the sensor to generate INT pulses on P0.14 to wake the nRF52
+    // sensor=143 (BHY2_SENSOR_ID_ANY_MOTION_WU), sample_rate=1 Hz, latency=1000 ms
+    BHY2.configureSensor(BHY2_SENSOR_ID_ANY_MOTION_WU, 1.0f, 1000);
+    bool bhy2_wake_ok = true;  // configureSensor returns void — assume OK
+    // 100 ms delay to let BHI260AP process the config
+    delay(100);
+    // Log configuration result as JSON event
+    json_begin();
+    json_kv("ev", "bhy2_wake_cfg");
+    Serial.print(",");
+    json_kv("sensor", (long)BHY2_SENSOR_ID_ANY_MOTION_WU);
+    Serial.print(",");
+    json_kv_bool("ok", bhy2_wake_ok);
+    json_end();
     
     // T6: Configure GPIO SENSE on P0.02 (LDC INTB) - active-low wake
     nrf_gpio_cfg_sense_input(2, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
@@ -75,7 +102,6 @@ void bhy2_cal_hook_init();
 #include "ble/sgc_service.h"
 #include "ble/file_transfer.h"
 #include "test_mode.h"
-#include "test_json.h"
 #include "led/led.h"
 #include "sensors/ldc1612.h"
 #include "config.h"
@@ -1017,13 +1043,40 @@ void setup()
     Serial.begin(115200);
     delay(500);   /* let pio device monitor open the port before we print */
 
+    /* ── T7: Wake source detection (LATCH) + RESETREAS FIRST ──
+       Read LATCH immediately (before any GPIO reconfig), then clear it.
+       Only trust g_wake_source if we woke from System Off (RESETREAS_OFF). */
+    {
+        uint32_t latched = NRF_GPIO->LATCH;
+        if (latched & (1u << 2)) {
+            g_wake_source = WAKE_LDC;       // P0.02 = LDC INTB
+        } else if (latched & (1u << 14)) {
+            g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT
+        }
+        // Clear LATCH for next wake
+        NRF_GPIO->LATCH = 0xFFFFFFFF;
+    }
+
     /* ── Version FIRST — no delay, no preamble ── */
     uint32_t rr = NRF_POWER->RESETREAS;
+    // T7: If we woke from System Off, keep g_wake_source; otherwise UNKNOWN
+    if ((rr & POWER_RESETREAS_OFF_Msk) == 0) {
+        g_wake_source = WAKE_UNKNOWN;
+    }
     NRF_POWER->RESETREAS = 0xFFFFFFFF;  /* clear for next boot */
     Serial.print("{\"ev\":\"boot\",\"ver\":\"");
     Serial.print(FW_VERSION);
     Serial.print("\",\"rr\":");
     Serial.print(rr);
+    // T7: wake source report in boot JSON
+    Serial.print(",\"wrs\":");
+    if (g_wake_source == WAKE_LDC) {
+        Serial.print("\"LDC\"");
+    } else if (g_wake_source == WAKE_BHI260) {
+        Serial.print("\"BHI260\"");
+    } else {
+        Serial.print("\"UNKNOWN\"");
+    }
     Serial.println("}");
     Serial.flush();
     delay(50);
@@ -1154,6 +1207,18 @@ void setup()
 
     g_sm.on_transition(on_state_transition);  /* V4.41: synchronous handlers */
     g_sm.force_state(DeviceState::SLEEP);
+
+    // T8: If woke from System Off via LDC tap, auto-arm after init
+    if (g_wake_source == WAKE_LDC) {
+        json_begin();
+        json_kv("ev", "auto_arm");
+        Serial.print(','); json_kv("reason", "ldc_wake");
+        json_end();
+        g_sm.force_state(DeviceState::ARMED);
+    }
+
+    // T8: If BHI260 wake, stay in SLEEP (wait for LDC tap to ARM)
+
     /* V4.03: Reset timestamps to current millis(). On nRF52 warm resets
        (NVIC_SystemReset), static variables retain their values. If
        g_last_baro_ms was e.g. 45000 from before reset and millis()
