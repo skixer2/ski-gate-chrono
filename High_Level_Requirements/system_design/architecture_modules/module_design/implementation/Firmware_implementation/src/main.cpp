@@ -58,45 +58,50 @@ void enter_system_off()
     BLE.end();
     
     // T9: Configure BHI260AP any-motion wake-up sensor before System Off
-    // This enables the sensor to generate INT pulses on P0.14 to wake the nRF52
-    // sensor=143 (BHY2_SENSOR_ID_ANY_MOTION_WU), sample_rate=1 Hz, latency=1000 ms
     BHY2.configureSensor(BHY2_SENSOR_ID_ANY_MOTION_WU, 1.0f, 1000);
-    bool bhy2_wake_ok = true;  // configureSensor returns void — assume OK
-    // 100 ms delay to let BHI260AP process the config
     delay(100);
-    // Log configuration result as JSON event
     json_begin();
     json_kv("ev", "bhy2_wake_cfg");
     Serial.print(",");
     json_kv("sensor", (long)BHY2_SENSOR_ID_ANY_MOTION_WU);
     Serial.print(",");
-    json_kv_bool("ok", bhy2_wake_ok);
+    json_kv_bool("ok", true);
     json_end();
     
-    // T6: Configure GPIO SENSE on P0.02 (LDC INTB) - active-low wake
-    nrf_gpio_cfg_sense_input(2, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+    // T6: Configure GPIO SENSE — LAST thing before System Off.
+    // Use direct register access to avoid any mbed framework override.
+    // P0.02 (LDC INTB): input, pull-up, sense low (active-low wake)
+    NRF_GPIO->PIN_CNF[2] = (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos) |
+                          (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos) |
+                          (GPIO_PIN_CNF_PULL_Pullup << GPIO_PIN_CNF_PULL_Pos) |
+                          (GPIO_PIN_CNF_SENSE_Low << GPIO_PIN_CNF_SENSE_Pos);
+    // P0.14 (BHI260 INT): input, pull-up, sense low
+    NRF_GPIO->PIN_CNF[14] = (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos) |
+                           (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos) |
+                           (GPIO_PIN_CNF_PULL_Pullup << GPIO_PIN_CNF_PULL_Pos) |
+                           (GPIO_PIN_CNF_SENSE_Low << GPIO_PIN_CNF_SENSE_Pos);
     
-    // T6: Configure GPIO SENSE on P0.14 (BHI260 INT) - active-low wake  
-    nrf_gpio_cfg_sense_input(14, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
-    
-    // T6: Clear LATCH register before entering System Off
-    // This ensures we don't have stale wake sources latched
+    // Clear LATCH before System Off
     NRF_GPIO->LATCH = 0xFFFFFFFF;
     
-    // Debug: log pin states right before System Off
+    // Debug: log pin states + PIN_CNF readback right before System Off
     json_begin();
     json_kv("ev", "sys_off_prep");
     Serial.print(",");
-    json_kv("pin2", (long)((NRF_GPIO->IN >> 2) & 1));   // LDC INTB state
+    json_kv("pin2", (long)((NRF_GPIO->IN >> 2) & 1));
     Serial.print(",");
-    json_kv("pin14", (long)((NRF_GPIO->IN >> 14) & 1));  // BHI260 INT state
+    json_kv("pin14", (long)((NRF_GPIO->IN >> 14) & 1));
+    Serial.print(",");
+    json_kv("cnf2", (long)NRF_GPIO->PIN_CNF[2]);
+    Serial.print(",");
+    json_kv("cnf14", (long)NRF_GPIO->PIN_CNF[14]);
     Serial.print(",");
     json_kv("latch", (long)NRF_GPIO->LATCH);
     json_end();
     Serial.flush();
     delay(50);
     
-    // Enter System Off - this is a one-way operation
+    // Enter System Off — one-way, wake = full reset
     nrf_power_system_off();
 }
 
