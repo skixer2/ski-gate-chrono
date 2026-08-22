@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-19 06:15 UTC  
-**Current baselines:** FW **5.16** (T-008a+b+c — self-recovery confirmed) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** smoke green last claimed on **5.03** (`0911`/`1113`); 5.16 S03+FT confirmed manual  
+**Last updated:** 2026-08-22 12:38 UTC  
+**Current baselines:** FW **5.27** (LDC stale-status fix + System Off wake confirmed + wake spam removed) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** smoke green last claimed on **5.03** (`0911`/`1113`); 5.16 S03+FT confirmed manual; **5.27 smoke pending JP**  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -357,7 +357,8 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 |---------|------|-------|--------|---------|
 | TC-2026-08-14-001 | 2026-08-14 | FW 5.02 boot + smoke | **PASS smoke** | §2b |
 | TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2b (closed) |
-| TC-2026-08-15-001 | 2026-08-15 | FT download hang + `ble_radio` regression | **OPEN** (5.14) | §2 (active) |
+| TC-2026-08-15-001 | 2026-08-15 | FT download hang + `ble_radio` regression | **PASS (5.16)** | history |
+| TC-2026-08-22-001 | 2026-08-22 | LDC stale-status race + System Off wake + boot diagnostics | **PASS (5.27)** | §2 (active) |
 | run_20260814_0900 | 2026-08-14 | Smoke 5.03 | inject+S04 PASS; flash **9/10** U13 flake | `tmp_test_results/` |
 | run_20260814_0911 | 2026-08-14 | Smoke 5.03 | **ALL PASS** 21+10+1 | `tmp_test_results/` (SSH push OK) |
 | 2026-08-18 FT | 2026-08-18 | FW 5.14 FT warm-reset stall + hard-reboot success | FT ✅ after POR; `ble_radio` ❌ | §2 + §3 |
