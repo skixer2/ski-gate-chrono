@@ -57,6 +57,12 @@ public:
        DETECT is active). */
     void clear_drdy();
 
+    /* V5.29: Stop LDC1612 conversions (CONFIG bit 0 = 0).
+       No conversions → no DRDY → INTB stays HIGH (pull-up).
+       Guarantees DETECT not asserted when entering System Off.
+       LDC wake from System Off handled by BHI260 any-motion (P0.14). */
+    void sleep();
+
 private:
     uint16_t read_reg16(uint8_t reg);
     void     write_reg16(uint8_t reg, uint16_t val);

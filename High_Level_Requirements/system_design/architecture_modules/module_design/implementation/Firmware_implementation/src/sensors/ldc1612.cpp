@@ -290,12 +290,29 @@ void LDC1612::enable_interrupt()  { pinMode(INTB_PIN, INPUT_PULLUP); }
 void LDC1612::clear_drdy()
 {
     if (!m_wire_ok) return;
-    /* Read STATUS to check DRDY */
-    if (read_reg16(REG_STATUS) & 0x08) {
-        /* DRDY set — read DATA0 to clear */
-        read_reg16(REG_DATA0_MSB);
-        read_reg16(REG_DATA0_LSB);
-    }
+    /* Unconditionally read DATA0 (skip STATUS check to save ~200µs).
+       Reading DATA0 when DRDY is not set is harmless per datasheet.
+       This clears DRDY if set, releasing INTB HIGH.
+       After this, we have ~819µs before next DRDY fires. */
+    read_reg16(REG_DATA0_MSB);
+    read_reg16(REG_DATA0_LSB);
+}
+
+/* V5.29: Put LDC1612 into sleep mode (CONFIG bit 0 = 0).
+   Stops conversions → no DRDY → INTB stays HIGH (pull-up).
+   Called before nrf_power_system_off() to guarantee DETECT
+   is not asserted. LDC wake from System Off is handled by
+   BHI260 any-motion (P0.14) → boot → LDC re-init → auto-arm. */
+void LDC1612::sleep()
+{
+    if (!m_wire_ok) return;
+    /* Clear CONFIG bit 0 (SLEEP_MODE) — stops conversions */
+    uint16_t cfg = read_reg16(REG_CONFIG);
+    write_reg16(REG_CONFIG, cfg & ~0x0001);
+    /* Clear any pending DRDY */
+    read_reg16(REG_DATA0_MSB);
+    read_reg16(REG_DATA0_LSB);
+    /* INTB should now stay HIGH (no more conversions) */
 }
 
 bool LDC1612::is_connected()         { return read_device_id() == 0x3055; }
