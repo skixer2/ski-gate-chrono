@@ -40,6 +40,11 @@
 enum WakeSource { WAKE_UNKNOWN, WAKE_LDC, WAKE_BHI260 };
 WakeSource g_wake_source = WAKE_UNKNOWN;
 
+/* V5.27: raw GPIO state captured at boot before any reconfig —
+   for System Off wake debugging. */
+uint32_t g_sys_off_latch  = 0;
+uint32_t g_sys_off_pin_in = 0;
+
 /* T6/T7/T8: Enter System Off — defined in main.cpp, called from state_machine.cpp */
 void enter_system_off();
 
@@ -1063,12 +1068,11 @@ void setup()
     nicla::begin();
     Serial.begin(115200);
     delay(500);   /* let pio device monitor open the port before we print */
-    /* V5.26: Wait up to 2 s for USB CDC host to open the port.
-       After hard reset, USB re-enumeration takes 1-2 s; delay(500) alone
-       meant the boot JSON (including version) was lost. */
-    { uint32_t _sw = millis() + 2000;
-      while (!Serial && millis() < _sw) { delay(10); }
-    }
+    /* V5.27: USB CDC re-enumeration after hard reset takes 1-2 s.
+       delay(500) was too short — boot JSON (including version) was lost.
+       V5.26 tried `while (!Serial)` but on mbed, Serial is always truthy
+       (CDC object exists regardless of host connection). Use unconditional delay. */
+    delay(1500);
 
     /* ── T7: Wake source detection (LATCH) + RESETREAS FIRST ──
        Read LATCH immediately (before any GPIO reconfig), then clear it.
@@ -1083,6 +1087,10 @@ void setup()
         } else if ((latched & (1u << 14)) && !(pin_in & (1u << 14))) {
             g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT, pin is LOW (active)
         }
+        // V5.27: log raw LATCH + pin states for System Off wake debugging
+        // (before any GPIO reconfig can clobber them)
+        g_sys_off_latch = latched;
+        g_sys_off_pin_in = pin_in;
         // Clear LATCH for next wake
         NRF_GPIO->LATCH = 0xFFFFFFFF;
     }
@@ -1108,6 +1116,17 @@ void setup()
         Serial.print("\"UNKNOWN\"");
     }
     Serial.println("}");
+    // V5.27: if woke from System Off, log raw GPIO state for wake debugging
+    if (rr & POWER_RESETREAS_OFF_Msk) {
+        json_begin();
+        json_kv("ev", "sys_off_wake_dbg");
+        Serial.print(','); json_kv("latch", (long)g_sys_off_latch);
+        Serial.print(','); json_kv("pin2", (long)((g_sys_off_pin_in >> 2) & 1));
+        Serial.print(','); json_kv("pin14", (long)((g_sys_off_pin_in >> 14) & 1));
+        Serial.print(','); json_kv("lat2", (long)((g_sys_off_latch >> 2) & 1));
+        Serial.print(','); json_kv("lat14", (long)((g_sys_off_latch >> 14) & 1));
+        json_end();
+    }
     Serial.flush();
     delay(50);
 
@@ -1373,15 +1392,9 @@ void loop()
 
     /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ── */
     if (!g_stream_active && loop_st != DeviceState::LOGGING) {
-        if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP) {
-            json_begin();
-            json_kv("ev", "wake");
-            Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
-            json_end();
-            g_sm.force_state(DeviceState::SLEEP);
-        }
-
-        /* ── LDC1612 proximity arming (F03) ── */
+        /* V5.27: removed "wake" event spam — is_proximity() in SLEEP fired
+           every loop iteration (force_state(SLEEP) is a no-op when already
+           SLEEP). The arming check below handles the real state transition. */
         if (g_ldc.is_armed() && g_sm.state() == DeviceState::SLEEP) {
             if (g_sm.can_arm()) {
                 json_begin();
