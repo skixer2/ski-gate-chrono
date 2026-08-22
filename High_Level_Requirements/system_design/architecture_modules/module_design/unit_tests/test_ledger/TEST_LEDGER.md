@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-22 12:38 UTC  
-**Current baselines:** FW **5.27** (LDC stale-status fix + System Off wake confirmed + wake spam removed) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** smoke green last claimed on **5.03** (`0911`/`1113`); 5.16 S03+FT confirmed manual; **5.27 smoke pending JP**  
+**Last updated:** 2026-08-22 12:50 UTC  
+**Current baselines:** FW **5.28** (2nd System Off wake fix — clear DRDY before sleep) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** smoke 5.27 partial (sensor_injection 21/21 ✅, flash+S04 ❌ due to device stuck in ARMED/WFI) — **5.28 smoke pending JP**  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
