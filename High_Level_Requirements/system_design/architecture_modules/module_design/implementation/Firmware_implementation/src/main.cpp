@@ -1063,6 +1063,12 @@ void setup()
     nicla::begin();
     Serial.begin(115200);
     delay(500);   /* let pio device monitor open the port before we print */
+    /* V5.26: Wait up to 2 s for USB CDC host to open the port.
+       After hard reset, USB re-enumeration takes 1-2 s; delay(500) alone
+       meant the boot JSON (including version) was lost. */
+    { uint32_t _sw = millis() + 2000;
+      while (!Serial && millis() < _sw) { delay(10); }
+    }
 
     /* ── T7: Wake source detection (LATCH) + RESETREAS FIRST ──
        Read LATCH immediately (before any GPIO reconfig), then clear it.
@@ -1161,7 +1167,10 @@ void setup()
     Serial.print(','); json_kv_bool("bl_ok", g_ldc.baseline_valid());
     json_end();
     g_ldc.enable_interrupt();
-    g_ldc.force_recalibrate();  /* auto-calibrate baseline to current reading on every boot */
+    /* V5.26: force_recalibrate moved to AFTER BLE.begin() — BLE init EMI
+       shifts the LDC coil baseline (same root cause as 5.25 'i' fix).
+       Calibration before BLE.begin() left a stale baseline → false
+       prox_arm within 1 s of boot. */
 
     /* V5.15 T-008a: warm reset preserves Cordio statics — tear down before begin.
        RESETREAS bit 0 = power-on. Soft/WDT/flash resets leave bit 0 clear. */
@@ -1185,6 +1194,12 @@ void setup()
     if (!ble_ok) { while(1) delay(1000); }
     sgc_ble_init();
     sgc_ble_transfer_init();
+
+    /* V5.26: Re-calibrate LDC AFTER BLE init — BLE.begin() EMI shifts the
+       coil baseline.  100 ms settle delay before recalibration flag is set;
+       the actual recal reads a fresh sample on the first g_ldc.tick(). */
+    delay(100);
+    g_ldc.force_recalibrate();
 
     /* ── Raw run store (Opt A) — after BD init, before BHY2 ── */
     json_begin();

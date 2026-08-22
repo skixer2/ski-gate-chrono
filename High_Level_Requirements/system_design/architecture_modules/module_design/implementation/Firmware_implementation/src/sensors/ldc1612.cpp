@@ -269,7 +269,19 @@ uint32_t LDC1612::read_data()
  * Misc
  * ═══════════════════════════════════════════════════════════════════ */
 
-void LDC1612::force_recalibrate() { m_recalibrate = true; }
+void LDC1612::force_recalibrate()
+{
+    m_recalibrate = true;
+    /* V5.26: Clear status IMMEDIATELY — don't wait for next tick().
+       The LDC proximity check in loop() runs in the same iteration as
+       handle_serial('i'). If m_status is still ARMED from a real or false
+       proximity, the check re-arms before tick() can process the recal.
+       This was the root cause of 'two i needed' when LDC-armed:
+       1st i → SLEEP, but stale is_armed() → immediate re-ARM
+       2nd i → SLEEP, by then tick() cleared status → stays SLEEP */
+    m_status = Status::NO_TARGET;
+    m_proximity_ms = 0;
+}
 void LDC1612::enable_interrupt()  { pinMode(INTB_PIN, INPUT_PULLUP); }
 
 bool LDC1612::is_connected()         { return read_device_id() == 0x3055; }
