@@ -1079,16 +1079,6 @@ void setup()
 {
     nicla::begin();
     Serial.begin(115200);
-    /* V5.30: After System Off wake, USB CDC needs full re-init.
-       Serial.end() + Serial.begin() forces USB re-enumeration
-       so the host sees a disconnect/reconnect and re-opens the port.
-       V5.27's delay(1500) alone wasn't enough for System Off wakes. */
-    uint32_t rr_pre = NRF_POWER->RESETREAS;
-    if (rr_pre & POWER_RESETREAS_OFF_Msk) {
-        Serial.end();   /* tear down USB CDC */
-        delay(100);     /* let host see disconnect */
-        Serial.begin(115200);
-    }
     delay(500);   /* let pio device monitor open the port before we print */
     /* V5.27: USB CDC re-enumeration after hard reset takes 1-2 s.
        delay(500) was too short — boot JSON (including version) was lost.
