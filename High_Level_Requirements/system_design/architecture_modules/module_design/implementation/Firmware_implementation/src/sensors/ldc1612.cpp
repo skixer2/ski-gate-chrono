@@ -298,6 +298,17 @@ void LDC1612::clear_drdy()
     read_reg16(REG_DATA0_LSB);
 }
 
+/* V5.30: Slow down LDC conversion cycle before System Off.
+   Sets RCOUNT0 = 0xFFFF (~26ms conversion). After clear_drdy(),
+   DRDY won't re-assert for ~26ms — plenty of time for
+   nrf_power_system_off() to execute. LDC tap still detected
+   within ~26ms (fast enough for a finger tap). */
+void LDC1612::slow_rcount()
+{
+    if (!m_wire_ok) return;
+    write_reg16(REG_RCOUNT0, 0xFFFF);
+}
+
 /* V5.29: Put LDC1612 into sleep mode (CONFIG bit 0 = 0).
    Stops conversions → no DRDY → INTB stays HIGH (pull-up).
    Called before nrf_power_system_off() to guarantee DETECT

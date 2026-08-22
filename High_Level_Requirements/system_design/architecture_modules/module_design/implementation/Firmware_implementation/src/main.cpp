@@ -110,13 +110,14 @@ void enter_system_off()
     json_end();
     Serial.flush();
     
-    /* V5.29: Clear DRDY immediately before System Off.
-       LDC1612 INTB stays LOW until DATA0 is read. clear_drdy() reads
-       DATA0 unconditionally (~400µs I2C) → DRDY clears → INTB HIGH.
-       We have ~819µs before next DRDY fires — nrf_power_system_off()
-       executes in <1µs, so we enter System Off while INTB is HIGH.
-       Next DRDY (~819µs later) pulses INTB LOW → DETECT → wake.
+    /* V5.30: Slow down LDC conversion + clear DRDY before System Off.
+       slow_rcount() sets RCOUNT0=0xFFFF (~26ms conversion cycle).
+       clear_drdy() reads DATA0 to clear current DRDY → INTB HIGH.
+       With 26ms until next DRDY, nrf_power_system_off() has ample
+       time to execute before DETECT can re-assert.
+       LDC tap still detected within ~26ms (fast for a finger tap).
        Must be the LAST thing before nrf_power_system_off(). */
+    g_ldc.slow_rcount();
     g_ldc.clear_drdy();
     nrf_power_system_off();
 }
@@ -1078,6 +1079,16 @@ void setup()
 {
     nicla::begin();
     Serial.begin(115200);
+    /* V5.30: After System Off wake, USB CDC needs full re-init.
+       Serial.end() + Serial.begin() forces USB re-enumeration
+       so the host sees a disconnect/reconnect and re-opens the port.
+       V5.27's delay(1500) alone wasn't enough for System Off wakes. */
+    uint32_t rr_pre = NRF_POWER->RESETREAS;
+    if (rr_pre & POWER_RESETREAS_OFF_Msk) {
+        Serial.end();   /* tear down USB CDC */
+        delay(100);     /* let host see disconnect */
+        Serial.begin(115200);
+    }
     delay(500);   /* let pio device monitor open the port before we print */
     /* V5.27: USB CDC re-enumeration after hard reset takes 1-2 s.
        delay(500) was too short — boot JSON (including version) was lost.

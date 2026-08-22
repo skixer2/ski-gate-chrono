@@ -57,6 +57,12 @@ public:
        DETECT is active). */
     void clear_drdy();
 
+    /* V5.30: Slow down LDC conversion cycle before System Off.
+       Sets RCOUNT0 = 0xFFFF (~26ms conversion) so DRDY doesn't
+       re-assert for 26ms after clear_drdy(). Gives nrf_power_system_off()
+       plenty of time to execute. LDC tap still detected within ~26ms. */
+    void slow_rcount();
+
     /* V5.29: Stop LDC1612 conversions (CONFIG bit 0 = 0).
        No conversions → no DRDY → INTB stays HIGH (pull-up).
        Guarantees DETECT not asserted when entering System Off.
