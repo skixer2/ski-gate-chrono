@@ -48,6 +48,11 @@ uint32_t g_sys_off_pin_in = 0;
 /* T6/T7/T8: Enter System Off — defined in main.cpp, called from state_machine.cpp */
 void enter_system_off();
 
+/* V5.28: g_ldc is defined later in this file, but enter_system_off()
+   (defined below) needs it for clear_drdy() before System Off. */
+#include "sensors/ldc1612.h"
+extern LDC1612 g_ldc;
+
 /* ================================================================== */
 
 /**
