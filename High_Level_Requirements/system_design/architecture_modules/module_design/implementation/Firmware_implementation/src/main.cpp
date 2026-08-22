@@ -40,9 +40,6 @@
 enum WakeSource { WAKE_UNKNOWN, WAKE_LDC, WAKE_BHI260 };
 WakeSource g_wake_source = WAKE_UNKNOWN;
 
-/* V5.24: LDC cooldown after serial 'i' to prevent immediate re-arm */
-uint32_t g_ldc_cooldown_until = 0;
-
 /* T6/T7/T8: Enter System Off — defined in main.cpp, called from state_machine.cpp */
 void enter_system_off();
 
@@ -332,11 +329,12 @@ void handle_serial()
     switch (c) {
     case 'i':
         g_sm.force_state(DeviceState::SLEEP);
-        /* V5.24: 3 s LDC cooldown to prevent immediate re-arm from lingering proximity */
-        g_ldc_cooldown_until = millis() + 3000;
         /* V5.03: always recover BLE on manual wake — clears zombie link /
            sticky hold and re-ADVs even if already IDLE. */
         sgc_ble_force_recover("serial_i");
+        /* V5.25: re-recalibrate LDC AFTER BLE radio restart — the end/begin
+           EMI shifts the coil baseline, causing false proximity detection. */
+        g_ldc.force_recalibrate();
         /* V5.18: only hard-restart radio if BLE is actually wedged (phantom
            link: g_central_connected but BLE.connected() false). Prevents
            T-008c NVIC_SystemReset reboot when 'i' is used to wake from
@@ -1358,14 +1356,9 @@ void loop()
         sgc_ble_radio_restart(g_ble_radio_restart_why);
     }
 
-    /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ──
-       V5.24: 3 s cooldown after serial 'i' to prevent immediate re-arm
-       when the athlete's hand is still near the LDC sensor. */
-    if (g_ldc_cooldown_until && millis() >= g_ldc_cooldown_until) {
-        g_ldc_cooldown_until = 0;  /* cooldown expired */
-    }
+    /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ── */
     if (!g_stream_active && loop_st != DeviceState::LOGGING) {
-        if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP && !g_ldc_cooldown_until) {
+        if (g_ldc.is_proximity() && g_sm.state() == DeviceState::SLEEP) {
             json_begin();
             json_kv("ev", "wake");
             Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
