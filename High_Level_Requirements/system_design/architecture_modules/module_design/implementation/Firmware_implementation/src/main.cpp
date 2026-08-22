@@ -110,15 +110,9 @@ void enter_system_off()
     json_end();
     Serial.flush();
     
-    /* V5.30: Slow down LDC conversion + clear DRDY before System Off.
-       slow_rcount() sets RCOUNT0=0xFFFF (~26ms conversion cycle).
-       clear_drdy() reads DATA0 to clear current DRDY → INTB HIGH.
-       With 26ms until next DRDY, nrf_power_system_off() has ample
-       time to execute before DETECT can re-assert.
-       LDC tap still detected within ~26ms (fast for a finger tap).
-       Must be the LAST thing before nrf_power_system_off(). */
-    g_ldc.slow_rcount();
-    g_ldc.clear_drdy();
+    /* V5.32: Piezo button on P0.02 — no DRDY timing race.
+       Button is idle HIGH (pull-up), only goes LOW on physical press.
+       No need to clear anything before System Off — just enter. */
     nrf_power_system_off();
 }
 
@@ -139,6 +133,7 @@ void bhy2_cal_hook_init();
 #include "test_mode.h"
 #include "led/led.h"
 #include "sensors/ldc1612.h"
+#include "sensors/piezo_button.h"
 #include "config.h"
 #include "state_machine/state_machine.h"
 #include "state_machine/start_detector.h"
@@ -349,9 +344,9 @@ void handle_serial()
         /* V5.03: always recover BLE on manual wake — clears zombie link /
            sticky hold and re-ADVs even if already IDLE. */
         sgc_ble_force_recover("serial_i");
-        /* V5.25: re-recalibrate LDC AFTER BLE radio restart — the end/begin
-           EMI shifts the coil baseline, causing false proximity detection. */
-        g_ldc.force_recalibrate();
+        /* V5.32: clear any pending button press from the wake */
+        g_button.clear_press();
+        g_button.clear_factory_trigger();
         /* V5.18: only hard-restart radio if BLE is actually wedged (phantom
            link: g_central_connected but BLE.connected() false). Prevents
            T-008c NVIC_SystemReset reboot when 'i' is used to wake from
@@ -1095,9 +1090,9 @@ void setup()
         uint32_t latched = NRF_GPIO->LATCH;
         uint32_t pin_in = NRF_GPIO->IN;
         if ((latched & (1u << 2)) && !(pin_in & (1u << 2))) {
-            g_wake_source = WAKE_LDC;       // P0.02 = LDC INTB, pin is LOW (active)
+            g_wake_source = WAKE_LDC;       // V5.32: P0.02 = piezo button now (was LDC INTB)
         } else if ((latched & (1u << 14)) && !(pin_in & (1u << 14))) {
-            g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT, pin is LOW (active)
+            g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT
         }
         // V5.27: log raw LATCH + pin states for System Off wake debugging
         // (before any GPIO reconfig can clobber them)
@@ -1199,9 +1194,17 @@ void setup()
     json_end();
     g_ldc.enable_interrupt();
     /* V5.26: force_recalibrate moved to AFTER BLE.begin() — BLE init EMI
-       shifts the LDC coil baseline (same root cause as 5.25 'i' fix).
-       Calibration before BLE.begin() left a stale baseline → false
-       prox_arm within 1 s of boot. */
+       shifts the LDC coil baseline.  100 ms settle delay before recalibration flag is set;
+       the actual recal reads a fresh sample on the first g_ldc.tick(). */
+
+    /* V5.32: Piezo button init — replaces LDC for arming/wake.
+       LDC1612 still initialized for diagnostics, but arming is now button-driven. */
+    g_button.begin();
+    json_begin();
+    json_kv("ev", "init");
+    Serial.print(','); json_kv("sub", "piezo_btn");
+    Serial.print(','); json_kv("pin", (long)PiezoButton::PIN);
+    json_end();
 
     /* V5.15 T-008a: warm reset preserves Cordio statics — tear down before begin.
        RESETREAS bit 0 = power-on. Soft/WDT/flash resets leave bit 0 clear. */
@@ -1226,11 +1229,8 @@ void setup()
     sgc_ble_init();
     sgc_ble_transfer_init();
 
-    /* V5.26: Re-calibrate LDC AFTER BLE init — BLE.begin() EMI shifts the
-       coil baseline.  100 ms settle delay before recalibration flag is set;
-       the actual recal reads a fresh sample on the first g_ldc.tick(). */
-    delay(100);
-    g_ldc.force_recalibrate();
+    /* V5.32: LDC recalibration after BLE init removed — LDC no longer used for arming.
+       Button uses GPIO edge interrupt, no calibration needed. */
 
     /* ── Raw run store (Opt A) — after BD init, before BHY2 ── */
     json_begin();
@@ -1327,10 +1327,8 @@ void loop()
 {
     uint32_t now = millis();
 
-    static bool     g_factory_confirming    = false;
-    static uint32_t g_factory_confirm_start = 0;
-    static constexpr uint32_t FACTORY_CONFIRM_MS = 3000;
-    static constexpr uint32_t FACTORY_LED_BLINK_MS = 250;
+    /* V5.32: factory_confirming removed — piezo button handles factory reset
+       internally (5 presses in 3s via edge interrupt). */
 
     /* V5.08: feed hardware watchdog as the FIRST LINE. If loop() blocks
        anywhere (e.g. writeValue stuck inside Cordio HCI), the WDT isn't
@@ -1387,7 +1385,7 @@ void loop()
         }
         /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
         g_sm.set_hold_sleep(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
-        g_led.update(); g_ldc.tick();
+        g_led.update();
         handle_serial();
     }
 
@@ -1402,64 +1400,35 @@ void loop()
         sgc_ble_radio_restart(g_ble_radio_restart_why);
     }
 
-    /* ── LDC1612 wake/arm/factory — real-world, non-stream, non-LOGGING ── */
+    /* ── Piezo button arming/factory — real-world, non-stream, non-LOGGING ── */
     if (!g_stream_active && loop_st != DeviceState::LOGGING) {
-        /* V5.27: removed "wake" event spam — is_proximity() in SLEEP fired
-           every loop iteration (force_state(SLEEP) is a no-op when already
-           SLEEP). The arming check below handles the real state transition. */
-        if (g_ldc.is_armed() && g_sm.state() == DeviceState::SLEEP) {
+        g_button.tick();
+        
+        /* Single press in SLEEP → ARMED */
+        if (g_button.is_pressed() && g_sm.state() == DeviceState::SLEEP) {
+            g_button.clear_press();
             if (g_sm.can_arm()) {
                 json_begin();
-                json_kv("ev", "prox_arm");
-                Serial.print(','); json_kv("prox_ms", (long)g_ldc.proximity_ms());
+                json_kv("ev", "btn_arm");
                 json_end();
-                g_sm.force_state(DeviceState::ARMED);  /* handler: start_det auto-init */
+                g_sm.force_state(DeviceState::ARMED);
             }
         }
-        /* ── Factory reset with confirmation ── */
-        if (g_ldc.is_factory_hold() && g_sm.state() == DeviceState::SLEEP) {
-            if (!g_factory_confirming) {
-                g_factory_confirming    = true;
-                g_factory_confirm_start = now;
-                json_begin();
-                json_kv("ev", "factory_warn");
-                Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
-                json_end();
-            }
-
-            uint32_t elapsed = now - g_factory_confirm_start;
-            if (elapsed < FACTORY_CONFIRM_MS) {
-                if (!g_ldc.is_proximity()) {
-                    json_begin();
-                    json_kv("ev", "factory_cancelled");
-                    json_end();
-                    g_factory_confirming = false;
-                    nicla::leds.setColor(0, 0, 0);
-                    return;
-                }
-                bool led_on = ((elapsed / FACTORY_LED_BLINK_MS) % 2) == 0;
-                nicla::leds.setColor(led_on ? 80 : 0, 0, 0);
-                return;
-            }
-
-            nicla::leds.setColor(0, 0, 0);
-            g_factory_confirming = false;
+        
+        /* Factory reset: 5 presses in 3s */
+        if (g_button.is_factory_trigger() && g_sm.state() == DeviceState::SLEEP) {
+            g_button.clear_factory_trigger();
             json_begin();
             json_kv("ev", "factory_reset");
-            Serial.print(','); json_kv("hold_ms", (long)g_ldc.proximity_ms());
+            Serial.print(','); json_kv("presses", (long)PiezoButton::FACTORY_PRESS_COUNT);
             json_end();
             g_runs.erase_all();
             g_runs.metadata_sync();
             json_begin(); json_kv("ev", "reboot"); json_end();
-            g_flash.enter_deep_powerdown();
+            g_flash.enter_deep_powerout();
             delay(50);
             NVIC_SystemReset();
             return;
-        }
-
-        if (!g_ldc.is_proximity() && g_factory_confirming) {
-            g_factory_confirming = false;
-            nicla::leds.setColor(0, 0, 0);
         }
     }
 
