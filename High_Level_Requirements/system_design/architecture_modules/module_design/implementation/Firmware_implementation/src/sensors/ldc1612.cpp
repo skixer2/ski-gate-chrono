@@ -284,6 +284,20 @@ void LDC1612::force_recalibrate()
 }
 void LDC1612::enable_interrupt()  { pinMode(INTB_PIN, INPUT_PULLUP); }
 
+/* V5.28: Read DATA0 to clear DRDY flag → releases INTB HIGH.
+   Called right before nrf_power_system_off() to ensure DETECT
+   is not asserted when entering System Off. */
+void LDC1612::clear_drdy()
+{
+    if (!m_wire_ok) return;
+    /* Read STATUS to check DRDY */
+    if (read_reg16(REG_STATUS) & 0x08) {
+        /* DRDY set — read DATA0 to clear */
+        read_reg16(REG_DATA0_MSB);
+        read_reg16(REG_DATA0_LSB);
+    }
+}
+
 bool LDC1612::is_connected()         { return read_device_id() == 0x3055; }
 uint16_t LDC1612::read_device_id()   { return read_reg16(REG_DEVICE_ID); }
 uint16_t LDC1612::read_manufacturer_id() { return read_reg16(REG_MANUFACTURER_ID); }

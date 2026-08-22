@@ -51,6 +51,12 @@ public:
     uint16_t read_device_id();
     uint16_t read_manufacturer_id();
 
+    /* V5.28: Read DATA0 to clear DRDY and release INTB HIGH.
+       Must be called right before System Off to ensure DETECT
+       is not already asserted (nRF52 won't enter System Off if
+       DETECT is active). */
+    void clear_drdy();
+
 private:
     uint16_t read_reg16(uint8_t reg);
     void     write_reg16(uint8_t reg, uint16_t val);

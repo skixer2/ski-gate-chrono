@@ -104,7 +104,13 @@ void enter_system_off()
     json_kv("latch", (long)NRF_GPIO->LATCH);
     json_end();
     Serial.flush();
-    delay(50);
+    /* V5.28: NO delay(50) — during that gap, LDC1612 DRDY fires (~819µs cycle)
+       and INTB goes LOW and STAYS LOW (nobody reads DATA0). DETECT becomes
+       already asserted → nRF52 refuses to enter System Off → stuck in WFI
+       forever → device appears dead. LDC wake fails on 2nd System Off entry.
+       Fix: clear DRDY (read DATA0) right before nrf_power_system_off(),
+       then enter System Off within the ~819µs window before next DRDY. */
+    g_ldc.clear_drdy();
     
     // Enter System Off — one-way, wake = full reset
     nrf_power_system_off();
