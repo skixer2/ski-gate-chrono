@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-24 14:18 UTC  
+**Last updated:** 2026-08-24 15:30 UTC  
 **Current baselines:** FW **5.37** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** 5.27 partial — **5.37 smoke pending JP**  
+**Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -186,10 +186,15 @@ All three symptoms explained:
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PENDING JP BENCH** — FW 5.37 pushed, not yet tested on device |
+| **Result** | **PASS** — smoke green (run_20260824_1715, COM3) |
 | **Code review** | ✅ Coordinator — full pin audit, all Arduino API calls verified |
-| **Build** | ❓ Not built on PC (no PlatformIO on gateway) — JP to build + flash |
-| **Next** | JP: `git pull && pio run -t upload -e nicla` → verify boot→SLEEP, button→ARMED, voltage |
+| **Build** | ✅ JP built + flashed 5.37 |
+| **Bench** | ✅ Boot→SLEEP, button→ARMED, P0.02 voltage correct |
+| **Smoke** | ✅ sensor_injection + flash + S04 ALL PASS |
+| **Notes** | • Button press needed to wake from System Off (not SLEEP) — tests send `i` for SLEEP wake |
+|  | • SLEEP_SYSTEM_OFF_MS reverted to 1h (30s caused System Off during test setup) |
+|  | • SSH key not yet set up — results push failed, results local only |
+| **Next** | S03 stream run; SSH key setup (`ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_sgc`) |
 
 #### Iteration 2 — FW 5.34 (removing begin() was not enough)
 
