@@ -1025,6 +1025,22 @@ void feed_sensors()
 
         /* Linear pre-roll: program only up to ARM_FILL_CAP (3000). */
         bool was_full = g_ring.is_full();
+        /* V5.39 diagnostic: log first 3 ring writes to catch ambient leak */
+        static uint8_t s_arm_writes = 0;
+        if (s_arm_writes < 3) {
+            json_begin(); json_kv("ev", "arm_write");
+            Serial.print(','); json_kv("n", (long)s_arm_writes);
+            Serial.print(','); json_kv("tm", test_mode_active());
+            Serial.print(','); json_kv("str", g_stream_active);
+            Serial.print(','); json_kv("hd", test_stream_has_data());
+            Serial.print(','); json_kv("baro", (long)f.baro_pa_div2);
+            json_end();
+            s_arm_writes++;
+            if (s_arm_writes == 3) {
+                /* reset for next ARM */
+                s_arm_writes = 0;
+            }
+        }
         g_ring.write(f, true);
         if (!was_full && g_ring.is_full()) {
             json_begin();
