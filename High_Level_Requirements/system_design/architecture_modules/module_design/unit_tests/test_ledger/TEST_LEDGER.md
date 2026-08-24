@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-24 14:01 UTC  
-**Current baselines:** FW **5.36** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** 5.27 partial — **5.36 smoke pending JP**  
+**Last updated:** 2026-08-24 14:18 UTC  
+**Current baselines:** FW **5.37** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** 5.27 partial — **5.37 smoke pending JP**  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -133,7 +133,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | **Case ID** | `TC-2026-08-24-001` |
 | **Title** | LDC1612 still in boot path — button dead + auto-arm on boot (FW 5.32–5.33) |
 | **Objective** | Button press in SLEEP → ARMED; boot → SLEEP (no auto-arm); P0.02 = 3.3 V idle |
-| **Baseline under test** | FW **5.36** (commit `343102c`) · App **1.11** (unbuilt) · Nicla COM8 |
+| **Baseline under test** | FW **5.37** (commit `11e2839`) · App **1.11** (unbuilt) · Nicla COM8 |
 | **Priority** | **P0** |
 | **Opened** | 2026-08-24 |
 | **Owner** | Lead Systems Coordinator |
@@ -186,8 +186,8 @@ All three symptoms explained:
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PENDING JP BENCH** — FW 5.36 pushed, not yet tested on device |
-| **Code review** | ✅ Coordinator — LDC quiesced at boot, all `g_ldc.*` calls guarded |
+| **Result** | **PENDING JP BENCH** — FW 5.37 pushed, not yet tested on device |
+| **Code review** | ✅ Coordinator — full pin audit, all Arduino API calls verified |
 | **Build** | ❓ Not built on PC (no PlatformIO on gateway) — JP to build + flash |
 | **Next** | JP: `git pull && pio run -t upload -e nicla` → verify boot→SLEEP, button→ARMED, voltage |
 
@@ -256,6 +256,52 @@ Split into two constants:
 - `NRF_PIN = 2` (P0.02 physical) for `NRF_GPIO->IN` / `PIN_CNF` register access
 
 Also fixed LDC1612 `INTB_PIN` (was 2, now 10).
+
+#### Iteration 4 — FW 5.36 (LDC removed, still broken)
+
+```text
+JP: LDC1612 physically removed from board. 5.36 flashed.
+    Device still starts in ARMED. P0.02 = 1.8V at boot, 0V after 'i'.
+    Button still dead.
+    "Are you telling me that we spent a week debugging the LDC behaviour,
+     and the problem was a pin definition? Now check all the PIN definitions!"
+```
+
+Root cause: **Same pin mapping bug in 3 more files.** Full audit of every
+`pinMode` / `digitalWrite` / `digitalRead` / `attachInterrupt` call:
+
+| File | Code | Got | Should be | Impact |
+|------|------|-----|-----------|--------|
+| `spi_flash.cpp` | `pinMode(26)` | out of range | `16` (CS FLASH) | DP never worked |
+| `spi_flash.cpp` | `pinMode(3)` | P0.23 (SCL1!) | `9` (SCK P0.11) | toggled I²C SCL |
+| `spi_flash.cpp` | `pinMode(4)` | P0.22 (SDA1!) | `8` (MOSI P0.27) | toggled I²C SDA |
+| `main.cpp` `w` | `pinMode(22)` | out of range | `4` (SDA1) | silent no-op |
+| `main.cpp` `w` | `pinMode(23)` | out of range | `3` (SCL1) | silent no-op |
+| `main.cpp` `?` | `digitalRead(10)` | P0.02 (button!) | no Qi hw | wrong `qi` field |
+
+#### Fix — FW 5.37 (commit `11e2839`)
+
+Full pin audit + fix all remaining Arduino API pin mapping bugs:
+- `spi_flash.cpp`: 26→16, 3→9, 4→8 (both enter + release DP)
+- `main.cpp w`: 22→4, 23→3 (SDA1/SCL1 toggle)
+- `main.cpp qi`: `digitalRead(10)` → `false` (no Qi hardware)
+- Verified correct (no change): `PIN_CNF[2]`, `PIN_CNF[14]`, `PIN_CNF[19]`,
+  `NRF_P0->OUTCLR`, `NRF_GPIO->IN >> 2` — all direct register access, correct
+
+### Pin map reference (Nicla Sense ME)
+
+```
+Arduino  0 → P0.10 (GPIO3)          Arduino 10 → P0.02 (A0 / button)
+Arduino  1 → P0.09 (GPIO2/RX)       Arduino 11 → P0.30 (A1)
+Arduino  2 → P0.20 (GPIO1/TX)       Arduino 12 → P0.19 (ESLOV/LED)
+Arduino  3 → P0.23 (SCL1)           Arduino 13 → P0.18 (Reset BHI260)
+Arduino  4 → P0.22 (SDA1)           Arduino 14 → P0.14 (BHI260 INT)
+Arduino  5 → P0.24 (GPIO0)          Arduino 15 → P0.25 (BQ25120 CD)
+Arduino  6 → P0.29 (CS BHI260)      Arduino 16 → P0.26 (CS FLASH)
+Arduino  7 → P0.28 (MISO)           Arduino 17 → P0.31 (CS BHI260 alt)
+Arduino  8 → P0.27 (MOSI)
+Arduino  9 → P0.11 (SCK)
+```
 
 ## 2b. Closed / parked this session
 
