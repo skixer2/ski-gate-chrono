@@ -1357,7 +1357,21 @@ def run_full_test(port: str,
             device.ser.close()
             time.sleep(1.0)
             device.connect()  # reconnect after reboot
-            if not device.wakeup():
+            # Boot + prepare_next_run (full-slot erase ~249 KB, 60+ sectors)
+            # can take 5-10 s. Poll until device responds to '?'.
+            t0 = time.perf_counter()
+            ready = False
+            while time.perf_counter() - t0 < 15.0:
+                time.sleep(0.8)
+                device.send_cmd('?', wait_ms=300)
+                lines = device.read_json(0.8)
+                for r in lines:
+                    if r.get('ev') == 'status':
+                        ready = True
+                        break
+                if ready:
+                    break
+            if not ready:
                 print("WARN Could not confirm SLEEP after reset, proceeding...")
         else:
             print("\n-- Factory Reset: SKIPPED (pass -R to erase flash first) --")
