@@ -8,6 +8,7 @@
 #include "state_machine.h"
 #include "config.h"
 #include "test_json.h"
+#include "test_mode.h"
 #include <Arduino.h>
 
 /* T6: defined in main.cpp — enter System Off with GPIO SENSE wake */
@@ -131,6 +132,11 @@ void StateMachine::check_timeouts()
         /* V5.00: phone connected or BLE FT in progress — keep SLEEP (no SYSTEM_OFF).
            Sleep would stop advertise and leave a zombie link after app kill. */
         if (m_hold_sleep)
+            break;
+        /* V5.38: Skip System Off when test mode is active — bench tests
+           need serial 'i' to wake from SLEEP. System Off requires a GPIO
+           edge (button press), which automated tests can't do. */
+        if (test_mode_active())
             break;
         /* T4: After 1 h in SLEEP with no connection, enter System Off */
         if (elapsed >= SLEEP_SYSTEM_OFF_MS) {
