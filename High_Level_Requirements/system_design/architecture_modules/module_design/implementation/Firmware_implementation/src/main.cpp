@@ -37,7 +37,10 @@
  * Read NRF_GPIO->LATCH at boot (P0.02 = LDC INTB, P0.14 = BHI260 INT).
  * Store in g_wake_source after verifying System Off wake via RESETREAS OFF bit.
  */
-enum WakeSource { WAKE_UNKNOWN, WAKE_LDC, WAKE_BHI260 };
+enum WakeSource { WAKE_UNKNOWN, WAKE_BUTTON, WAKE_BHI260 };
+/* V5.34: LDC1612 fully removed from boot path — lazy-init only for diagnostics.
+   P0.02 is now exclusively the piezo button pin. */
+static bool g_ldc_inited = false;  /* true only after on-demand g_ldc.begin() */
 WakeSource g_wake_source = WAKE_UNKNOWN;
 
 /* V5.27: raw GPIO state captured at boot before any reconfig —
@@ -57,7 +60,7 @@ extern LDC1612 g_ldc;
 
 /**
  * T6: Enter System Off mode with GPIO SENSE configured for wake.
- * Wake sources: P0.02 (LDC INTB) and P0.14 (BHI260 INT)
+ * Wake sources: P0.02 (piezo button) and P0.14 (BHI260 INT)
  * Both pins are active-low, edge-triggered, configured with GPIO SENSE_LOW.
  * This is a one-way operation — device only wakes via full reset.
  */
@@ -80,7 +83,7 @@ void enter_system_off()
     
     // T6: Configure GPIO SENSE — LAST thing before System Off.
     // Use direct register access to avoid any mbed framework override.
-    // P0.02 (LDC INTB): input, pull-up, sense low (active-low wake)
+    // P0.02 (piezo button): input, pull-up, sense low (active-low wake)
     NRF_GPIO->PIN_CNF[2] = (GPIO_PIN_CNF_DIR_Input << GPIO_PIN_CNF_DIR_Pos) |
                           (GPIO_PIN_CNF_INPUT_Connect << GPIO_PIN_CNF_INPUT_Pos) |
                           (GPIO_PIN_CNF_PULL_Pullup << GPIO_PIN_CNF_PULL_Pos) |
@@ -440,6 +443,7 @@ void handle_serial()
     case 'f': if (g_sm.state() != DeviceState::ARMED && g_sm.state() != DeviceState::LOGGING) flash_test(); return;
     case 'z': {
         json_begin();
+        if (!g_ldc_inited) g_ldc_inited = g_ldc.begin();
         json_kv("ev", "ldc_diag");
         Serial.print(','); json_kv_bool("ok", g_ldc.is_connected());
         Serial.print(','); json_kv("dev_id", (long)g_ldc.read_device_id());
@@ -691,7 +695,8 @@ void handle_serial()
         return;
     }
     case 'c':
-        g_ldc.force_recalibrate();
+        if (!g_ldc_inited) g_ldc_inited = g_ldc.begin();
+        if (g_ldc_inited) g_ldc.force_recalibrate();
         json_begin(); json_kv("ev", "ldc_recal"); json_end();
         return;
     case '!':
@@ -742,8 +747,8 @@ void handle_serial()
         Serial.print(','); json_kv("runs", (long)g_runs.run_count());
         Serial.print(','); json_kv("total_runs", (long)g_runs.total_run_count());
         Serial.print(','); json_kv("oldest_age", (long)g_runs.oldest_run_age());
-        Serial.print(','); json_kv_bool("ldc", g_ldc.is_connected());
-        Serial.print(','); json_kv("ldc_raw", (long)g_ldc.data());
+        Serial.print(','); json_kv_bool("ldc", g_ldc_inited && g_ldc.is_connected());
+        Serial.print(','); json_kv("ldc_raw", (long)(g_ldc_inited ? g_ldc.data() : 0));
         Serial.print(','); json_kv("flash_pct", (long)g_runs.flash_used_pct());
         Serial.print(','); json_kv("ver", FW_VERSION);
         /* Non-destructive test-mode read — S04 must not toggle 'T' to query. */
@@ -865,9 +870,7 @@ static void on_state_transition(DeviceState from, DeviceState to)
         g_ring.clear();
         g_start_det.reset(0.0f);
     }
-    if (to == DeviceState::SLEEP) {
-        if (!g_stream_active) g_ldc.force_recalibrate();
-    }
+    /* V5.34: no LDC recal on SLEEP — LDC not in boot path anymore. */
     if (to == DeviceState::LOGGING) {
         BLE.stopAdvertise();
         g_end_det.reset();
@@ -1090,7 +1093,7 @@ void setup()
         uint32_t latched = NRF_GPIO->LATCH;
         uint32_t pin_in = NRF_GPIO->IN;
         if ((latched & (1u << 2)) && !(pin_in & (1u << 2))) {
-            g_wake_source = WAKE_LDC;       // V5.32: P0.02 = piezo button now (was LDC INTB)
+            g_wake_source = WAKE_BUTTON;       // V5.32: P0.02 = piezo button now (was LDC INTB)
         } else if ((latched & (1u << 14)) && !(pin_in & (1u << 14))) {
             g_wake_source = WAKE_BHI260;    // P0.14 = BHI260 INT
         }
@@ -1115,7 +1118,7 @@ void setup()
     Serial.print(rr);
     // T7: wake source report in boot JSON
     Serial.print(",\"wrs\":");
-    if (g_wake_source == WAKE_LDC) {
+    if (g_wake_source == WAKE_BUTTON) {
         Serial.print("\"LDC\"");
     } else if (g_wake_source == WAKE_BHI260) {
         Serial.print("\"BHI260\"");
@@ -1181,24 +1184,11 @@ void setup()
     Serial.print(','); json_kv("why", "boot");
     json_end();
 
-    /* ── LDC1612 proximity ── */
-    json_begin();
-    json_kv("ev", "init");
-    Serial.print(','); json_kv("sub", "ldc1612");
-    bool ldc_ok = g_ldc.begin();
-    Serial.print(','); json_kv_bool("ok", ldc_ok);
-    Serial.print(','); json_kv("dev_id", (long)g_ldc.read_device_id());
-    Serial.print(','); json_kv("manuf", (long)g_ldc.read_manufacturer_id());
-    Serial.print(','); json_kv("baseline", (long)g_ldc.baseline());
-    Serial.print(','); json_kv_bool("bl_ok", g_ldc.baseline_valid());
-    json_end();
-    g_ldc.enable_interrupt();
-    /* V5.26: force_recalibrate moved to AFTER BLE.begin() — BLE init EMI
-       shifts the LDC coil baseline.  100 ms settle delay before recalibration flag is set;
-       the actual recal reads a fresh sample on the first g_ldc.tick(). */
+    /* V5.34: LDC1612 NOT initialized at boot — removed from boot path.
+       P0.02 is exclusively the piezo button now. LDC is lazy-init'd
+       on-demand only when 'c' or 'z' diagnostic commands are used. */
 
-    /* V5.32: Piezo button init — replaces LDC for arming/wake.
-       LDC1612 still initialized for diagnostics, but arming is now button-driven. */
+    /* V5.32: Piezo button init — replaces LDC for arming/wake. */
     g_button.begin();
     json_begin();
     json_kv("ev", "init");
@@ -1279,10 +1269,10 @@ void setup()
     g_sm.force_state(DeviceState::SLEEP);
 
     // T8: If woke from System Off via LDC tap, auto-arm after init
-    if (g_wake_source == WAKE_LDC) {
+    if (g_wake_source == WAKE_BUTTON) {
         json_begin();
         json_kv("ev", "auto_arm");
-        Serial.print(','); json_kv("reason", "ldc_wake");
+        Serial.print(','); json_kv("reason", "button_wake");
         json_end();
         g_sm.force_state(DeviceState::ARMED);
     }
