@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-22 12:50 UTC  
-**Current baselines:** FW **5.28** (2nd System Off wake fix — clear DRDY before sleep) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** smoke 5.27 partial (sensor_injection 21/21 ✅, flash+S04 ❌ due to device stuck in ARMED/WFI) — **5.28 smoke pending JP**  
+**Last updated:** 2026-08-24 14:18 UTC  
+**Current baselines:** FW **5.37** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** 5.27 partial — **5.37 smoke pending JP**  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -52,7 +52,7 @@ OUT OF SCOPE: <explicit non-goals>
 | Layer | Technology | Location (repo) | Notes |
 |-------|------------|-----------------|-------|
 | **Device FW** | C++ / PlatformIO / Arduino_BHY2 / ArduinoBLE (Cordio) on **nRF52832** | `implementation/Firmware_implementation/` | Nicla Sense ME today; production = ANNA-B112 + SGC carrier |
-| **Sensors** | BHI260AP (IMU/fusion), BMP390 (baro), LDC1612 (prox arm) | FW `src/sensors`, `src/state_machine` | SPI0 shared: BHI260 CS + MX25R CS — **no concurrent SPI** |
+| **Sensors** | BHI260AP (IMU/fusion), BMP390 (baro), **Piezo button** (arm/wake), LDC1612 (diag-only, lazy-init) | FW `src/sensors`, `src/state_machine` | SPI0 shared: BHI260 CS + MX25R CS — **no concurrent SPI** |
 | **Flash** | MX25R1635F **2 MB** (bench Nicla) / BOM path **MX25R6435F 8 MB** | `src/storage/*` | SFDP size → layout (v5.01+); pre-roll **fixed** `0x0000–0x13FFF` |
 | **Phone app** | **Flutter** · Android target | `implementation/Phone_app_prototype/` | iOS not primary |
 | **PC tests** | Python harness + SIM | `unit_tests/`, `system_tests/` | COM8; JSON-lines device protocol |
@@ -98,7 +98,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ### 1.4 Critical runtime invariants (do not regress)
 
-1. **Init order:** BLE first → Flash → LDC → RawRunStore → Ring → BHY2.  
+1. **Init order:** BLE first → Flash → RawRunStore → Ring → BHY2 → Piezo Button.  **LDC1612 NOT in boot path** (v5.34+) — lazy-init on `c`/`z` serial commands only.  
 2. **No large stack/heap** after Cordio up (nRF52832) — index I/O streams ≤256 B pages (FW 5.02).  
 3. **During BLE FT:** no BHY2.update / feed_sensors / ambient SPI (FW 4.97+).  
 4. **Erases off descent path:** full-slot prepare at POST_RUN/boot, not ARM.  
@@ -119,118 +119,189 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FT download hang at ~5 chunks; `ble_radio` restart regression*
+*Status: **OPEN** — FW 5.34 pushed, pending JP bench test*
 
-> **Architecture work in progress:** ADR-004 (Sleep Reachability, IDLE Removal & System Off)
-> — see `adr_004_sleep_reachability.md`. Task list T1–T19 defined in ADR.
-> **T1 DONE** (coordinator), **T10 DONE** (coordinator), **T19 DONE** (subagent). Build pending on JP's PC.
+> **Root cause found + fixed:** LDC1612 was never actually removed from boot path.
+> `g_ldc.begin()` + `g_ldc.enable_interrupt()` still in `setup()` → DRDY every ~819 µs
+> → INTB open-drain pulled P0.02 LOW → auto-arm on boot, button never triggered.
+> FW 5.34 removes LDC from boot path; lazy-init on `c`/`z` only.
 
 ### Meta
 
 | Field | Value |
 |-------|--------|
-| **Case ID** | `TC-2026-08-15-001` |
-| **Title** | BLE FT download stall + `ble_radio` ok=0 regression (FW 5.14) |
-| **Objective** | FT download must complete without stall; `ble_radio` restart must recover the stack on zombie/stall; no hard reboot required after flash |
-| **Baseline under test** | FW **5.16** (self-recovery confirmed) · App **1.11** (unbuilt) · Nicla COM8 |
+| **Case ID** | `TC-2026-08-24-001` |
+| **Title** | LDC1612 still in boot path — button dead + auto-arm on boot (FW 5.32–5.33) |
+| **Objective** | Button press in SLEEP → ARMED; boot → SLEEP (no auto-arm); P0.02 = 3.3 V idle |
+| **Baseline under test** | FW **5.37** (commit `11e2839`) · App **1.11** (unbuilt) · Nicla COM8 |
 | **Priority** | **P0** |
-| **Opened** | 2026-08-15 |
+| **Opened** | 2026-08-24 |
 | **Owner** | Lead Systems Coordinator |
-| **Parent** | TC-2026-08-14-002 (BLE zombie PASS 5.03) |
+| **Parent** | TC-2026-08-22-001 (LDC DRDY race — closed by switching to piezo button) |
 
-### Timeline (2026-08-18, FW 5.14)
+### Timeline (2026-08-24)
 
-#### Attempt 1 — after PlatformIO flash (warm reset)
-
-```text
-Phone:  FT CMD_START run=0
-        5 × writeCharacteristic → GATT_SUCCESS
-        6th write → GATT_ERROR 133 → LINK_SUPERVISION_TIMEOUT → disconnect
-        FT chunk timeout at offset=976
-        CRC FAILED (976 bytes, 4 chunks)
-
-Device: ft_start run=0 sz=38780 chunk=244
-        ft_abort reason="stall" off=1220 chunks=5
-        ble_radio why="ft_stall" ok=0    ← radio restart FAILED
-        ble_adv why="desync"             ← fell through to desync recovery
-```
-
-- FT stalled after 5 chunks (1220 B device / 976 B phone — off-by-one chunk).
-- `ble_radio` restart path returns **ok=0** — does not recover the radio.
-- This was **the first connection after flashing 5.14** — no prior BLE cycles.
-
-#### Attempt 2 — after hard button reboot (power-on reset)
+#### JP report — FW 5.32–5.33
 
 ```text
-Device: boot ver=5.14 → IDLE → ble_conn
-        ft_start run=0 sz=38780 chunk=244
-        ft_prog off=4880  chunks=20
-        ft_prog off=9760  chunks=40
-        ft_prog off=14640 chunks=60
-        ft_prog off=19520 chunks=80
-        ft_prog off=24400 chunks=100
-        ft_prog off=29280 chunks=120
-        ft_prog off=34160 chunks=140
-        ft_done crc=564206195 sz=38780 chunks=159 ms=11600
-        ble_radio why="zombie" ok=0      ← still fails after successful FT
+JP: FW 5.32 pushed. Button does not trigger ARMED.
+    After booting, device enters ARMED without being asked.
+    After `i` (SLEEP), P0.02 voltage = 0.4 V.
+    After booting, P0.02 voltage = 1.8 V.
 ```
 
-- **FT complete ✅** — 38780 B, 159 chunks, 11.6 s, CRC 0x21A5B233.
-- Clean linear progress (20/40/60/80/100/120/140).
-- `ble_radio` ok=0 **still fails** even after successful FT.
+#### Root cause
 
-### Root cause analysis
+LDC1612 was **still being initialized** in `setup()`:
+- `g_ldc.begin()` started conversions → DRDY fires every ~819 µs
+- `g_ldc.enable_interrupt()` reconfigured P0.02 as LDC INTB input
+- LDC INTB open-drain output physically wired to P0.02, actively pulling LOW
 
-#### Issue A: FT stall after flash (warm reset)
+All three symptoms explained:
+1. **Auto-arm on boot** — INTB LOW → LATCH bit set → `WAKE_LDC` → auto-arm
+2. **0.4 V after `i`** — LDC running, DRDY pulls INTB LOW ~98 % of the time
+3. **Button dead** — pin already driven LOW by LDC; pressing button changes nothing
 
-**Root cause:** nRF52 warm reset (NVIC_SystemReset after PlatformIO upload) preserves
-static RAM. Cordio BLE stack statics from the previous firmware survive into the
-new firmware's boot. `BLE.begin()` does not fully reinitialize because internal
-state thinks it's already up → stack can't sustain FT → supervision timeout at
-chunk 5.
+#### Fix — FW 5.34 (commit `54f4b7d`)
 
-**Evidence:** Hard button reboot (true POR, RAM cleared) → same FW, same transfer
-→ succeeds cleanly. The only variable is reset type.
+1. Removed `g_ldc.begin()` + `g_ldc.enable_interrupt()` from `setup()`
+2. LDC lazy-init: `g_ldc.begin()` called on-demand only for `c` (recal) / `z` (diag)
+3. `g_ldc_inited` flag guards all other `g_ldc.*` calls
+4. `WAKE_LDC` → `WAKE_BUTTON` rename
+5. Removed `g_ldc.force_recalibrate()` on SLEEP transition
+6. Comments updated: P0.02 = "piezo button" not "LDC INTB"
 
-**Known from TOOLS.md:** "nRF52 warm reset preserves static RAM —
-NVIC_SystemReset does NOT reinitialize BSS/.data."
+### Expected bench results (FW 5.34)
 
-#### Issue B: `ble_radio` ok=0 regression (5.14)
-
-The `ble_radio` restart path (added FW 5.07 to recover Cordio radio without full
-reboot) returns **ok=0** in both scenarios:
-- `why="ft_stall"` — after FT stall
-- `why="zombie"` — after successful FT (post-done cleanup)
-
-This is a **regression from 5.10** where the radio restart was reported working
-(or at least attempting). Something changed between 5.10 and 5.14 that broke it.
-
-**Status:** Under investigation — subagent spawned to diff 5.10→5.14 `ble_radio`
-code path.
-
-### Open questions
-
-1. **Software POR:** Can we trigger a true power-on reset via software on nRF52,
-   or must we document "hard reboot after flash" as a required step?
-2. **`ble_radio` fix:** What changed between 5.10 and 5.14 in the radio restart
-   path? Why does it return ok=0?
-3. **Warm-reset BLE deinit:** Does calling `BLE.end()` before `BLE.begin()` in
-   `setup()` (when warm reset detected via `NRF_POWER->RESETREAS`) fix the
-   stall?
+- P0.02 idle voltage: **3.3 V** (pull-up, no LDC loading)
+- P0.02 pressed voltage: **~0 V** (button to GND)
+- Boot → **SLEEP** (no auto-arm — LATCH not set, pin is HIGH)
+- Button press in SLEEP → **ARMED**
+- `i` → SLEEP → button press → **ARMED**
+- System Off → button press → **wake** (GPIO SENSE_LOW, no DRDY race)
+- `?` status: `ldc:false,ldc_raw:0` (LDC not initialized)
+- `c` / `z` commands: LDC lazy-inits, diagnostics work (but P0.02 recontaminated — reboot after)
 
 ### Verdict
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PASS** — T-008a warm_deinit ✅, T-008b zombie ok:1 ✅, T-008c NVIC self-recovery ✅, FT after recovery ✅ |
-| **FT code** | ✅ Correct — 38780 B transferred, CRC OK on 5.14 POR; 38434 B on 5.16 after recovery |
-| **Warm reset** | ✅ **5.15 T-008a CONFIRMED** — `ble_warm_deinit rr:6` → `init ble ok:1` (every warm boot) |
-| **`ble_radio` zombie** | ✅ **5.15 T-008b CONFIRMED** — `ble_radio why:"zombie" ok:1 retry:0` (was ok:0 on 5.14) |
-| **`ble_radio` active** | ⚠️ `serial_i`/`ft_stall` still fail (ok:0 retry:1) — but T-008c reboots → clean recovery |
-| **T-008c NVIC** | ✅ **5.16 CONFIRMED** — `reboot:1` → boot → warm_deinit → BLE ok → phone reconnects → FT OK |
-| **Next** | Optional: first-connection miss (phone-side, low pri); S03 integrity KO (D-003 known) |
+| **Result** | **PENDING JP BENCH** — FW 5.37 pushed, not yet tested on device |
+| **Code review** | ✅ Coordinator — full pin audit, all Arduino API calls verified |
+| **Build** | ❓ Not built on PC (no PlatformIO on gateway) — JP to build + flash |
+| **Next** | JP: `git pull && pio run -t upload -e nicla` → verify boot→SLEEP, button→ARMED, voltage |
 
----
+#### Iteration 2 — FW 5.34 (removing begin() was not enough)
+
+```text
+JP: 5.34 flashed. Device still starts in ARMED.
+    P0.02 = 1.8V at boot, 0V after 'i'.
+    Button still dead.
+```
+
+Root cause: LDC1612 chip **powers up in active mode by default** — DRDY fires
+immediately and INTB open-drain pulls P0.02 LOW, even without `g_ldc.begin()`.
+The chip's power-on default has CONFIG bit 0 = 1 (active). Removing `begin()`
+from setup was necessary but not sufficient — the chip was still actively
+driving INTB LOW.
+
+#### Fix — FW 5.35 (commit `0a64276`)
+
+Added `LDC1612::quiesce()`:
+- `Wire.begin()` + `Wire.setClock(100kHz)`
+- Ping I2C address 0x2B (skip if not present)
+- Write `CONFIG = 0x0000` (sleep mode — bit 0 = 0 stops conversions)
+- Read `DATA0_MSB` + `DATA0_LSB` to clear any pending DRDY
+- INTB releases HIGH (pull-up, no more DRDY)
+
+Called in `setup()` **before** `g_button.begin()` to free P0.02 for the piezo button.
+
+Boot log should show: `{"ev":"init","sub":"ldc_quiesce","ok":true}`
+
+#### Iteration 3 — FW 5.35 (LDC quiesced, still broken)
+
+```text
+JP: LDC1612 physically removed from board. 5.35 flashed.
+    Device still starts in ARMED.
+    P0.02 = 1.8V at boot, 0V after 'i'.
+    Button still dead.
+```
+
+Root cause: **Arduino pin mapping bug** — Nicla Sense ME PinDescription array maps:
+
+```text
+Arduino pin 0  → P0.10 (GPIO3)
+Arduino pin 1  → P0.09 (GPIO2/RX)
+Arduino pin 2  → P0.20 (GPIO1/TX)    ← WRONG PIN!
+Arduino pin 3  → P0.23 (SCL1)
+...
+Arduino pin 10 → P0.02 (A0)          ← CORRECT PIN
+```
+
+Piezo button code used `PIN = 2` for everything:
+- `pinMode(2, INPUT_PULLUP)` → configured **P0.20** (TX), not P0.02
+- `attachInterrupt(digitalPinToInterrupt(2), ...)` → interrupt on **P0.20**
+- `NRF_GPIO->IN >> 2` → read **P0.02** (correct, but no pull-up, floating!)
+
+P0.02 was floating (1.8V at boot, 0V noise after `i`).
+P0.20 (TX) toggled during serial comms → spurious ISR fires → `m_pressed = true` → auto-arm.
+
+The LDC1612 code had the **same bug** (`INTB_PIN = 2`), but it used direct
+register access for wake (`PIN_CNF[2]`), so it partially worked.
+
+#### Fix — FW 5.36 (commit `343102c`)
+
+Split into two constants:
+- `ARDUINO_PIN = 10` (A0 = P0.02) for `pinMode` / `attachInterrupt`
+- `NRF_PIN = 2` (P0.02 physical) for `NRF_GPIO->IN` / `PIN_CNF` register access
+
+Also fixed LDC1612 `INTB_PIN` (was 2, now 10).
+
+#### Iteration 4 — FW 5.36 (LDC removed, still broken)
+
+```text
+JP: LDC1612 physically removed from board. 5.36 flashed.
+    Device still starts in ARMED. P0.02 = 1.8V at boot, 0V after 'i'.
+    Button still dead.
+    "Are you telling me that we spent a week debugging the LDC behaviour,
+     and the problem was a pin definition? Now check all the PIN definitions!"
+```
+
+Root cause: **Same pin mapping bug in 3 more files.** Full audit of every
+`pinMode` / `digitalWrite` / `digitalRead` / `attachInterrupt` call:
+
+| File | Code | Got | Should be | Impact |
+|------|------|-----|-----------|--------|
+| `spi_flash.cpp` | `pinMode(26)` | out of range | `16` (CS FLASH) | DP never worked |
+| `spi_flash.cpp` | `pinMode(3)` | P0.23 (SCL1!) | `9` (SCK P0.11) | toggled I²C SCL |
+| `spi_flash.cpp` | `pinMode(4)` | P0.22 (SDA1!) | `8` (MOSI P0.27) | toggled I²C SDA |
+| `main.cpp` `w` | `pinMode(22)` | out of range | `4` (SDA1) | silent no-op |
+| `main.cpp` `w` | `pinMode(23)` | out of range | `3` (SCL1) | silent no-op |
+| `main.cpp` `?` | `digitalRead(10)` | P0.02 (button!) | no Qi hw | wrong `qi` field |
+
+#### Fix — FW 5.37 (commit `11e2839`)
+
+Full pin audit + fix all remaining Arduino API pin mapping bugs:
+- `spi_flash.cpp`: 26→16, 3→9, 4→8 (both enter + release DP)
+- `main.cpp w`: 22→4, 23→3 (SDA1/SCL1 toggle)
+- `main.cpp qi`: `digitalRead(10)` → `false` (no Qi hardware)
+- Verified correct (no change): `PIN_CNF[2]`, `PIN_CNF[14]`, `PIN_CNF[19]`,
+  `NRF_P0->OUTCLR`, `NRF_GPIO->IN >> 2` — all direct register access, correct
+
+### Pin map reference (Nicla Sense ME)
+
+```
+Arduino  0 → P0.10 (GPIO3)          Arduino 10 → P0.02 (A0 / button)
+Arduino  1 → P0.09 (GPIO2/RX)       Arduino 11 → P0.30 (A1)
+Arduino  2 → P0.20 (GPIO1/TX)       Arduino 12 → P0.19 (ESLOV/LED)
+Arduino  3 → P0.23 (SCL1)           Arduino 13 → P0.18 (Reset BHI260)
+Arduino  4 → P0.22 (SDA1)           Arduino 14 → P0.14 (BHI260 INT)
+Arduino  5 → P0.24 (GPIO0)          Arduino 15 → P0.25 (BQ25120 CD)
+Arduino  6 → P0.29 (CS BHI260)      Arduino 16 → P0.26 (CS FLASH)
+Arduino  7 → P0.28 (MISO)           Arduino 17 → P0.31 (CS BHI260 alt)
+Arduino  8 → P0.27 (MOSI)
+Arduino  9 → P0.11 (SCK)
+```
 
 ## 2b. Closed / parked this session
 
@@ -358,7 +429,8 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 | TC-2026-08-14-001 | 2026-08-14 | FW 5.02 boot + smoke | **PASS smoke** | §2b |
 | TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2b (closed) |
 | TC-2026-08-15-001 | 2026-08-15 | FT download hang + `ble_radio` regression | **PASS (5.16)** | history |
-| TC-2026-08-22-001 | 2026-08-22 | LDC stale-status race + System Off wake + boot diagnostics | **PASS (5.27)** | §2 (active) |
+| TC-2026-08-22-001 | 2026-08-22 | LDC stale-status race + System Off wake + boot diagnostics | **PASS (5.27)** | history |
+| TC-2026-08-24-001 | 2026-08-24 | LDC1612 still in boot path — button dead + auto-arm | **PENDING JP BENCH (5.34)** | §2 (active) |
 | run_20260814_0900 | 2026-08-14 | Smoke 5.03 | inject+S04 PASS; flash **9/10** U13 flake | `tmp_test_results/` |
 | run_20260814_0911 | 2026-08-14 | Smoke 5.03 | **ALL PASS** 21+10+1 | `tmp_test_results/` (SSH push OK) |
 | 2026-08-18 FT | 2026-08-18 | FW 5.14 FT warm-reset stall + hard-reboot success | FT ✅ after POR; `ble_radio` ❌ | §2 + §3 |

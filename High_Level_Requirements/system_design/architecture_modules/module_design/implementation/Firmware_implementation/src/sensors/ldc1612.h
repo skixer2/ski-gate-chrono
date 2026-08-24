@@ -69,6 +69,12 @@ public:
        LDC wake from System Off handled by BHI260 any-motion (P0.14). */
     void sleep();
 
+    /* V5.34: Quiesce LDC1612 at boot — chip powers up in active mode,
+       DRDY fires immediately, INTB pulls P0.02 LOW.
+       This writes CONFIG=0 (sleep) + clears DRDY so INTB releases.
+       Must be called BEFORE piezo button init to free P0.02. */
+    void quiesce();
+
 private:
     uint16_t read_reg16(uint8_t reg);
     void     write_reg16(uint8_t reg, uint16_t val);
@@ -82,5 +88,7 @@ private:
     bool     m_baseline_valid;               /* Phase 11: true if baseline is non-zero   */
     uint32_t m_arm_threshold, m_arm_hold_ms, m_factory_hold_ms;
 
-    static constexpr uint8_t INTB_PIN = 2;
+    /* Nicla Sense ME: Arduino pin 2 = P0.20 (TX), not P0.02.
+       P0.02 = Arduino pin 10 (A0). */
+    static constexpr uint8_t INTB_PIN = 10;  /* A0 = P0.02 */
 };

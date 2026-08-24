@@ -326,6 +326,25 @@ void LDC1612::sleep()
     /* INTB should now stay HIGH (no more conversions) */
 }
 
+/* V5.34: Quiesce LDC1612 at boot — chip powers up in active mode,
+   DRDY fires immediately, INTB pulls P0.02 LOW.
+   This writes CONFIG=0 (sleep) + clears DRDY so INTB releases.
+   Must be called BEFORE piezo button init to free P0.02. */
+void LDC1612::quiesce()
+{
+    Wire.begin();
+    Wire.setClock(I2C_CLK);
+    /* Ping device — if not present, skip (leave m_wire_ok as-is) */
+    Wire.beginTransmission(I2C_ADDR);
+    if (Wire.endTransmission() != 0) return;
+    /* Stop all conversions — CONFIG bit 0 = 0 (sleep mode) */
+    write_reg16(REG_CONFIG, 0x0000);
+    /* Clear any pending DRDY by reading DATA0 */
+    read_reg16(REG_DATA0_MSB);
+    read_reg16(REG_DATA0_LSB);
+    /* INTB should now release HIGH (pull-up, no DRDY) */
+}
+
 bool LDC1612::is_connected()         { return read_device_id() == 0x3055; }
 uint16_t LDC1612::read_device_id()   { return read_reg16(REG_DEVICE_ID); }
 uint16_t LDC1612::read_manufacturer_id() { return read_reg16(REG_MANUFACTURER_ID); }

@@ -112,60 +112,59 @@ bool SPIFlash::self_test()
 
 void SPIFlash::enter_deep_powerdown()
 {
-    /* V2.91: Simple bit-bang 0xB9 via Arduino digitalWrite.
-       Same pattern as V2.82 that gave -22 (proved DP protects flash).
-       Each bit takes ~2µs at mbed speed — well within MX25R timing. */
-    pinMode(26, OUTPUT);
-    pinMode(3, OUTPUT);
-    pinMode(4, OUTPUT);
-    digitalWrite(26, HIGH);  /* CS HIGH */
-    digitalWrite(3, LOW);    /* SCK LOW */
+    /* V5.37: Fix pin mapping — was using physical pin numbers
+       instead of Arduino pin numbers. Was toggling I²C SDA/SCL
+       instead of SPI SCK/MOSI, and CS was out of range.
+       Correct: CS=16 (P0.26), SCK=9 (P0.11), MOSI=8 (P0.27). */
+    pinMode(16, OUTPUT);   /* CS FLASH  (P0.26) */
+    pinMode(9,  OUTPUT);   /* SCK       (P0.11) */
+    pinMode(8,  OUTPUT);   /* MOSI      (P0.27) */
+    digitalWrite(16, HIGH);  /* CS HIGH */
+    digitalWrite(9,  LOW);   /* SCK LOW */
     delayMicroseconds(10);
 
     /* CS LOW → select flash */
-    digitalWrite(26, LOW);
+    digitalWrite(16, LOW);
     delayMicroseconds(1);
 
     /* Send 0xB9 (Enter Deep Power-Down), MSB first */
     for (int i = 7; i >= 0; i--) {
-        digitalWrite(4, (0xB9 >> i) & 1);
+        digitalWrite(8, (0xB9 >> i) & 1);   /* MOSI */
         delayMicroseconds(1);
-        digitalWrite(3, HIGH);
+        digitalWrite(9, HIGH);              /* SCK ↑ */
         delayMicroseconds(1);
-        digitalWrite(3, LOW);
+        digitalWrite(9, LOW);               /* SCK ↓ */
     }
 
     delayMicroseconds(1);
-    digitalWrite(26, HIGH);  /* CS HIGH → flash enters DP */
+    digitalWrite(16, HIGH);  /* CS HIGH → flash enters DP */
     delayMicroseconds(10);   /* tDP ≥ 3µs */
 }
 
 void SPIFlash::release_deep_powerdown()
 {
-    /* V2.91: Bit-bang 0xAB to release from DP at boot.
-       In DP mode: wakes flash. In normal mode (cold boot):
-       reads 1 byte Electronic ID — harmless dummy read. */
-    pinMode(26, OUTPUT);
-    pinMode(3, OUTPUT);
-    pinMode(4, OUTPUT);
-    digitalWrite(26, HIGH);  /* CS HIGH */
-    digitalWrite(3, LOW);    /* SCK LOW */
+    /* V5.37: Fix pin mapping — same as enter_deep_powerdown(). */
+    pinMode(16, OUTPUT);   /* CS FLASH  (P0.26) */
+    pinMode(9,  OUTPUT);   /* SCK       (P0.11) */
+    pinMode(8,  OUTPUT);   /* MOSI      (P0.27) */
+    digitalWrite(16, HIGH);  /* CS HIGH */
+    digitalWrite(9,  LOW);   /* SCK LOW */
     delayMicroseconds(10);
 
     /* CS LOW → select flash */
-    digitalWrite(26, LOW);
+    digitalWrite(16, LOW);
     delayMicroseconds(1);
 
     /* Send 0xAB (Release DP / Read Electronic ID), MSB first */
     for (int i = 7; i >= 0; i--) {
-        digitalWrite(4, (0xAB >> i) & 1);
+        digitalWrite(8, (0xAB >> i) & 1);   /* MOSI */
         delayMicroseconds(1);
-        digitalWrite(3, HIGH);
+        digitalWrite(9, HIGH);              /* SCK ↑ */
         delayMicroseconds(1);
-        digitalWrite(3, LOW);
+        digitalWrite(9, LOW);               /* SCK ↓ */
     }
 
     delayMicroseconds(1);
-    digitalWrite(26, HIGH);  /* CS↑ → flash exits DP */
+    digitalWrite(16, HIGH);  /* CS↑ → flash exits DP */
     delayMicroseconds(50);   /* tDPDD = 35µs max */
 }
