@@ -76,11 +76,14 @@ Get-ChildItem test_s0*.py | ForEach-Object { py sgc_test_harness.py --port COM8 
 
 
 
+
+
 # Common setup
 cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 
 # Smoke (~2–3 min) — after every flash
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 foreach ($t in @(
   'test_sensor_injection.py',
   'test_flash.py',
@@ -90,6 +93,7 @@ foreach ($t in @(
 }
 
 # Core (~8–12 min) — day-to-day “is it good?”
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 foreach ($t in @(
   'test_sensor_injection.py',
   'test_flash.py',
@@ -104,7 +108,7 @@ foreach ($t in @(
 }
 
 # Full (~15–25 min) — release / tag candidate
-(what you’re doing now)
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 Get-ChildItem test_*.py | ForEach-Object {
   py sgc_test_harness.py --port COM8 $_.FullName --run-id $runId
 }
@@ -119,7 +123,26 @@ py run_device_suite.py COM8 -R
 
 # Single test
 cd ...\unit_tests
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
 py sgc_test_harness.py --port COM8 test_s03_stream_run.py --run-id $runId
+
+
+
+
+
+
+.\run_smoke.ps1            # smoke + auto-push (even if tests fail)
+.\run_core.ps1             # core + auto-push
+.\run_smoke.ps1 -Clean     # prune old runs first (keep 15), then smoke + push
+.\run_smoke.ps1 -SkipPush  # local only
+.\run_full.ps1
+Cleanup
+Copy
+.\cleanup_test_results.ps1              # keep 10 run groups, drop >14 days
+.\cleanup_test_results.ps1 -DryRun
+.\cleanup_test_results.ps1 -KeepRuns 15
+
+
 
 
 
@@ -157,9 +180,9 @@ py test_stream_run.py COM8 --duration 20 --gates 10
 py test_stream_run.py COM8 --duration 25 --gates 10
 py test_stream_run.py COM8 --duration 20 --gates 10 -R
 py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike05.ndjson
-py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike73.ndjson --seed 45
+py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike76.ndjson --seed 45
 py test_stream_run.py COM8 --duration 25 --gates 10 -R --save run_spike72.ndjson --seed 45
-py test_stream_run.py COM8 --duration 25 --gates 10 -R --save run_spike72.ndjson --seed 45 --onboard-led
+
 h 0 raw
 
 
