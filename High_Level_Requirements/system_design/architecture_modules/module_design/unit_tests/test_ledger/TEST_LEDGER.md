@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-24 13:28 UTC  
-**Current baselines:** FW **5.35** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** 5.27 partial — **5.35 smoke pending JP**  
+**Last updated:** 2026-08-24 14:01 UTC  
+**Current baselines:** FW **5.36** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** 5.27 partial — **5.36 smoke pending JP**  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -133,7 +133,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | **Case ID** | `TC-2026-08-24-001` |
 | **Title** | LDC1612 still in boot path — button dead + auto-arm on boot (FW 5.32–5.33) |
 | **Objective** | Button press in SLEEP → ARMED; boot → SLEEP (no auto-arm); P0.02 = 3.3 V idle |
-| **Baseline under test** | FW **5.35** (commit `0a64276`) · App **1.11** (unbuilt) · Nicla COM8 |
+| **Baseline under test** | FW **5.36** (commit `343102c`) · App **1.11** (unbuilt) · Nicla COM8 |
 | **Priority** | **P0** |
 | **Opened** | 2026-08-24 |
 | **Owner** | Lead Systems Coordinator |
@@ -186,7 +186,7 @@ All three symptoms explained:
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PENDING JP BENCH** — FW 5.35 pushed, not yet tested on device |
+| **Result** | **PENDING JP BENCH** — FW 5.36 pushed, not yet tested on device |
 | **Code review** | ✅ Coordinator — LDC quiesced at boot, all `g_ldc.*` calls guarded |
 | **Build** | ❓ Not built on PC (no PlatformIO on gateway) — JP to build + flash |
 | **Next** | JP: `git pull && pio run -t upload -e nicla` → verify boot→SLEEP, button→ARMED, voltage |
@@ -217,6 +217,45 @@ Added `LDC1612::quiesce()`:
 Called in `setup()` **before** `g_button.begin()` to free P0.02 for the piezo button.
 
 Boot log should show: `{"ev":"init","sub":"ldc_quiesce","ok":true}`
+
+#### Iteration 3 — FW 5.35 (LDC quiesced, still broken)
+
+```text
+JP: LDC1612 physically removed from board. 5.35 flashed.
+    Device still starts in ARMED.
+    P0.02 = 1.8V at boot, 0V after 'i'.
+    Button still dead.
+```
+
+Root cause: **Arduino pin mapping bug** — Nicla Sense ME PinDescription array maps:
+
+```text
+Arduino pin 0  → P0.10 (GPIO3)
+Arduino pin 1  → P0.09 (GPIO2/RX)
+Arduino pin 2  → P0.20 (GPIO1/TX)    ← WRONG PIN!
+Arduino pin 3  → P0.23 (SCL1)
+...
+Arduino pin 10 → P0.02 (A0)          ← CORRECT PIN
+```
+
+Piezo button code used `PIN = 2` for everything:
+- `pinMode(2, INPUT_PULLUP)` → configured **P0.20** (TX), not P0.02
+- `attachInterrupt(digitalPinToInterrupt(2), ...)` → interrupt on **P0.20**
+- `NRF_GPIO->IN >> 2` → read **P0.02** (correct, but no pull-up, floating!)
+
+P0.02 was floating (1.8V at boot, 0V noise after `i`).
+P0.20 (TX) toggled during serial comms → spurious ISR fires → `m_pressed = true` → auto-arm.
+
+The LDC1612 code had the **same bug** (`INTB_PIN = 2`), but it used direct
+register access for wake (`PIN_CNF[2]`), so it partially worked.
+
+#### Fix — FW 5.36 (commit `343102c`)
+
+Split into two constants:
+- `ARDUINO_PIN = 10` (A0 = P0.02) for `pinMode` / `attachInterrupt`
+- `NRF_PIN = 2` (P0.02 physical) for `NRF_GPIO->IN` / `PIN_CNF` register access
+
+Also fixed LDC1612 `INTB_PIN` (was 2, now 10).
 
 ## 2b. Closed / parked this session
 
