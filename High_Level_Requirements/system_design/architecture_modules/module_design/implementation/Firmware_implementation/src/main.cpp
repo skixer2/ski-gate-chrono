@@ -683,14 +683,16 @@ void handle_serial()
         return;
     }
     case 'w': {
-        pinMode(22, OUTPUT); pinMode(23, OUTPUT);
+        /* V5.37: Fix pin mapping — was 22/23 (out of range).
+           SDA1 = Arduino pin 4 (P0.22), SCL1 = Arduino pin 3 (P0.23). */
+        pinMode(4, OUTPUT); pinMode(3, OUTPUT);
         Serial.println("Toggling (disconnect Seeed first!) — any key to stop");
         while (!Serial.available()) {
-            digitalWrite(22, HIGH); digitalWrite(23, LOW);  delay(500);
-            digitalWrite(22, LOW);  digitalWrite(23, HIGH); delay(500);
+            digitalWrite(4, HIGH); digitalWrite(3, LOW);  delay(500);
+            digitalWrite(4, LOW);  digitalWrite(3, HIGH); delay(500);
         }
         while (Serial.available()) Serial.read();
-        pinMode(22, INPUT_PULLUP); pinMode(23, INPUT_PULLUP);
+        pinMode(4, INPUT_PULLUP); pinMode(3, INPUT_PULLUP);
         Serial.println("Stopped.");
         return;
     }
@@ -743,7 +745,9 @@ void handle_serial()
         Serial.print(','); json_kv("p", (long)(pressure.value() * 100));   /* hPa→Pa for display */
         Serial.print(','); json_kv("bat", (long)(batt >= 0 ? batt : 0));
         Serial.print(','); json_kv("evc", (long)g_meta_event_count);
-        Serial.print(','); json_kv_bool("qi", !digitalRead(10));
+        /* V5.37: No Qi hardware on Nicla or custom PCB (dropped v4.2).
+           Was digitalRead(10) = P0.02 = button pin, not Qi. */
+        Serial.print(','); json_kv_bool("qi", false);
         Serial.print(','); json_kv("runs", (long)g_runs.run_count());
         Serial.print(','); json_kv("total_runs", (long)g_runs.total_run_count());
         Serial.print(','); json_kv("oldest_age", (long)g_runs.oldest_run_age());
