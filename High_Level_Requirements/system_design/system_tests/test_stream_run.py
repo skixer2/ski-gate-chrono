@@ -42,7 +42,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="S03 - Stream injection system test",
     )
-    parser.add_argument("port", help="Serial port (e.g., COM8, /dev/ttyACM0)")
+    parser.add_argument("port", nargs="?", default=None,
+                        help="Serial port (e.g., COM3, /dev/ttyACM0). "
+                             "Can also be set with --port.")
+    parser.add_argument("--port", dest="port_opt", default=None,
+                        help="Serial port (alternative to positional arg)")
     parser.add_argument("--duration", type=float, default=50.0,
                         help="Run duration (default: 50s)")
     parser.add_argument("--gates", type=int, default=30,
@@ -59,18 +63,25 @@ def main():
 
     args = parser.parse_args()
 
+    # Resolve port: positional or --port flag
+    port = args.port or args.port_opt
+    if not port:
+        parser.error("Serial port required: pass positional arg or --port")
+
     print("=" * 50)
     print("S03 - Stream Injection System Test")
-    print(f"  Port:     {args.port}")
+    print(f"  Port:     {port}")
     print(f"  Duration: {args.duration}s")
     print(f"  Gates:    {args.gates}")
     print(f"  Seed:     {args.seed}")
     if args.replay:
         print(f"  Replay:   {args.replay}")
+    if args.save:
+        print(f"  Save:     {args.save}")
     print("=" * 50)
 
     exit_code = run_full_test(
-        port=args.port,
+        port=port,
         duration_s=args.duration,
         gate_count=args.gates,
         seed=args.seed,
