@@ -1,0 +1,206 @@
+cd unit_tests
+pip install pyserial
+
+# List serial ports
+python sgc_test_harness.py --list
+
+# Run all unit tests
+for f in test_*.py; do echo "=== $f ===" && python sgc_test_harness.py --port COM3 $f; done			bash
+
+# All tests, single combined file (append mode)
+rm results_all.md results_all.log
+Get-ChildItem test_*.py | ForEach-Object { Write-Host "=== $_ ==="; py sgc_test_harness.py --port COM8 $_ -o results_all.md -l results_all.log }		powershell
+
+rm results_all.md results_all.log
+dir test_*.py | % { "=== $_ ==="; py sgc_test_harness.py --port COM8 $_ -o results_all.md -l results_all.log }					powershell
+
+
+# All tests, one file each
+Get-ChildItem test_*.py | ForEach-Object { Write-Host "=== $_ ==="; py sgc_test_harness.py --port COM8 $_ -o results_all.md -l results_all.log --ts}
+dir test_*.py | % { "=== $_ ==="; py sgc_test_harness.py --port COM8  $_ --ts}
+
+py run_device_suite.py COM8 -R              # S04 + S05 + S06
+py run_device_suite.py COM8 -R --with-s03   # + stream integrity
+
+
+# All tests, one .md, multipl .log
+rm $runId*
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
+Get-ChildItem test_*.py | ForEach-Object { 
+    py sgc_test_harness.py --port COM8 $_ --run-id $runId 
+}
+
+
+
+
+How to run all unit + system tests
+1) Full loop (unit + S03–S06) — recommended
+cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests
+
+# optional:
+Remove-Item "${runId}*" -ErrorAction SilentlyContinue
+
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
+
+Get-ChildItem test_*.py | ForEach-Object {
+  py sgc_test_harness.py --port COM8 $_ --run-id $runId
+}
+# → $runId.md + per-file .log
+Includes: bit_packer, edge_cases, end/start detectors, flash, ring, sensor injection, state machine, S03, S04, S05, S06.
+Expect several minutes (device tests each do -R).
+
+2) Device system only (no unit files)
+cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\system_tests
+
+py run_device_suite.py COM8 -R --with-s03   # S03+S04+S05+S06
+py run_device_suite.py COM8 -R             # S04+S05+S06 only
+
+3) One-offs
+# from system_tests/
+py test_stream_run.py COM8 --duration 25 --gates 10 --seed 45 -R --save run.ndjson   # S03
+py test_bhy2_rate.py  COM8 --duration 20 -R                                          # S04
+py test_ring_fill.py  COM8 -R                                                        # S05
+py test_ring_drain.py COM8 -R --fill-s 12                                            # S06
+After git pull you get the S03 wrapper + docs. Flash is already v4.79 from your pass.
+
+4) Just system tests (S03–S06)
+cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests
+
+# optional:
+Remove-Item "${runId}*" -ErrorAction SilentlyContinue
+
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
+
+Get-ChildItem test_s0*.py | ForEach-Object { py sgc_test_harness.py --port COM8 $_ --run-id $runId }
+
+
+
+
+# Common setup
+cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\architecture_modules\module_design\unit_tests
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
+
+# Smoke (~2–3 min) — after every flash
+foreach ($t in @(
+  'test_sensor_injection.py',
+  'test_flash.py',
+  'test_s04_bhy2_rate.py'
+)) {
+  py sgc_test_harness.py --port COM8 $t --run-id $runId
+}
+
+# Core (~8–12 min) — day-to-day “is it good?”
+foreach ($t in @(
+  'test_sensor_injection.py',
+  'test_flash.py',
+  'test_s04_bhy2_rate.py',
+  'test_s03_stream_run.py',
+  'test_s05_ring_fill.py',
+  'test_s06_ring_drain.py',
+  'test_start_detector.py',
+  'test_state_machine.py'
+)) {
+  py sgc_test_harness.py --port COM8 $t --run-id $runId
+}
+
+# Full (~15–25 min) — release / tag candidate
+(what you’re doing now)
+Get-ChildItem test_*.py | ForEach-Object {
+  py sgc_test_harness.py --port COM8 $_.FullName --run-id $runId
+}
+Note: full includes S02 factory reset (wipes runs) and U20 ARM_TIMEOUT (~30 s). Prefer running S02 last; alphabetical order usually puts test_s02_* before S03–S06.
+
+# Device-only (S03–S06, no units)
+cd F:\Documents\Progetti\ski-gate-chrono\High_Level_Requirements\system_design\system_tests
+py run_device_suite.py COM8 -R --with-s03
+
+# without S03:
+py run_device_suite.py COM8 -R
+
+# Single test
+cd ...\unit_tests
+py sgc_test_harness.py --port COM8 test_s03_stream_run.py --run-id $runId
+
+
+
+
+
+
+# Single test
+py sgc_test_harness.py --port COM8 test_state_machine.py -o results.md
+py sgc_test_harness.py --port COM8 test_edge_cases.py -o results.md
+py sgc_test_harness.py --port COM8 --ts test_*.py
+
+
+py run_device_suite.py COM8 -R              # S04 + S05 + S06
+py run_device_suite.py COM8 -R --with-s03   # + stream integrity
+
+
+
+Quick: Run Only the Passing Tests
+
+cd unit_tests
+for f in test_state_machine.py test_start_detector.py test_end_detector.py test_ring_buffer.py test_flash.py test_bit_packer.py test_sensor_injection.py; do
+    echo "=== $f ==="
+    py sgc_test_harness.py --port COM3 $f
+done
+
+
+
+# Stream test
+
+# Full 50s system test
+py system_tests/test_stream_run.py COM8
+
+# Quick 20s smoke test
+py test_stream_run.py COM8 --duration 20 --gates 10
+py test_stream_run.py COM8 --duration 25 --gates 10
+py test_stream_run.py COM8 --duration 20 --gates 10 -R
+py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike05.ndjson
+py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike73.ndjson --seed 45
+py test_stream_run.py COM8 --duration 25 --gates 10 -R --save run_spike72.ndjson --seed 45
+py test_stream_run.py COM8 --duration 25 --gates 10 -R --save run_spike72.ndjson --seed 45 --onboard-led
+h 0 raw
+
+
+# Forced internal logging
+py test_bhy2_rate.py COM8 --duration 20 -R
+py test_bhy2_rate.py COM8 --duration 20 -R --onboard-led
+
+# S05 — fill to 1000 @ BHY2
+py test_ring_fill.py COM8 -R
+py test_ring_fill.py COM8 -R --onboard-led
+
+# Optional full 30 s capacity (ARM may timeout at 30 s)
+py test_ring_fill.py COM8 --target 0 --timeout 35
+
+# S06 — fill ~8s then drain path (capital L)
+py test_ring_drain.py COM8 -R
+py test_ring_drain.py COM8 -R --fill-s 12
+
+# or longer fill:
+py test_ring_drain.py COM8 --fill-s 12
+
+# Live Opt-A still
+py test_bhy2_rate.py COM8 -R
+
+
+
+# Replay recorded data
+py system_tests/test_stream_run.py COM8 --replay real_cap.ndjson
+
+# Deterministic CI run
+py system_tests/test_stream_run.py COM8 --seed 42
+
+
+# Data analysis test
+
+# Dump & analizza automaticamente l'ultimo run
+py sgc_run_analyzer.py --port COM8
+
+# Dump & analizza un run specifico
+py sgc_run_analyzer.py --port COM8 --dump 0
+py sgc_run_analyzer.py --port COM8 --dump 2
+
+# Analizza un file già scaricato
+py sgc_run_analyzer.py run_2.bin
