@@ -3,9 +3,9 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-24 13:21 UTC  
-**Current baselines:** FW **5.34** (LDC1612 removed from boot path — P0.02 exclusively piezo button) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
-**Last harness:** 5.27 partial — **5.34 smoke pending JP**  
+**Last updated:** 2026-08-24 13:28 UTC  
+**Current baselines:** FW **5.35** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Last harness:** 5.27 partial — **5.35 smoke pending JP**  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
 This ledger is the **living test + debug notebook** for cross-stack SGC work
@@ -133,7 +133,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | **Case ID** | `TC-2026-08-24-001` |
 | **Title** | LDC1612 still in boot path — button dead + auto-arm on boot (FW 5.32–5.33) |
 | **Objective** | Button press in SLEEP → ARMED; boot → SLEEP (no auto-arm); P0.02 = 3.3 V idle |
-| **Baseline under test** | FW **5.34** (commit `54f4b7d`) · App **1.11** (unbuilt) · Nicla COM8 |
+| **Baseline under test** | FW **5.35** (commit `0a64276`) · App **1.11** (unbuilt) · Nicla COM8 |
 | **Priority** | **P0** |
 | **Opened** | 2026-08-24 |
 | **Owner** | Lead Systems Coordinator |
@@ -186,10 +186,37 @@ All three symptoms explained:
 
 | Field | Value |
 |-------|--------|
-| **Result** | **PENDING JP BENCH** — FW 5.34 pushed, not yet tested on device |
-| **Code review** | ✅ Coordinator — all `g_ldc.*` calls guarded, no stray LDC in boot path |
+| **Result** | **PENDING JP BENCH** — FW 5.35 pushed, not yet tested on device |
+| **Code review** | ✅ Coordinator — LDC quiesced at boot, all `g_ldc.*` calls guarded |
 | **Build** | ❓ Not built on PC (no PlatformIO on gateway) — JP to build + flash |
 | **Next** | JP: `git pull && pio run -t upload -e nicla` → verify boot→SLEEP, button→ARMED, voltage |
+
+#### Iteration 2 — FW 5.34 (removing begin() was not enough)
+
+```text
+JP: 5.34 flashed. Device still starts in ARMED.
+    P0.02 = 1.8V at boot, 0V after 'i'.
+    Button still dead.
+```
+
+Root cause: LDC1612 chip **powers up in active mode by default** — DRDY fires
+immediately and INTB open-drain pulls P0.02 LOW, even without `g_ldc.begin()`.
+The chip's power-on default has CONFIG bit 0 = 1 (active). Removing `begin()`
+from setup was necessary but not sufficient — the chip was still actively
+driving INTB LOW.
+
+#### Fix — FW 5.35 (commit `0a64276`)
+
+Added `LDC1612::quiesce()`:
+- `Wire.begin()` + `Wire.setClock(100kHz)`
+- Ping I2C address 0x2B (skip if not present)
+- Write `CONFIG = 0x0000` (sleep mode — bit 0 = 0 stops conversions)
+- Read `DATA0_MSB` + `DATA0_LSB` to clear any pending DRDY
+- INTB releases HIGH (pull-up, no more DRDY)
+
+Called in `setup()` **before** `g_button.begin()` to free P0.02 for the piezo button.
+
+Boot log should show: `{"ev":"init","sub":"ldc_quiesce","ok":true}`
 
 ## 2b. Closed / parked this session
 
