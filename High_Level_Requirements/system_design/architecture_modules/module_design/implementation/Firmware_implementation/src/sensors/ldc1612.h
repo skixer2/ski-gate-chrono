@@ -88,5 +88,7 @@ private:
     bool     m_baseline_valid;               /* Phase 11: true if baseline is non-zero   */
     uint32_t m_arm_threshold, m_arm_hold_ms, m_factory_hold_ms;
 
-    static constexpr uint8_t INTB_PIN = 2;
+    /* Nicla Sense ME: Arduino pin 2 = P0.20 (TX), not P0.02.
+       P0.02 = Arduino pin 10 (A0). */
+    static constexpr uint8_t INTB_PIN = 10;  /* A0 = P0.02 */
 };

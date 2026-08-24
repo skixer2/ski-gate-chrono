@@ -1200,7 +1200,7 @@ void setup()
     json_begin();
     json_kv("ev", "init");
     Serial.print(','); json_kv("sub", "piezo_btn");
-    Serial.print(','); json_kv("pin", (long)PiezoButton::PIN);
+    Serial.print(','); json_kv("pin", (long)PiezoButton::ARDUINO_PIN);
     json_end();
 
     /* V5.15 T-008a: warm reset preserves Cordio statics — tear down before begin.

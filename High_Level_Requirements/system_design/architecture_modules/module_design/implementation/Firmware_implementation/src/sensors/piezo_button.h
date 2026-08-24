@@ -23,7 +23,12 @@
 class PiezoButton
 {
 public:
-    static constexpr uint8_t  PIN             = 2;       /* P0.02 */
+    /* NB: On Nicla Sense ME, Arduino pin 2 = P0.20 (TX!), not P0.02.
+       P0.02 is Arduino pin 10 (A0). Use ARDUINO_PIN for Arduino API
+       calls (pinMode, attachInterrupt) and NRF_PIN for direct register
+       access (NRF_GPIO->IN, PIN_CNF). */
+    static constexpr uint8_t  ARDUINO_PIN     = 10;  /* A0 = P0.02 */
+    static constexpr uint8_t  NRF_PIN         = 2;   /* P0.02 physical */
     static constexpr uint32_t DEBOUNCE_MS     = 20;      /* mechanical debounce */
     static constexpr uint32_t PRESS_WINDOW_MS = 3000;    /* 5 presses in 3s = factory reset */
     static constexpr uint8_t  FACTORY_PRESS_COUNT = 5;

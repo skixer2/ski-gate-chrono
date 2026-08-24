@@ -17,8 +17,8 @@ void button_isr()
     uint32_t now = millis();
     PiezoButton *b = &g_button;
 
-    /* Read pin state */
-    bool pin_low = (NRF_GPIO->IN >> PiezoButton::PIN) & 1 ? false : true;
+    /* Read pin state — use physical nRF52 pin number, not Arduino pin */
+    bool pin_low = (NRF_GPIO->IN >> PiezoButton::NRF_PIN) & 1 ? false : true;
 
     /* Debounce — ignore edges within DEBOUNCE_MS */
     if (now - b->m_last_edge_ms < b->DEBOUNCE_MS) return;
@@ -45,17 +45,19 @@ void button_isr()
 
 void PiezoButton::begin()
 {
-    pinMode(PIN, INPUT_PULLUP);
+    /* Use Arduino pin number (10 = A0 = P0.02) for Arduino API calls.
+       NRF_PIN (2) is for direct register access only. */
+    pinMode(ARDUINO_PIN, INPUT_PULLUP);
     m_pressed = false;
     m_last_press_ms = 0;
     m_press_count = 0;
     m_window_start = 0;
     m_factory_trigger = false;
     m_last_edge_ms = 0;
-    m_last_pin_state = digitalRead(PIN) == HIGH;
+    m_last_pin_state = digitalRead(ARDUINO_PIN) == HIGH;
 
     /* Attach falling-edge interrupt */
-    attachInterrupt(digitalPinToInterrupt(PIN), button_isr, FALLING);
+    attachInterrupt(digitalPinToInterrupt(ARDUINO_PIN), button_isr, FALLING);
 }
 
 void PiezoButton::tick()
