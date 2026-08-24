@@ -38,8 +38,8 @@
    Timeout = 5s: safe for flash erase (~2-3s/sector) and BLE radio_restart
    (~100–400 ms with V5.15 settle+retry; still << 5s). */
 static constexpr uint32_t WDT_TIMEOUT_MS = 5000;
-//static constexpr uint32_t SLEEP_SYSTEM_OFF_MS    = 3600000; /* 1 h sleep → System Off */
-static constexpr uint32_t SLEEP_SYSTEM_OFF_MS    = 30000;   // 30 s — JP test override
+static constexpr uint32_t SLEEP_SYSTEM_OFF_MS    = 3600000; /* 1 h sleep → System Off */
+//static constexpr uint32_t SLEEP_SYSTEM_OFF_MS    = 30000;   // 30 s — JP test override
 // TODO: restore to 3600000 (1 h) after System Off wake testing
 static constexpr uint32_t ARM_TIMEOUT_MS         = 30000;   /* 30 s armed → sleep */
 static constexpr uint32_t POST_RUN_COOLDOWN_MS   = 10000;   /* 10 s before sleep */
