@@ -1184,9 +1184,16 @@ void setup()
     Serial.print(','); json_kv("why", "boot");
     json_end();
 
-    /* V5.34: LDC1612 NOT initialized at boot — removed from boot path.
-       P0.02 is exclusively the piezo button now. LDC is lazy-init'd
-       on-demand only when 'c' or 'z' diagnostic commands are used. */
+    /* V5.34: LDC1612 NOT initialized at boot — but chip powers up in
+       active mode by default (DRDY fires, INTB pulls P0.02 LOW).
+       Quiesce it: CONFIG=0 (sleep) + clear DRDY → INTB releases HIGH.
+       Must happen BEFORE piezo button init to free P0.02. */
+    g_ldc.quiesce();
+    json_begin();
+    json_kv("ev", "init");
+    Serial.print(','); json_kv("sub", "ldc_quiesce");
+    Serial.print(','); json_kv_bool("ok", g_ldc.is_connected());
+    json_end();
 
     /* V5.32: Piezo button init — replaces LDC for arming/wake. */
     g_button.begin();

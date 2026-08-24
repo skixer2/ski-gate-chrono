@@ -69,6 +69,12 @@ public:
        LDC wake from System Off handled by BHI260 any-motion (P0.14). */
     void sleep();
 
+    /* V5.34: Quiesce LDC1612 at boot — chip powers up in active mode,
+       DRDY fires immediately, INTB pulls P0.02 LOW.
+       This writes CONFIG=0 (sleep) + clears DRDY so INTB releases.
+       Must be called BEFORE piezo button init to free P0.02. */
+    void quiesce();
+
 private:
     uint16_t read_reg16(uint8_t reg);
     void     write_reg16(uint8_t reg, uint16_t val);
