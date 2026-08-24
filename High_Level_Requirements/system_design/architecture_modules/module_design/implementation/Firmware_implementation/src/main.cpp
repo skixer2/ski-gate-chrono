@@ -1425,7 +1425,7 @@ void loop()
             g_runs.erase_all();
             g_runs.metadata_sync();
             json_begin(); json_kv("ev", "reboot"); json_end();
-            g_flash.enter_deep_powerout();
+            g_flash.enter_deep_powerdown();
             delay(50);
             NVIC_SystemReset();
             return;

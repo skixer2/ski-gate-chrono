@@ -54,6 +54,9 @@ private:
     /* Debounce state */
     volatile uint32_t m_last_edge_ms;
     volatile bool     m_last_pin_state;  /* HIGH = released, LOW = pressed */
+
+    /* ISR is a free function — needs access to private state */
+    friend void button_isr();
 };
 
 /* Global singleton */

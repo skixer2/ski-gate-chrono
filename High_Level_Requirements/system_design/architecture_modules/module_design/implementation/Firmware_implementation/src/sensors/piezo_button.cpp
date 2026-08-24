@@ -12,7 +12,7 @@
 PiezoButton g_button;
 
 /* ISR — minimal work, just record timestamp and set flag */
-static void button_isr()
+void button_isr()
 {
     uint32_t now = millis();
     PiezoButton *b = &g_button;
