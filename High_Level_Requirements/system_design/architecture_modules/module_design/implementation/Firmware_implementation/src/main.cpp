@@ -576,6 +576,10 @@ void handle_serial()
                    fine; host drop was from back-to-back bursts. */
                 Serial.flush();
                 if ((++pace & 1) == 0) delay(1);
+                /* V5.39: Feed WDT inside hex dump — this loop can take
+                   ~8s for a 40 KB run, but WDT timeout is 5s. Without
+                   this, the device reboots mid-dump (RESETREAS=DOG). */
+                NRF_WDT->RR[0] = WDT_RR_RR_Reload;
             }
             json_begin(); json_kv("ev","hex_done");
             Serial.print(','); json_kv("id",rid);
