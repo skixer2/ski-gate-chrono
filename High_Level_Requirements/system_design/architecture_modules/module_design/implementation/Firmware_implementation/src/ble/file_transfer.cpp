@@ -21,6 +21,7 @@
 #include "../test_json.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
+#include "nrf.h"  /* NRF_WDT for feed in FT poll */
 
 extern "C" {
     BLECharacteristic*              sgc_ble_ft_chunk_char();
@@ -43,8 +44,10 @@ static uint32_t  g_ft_last_chunk_ms = 0;
 
 /* 244 B chunks (MTU 247 - 3 ATT header). Phone confirms MTU=247. */
 static constexpr size_t   FT_CHUNK_SIZE = 244;
-/* 30ms cadence — matches V4.79 best-s03 proven pace. Device controls pace. */
-static constexpr uint32_t FT_CHUNK_MS   = 30;
+/* 50ms cadence — S22 can't sustain 30ms (8 KB/s overflows ACL buffer →
+   LINK_SUPERVISION_TIMEOUT → device writeValue blocks → watchdog reboot).
+   50ms = ~5 KB/s, still 2.5x faster than V4.79 (128 B @ 30ms = 4 KB/s). */
+static constexpr uint32_t FT_CHUNK_MS   = 50;
 static constexpr uint32_t FT_PROG_EVERY = 20;
 
 void sgc_ble_transfer_init() {}
@@ -115,6 +118,12 @@ void sgc_ble_transfer_poll()
 
     for (size_t i = 0; i < send_len; i++)
         g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[i]);
+
+    /* V5.46: Feed WDT before writeValue — if the BLE link died and
+       writeValue blocks on a full HCI buffer, WDT would reboot the
+       device. Feeding here gives the stall watchdog time to detect
+       the dead link and abort cleanly. */
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
     BLE.poll();
