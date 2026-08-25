@@ -201,6 +201,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
         Serial.print(','); json_kv("run", (long)run_id);
         Serial.print(','); json_kv("sz", (long)g_ft_size);
         Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
+        Serial.print(','); json_kv("ms", (long)0);
         json_end();
         return;
     }
@@ -285,6 +286,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
             Serial.print(','); json_kv("off", (long)g_ft_offset);
             Serial.print(','); json_kv("sz", (long)g_ft_size);
             Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+            Serial.print(','); json_kv("ms", (long)(millis() - g_ft_start_ms));
             json_end();
         }
 
