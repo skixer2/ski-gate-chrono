@@ -46,6 +46,15 @@ public:
     void set_hold_sleep(bool hold) { m_hold_sleep = hold; }
     bool hold_sleep() const { return m_hold_sleep; }
 
+    /** V5.47: reset the SLEEP→System-Off timer to the current millis().
+     *  Called on BLE disconnect so a connection that lasted e.g. 50 min does
+     *  not cause an immediate System Off because the original SLEEP entry
+     *  timestamp is now older than SLEEP_SYSTEM_OFF_MS.  Only meaningful in
+     *  SLEEP — other states set their own timer on entry. */
+    void reset_sleep_timer() {
+        if (m_state == DeviceState::SLEEP) m_state_entered_ms = millis();
+    }
+
     /* Accessors */
     DeviceState state() const { return m_state; }
     uint32_t    state_entered_ms() const { return m_state_entered_ms; }

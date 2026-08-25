@@ -225,6 +225,10 @@ static void on_ble_disconnected(BLEDevice central)
     /* Abort FT first so sgc_ble_ft_active() clears before hold_sleep. */
     sgc_ble_ft_abort("disconnect");
     g_sm.set_hold_sleep(false);
+    /* V5.47: reset SLEEP→System-Off timer so a long connection does not
+       cause immediate System Off on disconnect (original SLEEP entry time
+       would be older than SLEEP_SYSTEM_OFF_MS). */
+    g_sm.reset_sleep_timer();
     /* Re-ADV only when discoverable states want it. SLEEP intentionally drops
        the link with ADV off — do not fight that path (disconnect is ours). */
     DeviceState st = g_sm.state();

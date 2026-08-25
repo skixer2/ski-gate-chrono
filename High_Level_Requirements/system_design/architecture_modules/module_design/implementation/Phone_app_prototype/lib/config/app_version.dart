@@ -43,4 +43,9 @@
 //   1.18 – Switch back to device-push (V4.97 style): phone sends CMD_START,
 //          device streams 244 B chunks @ 25ms. No per-chunk request →
 //          ~8 KB/s, 39 KB in ~5s. Phone just listens + collects.
-const String APP_VERSION = '1.18';
+//   1.19 – Decompress downloaded runs in a background isolate (compute())
+//          so the BLE platform channel is not blocked during multi-run
+//          downloads. Fixes GATT_ERROR 133 / LINK_SUPERVISION_TIMEOUT
+//          that occurs when decompression of run N blocks the main
+//          thread before run N+1's setNotifyValue can be processed.
+const String APP_VERSION = '1.19';

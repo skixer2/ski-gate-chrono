@@ -12,6 +12,15 @@ import '../../config/app_version.dart';
 import '../../models/device_config.dart';
 import 'run_detail_screen.dart';
 
+/// Top-level decompression entry point for compute() — runs in a background
+/// isolate so the BLE platform channel is not blocked during multi-run
+/// downloads.  Without this, decompression of run N blocks the main thread,
+/// FlutterBluePlus can't process BLE callbacks, and the next run's
+/// setNotifyValue races into GATT_ERROR 133.
+DecompressResult _decompressInIsolate(Uint8List data) {
+  return Decompressor().decompressFull(data);
+}
+
 class RunListScreen extends StatefulWidget {
   const RunListScreen({super.key});
   @override
@@ -215,10 +224,11 @@ class _RunListScreenState extends State<RunListScreen> {
     final data = await _storage.load(run.fileName);
     if (data == null || !mounted) return;
 
-    final decompressor = Decompressor();
-    final crcOk = decompressor.validateCRC(data);
+    // V1.12: decompress in a background isolate so the UI stays responsive
+    // (and BLE callbacks are never blocked when opening runs while connected).
+    final crcOk = Decompressor().validateCRC(data);
     debugPrint('[SGC] ${crcOk ? "✅" : "⚠️"} Local CRC for ${run.fileName}: ${crcOk ? "OK" : "FAILED"}');
-    final decoded = decompressor.decompressFull(data);
+    final decoded = await compute(_decompressInIsolate, data);
 
     if (mounted) {
       Navigator.of(context).push(
@@ -274,7 +284,10 @@ class _RunListScreenState extends State<RunListScreen> {
         debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
         final data = await _downloadOne(ft, run.id);
         if (data == null) { failed++; continue; }
-        final decoded = Decompressor().decompressFull(data);
+        // V1.12: decompress in a background isolate — keeps the BLE platform
+        // channel free so the next run's setNotifyValue doesn't race into
+        // GATT_ERROR 133 while the main thread is busy parsing frames.
+        final decoded = await compute(_decompressInIsolate, data);
         await _storage.save(
           runId: run.id,
           compressedData: data,
