@@ -89,12 +89,24 @@ void sgc_ble_transfer_poll()
     /* V5.00: if phone stops sending chunk requests and we're stuck in
        FT_READY, abort so main loop can resume BHY2. */
     if (g_ft_last_prog_ms != 0 && (now - g_ft_last_prog_ms) > FT_STALL_TIMEOUT_MS) {
+        /* V5.42: soft recovery instead of hard radio restart.
+           Phone BLE buffer overflow at ~32 KB causes phone to stop
+           requesting chunks. Abort FT + disconnect + re-advertise.
+           If Cordio is truly stuck, zombie timeout escalates to
+           radio restart (main loop desync heal). */
+        uint32_t elapsed = now - g_ft_last_prog_ms;
         sgc_ble_ft_abort("stall");
         if (BLE.connected()) {
             BLE.disconnect();
             BLE.poll();
         }
-        request_ble_radio_restart("ft_stall");  // V5.07: radio restart after FT stall
+        sgc_ble_force_recover("ft_stall");
+        json_begin();
+        json_kv("ev", "ft_stall_info");
+        Serial.print(','); json_kv("elapsed", (long)elapsed);
+        Serial.print(','); json_kv("off", (long)g_ft_offset);
+        Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+        json_end();
         return;
     }
 }
