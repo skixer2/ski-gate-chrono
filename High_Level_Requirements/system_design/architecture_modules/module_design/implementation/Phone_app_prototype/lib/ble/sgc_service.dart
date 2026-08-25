@@ -166,9 +166,9 @@ class SGCService {
       // 3. Pull loop — phone requests one chunk at a time
       final buf = BytesBuilder();
       var offset = 0;
-      final chunkSize = _ble.mtu > 3 ? _ble.mtu - 3 : 20;
+      final chunkSize = ble.mtu > 3 ? ble.mtu - 3 : 20;
       var chunkCount = 0;
-      debugPrint('[SGC] FT pull loop start (mtu=${_ble.mtu}, chunkSize=$chunkSize)');
+      debugPrint('[SGC] FT pull loop start (mtu=${ble.mtu}, chunkSize=$chunkSize)');
 
       while (true) {
         // Request chunk at current offset
