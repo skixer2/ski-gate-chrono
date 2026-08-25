@@ -48,10 +48,10 @@ class FileTransfer {
   }
 
   /// Download a run's compressed data via BLE file transfer protocol.
-  Future<TransferResult> download(int runId) async {
+  Future<TransferResult> download(int runId, {void Function(int received, int total)? onProgress}) async {
     status = TransferStatus.transferring;
     try {
-      final data = await service.downloadRun(runId);
+      final data = await service.downloadRun(runId, onProgress: onProgress);
       if (data.isEmpty) {
         status = TransferStatus.error;
         return TransferResult(compressedData: Uint8List(0), runId: runId);

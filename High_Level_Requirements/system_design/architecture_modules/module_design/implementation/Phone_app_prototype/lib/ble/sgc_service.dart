@@ -123,7 +123,7 @@ class SGCService {
     return String.fromCharCodes(b.where((x) => x != 0));
   }
 
-  Future<Uint8List> downloadRun(int runId, {int expectedSize = 0}) async {
+  Future<Uint8List> downloadRun(int runId, {int expectedSize = 0, void Function(int received, int total)? onProgress}) async {
     final chunkChar = _findChar(charFtChunk);
     final statusChar = _findChar(charFtStatus);
     final crcChar = _findChar(charFtCrc);
@@ -205,8 +205,15 @@ class SGCService {
 
         // Inter-chunk delay: give phone BLE stack breathing room between
         // 244 B notifications. Without this, the S22 BLE controller
-        // exhausts its ACL buffer after ~35 chunks → LINK_SUPERVISION_TIMEOUT.
-        await Future.delayed(const Duration(milliseconds: 30));
+        // exhausts its ACL buffer → LINK_SUPERVISION_TIMEOUT.
+        // 30ms worked for ~3 consecutive downloads but crashed on the 4th;
+        // 50ms gives a full balanced connection interval for housekeeping.
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        // Report progress to UI
+        if (onProgress != null) {
+          onProgress(offset, expectedSize > 0 ? expectedSize : offset + chunk.length);
+        }
 
         // Log progress every 20 chunks
         if (chunkCount % 20 == 0) {

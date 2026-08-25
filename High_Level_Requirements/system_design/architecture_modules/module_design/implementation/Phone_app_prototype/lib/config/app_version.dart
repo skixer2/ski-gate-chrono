@@ -36,4 +36,6 @@
 //          log MTU at pull-loop start. S22 GATT can stall on 244 B notifications.
 //   1.15 – Inter-chunk delay 30ms to prevent S22 BLE buffer exhaustion
 //          (LINK_SUPERVISION_TIMEOUT after ~35 chunks without delay).
-const String APP_VERSION = '1.15';
+//   1.16 – Inter-chunk delay 30→50ms (3 runs OK then crash on 4th at 30ms);
+//          download progress UI (run X/N, KB received, progress bar).
+const String APP_VERSION = '1.16';

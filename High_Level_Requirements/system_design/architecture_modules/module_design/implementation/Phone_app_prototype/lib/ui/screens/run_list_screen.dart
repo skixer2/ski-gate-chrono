@@ -27,6 +27,11 @@ class _RunListScreenState extends State<RunListScreen> {
   bool _isConnecting = false;
   bool _isScanning = false;
   bool _isDownloading = false;
+  String _downloadStatus = '';  // progress text for UI
+  int _downloadCurrent = 0;    // current run being downloaded
+  int _downloadTotal = 0;      // total runs to download
+  int _downloadBytes = 0;      // bytes received for current run
+  int _downloadRunSize = 0;    // expected size of current run
   List<SavedRun> _localRuns = [];
   List<RunMetadata> _deviceRuns = []; // runs present on the connected device
   StreamSubscription<bool>? _connSub;
@@ -229,7 +234,14 @@ class _RunListScreenState extends State<RunListScreen> {
 
   Future<void> _downloadRuns() async {
     if (_sgc == null || _isDownloading) return;
-    setState(() => _isDownloading = true);
+    setState(() {
+      _isDownloading = true;
+      _downloadStatus = 'Preparing…';
+      _downloadCurrent = 0;
+      _downloadTotal = 0;
+      _downloadBytes = 0;
+      _downloadRunSize = 0;
+    });
 
     try {
       final ft = FileTransfer(_sgc!);
@@ -252,7 +264,13 @@ class _RunListScreenState extends State<RunListScreen> {
       }
 
       int ok = 0, failed = 0;
+      _downloadTotal = missing.length;
       for (final run in missing) {
+        _downloadCurrent++;
+        _downloadBytes = 0;
+        _downloadRunSize = run.size;
+        setState(() => _downloadStatus =
+            'Run $_downloadCurrent/$_downloadTotal (${run.size ~/ 1024} KB)');
         debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
         final data = await _downloadOne(ft, run.id);
         if (data == null) { failed++; continue; }
@@ -286,7 +304,14 @@ class _RunListScreenState extends State<RunListScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isDownloading = false);
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadStatus = '';
+          _downloadBytes = 0;
+          _downloadRunSize = 0;
+        });
+      }
     }
   }
 
@@ -294,7 +319,12 @@ class _RunListScreenState extends State<RunListScreen> {
   Future<Uint8List?> _downloadOne(FileTransfer ft, int runId) async {
     const maxAttempts = 2;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-      final result = await ft.download(runId);
+      final result = await ft.download(runId, onProgress: (received, total) {
+        setState(() {
+          _downloadBytes = received;
+          if (total > _downloadRunSize) _downloadRunSize = total;
+        });
+      });
       if (result.compressedData.isEmpty) {
         debugPrint('[SGC] run #$runId: empty data (attempt $attempt)');
         if (attempt < maxAttempts) await Future.delayed(const Duration(milliseconds: 500));
@@ -423,9 +453,25 @@ class _RunListScreenState extends State<RunListScreen> {
             title: Text(_isDownloading
                 ? 'Downloading…'
                 : 'Download Missing Runs (${_missingRuns.length})'),
-            subtitle: Text(_isDownloading
-                ? 'Transferring…'
-                : '${_deviceRuns.length} on device · ${_missingRuns.length} not downloaded'),
+            subtitle: _isDownloading
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_downloadStatus),
+                      if (_downloadRunSize > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: LinearProgressIndicator(
+                            value: (_downloadBytes / _downloadRunSize).clamp(0.0, 1.0),
+                            backgroundColor: Colors.grey.shade300,
+                          ),
+                        ),
+                      if (_downloadRunSize > 0)
+                        Text('${_downloadBytes ~/ 1024} / ${_downloadRunSize ~/ 1024} KB',
+                            style: const TextStyle(fontSize: 12)),
+                    ],
+                  )
+                : Text('${_deviceRuns.length} on device · ${_missingRuns.length} not downloaded'),
             trailing: const Icon(Icons.chevron_right),
             onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
           ),
