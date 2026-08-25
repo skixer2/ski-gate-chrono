@@ -34,4 +34,6 @@
 ///          ~14 KB at ~400 B/s push ceiling. Adds CRC32 read from ABCC.
 //   1.14 – FT pull timeout 10→15s; chunkSize from negotiated MTU not hardcoded;
 //          log MTU at pull-loop start. S22 GATT can stall on 244 B notifications.
-const String APP_VERSION = '1.14';
+//   1.15 – Inter-chunk delay 30ms to prevent S22 BLE buffer exhaustion
+//          (LINK_SUPERVISION_TIMEOUT after ~35 chunks without delay).
+const String APP_VERSION = '1.15';

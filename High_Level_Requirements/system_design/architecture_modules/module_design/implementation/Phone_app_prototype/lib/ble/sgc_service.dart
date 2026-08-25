@@ -203,6 +203,11 @@ class SGCService {
         offset += chunk.length;
         chunkCount++;
 
+        // Inter-chunk delay: give phone BLE stack breathing room between
+        // 244 B notifications. Without this, the S22 BLE controller
+        // exhausts its ACL buffer after ~35 chunks → LINK_SUPERVISION_TIMEOUT.
+        await Future.delayed(const Duration(milliseconds: 30));
+
         // Log progress every 20 chunks
         if (chunkCount % 20 == 0) {
           debugPrint('[SGC] FT recv $offset bytes…');
