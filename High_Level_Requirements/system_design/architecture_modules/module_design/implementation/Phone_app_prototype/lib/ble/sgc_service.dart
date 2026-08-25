@@ -166,8 +166,9 @@ class SGCService {
       // 3. Pull loop — phone requests one chunk at a time
       final buf = BytesBuilder();
       var offset = 0;
-      const chunkSize = 244;
+      final chunkSize = _ble.mtu > 3 ? _ble.mtu - 3 : 20;
       var chunkCount = 0;
+      debugPrint('[SGC] FT pull loop start (mtu=${_ble.mtu}, chunkSize=$chunkSize)');
 
       while (true) {
         // Request chunk at current offset
@@ -180,11 +181,11 @@ class SGCService {
           ..[4] = ((offset >> 24) & 0xFF);
         await _writeChar(charFtRequest, chunkReq);
 
-        // Wait for chunk notification (timeout 10s)
+        // Wait for chunk notification (timeout 15s — S22 can stall on GATT)
         final chunk = await chunkCompleter!.future.timeout(
-          const Duration(seconds: 10),
+          const Duration(seconds: 15),
           onTimeout: () {
-            debugPrint('[SGC] FT chunk timeout at offset=$offset');
+            debugPrint('[SGC] FT chunk timeout at offset=$offset chunk=$chunkCount');
             return Uint8List(0);
           },
         );
