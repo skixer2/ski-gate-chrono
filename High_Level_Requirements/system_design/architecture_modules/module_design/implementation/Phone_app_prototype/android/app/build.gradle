@@ -11,6 +11,11 @@ android {
     namespace = "com.skigatechono.sgc_phone"
     compileSdk = 36
 
+    // Pin NDK version so new PCs don't need to guess which one Flutter wants.
+    // flutter_blue_plus uses native C → requires NDK. If you install a different
+    // NDK version (e.g. 30.x), change this line to match.
+    ndkVersion "28.2.13676358"
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
