@@ -48,12 +48,9 @@ static uint32_t  g_ft_chunks  = 0;
 static uint32_t  g_ft_start_ms = 0;
 static uint32_t  g_ft_last_prog_ms = 0;  /* stall watchdog */
 
-/* V5.43: revert to 20 B chunks (FW 4.93 proven fix). V5.13's 244 B assumption
-   (MTU=247) caused stalls at ~34% — phone BLE stack overflows on large
-   notifications. 20 B fits min ATT MTU 23 as a single packet, no truncation.
-   Transfer 39 KB ≈ 1950 chunks × phone-pull pace ≈ 30-40 s.
-   If phone confirms higher MTU reliably, can raise later. */
-static constexpr size_t FT_CHUNK_SIZE = 20;
+/* V5.13: use full negotiated MTU. Phone confirms MTU=247 (onConfigureMTU status=0),
+   so ATT payload = 247 - 3 = 244 B per notification. */
+static constexpr size_t FT_CHUNK_SIZE = 244;
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_READY; }
