@@ -1364,7 +1364,7 @@ def run_full_test(port: str,
             while time.perf_counter() - t0 < 15.0:
                 time.sleep(0.8)
                 device.send_cmd('?', wait_ms=300)
-                lines = device.read_json(0.8)
+                lines = device.read_json_lines(0.8)
                 for r in lines:
                     if r.get('ev') == 'status':
                         ready = True
