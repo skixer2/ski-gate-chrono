@@ -1030,9 +1030,9 @@ void feed_sensors()
         if (s_arm_writes < 3) {
             json_begin(); json_kv("ev", "arm_write");
             Serial.print(','); json_kv("n", (long)s_arm_writes);
-            Serial.print(','); json_kv("tm", test_mode_active());
-            Serial.print(','); json_kv("str", g_stream_active);
-            Serial.print(','); json_kv("hd", test_stream_has_data());
+            Serial.print(','); json_kv("tm", (long)test_mode_active());
+            Serial.print(','); json_kv("str", (long)g_stream_active);
+            Serial.print(','); json_kv("hd", (long)test_stream_has_data());
             Serial.print(','); json_kv("baro", (long)f.baro_pa_div2);
             json_end();
             s_arm_writes++;
