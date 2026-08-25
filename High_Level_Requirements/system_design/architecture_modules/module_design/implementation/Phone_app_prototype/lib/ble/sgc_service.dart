@@ -203,12 +203,10 @@ class SGCService {
         offset += chunk.length;
         chunkCount++;
 
-        // Inter-chunk delay: give phone BLE stack breathing room between
-        // 244 B notifications. Without this, the S22 BLE controller
-        // exhausts its ACL buffer → LINK_SUPERVISION_TIMEOUT.
-        // 30ms worked for ~3 consecutive downloads but crashed on the 4th;
-        // 50ms gives a full balanced connection interval for housekeeping.
-        await Future.delayed(const Duration(milliseconds: 50));
+        // Inter-chunk delay: 20ms gives S22 BLE stack enough breathing room
+        // for a single download. Longer cooldown between runs handles
+        // cumulative buffer pressure.
+        await Future.delayed(const Duration(milliseconds: 20));
 
         // Report progress to UI
         if (onProgress != null) {

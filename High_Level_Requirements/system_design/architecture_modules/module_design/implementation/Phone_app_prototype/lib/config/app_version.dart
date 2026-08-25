@@ -38,4 +38,6 @@
 //          (LINK_SUPERVISION_TIMEOUT after ~35 chunks without delay).
 //   1.16 – Inter-chunk delay 30→50ms (3 runs OK then crash on 4th at 30ms);
 //          download progress UI (run X/N, KB received, progress bar).
-const String APP_VERSION = '1.16';
+//   1.17 – Inter-chunk delay 50→20ms + 2s inter-run cooldown. Faster per-run
+//          transfer, with breathing room between runs to flush BLE buffers.
+const String APP_VERSION = '1.17';

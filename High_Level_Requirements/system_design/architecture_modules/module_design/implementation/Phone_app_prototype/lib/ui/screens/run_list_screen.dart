@@ -282,6 +282,12 @@ class _RunListScreenState extends State<RunListScreen> {
           deviceName: _config?.deviceName ?? 'SGC',
         );
         ok++;
+        // Inter-run cooldown: let S22 BLE stack flush between downloads.
+        // Without this, cumulative ACL buffer pressure crashes after ~3 runs.
+        if (ok < missing.length) {
+          setState(() => _downloadStatus = 'Cooling down…');
+          await Future.delayed(const Duration(seconds: 2));
+        }
       }
       await _loadLocalRuns();
       if (mounted) {
