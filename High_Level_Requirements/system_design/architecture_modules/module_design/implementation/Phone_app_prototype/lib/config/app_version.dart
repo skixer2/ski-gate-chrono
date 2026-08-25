@@ -40,4 +40,7 @@
 //          download progress UI (run X/N, KB received, progress bar).
 //   1.17 – Inter-chunk delay 50→20ms + 2s inter-run cooldown. Faster per-run
 //          transfer, with breathing room between runs to flush BLE buffers.
-const String APP_VERSION = '1.17';
+//   1.18 – Switch back to device-push (V4.97 style): phone sends CMD_START,
+//          device streams 244 B chunks @ 25ms. No per-chunk request →
+//          ~8 KB/s, 39 KB in ~5s. Phone just listens + collects.
+const String APP_VERSION = '1.18';

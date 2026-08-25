@@ -133,143 +133,75 @@ class SGCService {
     await chunkChar.setNotifyValue(true);
     await statusChar.setNotifyValue(true);
 
-    // Completer for chunk notifications (one at a time)
-    Completer<Uint8List>? chunkCompleter;
+    final buf = BytesBuilder();
+    var totalReceived = 0;
+    var chunkCount = 0;
+
+    // Listen for chunk notifications — device pushes, phone just collects
     final chunkSub = chunkChar.onValueReceived.listen((v) {
-      chunkCompleter?.complete(Uint8List.fromList(v));
+      if (v.isEmpty) return;
+      buf.add(Uint8List.fromList(v));
+      totalReceived += v.length;
+      chunkCount++;
+      if (onProgress != null && expectedSize > 0) {
+        onProgress(totalReceived, expectedSize);
+      }
     });
 
-    // Status listener — completes on FT_DONE(2) or FT_ERROR(3)
+    // Listen for status — FT_DONE(2) or FT_ERROR(3)
     final statusCompleter = Completer<int>();
-    StreamSubscription<List<int>>? statusSub;
-    statusSub = statusChar.onValueReceived.listen((v) {
+    final statusSub = statusChar.onValueReceived.listen((v) {
       if (v.isEmpty || statusCompleter.isCompleted) return;
       final st = v[0];
       if (st == 2 || st == 3) {
         statusCompleter.complete(st);
       }
-      // st == 1 (FT_READY) — implicitly handled by the 200ms delay below
     });
 
     try {
-      // 1. CMD_START: open run, init transfer
+      // 1. CMD_START: open run, device begins pushing chunks
       final startReq = Uint8List(3)
         ..[0] = 0
         ..[1] = (runId & 0xFF)
         ..[2] = ((runId >> 8) & 0xFF);
       await _writeChar(charFtRequest, startReq);
-      debugPrint('[SGC] FT CMD_START run=$runId');
+      debugPrint('[SGC] FT CMD_START run=$runId (device-push, listening)');
 
-      // 2. Wait for FT_READY (ABCD = 1) — 200ms for device to prepare
-      await Future.delayed(const Duration(milliseconds: 200));
+      // 2. Wait for FT_DONE or FT_ERROR (timeout 60s)
+      final status = await statusCompleter.future.timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          debugPrint('[SGC] FT timeout at $totalReceived bytes, $chunkCount chunks');
+          return 3;
+        },
+      );
 
-      // 3. Pull loop — phone requests one chunk at a time
-      final buf = BytesBuilder();
-      var offset = 0;
-      final chunkSize = ble.mtu > 3 ? ble.mtu - 3 : 20;
-      var chunkCount = 0;
-      debugPrint('[SGC] FT pull loop start (mtu=${ble.mtu}, chunkSize=$chunkSize)');
+      debugPrint('[SGC] FT status=$status, received=$totalReceived bytes, chunks=$chunkCount');
 
-      while (true) {
-        // Request chunk at current offset
-        chunkCompleter = Completer<Uint8List>();
-        final chunkReq = Uint8List(5)
-          ..[0] = 1
-          ..[1] = (offset & 0xFF)
-          ..[2] = ((offset >> 8) & 0xFF)
-          ..[3] = ((offset >> 16) & 0xFF)
-          ..[4] = ((offset >> 24) & 0xFF);
-        await _writeChar(charFtRequest, chunkReq);
-
-        // Wait for chunk notification (timeout 15s — S22 can stall on GATT)
-        final chunk = await chunkCompleter!.future.timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            debugPrint('[SGC] FT chunk timeout at offset=$offset chunk=$chunkCount');
-            return Uint8List(0);
-          },
-        );
-
-        if (chunk.isEmpty) {
-          // Could be FT_DONE or error — check status
-          if (statusCompleter.isCompleted) {
-            final st = await statusCompleter.future;
-            debugPrint('[SGC] FT status=$st at offset=$offset');
-          }
-          break;
-        }
-
-        buf.add(chunk);
-        offset += chunk.length;
-        chunkCount++;
-
-        // Inter-chunk delay: 20ms gives S22 BLE stack enough breathing room
-        // for a single download. Longer cooldown between runs handles
-        // cumulative buffer pressure.
-        await Future.delayed(const Duration(milliseconds: 20));
-
-        // Report progress to UI
-        if (onProgress != null) {
-          onProgress(offset, expectedSize > 0 ? expectedSize : offset + chunk.length);
-        }
-
-        // Log progress every 20 chunks
-        if (chunkCount % 20 == 0) {
-          debugPrint('[SGC] FT recv $offset bytes…');
-        }
-
-        // If chunk is smaller than chunkSize, this was the last chunk
-        if (chunk.length < chunkSize) {
-          debugPrint('[SGC] FT last chunk ($chunkCount chunks, $offset bytes)');
-          break;
-        }
-
-        // Check if status says done (device may have sent FT_DONE)
-        if (statusCompleter.isCompleted) {
-          final st = await statusCompleter.future;
-          if (st == 2) {
-            debugPrint('[SGC] FT_DONE at $offset bytes');
-            break;
-          } else if (st == 3) {
-            debugPrint('[SGC] FT_ERROR at $offset bytes');
-            break;
-          }
-        }
-      }
-
-      // 4. Read CRC32 from ABCC
+      // 3. Read CRC32 from ABCC
       int deviceCrc = 0;
-      try {
-        if (crcChar != null) {
-          final crcBytes = await crcChar.read();
-          if (crcBytes.length >= 4) {
-            deviceCrc = crcBytes[0] |
-                (crcBytes[1] << 8) |
-                (crcBytes[2] << 16) |
-                (crcBytes[3] << 24);
+      if (status == 2) {
+        try {
+          if (crcChar != null) {
+            final crcBytes = await crcChar.read();
+            if (crcBytes.length >= 4) {
+              deviceCrc = crcBytes[0] |
+                  (crcBytes[1] << 8) |
+                  (crcBytes[2] << 16) |
+                  (crcBytes[3] << 24);
+            }
           }
+        } catch (e) {
+          debugPrint('[SGC] FT CRC read failed: $e');
         }
-      } catch (e) {
-        debugPrint('[SGC] FT CRC read failed: $e');
-      }
-
-      // 5. Wait for FT_DONE status if not already received
-      int finalStatus = 2; // assume done
-      if (!statusCompleter.isCompleted) {
-        finalStatus = await statusCompleter.future.timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => 2,
-        );
-      } else {
-        finalStatus = await statusCompleter.future;
       }
 
       debugPrint('[SGC] FT complete: ${buf.length} bytes, chunks=$chunkCount, '
-          'status=$finalStatus, crc=0x${deviceCrc.toRadixString(16)}');
+          'status=$status, crc=0x${deviceCrc.toRadixString(16)}');
       return buf.toBytes();
     } finally {
       await chunkSub.cancel();
-      await statusSub?.cancel();
+      await statusSub.cancel();
       try { await chunkChar.setNotifyValue(false); } catch (_) {}
       try { await statusChar.setNotifyValue(false); } catch (_) {}
     }
