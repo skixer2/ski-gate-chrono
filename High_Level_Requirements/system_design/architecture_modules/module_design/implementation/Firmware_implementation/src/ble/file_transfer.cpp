@@ -79,7 +79,7 @@ void sgc_ble_ft_abort(const char* reason)
 
 void sgc_ble_transfer_poll()
 {
-    if (g_ft_state != FT_STREAMING) return;
+    if (g_ft_state == FT_IDLE || g_ft_state == FT_DONE || g_ft_state == FT_ERROR) return;
 
     if (!BLE.connected()) {
         sgc_ble_ft_abort("disconnect");
@@ -87,8 +87,17 @@ void sgc_ble_transfer_poll()
     }
 
     uint32_t now = millis();
-    // V5.50: The time-based cadence is now a fallback/minimum. 
-    // The device primarily waits for an ACK in FT_WAITING_ACK state.
+
+    // V5.50: Handle ACK timeout while waiting for phone
+    if (g_ft_state == FT_WAITING_ACK) {
+        if (now - g_ft_last_chunk_ms > 2000) { // 2s safety timeout
+            sgc_ble_ft_abort("ack_timeout");
+            return;
+        }
+        return; // Still waiting for ACK to transition us back to FT_STREAMING
+    }
+
+    // Regular streaming logic (g_ft_state == FT_STREAMING)
     if (now - g_ft_last_chunk_ms < FT_CHUNK_MS) return;
     g_ft_last_chunk_ms = now;
 
@@ -138,7 +147,7 @@ void sgc_ble_transfer_poll()
     g_ft_offset += send_len;
     g_ft_chunks++;
 
-    // V5.50: After sending a chunk, move to WAITING_ACK.
+    // V5.50: Transition to WAITING_ACK to stop the blind push
     g_ft_state = FT_WAITING_ACK;
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
