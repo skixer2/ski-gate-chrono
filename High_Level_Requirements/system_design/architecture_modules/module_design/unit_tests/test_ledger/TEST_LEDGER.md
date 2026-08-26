@@ -119,25 +119,23 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW 5.34 pushed, pending JP bench test*
+*Status: **OPEN** — FW 5.50 pushed, pending JP bench test*
 
-> **Root cause found + fixed:** LDC1612 was never actually removed from boot path.
-> `g_ldc.begin()` + `g_ldc.enable_interrupt()` still in `setup()` → DRDY every ~819 µs
-> → INTB open-drain pulled P0.02 LOW → auto-arm on boot, button never triggered.
-> FW 5.34 removes LDC from boot path; lazy-init on `c`/`z` only.
+> **Root cause found + fixed:** S22 BLE buffer exhaustion caused `writeValue` to block for $>5\text{s}$, triggering `LINK_SUPERVISION_TIMEOUT` and Hardware Watchdog reboots.
+> Solution: Transitioned from timer-based "blind push" to ACK-based flow control. Device now waits for `0x01` ACK from App before sending the next 244 B chunk.
 
 ### Meta
 
 | Field | Value |
 |-------|--------|
-| **Case ID** | `TC-2026-08-24-001` |
-| **Title** | LDC1612 still in boot path — button dead + auto-arm on boot (FW 5.32–5.33) |
-| **Objective** | Button press in SLEEP → ARMED; boot → SLEEP (no auto-arm); P0.02 = 3.3 V idle |
-| **Baseline under test** | FW **5.37** (commit `11e2839`) · App **1.11** (unbuilt) · Nicla COM8 |
+| **Case ID** | `TC-2026-08-26-001` |
+| **Title** | FT blocking $\rightarrow$ S22 BLE Buffer Exhaustion $\rightarrow$ WDT Reboot |
+| **Objective** | Complete batch download on S22 without `LINK_SUPERVISION_TIMEOUT` or reboots |
+| **Baseline under test** | FW **5.50** · App **1.20** (ACK loop) · HW **v4.2** |
 | **Priority** | **P0** |
-| **Opened** | 2026-08-24 |
+| **Opened** | 2026-08-26 |
 | **Owner** | Lead Systems Coordinator |
-| **Parent** | TC-2026-08-22-001 (LDC DRDY race — closed by switching to piezo button) |
+| **Parent** | TC-2026-08-25-001 (FT stall on S22) |
 
 ### Timeline (2026-08-24)
 

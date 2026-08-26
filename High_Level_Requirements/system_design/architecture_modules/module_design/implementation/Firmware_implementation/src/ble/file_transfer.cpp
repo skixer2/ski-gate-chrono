@@ -31,7 +31,7 @@ extern "C" {
 
 extern RawRunStore g_runs;
 
-enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_DONE = 2, FT_ERROR = 3 };
+enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_WAITING_ACK = 4, FT_DONE = 2, FT_ERROR = 3 };
 
 static uint8_t   g_ft_state   = FT_IDLE;
 static uint32_t  g_ft_offset  = 0;
@@ -55,7 +55,6 @@ bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
 
 void sgc_ble_ft_handle_ack()
 {
-    extern enum FTState g_ft_state;
     if (g_ft_state == FT_WAITING_ACK) {
         g_ft_state = FT_STREAMING;
     }
@@ -88,6 +87,8 @@ void sgc_ble_transfer_poll()
     }
 
     uint32_t now = millis();
+    // V5.50: The time-based cadence is now a fallback/minimum. 
+    // The device primarily waits for an ACK in FT_WAITING_ACK state.
     if (now - g_ft_last_chunk_ms < FT_CHUNK_MS) return;
     g_ft_last_chunk_ms = now;
 
@@ -127,23 +128,18 @@ void sgc_ble_transfer_poll()
     for (size_t i = 0; i < send_len; i++)
         g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[i]);
 
-    /* V5.46: Feed WDT before writeValue — if the BLE link died and
-       writeValue blocks on a full HCI buffer, WDT would reboot the
-       device. Feeding here gives the stall watchdog time to detect
-       the dead link and abort cleanly. */
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
     BLE.poll();
 
-    /* V5.48: Feed WDT again after BLE poll — writeValue + poll can
-       take unpredictable time on S22 when ACL buffers fill up.
-       Dual-feed guarantees we don't trip the 5s HW WDT even if
-       a single chunk transfer blocks >2.5s. */
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     g_ft_offset += send_len;
     g_ft_chunks++;
+
+    // V5.50: After sending a chunk, move to WAITING_ACK.
+    g_ft_state = FT_WAITING_ACK;
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
         json_begin();

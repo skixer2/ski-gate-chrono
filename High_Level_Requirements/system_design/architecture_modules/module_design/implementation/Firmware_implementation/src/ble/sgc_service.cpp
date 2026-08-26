@@ -117,9 +117,12 @@ uint32_t sgc_ble_epoch_now() {
     return g_epoch_at_sync + (millis() - g_millis_at_sync) / 1000u;
 }
 
-/* ═══════════════════════════════════════════════════════════════ */
-/*  Callbacks                                                        */
-/* ═══════════════════════════════════════════════════════════════ */
+static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
+    (void)c;
+    const uint8_t* data = ch.value();
+    int len = ch.valueLength();
+    sgc_ble_ft_on_request(data, len);
+}
 
 static void on_time_written(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;
@@ -151,7 +154,10 @@ static void on_discipline_written(BLEDevice c, BLECharacteristic ch) {
 }
 static void on_ft_status_written(BLEDevice c, BLECharacteristic ch) {
     (void)c; (void)ch;
-    uint8_t val = ch.value();
+    // BLECharacteristic::value() returns a pointer to the internal buffer
+    const uint8_t* val_ptr = ch.value();
+    if (val_ptr == nullptr) return;
+    uint8_t val = val_ptr[0];
     if (val == 0x01) {
         extern void sgc_ble_ft_handle_ack();
         sgc_ble_ft_handle_ack();
