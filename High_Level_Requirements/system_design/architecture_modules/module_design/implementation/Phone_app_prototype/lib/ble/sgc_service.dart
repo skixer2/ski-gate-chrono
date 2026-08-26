@@ -117,7 +117,9 @@ class SGCService {
     return b.isNotEmpty ? b[0] : 0;
   }
 
-  // ── File transfer ────────────────────────────────────────────
+  Future<void> sendFtAck() async {
+    await _writeChar(charFtStatus, Uint8List.fromList([0x01]));
+  }
   Future<String> getRunListJson() async {
     final b = await _readChar(charRunList);
     return String.fromCharCodes(b.where((x) => x != 0));
@@ -138,11 +140,20 @@ class SGCService {
     var chunkCount = 0;
 
     // Listen for chunk notifications — device pushes, phone just collects
-    final chunkSub = chunkChar.onValueReceived.listen((v) {
+    final chunkSub = chunkChar.onValueReceived.listen((v) async {
       if (v.isEmpty) return;
       buf.add(Uint8List.fromList(v));
       totalReceived += v.length;
       chunkCount++;
+      
+      // V5.50: Send ACK back to device to signal readiness for the next chunk.
+      // This prevents the nRF52 from blocking on writeValue if the S22 buffer is full.
+      try {
+        await _writeChar(charFtStatus, Uint8List.fromList([0x01]));
+      } catch (e) {
+        debugPrint('[SGC] ACK fail: $e');
+      }
+
       if (onProgress != null && expectedSize > 0) {
         onProgress(totalReceived, expectedSize);
       }

@@ -53,6 +53,14 @@ static constexpr uint32_t FT_PROG_EVERY = 20;
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
 
+void sgc_ble_ft_handle_ack()
+{
+    extern enum FTState g_ft_state;
+    if (g_ft_state == FT_WAITING_ACK) {
+        g_ft_state = FT_STREAMING;
+    }
+}
+
 void sgc_ble_ft_abort(const char* reason)
 {
     if (g_ft_state != FT_STREAMING) return;

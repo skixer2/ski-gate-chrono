@@ -149,11 +149,14 @@ static void on_discipline_written(BLEDevice c, BLECharacteristic ch) {
     g_discipline = v; sgc_ble_config_save();
     g_last_ble_activity_ms = millis();  // V5.07
 }
-static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
-    (void)c;
-    extern void sgc_ble_ft_on_request(const uint8_t*, int);
-    sgc_ble_ft_on_request(ch.value(), ch.valueLength());
-    g_last_ble_activity_ms = millis();  // V5.07
+static void on_ft_status_written(BLEDevice c, BLECharacteristic ch) {
+    (void)c; (void)ch;
+    uint8_t val = ch.value();
+    if (val == 0x01) {
+        extern void sgc_ble_ft_handle_ack();
+        sgc_ble_ft_handle_ack();
+    }
+    g_last_ble_activity_ms = millis();
 }
 
 void sgc_ble_restart_advertising(const char* why)
@@ -266,6 +269,7 @@ static void sgc_ble_add_service()
     char_arm_side.setEventHandler(BLEWritten, on_arm_side_written);
     char_discipline.setEventHandler(BLEWritten, on_discipline_written);
     char_ft_req.setEventHandler(BLEWritten, on_ft_request);
+    char_transfer.setEventHandler(BLEWritten, on_ft_status_written);
 
     /* V5.00: connection lifecycle — hold IDLE while linked; on drop abort FT
        and hard-restart advertising (app kill left zombie link + no ADV). */
