@@ -55,6 +55,10 @@ static BLECharacteristic        char_ft_req (SGC_UUID("ABCA"), BLEWrite, 8);
 static BLECharacteristic        char_ft_stream (SGC_UUID("ABCD"), BLENotify, 247);
 static BLEByteCharacteristic    char_cal       (SGC_UUID("ABD0"), BLERead | BLENotify);
 
+/* V5.56: Keep-Alive State */
+static uint32_t g_last_heartbeat_ms = 0;
+static uint8_t  g_heartbeat_seq = 0;
+
 /* ═══════════════════════════════════════════════════════════════ */
 /*  Config persistence                                               */
 /* ═══════════════════════════════════════════════════════════════ */
@@ -301,6 +305,12 @@ void sgc_ble_init()
        during heavy FT transfers, allowing more leeway for HCI buffer saturation. */
     BLE.setSupervisionTimeout(500); 
 
+    /* V5.56: Request a more aggressive Connection Interval.
+       Standard NUS practice for stability with Android.
+       Sable range: 20ms to 50ms. 
+       ArduinoBLE units: 1.25ms per unit. 32 units = 40ms. */
+    BLE.setConnectionInterval(32); 
+
     BLE.advertise();
 
     g_last_ble_activity_ms = millis();  // V5.07: boot counts as activity
@@ -427,7 +437,21 @@ void sgc_ble_update_state(DeviceState s)
     if (!sgc_ble_ft_active())
         char_ft_stream.writeValue((uint8_t)0);
 }
-void sgc_ble_poll() { BLE.poll(); }
+void sgc_ble_poll() { 
+    BLE.poll(); 
+
+    /* V5.56: BLE Living Pulse (NUS-style Keep-Alive)
+       Prevents Android "Link Supervision Timeout" during idle periods (SLEEP/ARMED).
+       Every 3s, push a 1-byte sequence to char_cal. */
+    if (g_central_connected && !sgc_ble_ft_active()) {
+        uint32_t now = millis();
+        if (now - g_last_heartbeat_ms > 3000) {
+            g_last_heartbeat_ms = now;
+            g_heartbeat_seq++;
+            char_cal.writeValue(g_heartbeat_seq);
+        }
+    }
+}
 
 /* ═══════════════════════════════════════════════════════════════ */
 /*  Notify setters (with packed encoding)                            */
