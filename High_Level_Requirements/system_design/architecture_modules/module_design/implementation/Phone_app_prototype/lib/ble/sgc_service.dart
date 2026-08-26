@@ -23,9 +23,7 @@ class SGCService {
   static const charRunInfo     = '5347ABC8-0000-1000-8000-00805F9B34FB'; // count[2]+age[4]
   static const charRunList     = '5347ABC9-0000-1000-8000-00805F9B34FB';
   static const charFtRequest   = '5347ABCA-0000-1000-8000-00805F9B34FB';
-  static const charFtChunk     = '5347ABCB-0000-1000-8000-00805F9B34FB';
-  static const charFtCrc       = '5347ABCC-0000-1000-8000-00805F9B34FB';
-  static const charFtStatus    = '5347ABCD-0000-1000-8000-00805F9B34FB';
+  static const charFtStream     = '5347ABCD-0000-1000-8000-00805F9B34FB';
   static const charCalAccuracy = '5347ABD0-0000-1000-8000-00805F9B34FB';
 
   static String _toFullUuid(String uuid) {
@@ -118,7 +116,7 @@ class SGCService {
   }
 
   Future<void> sendFtAck() async {
-    await _writeChar(charFtStatus, Uint8List.fromList([0x01]));
+    await _writeChar(charFtRequest, Uint8List.fromList([0x01]));
   }
   Future<String> getRunListJson() async {
     final b = await _readChar(charRunList);
@@ -126,95 +124,76 @@ class SGCService {
   }
 
   Future<Uint8List> downloadRun(int runId, {int expectedSize = 0, void Function(int received, int total)? onProgress}) async {
-    final chunkChar = _findChar(charFtChunk);
-    final statusChar = _findChar(charFtStatus);
-    final crcChar = _findChar(charFtCrc);
-    if (chunkChar == null || statusChar == null) throw Exception('FT chars missing');
+    final streamChar = _findChar(charFtStream);
+    final reqChar = _findChar(charFtRequest);
+    if (streamChar == null || reqChar == null) throw Exception('L-STREAM characteristics missing');
 
-    // Subscribe to ABCB (chunk data) and ABCD (status)
-    await chunkChar.setNotifyValue(true);
-    await statusChar.setNotifyValue(true);
+    await streamChar.setNotifyValue(true);
 
     final buf = BytesBuilder();
+    final completer = Completer<Uint8List>();
     var totalReceived = 0;
-    var chunkCount = 0;
+    var actualExpectedSize = expectedSize;
 
-    // Listen for chunk notifications — device pushes, phone just collects
-    final chunkSub = chunkChar.onValueReceived.listen((v) async {
+    // Packet Parser for the L-STREAM
+    final streamSub = streamChar.onValueReceived.listen((v) async {
       if (v.isEmpty) return;
-      buf.add(Uint8List.fromList(v));
-      totalReceived += v.length;
-      chunkCount++;
-      
-      // V5.50: Send ACK back to device to signal readiness for the next chunk.
-      // This prevents the nRF52 from blocking on writeValue if the S22 buffer is full.
-      try {
-        await _writeChar(charFtStatus, Uint8List.fromList([0x01]));
-      } catch (e) {
-        debugPrint('[SGC] ACK fail: $e');
-      }
+      final header = v[0];
+      final payload = v.sublist(1);
 
-      if (onProgress != null && expectedSize > 0) {
-        onProgress(totalReceived, expectedSize);
-      }
-    });
+      switch (header) {
+        case 0x01: // METADATA / START
+          debugPrint('[SGC] FT Stream: Metadata received');
+          buf.clear();
+          totalReceived = 0;
+          if (payload.length >= 4) {
+            actualExpectedSize = payload[0] | (payload[1] << 8) | (payload[2] << 16) | (payload[3] << 24);
+          }
+          break;
 
-    // Listen for status — FT_DONE(2) or FT_ERROR(3)
-    final statusCompleter = Completer<int>();
-    final statusSub = statusChar.onValueReceived.listen((v) {
-      if (v.isEmpty || statusCompleter.isCompleted) return;
-      final st = v[0];
-      if (st == 2 || st == 3) {
-        statusCompleter.complete(st);
+        case 0x02: // DATA CHUNK
+          buf.add(payload);
+          totalReceived += payload.length;
+          
+          // ACK immediately to trigger the next packet
+          try {
+            await reqChar.write(Uint8List.fromList([0x01]), withoutResponse: false);
+          } catch (e) { debugPrint('[SGC] ACK fail: $e'); }
+
+          if (onProgress != null) onProgress(totalReceived, actualExpectedSize);
+          break;
+
+        case 0x03: // FINALIZATION / CRC
+          debugPrint('[SGC] FT Stream: Finalization received');
+          if (!completer.isCompleted) completer.complete(buf.toBytes());
+          break;
+
+        case 0x04: // ERROR
+          final errCode = payload.isNotEmpty ? payload[0] : 0;
+          if (!completer.isCompleted) completer.completeError('FT Error Code: $errCode');
+          break;
+
+        default:
+          debugPrint('[SGC] FT Stream: Unknown packet header 0x${header.toRadixString(16)}');
       }
     });
 
     try {
-      // 1. CMD_START: open run, device begins pushing chunks
+      // CMD_START request
       final startReq = Uint8List(3)
         ..[0] = 0
         ..[1] = (runId & 0xFF)
         ..[2] = ((runId >> 8) & 0xFF);
       await _writeChar(charFtRequest, startReq);
-      debugPrint('[SGC] FT CMD_START run=$runId (device-push, listening)');
+      debugPrint('[SGC] FT CMD_START run=$runId (L-STREAM mode)');
 
-      // 2. Wait for FT_DONE or FT_ERROR (timeout 60s)
-      final status = await statusCompleter.future.timeout(
+      return await completer.future.timeout(
         const Duration(seconds: 60),
-        onTimeout: () {
-          debugPrint('[SGC] FT timeout at $totalReceived bytes, $chunkCount chunks');
-          return 3;
-        },
+        onTimeout: () => throw TimeoutException('FT Stream timed out'),
       );
-
-      debugPrint('[SGC] FT status=$status, received=$totalReceived bytes, chunks=$chunkCount');
-
-      // 3. Read CRC32 from ABCC
-      int deviceCrc = 0;
-      if (status == 2) {
-        try {
-          if (crcChar != null) {
-            final crcBytes = await crcChar.read();
-            if (crcBytes.length >= 4) {
-              deviceCrc = crcBytes[0] |
-                  (crcBytes[1] << 8) |
-                  (crcBytes[2] << 16) |
-                  (crcBytes[3] << 24);
-            }
-          }
-        } catch (e) {
-          debugPrint('[SGC] FT CRC read failed: $e');
-        }
-      }
-
-      debugPrint('[SGC] FT complete: ${buf.length} bytes, chunks=$chunkCount, '
-          'status=$status, crc=0x${deviceCrc.toRadixString(16)}');
-      return buf.toBytes();
     } finally {
-      await chunkSub.cancel();
-      await statusSub.cancel();
-      try { await chunkChar.setNotifyValue(false); } catch (_) {}
-      try { await statusChar.setNotifyValue(false); } catch (_) {}
+      await streamSub.cancel();
+      try { await streamChar.setNotifyValue(false); } catch (_) {}
     }
   }
 }

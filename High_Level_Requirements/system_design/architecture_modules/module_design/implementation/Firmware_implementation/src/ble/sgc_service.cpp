@@ -272,7 +272,7 @@ static void sgc_ble_add_service()
     char_arm_side.setEventHandler(BLEWritten, on_arm_side_written);
     char_discipline.setEventHandler(BLEWritten, on_discipline_written);
     char_ft_req.setEventHandler(BLEWritten, on_ft_request);
-    char_transfer.setEventHandler(BLEWritten, on_ft_status_written);
+    char_ft_stream.setEventHandler(BLEWritten, on_ft_status_written);
 
     /* V5.00: connection lifecycle — hold IDLE while linked; on drop abort FT
        and hard-restart advertising (app kill left zombie link + no ADV). */
@@ -287,7 +287,7 @@ void sgc_ble_init()
     sgc_ble_config_load();
 
     uint8_t z6[6] = {0}; char_run_info.writeValue(z6, 6);
-    char_transfer.writeValue(0); char_flash_used.writeValue(0); char_cal.writeValue(0);
+    char_ft_stream.writeValue(0); char_flash_used.writeValue(0); char_cal.writeValue(0);
 
     extern const char* sgc_ble_build_run_list();
     const char* json = sgc_ble_build_run_list();
@@ -425,7 +425,7 @@ void sgc_ble_update_state(DeviceState s)
     char_state.writeValue(sf | (static_cast<uint8_t>(s) & 0x1F));
     /* Do not zero transfer status here during active FT — that races poll. */
     if (!sgc_ble_ft_active())
-        char_transfer.writeValue(0);
+        char_ft_stream.writeValue(0);
 }
 void sgc_ble_poll() { BLE.poll(); }
 
@@ -438,7 +438,7 @@ void sgc_ble_set_battery(uint8_t pct) {
     char_battery.writeValue(chg | (pct & 0x7F));
 }
 void sgc_ble_set_cal(uint8_t cal) { char_cal.writeValue(cal); }
-void sgc_ble_set_transfer(uint8_t s) { char_transfer.writeValue(s); }
+void sgc_ble_set_transfer(uint8_t s) { char_ft_stream.writeValue(s); }
 void sgc_ble_set_flash_used(uint8_t pct) { char_flash_used.writeValue(pct); }
 
 void sgc_ble_set_charging(uint8_t st) {

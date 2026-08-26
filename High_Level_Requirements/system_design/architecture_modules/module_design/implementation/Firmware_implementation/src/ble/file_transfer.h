@@ -28,3 +28,8 @@ void sgc_ble_ft_abort(const char* reason);
 /** Handle phone write request (CMD_START / CMD_ABORT). */
 void sgc_ble_ft_on_request(const uint8_t* data, int len);
 void sgc_ble_ft_handle_ack();
+
+extern "C" {
+    BLECharacteristic* sgc_ble_ft_request_char();
+    BLECharacteristic* sgc_ble_ft_stream_char();
+}
