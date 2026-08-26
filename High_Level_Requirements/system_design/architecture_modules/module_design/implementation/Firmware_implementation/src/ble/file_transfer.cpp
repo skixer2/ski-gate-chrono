@@ -116,6 +116,7 @@ void sgc_ble_transfer_poll()
         crc_pkt[3] = (uint8_t)((final_crc >> 16) & 0xFF);
         crc_pkt[4] = (uint8_t)((final_crc >> 24) & 0xFF);
         
+        Serial.println("SND_CRC");
         sgc_ble_ft_stream_char()->writeValue(crc_pkt, 5);
         BLE.poll();
         
@@ -151,6 +152,7 @@ void sgc_ble_transfer_poll()
     buf[0] = 0x02; 
     buf[1] = (uint8_t)(g_ft_chunks & 0xFF);
     
+    Serial.print("SND_DATA "); Serial.println(g_ft_chunks);
     sgc_ble_ft_stream_char()->writeValue(buf, send_len + 2);
     delay(20); 
     BLE.poll();
@@ -186,6 +188,9 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
         uint16_t run_id = (uint16_t)data[1] | ((uint16_t)data[2] << 8);
 
         sgc_ble_touch_activity();
+
+        // Settle Gap: Give S22 time to clear internal GATT lock after the write.
+        delay(100); 
 
     if (g_ft_state == FT_STREAMING) {
         g_ft_state = FT_IDLE;
@@ -257,6 +262,9 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_last_chunk_ms = 0;
     g_ft_state    = FT_STREAMING;
     
+    // Sync global state machine to prevent SLEEP timers from interfering
+    g_sm.set_state(DeviceState::LOGGING);
+
     // V5.54: Send Start/Metadata packet [0x01, runId_lo, runId_hi, size...]
     uint8_t start_pkt[10];
     start_pkt[0] = 0x01;
@@ -267,6 +275,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     start_pkt[5] = (uint8_t)((g_ft_size >> 16) & 0xFF);
     start_pkt[6] = (uint8_t)((g_ft_size >> 24) & 0xFF);
     
+    Serial.println("SND_START");
     sgc_ble_ft_stream_char()->writeValue(start_pkt, 7);
     BLE.poll();
 
