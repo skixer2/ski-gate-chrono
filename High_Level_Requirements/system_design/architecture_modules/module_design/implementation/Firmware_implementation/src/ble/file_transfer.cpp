@@ -43,10 +43,10 @@ static uint32_t  g_ft_chunks  = 0;
 static uint32_t  g_ft_start_ms = 0;
 static uint32_t  g_ft_last_chunk_ms = 0;
 
-/* 20 B chunks for Safe-Mode debugging. If this works, the 244 B payloads were triggering memory corruption or stack overflow. */
-static constexpr size_t   FT_CHUNK_SIZE = 20;
-/* Increased cadence to 200ms to ensure zero buffer pressure. */
-static constexpr uint32_t FT_CHUNK_MS   = 200;
+/* Use production MTU: 244 B (nRF52/Android standard) */
+static constexpr size_t   FT_CHUNK_SIZE = 244;
+/* Turbo cadence: 30ms for high-throughput streaming */
+static constexpr uint32_t FT_CHUNK_MS   = 30;
 static constexpr uint32_t FT_PROG_EVERY = 10;
 
 // V5.52: Move buffer to static memory to eliminate stack overflow risk
