@@ -425,7 +425,7 @@ void sgc_ble_update_state(DeviceState s)
     char_state.writeValue(sf | (static_cast<uint8_t>(s) & 0x1F));
     /* Do not zero transfer status here during active FT — that races poll. */
     if (!sgc_ble_ft_active())
-        char_ft_stream.writeValue(0);
+        char_ft_stream.writeValue((uint8_t)0);
 }
 void sgc_ble_poll() { BLE.poll(); }
 
