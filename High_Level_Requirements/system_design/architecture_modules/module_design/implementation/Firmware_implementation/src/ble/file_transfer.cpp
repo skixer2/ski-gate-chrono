@@ -24,9 +24,8 @@
 #include "nrf.h"  /* NRF_WDT for feed in FT poll */
 
 extern "C" {
-    BLECharacteristic*              sgc_ble_ft_chunk_char();
-    BLECharacteristic*              sgc_ble_ft_status_char();
-    BLEUnsignedIntCharacteristic*   sgc_ble_ft_crc_char();
+    BLECharacteristic* sgc_ble_ft_request_char();
+    BLECharacteristic* sgc_ble_ft_stream_char();
 }
 
 extern RawRunStore g_runs;
@@ -73,7 +72,7 @@ void sgc_ble_ft_abort(const char* reason)
     Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
     json_end();
     if (BLE.connected()) {
-        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        sgc_ble_ft_stream_char()->writeValue((uint8_t)FT_ERROR);
         BLE.poll();
     }
 }
