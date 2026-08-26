@@ -218,7 +218,7 @@ class _RunListScreenState extends State<RunListScreen> {
     final decompressor = Decompressor();
     final crcOk = decompressor.validateCRC(data);
     debugPrint('[SGC] ${crcOk ? "✅" : "⚠️"} Local CRC for ${run.fileName}: ${crcOk ? "OK" : "FAILED"}');
-    final decoded = decompressor.decompressFull(data);
+    final decoded = await compute(_decompressRunBackground, data);
 
     if (mounted) {
       Navigator.of(context).push(
@@ -274,7 +274,7 @@ class _RunListScreenState extends State<RunListScreen> {
         debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
         final data = await _downloadOne(ft, run.id);
         if (data == null) { failed++; continue; }
-        final decoded = Decompressor().decompressFull(data);
+        final decoded = await compute(_decompressRunBackground, data);
         await _storage.save(
           runId: run.id,
           compressedData: data,
@@ -528,6 +528,10 @@ class _RunListScreenState extends State<RunListScreen> {
       ),
     );
   }
+}
+
+DecompressResult _decompressRunBackground(Uint8List data) {
+  return Decompressor().decompressFull(data);
 }
 
 /// Bottom sheet that shows BLE scan results and updates reactively.
