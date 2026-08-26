@@ -52,9 +52,7 @@ static BLECharacteristic        char_run_list (SGC_UUID("ABC9"), BLERead, 512); 
 
 /* ── File transfer ────────────────────────────────────────────── */
 static BLECharacteristic        char_ft_req (SGC_UUID("ABCA"), BLEWrite, 8);
-static BLECharacteristic        char_ft_chunk  (SGC_UUID("ABCB"), BLENotify, 244);
-static BLEUnsignedIntCharacteristic  char_ft_crc  (SGC_UUID("ABCC"), BLERead);
-static BLEByteCharacteristic    char_transfer  (SGC_UUID("ABCD"), BLERead | BLENotify);
+static BLECharacteristic        char_ft_stream (SGC_UUID("ABCD"), BLENotify, 247);
 static BLEByteCharacteristic    char_cal       (SGC_UUID("ABD0"), BLERead | BLENotify);
 
 /* ═══════════════════════════════════════════════════════════════ */
@@ -264,8 +262,7 @@ static void sgc_ble_add_service()
     svc.addCharacteristic(char_state);      svc.addCharacteristic(char_battery);
     svc.addCharacteristic(char_flash_used); svc.addCharacteristic(char_run_info);
     svc.addCharacteristic(char_run_list);
-    svc.addCharacteristic(char_ft_req);     svc.addCharacteristic(char_ft_chunk);
-    svc.addCharacteristic(char_ft_crc);     svc.addCharacteristic(char_transfer);
+    svc.addCharacteristic(char_ft_req);     svc.addCharacteristic(char_ft_stream);
     svc.addCharacteristic(char_cal);
 
     BLE.addService(svc);
@@ -475,9 +472,8 @@ void sgc_ble_set_run_count(uint16_t count)
 /* ═══════════════════════════════════════════════════════════════ */
 
 extern "C" {
-    BLECharacteristic* sgc_ble_ft_chunk_char()  { return &char_ft_chunk; }
-    BLECharacteristic* sgc_ble_ft_status_char() { return &char_transfer; }
-    BLEUnsignedIntCharacteristic* sgc_ble_ft_crc_char() { return &char_ft_crc; }
+    BLECharacteristic* sgc_ble_ft_request_char() { return &char_ft_req; }
+    BLECharacteristic* sgc_ble_ft_stream_char()  { return &char_ft_stream; }
 }
 
 /* V5.07: BLE activity tracking for zombie link detection */

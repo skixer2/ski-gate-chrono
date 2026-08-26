@@ -458,3 +458,5 @@ cd ..\..\..\unit_tests   # adjust to unit_tests path on PC
 ```
 
 Path note: JP PC canonical tree may be `F:\Documents\Progetti\ski-gate-chrono`; workspace mirror is under OpenClaw `ski_gate_chrono/`.
+## L-STREAM (v5.54) Architecture
+Consolidated FT characteristics into single Stream characteristic to eliminate S22 GATT stall.

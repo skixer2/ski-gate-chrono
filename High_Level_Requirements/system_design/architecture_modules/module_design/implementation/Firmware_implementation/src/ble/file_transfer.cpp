@@ -89,31 +89,37 @@ void sgc_ble_transfer_poll()
 
     uint32_t now = millis();
 
-    // V5.50: Handle ACK timeout while waiting for phone
     if (g_ft_state == FT_WAITING_ACK) {
-        if (now - g_ft_last_chunk_ms > 2000) { // 2s safety timeout
+        if (now - g_ft_last_chunk_ms > 2000) {
             sgc_ble_ft_abort("ack_timeout");
             return;
         }
-        return; // Still waiting for ACK to transition us back to FT_STREAMING
+        return;
     }
 
-    // Regular streaming logic (g_ft_state == FT_STREAMING)
     if (now - g_ft_last_chunk_ms < FT_CHUNK_MS) return;
     g_ft_last_chunk_ms = now;
 
-    // V5.52: Use static buffer instead of stack
     uint8_t* buf = g_ft_buffer;
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
-    size_t send_len = (remaining > FT_CHUNK_SIZE) ? FT_CHUNK_SIZE : remaining;
+    // Reserve 2 bytes for Type and Index
+    size_t send_len = (remaining > (FT_CHUNK_SIZE - 2)) ? (FT_CHUNK_SIZE - 2) : remaining;
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
         uint32_t final_crc = RawRunStore::crc32_finalize(g_ft_crc);
-        sgc_ble_ft_crc_char()->writeValue(final_crc);
+        
+        // Packet Type 0x03: CRC/Finalize
+        uint8_t crc_pkt[5];
+        crc_pkt[0] = 0x03;
+        crc_pkt[1] = (uint8_t)(final_crc & 0xFF);
+        crc_pkt[2] = (uint8_t)((final_crc >> 8) & 0xFF);
+        crc_pkt[3] = (uint8_t)((final_crc >> 16) & 0xFF);
+        crc_pkt[4] = (uint8_t)((final_crc >> 24) & 0xFF);
+        
+        sgc_ble_ft_stream_char()->writeValue(crc_pkt, 5);
         BLE.poll();
-        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_DONE);
-        BLE.poll();
+        
         json_begin();
         json_kv("ev", "ft_done");
         Serial.print(','); json_kv("crc", (long)final_crc);
@@ -124,9 +130,10 @@ void sgc_ble_transfer_poll()
         return;
     }
 
-    if (!g_runs.read_run_data(g_ft_run_id, g_ft_offset, buf, send_len)) {
+    if (!g_runs.read_run_data(g_ft_run_id, g_ft_offset, buf + 2, send_len)) {
         g_ft_state = FT_ERROR;
-        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
+        uint8_t err_pkt[2] = {0x04, 0x01}; // Type 0x04, Error 0x01 (Read Fail)
+        sgc_ble_ft_stream_char()->writeValue(err_pkt, 2);
         BLE.poll();
         json_begin();
         json_kv("ev", "ft_error");
@@ -137,23 +144,23 @@ void sgc_ble_transfer_poll()
     }
 
     for (size_t i = 0; i < send_len; i++)
-        g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[i]);
+        g_ft_crc = RawRunStore::crc32_update(g_ft_crc, buf[2 + i]);
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
-    // V5.52: Liveness tracking
-    Serial.println(F("FT_SND_B")); // "SND-Begin"
-    sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
+    // Packet Type 0x02: Data Chunk
+    buf[0] = 0x02; 
+    buf[1] = (uint8_t)(g_ft_chunks & 0xFF);
+    
+    sgc_ble_ft_stream_char()->writeValue(buf, send_len + 2);
     delay(20); 
     BLE.poll();
-    Serial.println(F("FT_SND_A")); // "SND-After"
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     g_ft_offset += send_len;
     g_ft_chunks++;
 
-    // V5.50: Transition to WAITING_ACK to stop the blind push
     g_ft_state = FT_WAITING_ACK;
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
@@ -181,81 +188,98 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
 
         sgc_ble_touch_activity();
 
-        if (g_ft_state == FT_STREAMING) {
-            g_ft_state = FT_IDLE;
-            json_begin();
-            json_kv("ev", "ft_abort");
-            Serial.print(','); json_kv("reason", "new_request");
-            json_end();
-        }
-
-        const RunEntry* entry = nullptr;
-        for (uint16_t i = 0; i < g_runs.run_count(); i++) {
-            const RunEntry* e = g_runs.get_entry(i);
-            if (e && e->run_id == run_id) { entry = e; break; }
-        }
-
-        if (!entry) {
-            sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
-            BLE.poll();
-            json_begin();
-            json_kv("ev", "ft_error");
-            Serial.print(','); json_kv("reason", "no_run");
-            Serial.print(','); json_kv("run", (long)run_id);
-            json_end();
-            return;
-        }
-
-        RunHeader hdr;
-        memset(&hdr, 0xFF, sizeof(hdr));
-        bool read_ok = g_runs.read_run_header(run_id, hdr);
-        if (!read_ok || hdr.format_ver < 1 || hdr.format_ver > 3) {
-            json_begin();
-            json_kv("ev", "ft_error");
-            Serial.print(','); json_kv("reason", "bad_header");
-            Serial.print(','); json_kv("run", (long)run_id);
-            Serial.print(','); json_kv_bool("read_ok", read_ok);
-            Serial.print(','); json_kv("format_ver", (long)hdr.format_ver);
-            Serial.print(','); json_kv("data_size", (long)hdr.data_size);
-            json_end();
-            sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
-            BLE.poll();
-            return;
-        }
-
-        uint32_t data_sz = hdr.data_size;
-        if (data_sz == 0) data_sz = entry->compressed_size;
-        if (data_sz == 0 || data_sz > 200000) {
-            json_begin();
-            json_kv("ev", "ft_error");
-            Serial.print(','); json_kv("reason", "bad_size");
-            Serial.print(','); json_kv("sz", (long)data_sz);
-            json_end();
-            sgc_ble_ft_status_char()->writeValue((uint8_t)FT_ERROR);
-            BLE.poll();
-            return;
-        }
-
-        g_ft_run_id   = run_id;
-        g_ft_size     = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
-        g_ft_offset   = 0;
-        g_ft_crc      = 0xFFFFFFFF;
-        g_ft_chunks   = 0;
-        g_ft_start_ms = millis();
-        g_ft_last_chunk_ms = 0;
-        g_ft_state    = FT_STREAMING;
-        sgc_ble_ft_status_char()->writeValue((uint8_t)FT_STREAMING);
-        BLE.poll();
-
+    if (g_ft_state == FT_STREAMING) {
+        g_ft_state = FT_IDLE;
         json_begin();
-        json_kv("ev", "ft_start");
+        json_kv("ev", "ft_abort");
+        Serial.print(','); json_kv("reason", "new_request");
+        json_end();
+    }
+
+    const RunEntry* entry = nullptr;
+    for (uint16_t i = 0; i < g_runs.run_count(); i++) {
+        const RunEntry* e = g_runs.get_entry(i);
+        if (e && e->run_id == run_id) { entry = e; break; }
+    }
+
+    if (!entry) {
+        // V5.54: Error packets now go through the Stream characteristic
+        uint8_t err_pkt[2] = {0x04, 0x01}; // Type 0x04, Error 0x01 (No Run)
+        sgc_ble_ft_stream_char()->writeValue(err_pkt, 2);
+        BLE.poll();
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "no_run");
         Serial.print(','); json_kv("run", (long)run_id);
-        Serial.print(','); json_kv("sz", (long)g_ft_size);
-        Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
-        Serial.print(','); json_kv("cad_ms", (long)FT_CHUNK_MS);
-        Serial.print(','); json_kv("ms", (long)0);
         json_end();
         return;
+    }
+
+    RunHeader hdr;
+    memset(&hdr, 0xFF, sizeof(hdr));
+    bool read_ok = g_runs.read_run_header(run_id, hdr);
+    if (!read_ok || hdr.format_ver < 1 || hdr.format_ver > 3) {
+        // V5.54: Error packets now go through the Stream characteristic
+        uint8_t err_pkt[2] = {0x04, 0x02}; // Type 0x04, Error 0x02 (Bad Header)
+        sgc_ble_ft_stream_char()->writeValue(err_pkt, 2);
+        BLE.poll();
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "bad_header");
+        Serial.print(','); json_kv("run", (long)run_id);
+        Serial.print(','); json_kv_bool("read_ok", read_ok);
+        Serial.print(','); json_kv("format_ver", (long)hdr.format_ver);
+        Serial.print(','); json_kv("data_size", (long)hdr.data_size);
+        json_end();
+        return;
+    }
+
+    uint32_t data_sz = hdr.data_size;
+    if (data_sz == 0) data_sz = entry->compressed_size;
+    if (data_sz == 0 || data_sz > 200000) {
+        // V5.54: Error packets now go through the Stream characteristic
+        uint8_t err_pkt[2] = {0x04, 0x03}; // Type 0x04, Error 0x03 (Bad Size)
+        sgc_ble_ft_stream_char()->writeValue(err_pkt, 2);
+        BLE.poll();
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "bad_size");
+        Serial.print(','); json_kv("sz", (long)data_sz);
+        json_end();
+        return;
+    }
+
+    g_ft_run_id   = run_id;
+    g_ft_size     = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
+    g_ft_offset   = 0;
+    g_ft_crc      = 0xFFFFFFFF;
+    g_ft_chunks   = 0;
+    g_ft_start_ms = millis();
+    g_ft_last_chunk_ms = 0;
+    g_ft_state    = FT_STREAMING;
+    
+    // V5.54: Send Start/Metadata packet [0x01, runId_lo, runId_hi, size...]
+    uint8_t start_pkt[10];
+    start_pkt[0] = 0x01;
+    start_pkt[1] = (uint8_t)(run_id & 0xFF);
+    start_pkt[2] = (uint8_t)((run_id >> 8) & 0xFF);
+    start_pkt[3] = (uint8_t)(g_ft_size & 0xFF);
+    start_pkt[4] = (uint8_t)((g_ft_size >> 8) & 0xFF);
+    start_pkt[5] = (uint8_t)((g_ft_size >> 16) & 0xFF);
+    start_pkt[6] = (uint8_t)((g_ft_size >> 24) & 0xFF);
+    
+    sgc_ble_ft_stream_char()->writeValue(start_pkt, 7);
+    BLE.poll();
+
+    json_begin();
+    json_kv("ev", "ft_start");
+    Serial.print(','); json_kv("run", (long)run_id);
+    Serial.print(','); json_kv("sz", (long)g_ft_size);
+    Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
+    Serial.print(','); json_kv("cad_ms", (long)FT_CHUNK_MS);
+    Serial.print(','); json_kv("ms", (long)0);
+    json_end();
+    return;
     }
 
     if (cmd == 2) {  /* CMD_ABORT */
