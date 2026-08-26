@@ -228,7 +228,7 @@ class _RunListScreenState extends State<RunListScreen> {
     // (and BLE callbacks are never blocked when opening runs while connected).
     final crcOk = Decompressor().validateCRC(data);
     debugPrint('[SGC] ${crcOk ? "✅" : "⚠️"} Local CRC for ${run.fileName}: ${crcOk ? "OK" : "FAILED"}');
-    final decoded = await compute(_decompressInIsolate, data);
+    final decoded = await compute(_decompressRunBackground, data);
 
     if (mounted) {
       Navigator.of(context).push(
@@ -284,10 +284,7 @@ class _RunListScreenState extends State<RunListScreen> {
         debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
         final data = await _downloadOne(ft, run.id);
         if (data == null) { failed++; continue; }
-        // V1.12: decompress in a background isolate — keeps the BLE platform
-        // channel free so the next run's setNotifyValue doesn't race into
-        // GATT_ERROR 133 while the main thread is busy parsing frames.
-        final decoded = await compute(_decompressInIsolate, data);
+        final decoded = await compute(_decompressRunBackground, data);
         await _storage.save(
           runId: run.id,
           compressedData: data,
@@ -541,6 +538,10 @@ class _RunListScreenState extends State<RunListScreen> {
       ),
     );
   }
+}
+
+DecompressResult _decompressRunBackground(Uint8List data) {
+  return Decompressor().decompressFull(data);
 }
 
 /// Bottom sheet that shows BLE scan results and updates reactively.
