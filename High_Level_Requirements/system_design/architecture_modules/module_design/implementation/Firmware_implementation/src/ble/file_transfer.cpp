@@ -42,13 +42,14 @@ static uint32_t  g_ft_chunks  = 0;
 static uint32_t  g_ft_start_ms = 0;
 static uint32_t  g_ft_last_chunk_ms = 0;
 
-/* 244 B chunks (MTU 247 - 3 ATT header). Phone confirms MTU=247. */
-static constexpr size_t   FT_CHUNK_SIZE = 244;
-/* 50ms cadence — S22 can't sustain 30ms (8 KB/s overflows ACL buffer →
-   LINK_SUPERVISION_TIMEOUT → device writeValue blocks → watchdog reboot).
-   50ms = ~5 KB/s, still 2.5x faster than V4.79 (128 B @ 30ms = 4 KB/s). */
-static constexpr uint32_t FT_CHUNK_MS   = 100;
-static constexpr uint32_t FT_PROG_EVERY = 20;
+/* 20 B chunks for Safe-Mode debugging. If this works, the 244 B payloads were triggering memory corruption or stack overflow. */
+static constexpr size_t   FT_CHUNK_SIZE = 20;
+/* Increased cadence to 200ms to ensure zero buffer pressure. */
+static constexpr uint32_t FT_CHUNK_MS   = 200;
+static constexpr uint32_t FT_PROG_EVERY = 10;
+
+// V5.52: Move buffer to static memory to eliminate stack overflow risk
+static uint8_t g_ft_buffer[FT_CHUNK_SIZE];
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
@@ -101,7 +102,8 @@ void sgc_ble_transfer_poll()
     if (now - g_ft_last_chunk_ms < FT_CHUNK_MS) return;
     g_ft_last_chunk_ms = now;
 
-    uint8_t buf[FT_CHUNK_SIZE];
+    // V5.52: Use static buffer instead of stack
+    uint8_t* buf = g_ft_buffer;
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
     size_t send_len = (remaining > FT_CHUNK_SIZE) ? FT_CHUNK_SIZE : remaining;
 
@@ -139,14 +141,12 @@ void sgc_ble_transfer_poll()
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
+    // V5.52: Liveness tracking
+    Serial.println(F("FT_SND_B")); // "SND-Begin"
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
-    
-    /* V5.51: S22 Breathing Room. 
-       Adding a small delay allows the BLE stack to process the writeValue 
-       and prevents the HCI buffer from saturating, which can lead to 
-       LINK_SUPERVISION_TIMEOUT on some Android devices. */
     delay(20); 
     BLE.poll();
+    Serial.println(F("FT_SND_A")); // "SND-After"
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
