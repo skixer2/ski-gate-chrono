@@ -155,10 +155,14 @@ class SGCService {
           buf.add(payload);
           totalReceived += payload.length;
           
-          // ACK immediately to trigger the next packet
+          /* V5.58: Pure Listener Mode. 
+             Disabled ACK writes to prevent GATT_ERROR (133) on Samsung S22.
+             The device now pushes data in a paced-push stream without waiting for ACKs.
+          
           try {
             await reqChar.write(Uint8List.fromList([0x01]), withoutResponse: false);
           } catch (e) { debugPrint('[SGC] ACK fail: $e'); }
+          */
 
           if (onProgress != null) onProgress(totalReceived, actualExpectedSize);
           break;
