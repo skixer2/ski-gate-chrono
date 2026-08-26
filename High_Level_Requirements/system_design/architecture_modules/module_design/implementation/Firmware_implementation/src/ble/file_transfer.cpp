@@ -128,6 +128,12 @@ void sgc_ble_transfer_poll()
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
     BLE.poll();
 
+    /* V5.48: Feed WDT again after BLE poll — writeValue + poll can
+       take unpredictable time on S22 when ACL buffers fill up.
+       Dual-feed guarantees we don't trip the 5s HW WDT even if
+       a single chunk transfer blocks >2.5s. */
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+
     g_ft_offset += send_len;
     g_ft_chunks++;
 

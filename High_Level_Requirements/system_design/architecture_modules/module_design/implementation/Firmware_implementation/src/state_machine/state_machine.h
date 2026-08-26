@@ -52,9 +52,7 @@ public:
      *  not cause an immediate System Off because the original SLEEP entry
      *  timestamp is now older than SLEEP_SYSTEM_OFF_MS.  Only meaningful in
      *  SLEEP — other states set their own timer on entry. */
-    void reset_sleep_timer() {
-        if (m_state == DeviceState::SLEEP) m_state_entered_ms = millis();
-    }
+    void reset_sleep_timer();
 
     /* Accessors */
     DeviceState state() const { return m_state; }

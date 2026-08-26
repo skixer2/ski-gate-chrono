@@ -4,7 +4,7 @@
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
 **Last updated:** 2026-08-24 15:30 UTC  
-**Current baselines:** FW **5.37** (LDC1612 quiesced at boot — CONFIG=0 sleep + clear DRDY) · App **1.11** (code ready, unbuilt) · HW **v4.2** · Port **COM8**  
+**Current baselines:** FW **5.48** (Watchdog double-feed for FT) · App **1.19** · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
