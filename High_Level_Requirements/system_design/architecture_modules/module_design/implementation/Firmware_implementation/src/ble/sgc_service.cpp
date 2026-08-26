@@ -307,9 +307,10 @@ void sgc_ble_init()
 
     /* V5.56: Request a more aggressive Connection Interval.
        Standard NUS practice for stability with Android.
-       Sable range: 20ms to 50ms. 
-       ArduinoBLE units: 1.25ms per unit. 32 units = 40ms. */
-    BLE.setConnectionInterval(32); 
+       Sable range: 40ms to 60ms.
+       ArduinoBLE units: 1.25ms per unit.
+       Min: 32 * 1.25 = 40ms, Max: 48 * 1.25 = 60ms. */
+    BLE.setConnectionInterval(32, 48); 
 
     BLE.advertise();
 
