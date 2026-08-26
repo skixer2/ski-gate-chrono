@@ -298,6 +298,12 @@ void sgc_ble_init()
 
     BLE.setLocalName(g_dev_name);
     BLE.setAdvertisedService(svc);
+
+    /* V5.51: Increase Supervision Timeout to 5 seconds.
+       This prevents the Samsung S22 from dropping the link too aggressively 
+       during heavy FT transfers, allowing more leeway for HCI buffer saturation. */
+    BLE.setSupervisionTimeout(500); 
+
     BLE.advertise();
 
     g_last_ble_activity_ms = millis();  // V5.07: boot counts as activity

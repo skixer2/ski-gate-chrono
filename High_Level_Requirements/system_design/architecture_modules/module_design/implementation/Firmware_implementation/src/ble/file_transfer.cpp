@@ -140,6 +140,12 @@ void sgc_ble_transfer_poll()
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     sgc_ble_ft_chunk_char()->writeValue(buf, send_len);
+    
+    /* V5.51: S22 Breathing Room. 
+       Adding a small delay allows the BLE stack to process the writeValue 
+       and prevents the HCI buffer from saturating, which can lead to 
+       LINK_SUPERVISION_TIMEOUT on some Android devices. */
+    delay(20); 
     BLE.poll();
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
