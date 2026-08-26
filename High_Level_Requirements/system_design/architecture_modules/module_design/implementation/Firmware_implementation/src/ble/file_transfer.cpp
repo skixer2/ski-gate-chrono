@@ -22,12 +22,14 @@
 #include <ArduinoBLE.h>
 #include <Arduino.h>
 #include "nrf.h"  /* NRF_WDT for feed in FT poll */
+#include "../state_machine/state_machine.h"
 
 extern "C" {
     BLECharacteristic* sgc_ble_ft_request_char();
     BLECharacteristic* sgc_ble_ft_stream_char();
 }
 
+extern StateMachine g_sm;
 extern RawRunStore g_runs;
 
 enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_WAITING_ACK = 4, FT_DONE = 2, FT_ERROR = 3 };
@@ -263,7 +265,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_state    = FT_STREAMING;
     
     // Sync global state machine to prevent SLEEP timers from interfering
-    g_sm.set_state(DeviceState::LOGGING);
+    g_sm.force_state(DeviceState::LOGGING);
 
     // V5.54: Send Start/Metadata packet [0x01, runId_lo, runId_hi, size...]
     uint8_t start_pkt[10];
