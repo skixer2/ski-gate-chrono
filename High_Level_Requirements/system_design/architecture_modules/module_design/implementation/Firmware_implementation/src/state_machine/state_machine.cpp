@@ -123,6 +123,11 @@ void StateMachine::tick()
 }
 
 /* ------------------------------------------------------------------ */
+void StateMachine::reset_sleep_timer()
+{
+    if (m_state == DeviceState::SLEEP) m_state_entered_ms = millis();
+}
+
 void StateMachine::check_timeouts()
 {
     uint32_t elapsed = millis() - m_state_entered_ms;
