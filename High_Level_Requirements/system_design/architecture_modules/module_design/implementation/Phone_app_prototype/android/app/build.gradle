@@ -23,7 +23,7 @@ android {
 
     defaultConfig {
         applicationId = "com.skigatechono.sgc_phone"
-        minSdk = 21
+        minSdkVersion = flutter.minSdkVersion
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"

@@ -16,6 +16,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "Arduino.h"
 
 enum class DeviceState : uint8_t
 {
