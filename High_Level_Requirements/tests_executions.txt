@@ -150,6 +150,8 @@ Copy
 
 
 # Single test
+$runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
+
 py sgc_test_harness.py --port COM8 test_state_machine.py -o results.md
 py sgc_test_harness.py --port COM8 test_edge_cases.py -o results.md
 py sgc_test_harness.py --port COM8 --ts test_*.py
@@ -180,7 +182,7 @@ py test_stream_run.py COM8 --duration 20 --gates 10
 py test_stream_run.py COM8 --duration 25 --gates 10
 py test_stream_run.py COM8 --duration 20 --gates 10 -R
 py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike05.ndjson
-py test_stream_run.py COM8 --duration 25 --gates 10 --save run_spike76.ndjson --seed 45
+py test_stream_run.py COM3 --duration 25 --gates 10 --save run_spike76.ndjson --seed 45
 py test_stream_run.py COM8 --duration 25 --gates 10 -R --save run_spike72.ndjson --seed 45
 
 h 0 raw
