@@ -47,7 +47,7 @@ static constexpr size_t   FT_CHUNK_SIZE = 244;
 /* 50ms cadence — S22 can't sustain 30ms (8 KB/s overflows ACL buffer →
    LINK_SUPERVISION_TIMEOUT → device writeValue blocks → watchdog reboot).
    50ms = ~5 KB/s, still 2.5x faster than V4.79 (128 B @ 30ms = 4 KB/s). */
-static constexpr uint32_t FT_CHUNK_MS   = 50;
+static constexpr uint32_t FT_CHUNK_MS   = 100;
 static constexpr uint32_t FT_PROG_EVERY = 20;
 
 void sgc_ble_transfer_init() {}
