@@ -19,6 +19,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <ArduinoBLE.h>
 
 void sgc_ble_transfer_init();
 void sgc_ble_transfer_poll();
