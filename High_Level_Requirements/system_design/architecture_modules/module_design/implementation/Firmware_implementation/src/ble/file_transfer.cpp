@@ -32,7 +32,7 @@ extern "C" {
 extern StateMachine g_sm;
 extern RawRunStore g_runs;
 
-enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_WAITING_ACK = 4, FT_DONE = 2, FT_ERROR = 3 };
+enum FTState { FT_IDLE = 0, FT_STREAMING = 1, FT_DONE = 2, FT_ERROR = 3 };
 
 static uint8_t   g_ft_state   = FT_IDLE;
 static uint32_t  g_ft_offset  = 0;
@@ -57,9 +57,8 @@ bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
 
 void sgc_ble_ft_handle_ack()
 {
-    if (g_ft_state == FT_WAITING_ACK) {
-        g_ft_state = FT_STREAMING;
-    }
+    /* V5.57: ACKs are now informational. They no longer trigger state changes.
+       We maintain a continuous paced-push stream. */
 }
 
 void sgc_ble_ft_abort(const char* reason)
@@ -89,14 +88,6 @@ void sgc_ble_transfer_poll()
     }
 
     uint32_t now = millis();
-
-    if (g_ft_state == FT_WAITING_ACK) {
-        if (now - g_ft_last_chunk_ms > 2000) {
-            sgc_ble_ft_abort("ack_timeout");
-            return;
-        }
-        return;
-    }
 
     if (now - g_ft_last_chunk_ms < FT_CHUNK_MS) return;
     g_ft_last_chunk_ms = now;
@@ -156,7 +147,11 @@ void sgc_ble_transfer_poll()
     
     Serial.print("SND_DATA "); Serial.println(g_ft_chunks);
     sgc_ble_ft_stream_char()->writeValue(buf, send_len + 2);
-    delay(20); 
+    
+    /* V5.57: Safe-Stream Pacing
+       Small delay to prevent overloading the nRF52 BLE stack.
+       The 40ms connection interval handles the rest. */
+    delay(10); 
     BLE.poll();
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
@@ -164,7 +159,8 @@ void sgc_ble_transfer_poll()
     g_ft_offset += send_len;
     g_ft_chunks++;
 
-    g_ft_state = FT_WAITING_ACK;
+    /* V5.57: Removed state = FT_WAITING_ACK. 
+       We now stay in FT_STREAMING for Paced-Push. */
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
         json_begin();
