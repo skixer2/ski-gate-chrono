@@ -287,7 +287,7 @@ void sgc_ble_init()
     sgc_ble_config_load();
 
     uint8_t z6[6] = {0}; char_run_info.writeValue(z6, 6);
-    char_ft_stream.writeValue(0); char_flash_used.writeValue(0); char_cal.writeValue(0);
+    char_ft_stream.writeValue((uint8_t)0); char_flash_used.writeValue(0); char_cal.writeValue(0);
 
     extern const char* sgc_ble_build_run_list();
     const char* json = sgc_ble_build_run_list();
