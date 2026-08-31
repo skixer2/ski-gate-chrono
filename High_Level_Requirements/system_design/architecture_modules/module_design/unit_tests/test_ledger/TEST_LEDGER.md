@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 15:30 UTC  
-**Current baselines:** FW **5.65** (abort = proper ERROR packet) · App **1.22** (short-transfer guard + one-run-per-connection) · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 21:15 UTC  
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.23** (UI survives download) · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,25 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.65** + App **1.22** pushed (`8af9a4c`), pending JP bench test on S22*
+*Status: **OPEN** — FW **5.66** + App **1.23** pushed (`24e17ac`), pending JP bench test on S22*
+
+> **2026-08-31 21:00 bench (5.65 + 1.22): TWO RUNS, TWO ft_done ✓✓**
+> (run 0: 39 372 B/163 chunks/0 blocks/9.85 s · run 1: 39 668 B/164 chunks/
+> 0 blocks/9.87 s) — and both WERE saved to local storage. But the screen
+> showed **no runs until app relaunch**: the intentional Phase-2 per-run
+> disconnect tripped `_onConnectionChanged`, clearing all UI state
+> mid-download. Cosmetic-but-alarming; runs were never actually lost.
+> `state_blocked not_armed` = blocked force_state(LOGGING) from SLEEP —
+> harmless serial spam (hold_sleep guards timers regardless).
+>
+> **App 1.23:** drop-handler skips clearing while `_isDownloading`; batch
+> cancel via disconnect button; device list + service refreshed post-batch.
+> **FW 5.66:** force LOGGING only from ARMED — spam gone.
+>
+> **Device-side status: SOLVED.** Two complete transfers, zero blocks,
+> resume + one-run-per-connection working. Remaining risk is phone-side
+> wedge frequency (multiple stops/run) — handled by resume, to be further
+> reduced by Phase 3 background Auto-Sync (1-min poll).
 
 > **2026-08-31 bench (5.64 + 1.21): FIRST ft_done ✓ (39 372 B, 163 chunks,
 > 0 blocks, 7.58 s) — but two app-visible defects:** run #2 did NOT recover
