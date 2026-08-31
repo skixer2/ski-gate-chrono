@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 09:45 UTC  
-**Current baselines:** FW **5.60** (WDT survival — ISR WDT feed during FT) · App **1.20** · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 10:05 UTC  
+**Current baselines:** FW **5.61** (vendored+patched ArduinoBLE — bounded TX wait) · App **1.20** · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,20 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.60** pushed (`4d19d26`), pending JP bench test on S22*
+*Status: **OPEN** — FW **5.61** pushed (`087979d`), pending JP bench test on S22*
+
+> **2026-08-31 bench (5.60): ZOMBIE HANG at chunk 12.** No reboot (5.60
+> Ticker WDT feed works) but `SND_DATA 12` → frozen 60 s+. Library bug
+> confirmed in source: `HCIClass::handleEventPkt` / `EVT_DISCONN_COMPLETE`
+> never clears `_pendingPkt` → `sendAclPkt`'s `while (_pendingPkt >=
+> _maxPkt) poll();` spins forever even after the phone disconnects.
+>
+> **FW 5.61 = vendored + patched ArduinoBLE 2.0.2** (`lib/ArduinoBLE`,
+> removed from lib_deps, `SGC_PATCHES.md`): (1) sendAclPkt busy-wait
+> bounded 2000 ms → -1; (2) `_pendingPkt=0` on disconnect; (3) handleNotify
+> propagates failure → `writeValue()==0`. FT: 3 consecutive TX fails (300 ms
+> holds) → `ft_abort("tx_blocked")`. Every link-death path now ends in a
+> clean abort — no reboot (5.60), no hang (5.61).
 
 > **2026-08-31 bench (5.59): device REBOOTED mid-transfer.** Serial:
 > `SND_DATA 78` → `{"ev":"boot","ver":"5.59","rr":2,...}`. `rr:2` =
