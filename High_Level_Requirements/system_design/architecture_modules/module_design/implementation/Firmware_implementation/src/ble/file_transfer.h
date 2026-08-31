@@ -14,6 +14,10 @@
  *
  * V4.96/4.97 SPI isolation: while FT active, skip BHY2.update(),
  *   feed_sensors(), and IDLE ambient (see main.cpp).
+ *
+ * V5.59: Burst & Breathe pacing (10 × 244 B @ 30 ms, then 100 ms gap)
+ *   + writeValue() block forensics (ft_txblk / tx_blocked abort).
+ *   Protocol on the wire is unchanged — phone side needs no update.
  */
 
 #pragma once

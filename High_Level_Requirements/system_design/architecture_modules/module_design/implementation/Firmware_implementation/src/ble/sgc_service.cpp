@@ -302,8 +302,11 @@ void sgc_ble_init()
 
     /* V5.51: Increase Supervision Timeout to 5 seconds.
        This prevents the Samsung S22 from dropping the link too aggressively 
-       during heavy FT transfers, allowing more leeway for HCI buffer saturation. */
-    BLE.setSupervisionTimeout(500); 
+       during heavy FT transfers, allowing more leeway for HCI buffer saturation.
+       V5.59: 5 s -> 10 s hint. Burst & Breathe prevents the wedge; if a
+       transient controller stall still occurs, a wider window lets the link
+       recover instead of dying at the first 5 s of silence. */
+    BLE.setSupervisionTimeout(1000); 
 
     /* V5.56: Request a more aggressive Connection Interval.
        Standard NUS practice for stability with Android.

@@ -12,6 +12,28 @@
  *
  *        244 B chunks @ 25ms cadence = ~9.5 KB/s theoretical, ~5-8 KB/s real.
  *        39 KB run in ~5-8s.
+ *
+ * V5.59: BURST & BREATHE — S22 LINK_SUPERVISION_TIMEOUT mitigation.
+ *
+ *        Root-cause analysis (ArduinoBLE/Cordio internals, verified in-tree):
+ *        HCI.sendAclPkt() busy-blocks (`while (_pendingPkt >= _maxPkt) poll();`)
+ *        when the controller TX queue is full, and ATT.handleNotify() DISCARDS
+ *        its return value — so writeValue() can freeze the FT loop for seconds
+ *        with zero error signal. Pushing 244 B @ 30ms exceeds what the link
+ *        drains (~1 pkt per 40-60ms connection event), so the device sits
+ *        permanently at the congestion edge; when the S22 controller/host
+ *        suffocates and delays LL ACKs, the link starves → phone declares
+ *        LINK_SUPERVISION_TIMEOUT (0x08) after its 5 s supervision window.
+ *
+ *        Strategy: bursts of FT_BURST_COUNT chunks @ 30 ms, then a 100 ms
+ *        "breathe" gap so Android can drain its GATT/HCI queue and service
+ *        Link Layer housekeeping. Effective cadence ~40 ms/chunk — barely
+ *        slower than turbo, but the queue never stays pinned at _maxPkt.
+ *
+ *        TX block forensics: time every writeValue(). blocked > 50 ms logs
+ *        ft_txblk; > 100 ms triggers an adaptive extra breathe; > 3000 ms
+ *        aborts the transfer ("tx_blocked") — the link is already dying and
+ *        the app deserves a clean FT_ERROR instead of a zombie timeout.
  */
 
 #include "file_transfer.h"
@@ -44,13 +66,25 @@ static uint32_t  g_ft_start_ms = 0;
 static uint32_t  g_ft_last_chunk_ms = 0;
 
 /* Use production MTU: 244 B (nRF52/Android standard) */
-static constexpr size_t   FT_CHUNK_SIZE = 244;
-/* Turbo cadence: 30ms for high-throughput streaming */
-static constexpr uint32_t FT_CHUNK_MS   = 30;
-static constexpr uint32_t FT_PROG_EVERY = 10;
+static constexpr size_t   FT_CHUNK_SIZE  = 244;
+/* V5.59 Burst & Breathe pacing */
+static constexpr uint32_t FT_CHUNK_MS    = 30;   /* within-burst cadence */
+static constexpr uint32_t FT_BURST_COUNT = 10;   /* chunks per burst */
+static constexpr uint32_t FT_BREATHE_MS  = 100;  /* gap after each burst */
+static constexpr uint32_t FT_PROG_EVERY  = 10;
+/* V5.59 TX block forensics thresholds */
+static constexpr uint32_t FT_BLK_LOG_MS    = 50;    /* log ft_txblk above this */
+static constexpr uint32_t FT_BLK_THROTTLE_MS = 100; /* adaptive breathe above this */
+static constexpr uint32_t FT_BLK_ABORT_MS  = 3000;  /* abort tx_blocked above this */
 
 // V5.52: Move buffer to static memory to eliminate stack overflow risk
 static uint8_t g_ft_buffer[FT_CHUNK_SIZE];
+
+/* V5.59 state */
+static uint8_t  g_ft_burst_pos   = 0;  /* chunks sent in current burst */
+static uint32_t g_ft_hold_until_ms = 0; /* adaptive throttle: no chunk before this */
+static uint32_t g_ft_tx_blocks   = 0;  /* cumulative blocked-write events (>50ms) */
+static uint32_t g_ft_tx_blk_ms   = 0;  /* cumulative ms spent blocked in writeValue */
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
@@ -89,8 +123,18 @@ void sgc_ble_transfer_poll()
 
     uint32_t now = millis();
 
-    if (now - g_ft_last_chunk_ms < FT_CHUNK_MS) return;
+    /* V5.59 Burst & Breathe gate:
+       - within a burst: FT_CHUNK_MS (30 ms) between chunks
+       - after FT_BURST_COUNT chunks: FT_BREATHE_MS (100 ms) gap.
+       The gate just returns — the main loop keeps calling sgc_ble_poll()
+       during the gap, so Cordio/HCI keeps draining while Android catches up. */
+    /* Adaptive throttle hold (signed compare — wrap-safe). */
+    if ((int32_t)(now - g_ft_hold_until_ms) < 0) return;
+
+    uint32_t need = (g_ft_burst_pos >= FT_BURST_COUNT) ? FT_BREATHE_MS : FT_CHUNK_MS;
+    if (now - g_ft_last_chunk_ms < need) return;
     g_ft_last_chunk_ms = now;
+    if (g_ft_burst_pos >= FT_BURST_COUNT) g_ft_burst_pos = 0;  /* breathe done */
 
     uint8_t* buf = g_ft_buffer;
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
@@ -142,24 +186,61 @@ void sgc_ble_transfer_poll()
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     // Packet Type 0x02: Data Chunk
-    buf[0] = 0x02; 
+    buf[0] = 0x02;
     buf[1] = (uint8_t)(g_ft_chunks & 0xFF);
-    
+
     Serial.print("SND_DATA "); Serial.println(g_ft_chunks);
+
+    /* V5.59: writeValue() can busy-block inside HCI.sendAclPkt() while the
+       controller TX queue is full (see header). Measure the block — this is
+       the earliest possible signal that the phone is falling behind, seconds
+       before the S22 declares LINK_SUPERVISION_TIMEOUT. */
+    uint32_t wr_t0 = millis();
     sgc_ble_ft_stream_char()->writeValue(buf, send_len + 2);
-    
+    uint32_t wr_blocked = millis() - wr_t0;
+
+    if (wr_blocked > FT_BLK_LOG_MS) {
+        g_ft_tx_blocks++;
+        g_ft_tx_blk_ms += wr_blocked;
+        json_begin();
+        json_kv("ev", "ft_txblk");
+        Serial.print(','); json_kv("blk_ms", (long)wr_blocked);
+        Serial.print(','); json_kv("chunk", (long)g_ft_chunks);
+        Serial.print(','); json_kv("off", (long)g_ft_offset);
+        Serial.print(','); json_kv("blocks", (long)g_ft_tx_blocks);
+        Serial.print(','); json_kv("tot_ms", (long)g_ft_tx_blk_ms);
+        json_end();
+    }
+
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+
+    if (wr_blocked > FT_BLK_ABORT_MS) {
+        /* Link is dying (phone stopped LL ACKs for seconds). Clean abort
+           beats a zombie supervision timeout on the app side. */
+        sgc_ble_ft_abort("tx_blocked");
+        return;
+    }
+
     /* V5.57: Safe-Stream Pacing
        Small delay to prevent overloading the nRF52 BLE stack.
        The 40ms connection interval handles the rest. */
-    delay(10); 
+    delay(10);
     BLE.poll();
 
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
 
     g_ft_offset += send_len;
     g_ft_chunks++;
+    g_ft_burst_pos++;
 
-    /* V5.57: Removed state = FT_WAITING_ACK. 
+    /* V5.59 adaptive throttle: if the controller made us wait, the phone is
+       behind — hold the next chunk for an extra breathe so queues can drain.
+       Uses a dedicated hold-until timestamp; never push g_ft_last_chunk_ms
+       into the future (unsigned delta in the gate would wrap and fire early). */
+    if (wr_blocked > FT_BLK_THROTTLE_MS)
+        g_ft_hold_until_ms = millis() + FT_BREATHE_MS;
+
+    /* V5.57: Removed state = FT_WAITING_ACK.
        We now stay in FT_STREAMING for Paced-Push. */
 
     if ((g_ft_chunks % FT_PROG_EVERY) == 0 || g_ft_offset >= g_ft_size) {
@@ -168,6 +249,8 @@ void sgc_ble_transfer_poll()
         Serial.print(','); json_kv("off", (long)g_ft_offset);
         Serial.print(','); json_kv("sz", (long)g_ft_size);
         Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
+        Serial.print(','); json_kv("blocks", (long)g_ft_tx_blocks);
+        Serial.print(','); json_kv("blk_ms", (long)g_ft_tx_blk_ms);
         Serial.print(','); json_kv("ms", (long)(millis() - g_ft_start_ms));
         json_end();
     }
@@ -258,6 +341,10 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_chunks   = 0;
     g_ft_start_ms = millis();
     g_ft_last_chunk_ms = 0;
+    g_ft_burst_pos   = 0;   /* V5.59 */
+    g_ft_hold_until_ms = 0; /* V5.59 */
+    g_ft_tx_blocks   = 0;   /* V5.59 */
+    g_ft_tx_blk_ms   = 0;   /* V5.59 */
     g_ft_state    = FT_STREAMING;
     
     // Sync global state machine to prevent SLEEP timers from interfering
@@ -283,6 +370,8 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     Serial.print(','); json_kv("sz", (long)g_ft_size);
     Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
     Serial.print(','); json_kv("cad_ms", (long)FT_CHUNK_MS);
+    Serial.print(','); json_kv("burst", (long)FT_BURST_COUNT);
+    Serial.print(','); json_kv("breathe_ms", (long)FT_BREATHE_MS);
     Serial.print(','); json_kv("ms", (long)0);
     json_end();
     return;
