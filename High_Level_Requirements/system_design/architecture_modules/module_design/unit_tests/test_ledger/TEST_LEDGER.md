@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 11:05 UTC  
-**Current baselines:** FW **5.64** (re-advertise on FT exit) · App **1.21** · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 15:30 UTC  
+**Current baselines:** FW **5.65** (abort = proper ERROR packet) · App **1.22** (short-transfer guard + one-run-per-connection) · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,32 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.64** pushed (`840e388`), pending JP bench test on S22 (App **1.21** stays)*
+*Status: **OPEN** — FW **5.65** + App **1.22** pushed (`8af9a4c`), pending JP bench test on S22*
+
+> **2026-08-31 bench (5.64 + 1.21): FIRST ft_done ✓ (39 372 B, 163 chunks,
+> 0 blocks, 7.58 s) — but two app-visible defects:** run #2 did NOT recover
+> after `tx_blocked`, and the pre-reset partial run was "lost" (restarted
+> from 0). Root cause: `sgc_ble_ft_abort` wrote a **bare 3** (FT_ERROR) —
+> in the L-STREAM protocol 0x03 = FINAL → app completed with a partial
+> buffer, no error → no resume → payload-CRC fail downstream.
+>
+> **FW 5.65 + App 1.22 (Phases 1+2, GO from JP):**
+> - Device: abort = proper ERROR packet `[0x04, code]` (0x10 tx_blocked /
+>   0x11 phone / 0x12 new_request / 0xFF other)
+> - App: short-transfer guard (`received < total` → throw → resume) —
+>   recovers even against legacy bare-3 aborts
+> - App: **one run per connection** (reconnect between runs, replaces 2 s
+>   cooldown) — JP's Auto-Sync model, Phase 2
+>
+> **Phase 3 (approved, after 1+2 validated):** background Auto-Sync — app
+> launched + screen off, auto-connect on detection, **poll every 1 min**
+> (athlete passes near phone between runs; avoid end-of-day backlog),
+> download newest missing run, manual button stays. Needs foreground
+> service + battery-optimization exemption.
+>
+> **Open watch-items:** chunk-26 hang (device "reactive but doing
+> nothing", needed hard reset — one-off); `state_blocked not_armed`
+> between runs (harmless?); reconnect timing after device reboot.
 
 > **2026-08-31 bench (5.63 + 1.21): resume FIRED but reconnect failed.**
 > Attempt 1 streamed to 26 620 B (~68%), wedge → fail-fast `FT: link lost`
