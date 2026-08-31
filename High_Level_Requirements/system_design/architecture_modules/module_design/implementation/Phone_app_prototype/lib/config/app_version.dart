@@ -63,4 +63,9 @@
 //          run lost). Phase 2: ONE RUN PER CONNECTION — disconnect/reconnect
 //          between runs (replaces 2 s cooldown); fresh GATT session per run
 //          kills cumulative BLE buffer pressure by design.
-const String APP_VERSION = '1.22';
+//   1.23 – UI no longer nuked mid-download: the intentional Phase-2 per-run
+//          disconnect tripped the unexpected-drop handler, clearing screen
+//          state — runs WERE saved but nothing displayed until app relaunch.
+//          Batch cancel via disconnect button; device list + service
+//          refreshed after the batch.
+const String APP_VERSION = '1.23';

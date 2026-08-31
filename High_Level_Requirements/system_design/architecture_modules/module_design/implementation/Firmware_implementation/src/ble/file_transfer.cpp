@@ -559,9 +559,16 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     // Sync global state machine to prevent SLEEP timers from interfering.
     // V5.64: capture pre-FT state — restored on every FT exit so the device
     // advertises again for the resume reconnect.
+    // V5.66: only force from ARMED (the only case where the transition can
+    // succeed). From SLEEP/IDLE/POST_RUN the main-loop hold_sleep flag
+    // (BLE.connected() || ft_active) already guards timers, and the blocked
+    // transition just spammed "state_blocked not_armed" every CMD_START.
     g_ft_pre_state = g_sm.state();
-    g_ft_pre_state_valid = true;
-    g_sm.force_state(DeviceState::LOGGING);
+    g_ft_pre_state_valid = false;
+    if (g_ft_pre_state == DeviceState::ARMED) {
+        g_sm.force_state(DeviceState::LOGGING);
+        g_ft_pre_state_valid = true;
+    }
 
     // V5.54: Send Start/Metadata packet [0x01, runId_lo, runId_hi, size...]
     uint8_t start_pkt[10];

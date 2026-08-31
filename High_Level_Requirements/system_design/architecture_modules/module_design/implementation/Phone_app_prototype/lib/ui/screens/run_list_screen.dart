@@ -56,6 +56,14 @@ class _RunListScreenState extends State<RunListScreen> {
 
   void _onConnectionChanged(bool connected) {
     if (connected) return;
+    // V1.23: during a download, disconnects are either INTENTIONAL (Phase-2
+    // per-run reconnect) or handled by the transfer's own resume loop.
+    // Clearing state here nuked the screen mid-download — runs were saved
+    // but nothing displayed until app relaunch.
+    if (_isDownloading) {
+      debugPrint('[SGC] BLE disconnected during download — transfer flow manages it');
+      return;
+    }
     debugPrint('[SGC] BLE disconnected — clearing connected UI state');
     if (!mounted) return;
     setState(() {
@@ -213,6 +221,7 @@ class _RunListScreenState extends State<RunListScreen> {
   }
 
   Future<void> _disconnect() async {
+    _isDownloading = false;  // V1.23: cancel any in-flight batch first
     await _ble.disconnect();
     if (mounted) {
       setState(() {
@@ -296,6 +305,7 @@ class _RunListScreenState extends State<RunListScreen> {
       int ok = 0, failed = 0;
       _downloadTotal = missing.length;
       for (final run in missing) {
+        if (!_isDownloading) break;  // V1.23: user cancelled mid-batch
         _downloadCurrent++;
         _downloadBytes = 0;
         _downloadRunSize = run.size;
@@ -324,6 +334,14 @@ class _RunListScreenState extends State<RunListScreen> {
         }
       }
       await _loadLocalRuns();
+      // V1.23: refresh the device run list + service after the batch so the
+      // screen reflects reality (Phase-2 reconnects cleared them).
+      try {
+        _deviceRuns = await ft.getRunList();
+        if (mounted && _ble.isConnected && _sgc == null) {
+          setState(() => _sgc = SGCService(_ble));
+        }
+      } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
