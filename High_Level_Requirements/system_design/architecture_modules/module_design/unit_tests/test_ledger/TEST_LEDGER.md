@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 10:50 UTC  
-**Current baselines:** FW **5.63** (resume-capable FT) · App **1.21** (resume + parser fixes) · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 11:05 UTC  
+**Current baselines:** FW **5.64** (re-advertise on FT exit) · App **1.21** · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,22 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.63** + App **1.21** pushed (`4f01882`), pending JP bench test on S22*
+*Status: **OPEN** — FW **5.64** pushed (`840e388`), pending JP bench test on S22 (App **1.21** stays)*
+
+> **2026-08-31 bench (5.63 + 1.21): resume FIRED but reconnect failed.**
+> Attempt 1 streamed to 26 620 B (~68%), wedge → fail-fast `FT: link lost`
+> → app auto-resumed from offset ✓. But reconnect attempts hit
+> `GATT_CONNECTION_TIMEOUT` (147): CMD_START forces SM → LOGGING (ADV OFF)
+> and never restored it; the ~18 s txfail window kept the device busy.
+> Device serial: 6× `ft_txfail` 2001 ms @ chunk 114 → `tx_blocked`.
+>
+> **FW 5.64:** pre-FT state captured at CMD_START, restored on every FT
+> exit + immediate re-advertise @100 ms when not connected; retry window
+> cut to 3 fails (~6.6 s) — wedge is terminal, patience only delayed
+> re-advertising. Expected bench: wedge ~70 % → abort ~6 s → app resumes
+> at +2 s against an already-advertising device → completes → stream CRC OK.
+> (Note: JP backgrounded the app mid-resume in this bench — keep it in
+> foreground for the download.)
 
 > **2026-08-31 bench (5.62, Garmin DISCONNECTED): 77.5% + wedge verdict.**
 > 126/162 chunks (30 492/39 372 B) at steady 60 ms — Garmin watch was a
