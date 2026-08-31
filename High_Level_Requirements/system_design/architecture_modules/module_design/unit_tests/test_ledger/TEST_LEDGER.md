@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 10:30 UTC  
-**Current baselines:** FW **5.62** (steady 60 ms + patient escalating retry) · App **1.20** · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 10:50 UTC  
+**Current baselines:** FW **5.63** (resume-capable FT) · App **1.21** (resume + parser fixes) · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,20 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.62** pushed (`a67e71c`), pending JP bench test on S22*
+*Status: **OPEN** — FW **5.63** + App **1.21** pushed (`4f01882`), pending JP bench test on S22*
+
+> **2026-08-31 bench (5.62, Garmin DISCONNECTED): 77.5% + wedge verdict.**
+> 126/162 chunks (30 492/39 372 B) at steady 60 ms — Garmin watch was a
+> major confounder (chunk 12 → 126). Then 6 escalating retries ALL blocked
+> 2000 ms → **wedge is TERMINAL within an attempt** (zero LL recovery,
+> phone kills link at supervision). Decision table → resume-capable FT.
+>
+> **FW 5.63 + App 1.21 = resume:** CMD_START+offset (LE32), device
+> CRC-prefills skipped prefix so final CRC stays whole-run valid; app
+> auto-reconnects and resumes ≤5× (2/4/6/8 s backoff). **Bonus fixes (app):
+> START size misparse + chunk-index byte stored inline (corrupted every
+> 242 B block — would have failed payload CRC on the first completed
+> download); live services getter; stream CRC32 verify; fail-fast on drop.**
 
 > **2026-08-31 bench (5.61): CLEAN DETERMINISTIC FAILURE — library patch
 > verified.** `ft_prog chunks:10` → chunk 12 blocked: `ft_txfail` ×3,
