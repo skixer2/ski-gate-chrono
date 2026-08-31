@@ -95,10 +95,15 @@ static uint32_t  g_ft_last_chunk_ms = 0;
 
 /* Use production MTU: 244 B (nRF52/Android standard) */
 static constexpr size_t   FT_CHUNK_SIZE  = 244;
-/* V5.59 Burst & Breathe pacing */
-static constexpr uint32_t FT_CHUNK_MS    = 30;   /* within-burst cadence */
-static constexpr uint32_t FT_BURST_COUNT = 10;   /* chunks per burst */
-static constexpr uint32_t FT_BREATHE_MS  = 100;  /* gap after each burst */
+/* V5.62 pacing experiment: steady 60 ms cadence, NO breathe.
+   Bench history: 30 ms turbo wedges the S22 within seconds (stalls at
+   chunk 12/78/136 — noisy, always early). Hypothesis to test: a gentle
+   steady stream (2.4 KB/s → 39 KB in ~16 s) stays under the S22's wedge
+   threshold entirely. Burst & Breathe disabled (breathe gaps may cause
+   Android to batch-deliver queued notifications → main-thread hitch). */
+static constexpr uint32_t FT_CHUNK_MS    = 60;   /* steady cadence */
+static constexpr uint32_t FT_BURST_COUNT = 0xFFFF; /* breathe disabled */
+static constexpr uint32_t FT_BREATHE_MS  = 100;  /* unused while count=0xFFFF */
 static constexpr uint32_t FT_PROG_EVERY  = 10;
 /* V5.59/V5.60 TX block forensics thresholds */
 static constexpr uint32_t FT_BLK_LOG_MS      = 50;   /* log ft_txblk above this */
@@ -128,13 +133,23 @@ static void ft_wdt_ticker_stop()
 static uint8_t g_ft_buffer[FT_CHUNK_SIZE];
 
 /* V5.59 state */
-static uint8_t  g_ft_burst_pos   = 0;  /* chunks sent in current burst */
+static uint16_t g_ft_burst_pos   = 0;  /* chunks sent in current burst */
 static uint32_t g_ft_hold_until_ms = 0; /* adaptive throttle: no chunk before this */
 static uint32_t g_ft_tx_blocks   = 0;  /* cumulative blocked-write events (>50ms) */
 static uint32_t g_ft_tx_blk_ms   = 0;  /* cumulative ms spent blocked in writeValue */
 static uint8_t  g_ft_tx_fails    = 0;  /* V5.61: consecutive writeValue()==0 failures */
-static constexpr uint8_t FT_TX_FAIL_ABORT = 3;   /* abort after this many in a row */
-static constexpr uint32_t FT_TX_FAIL_HOLD_MS = 300; /* hold between failed retries */
+static uint8_t  g_ft_tx_recov    = 0;  /* V5.62: recoveries after >=1 failure */
+/* V5.62: patient escalating retry — characterize the S22 wedge.
+   If the wedge is TRANSIENT (<~5 s), escalating holds let the link recover
+   and the transfer completes (ft_recover logged). If TERMINAL, the phone
+   kills the link at its supervision window (~6 s) and we abort cleanly.
+   Holds: 300, 600, 1200, 2000, 2000 → ~6.1 s patience, then give up. */
+static constexpr uint8_t FT_TX_FAIL_ABORT = 6;   /* abort after this many in a row */
+static uint32_t ft_fail_hold_ms(uint8_t fails)
+{
+    uint32_t h = 300UL << (fails > 3 ? 3 : (fails - 1));  /* 300,600,1200,2400→cap */
+    return (h > 2000) ? 2000 : h;
+}
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
@@ -268,8 +283,19 @@ void sgc_ble_transfer_poll()
             sgc_ble_ft_abort("tx_blocked");
             return;
         }
-        g_ft_hold_until_ms = millis() + FT_TX_FAIL_HOLD_MS;
+        g_ft_hold_until_ms = millis() + ft_fail_hold_ms(g_ft_tx_fails);
         return;
+    }
+    if (g_ft_tx_fails > 0) {
+        /* V5.62: wedge was TRANSIENT — link recovered. Log it: this is the
+           key datapoint for the transient-vs-terminal question. */
+        g_ft_tx_recov++;
+        json_begin();
+        json_kv("ev", "ft_recover");
+        Serial.print(','); json_kv("chunk", (long)g_ft_chunks);
+        Serial.print(','); json_kv("after_fails", (long)g_ft_tx_fails);
+        Serial.print(','); json_kv("recov", (long)g_ft_tx_recov);
+        json_end();
     }
     g_ft_tx_fails = 0;
 
@@ -328,6 +354,7 @@ void sgc_ble_transfer_poll()
         Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
         Serial.print(','); json_kv("blocks", (long)g_ft_tx_blocks);
         Serial.print(','); json_kv("blk_ms", (long)g_ft_tx_blk_ms);
+        Serial.print(','); json_kv("recov", (long)g_ft_tx_recov);
         Serial.print(','); json_kv("ms", (long)(millis() - g_ft_start_ms));
         json_end();
     }
@@ -423,6 +450,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_tx_blocks   = 0;   /* V5.59 */
     g_ft_tx_blk_ms   = 0;   /* V5.59 */
     g_ft_tx_fails    = 0;   /* V5.61 */
+    g_ft_tx_recov    = 0;   /* V5.62 */
     g_ft_state    = FT_STREAMING;
     ft_wdt_ticker_start();  /* V5.60: ISR WDT feed while streaming */
     
