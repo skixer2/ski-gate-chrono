@@ -31,9 +31,25 @@
  *        slower than turbo, but the queue never stays pinned at _maxPkt.
  *
  *        TX block forensics: time every writeValue(). blocked > 50 ms logs
- *        ft_txblk; > 100 ms triggers an adaptive extra breathe; > 3000 ms
+ *        ft_txblk; > 100 ms triggers an adaptive extra breathe; > 8000 ms
  *        aborts the transfer ("tx_blocked") — the link is already dying and
  *        the app deserves a clean FT_ERROR instead of a zombie timeout.
+ *
+ * V5.60: WDT SURVIVAL — bench result 2026-08-31 (TC-2026-08-26-001):
+ *        5.59 stalled at chunk 78, then the device REBOOTED (boot rr:2 =
+ *        RESETREAS bit1 = watchdog). Sequence: phone wedged → writeValue()
+ *        blocked inside sendAclPkt() → nobody feeds NRF_WDT (main loop stuck)
+ *        → 5 s WDT fired mid-transfer → radio died → phone logged
+ *        LINK_SUPERVISION_TIMEOUT as a SYMPTOM. The 5.59 block forensics
+ *        never printed because writeValue() never returned before the reset.
+ *
+ *        nRF52 WDT cannot be stopped/reconfigured once started (CRV locked),
+ *        so the only way to survive unbounded library blocks is feeding from
+ *        interrupt context: mbed::Ticker feeds NRF_WDT->RR[0] every 500 ms
+ *        while FT is active (scoped to FT only — WDT still guards all other
+ *        code paths). A phone wedge now = transfer PAUSE (blocked write),
+ *        then either recovery (adaptive deep-throttle continues) or a clean
+ *        disconnect abort. No more mid-transfer reboots.
  */
 
 #include "file_transfer.h"
@@ -43,6 +59,7 @@
 #include "../test_json.h"
 #include <ArduinoBLE.h>
 #include <Arduino.h>
+#include <mbed.h>  /* mbed::Ticker for ISR-context WDT feed (V5.60) */
 #include "nrf.h"  /* NRF_WDT for feed in FT poll */
 #include "../state_machine/state_machine.h"
 
@@ -72,10 +89,29 @@ static constexpr uint32_t FT_CHUNK_MS    = 30;   /* within-burst cadence */
 static constexpr uint32_t FT_BURST_COUNT = 10;   /* chunks per burst */
 static constexpr uint32_t FT_BREATHE_MS  = 100;  /* gap after each burst */
 static constexpr uint32_t FT_PROG_EVERY  = 10;
-/* V5.59 TX block forensics thresholds */
-static constexpr uint32_t FT_BLK_LOG_MS    = 50;    /* log ft_txblk above this */
-static constexpr uint32_t FT_BLK_THROTTLE_MS = 100; /* adaptive breathe above this */
-static constexpr uint32_t FT_BLK_ABORT_MS  = 3000;  /* abort tx_blocked above this */
+/* V5.59/V5.60 TX block forensics thresholds */
+static constexpr uint32_t FT_BLK_LOG_MS      = 50;   /* log ft_txblk above this */
+static constexpr uint32_t FT_BLK_THROTTLE_MS = 100;  /* adaptive breathe above this */
+static constexpr uint32_t FT_BLK_DEEP_MS     = 1000; /* deep congestion: +500 ms hold */
+static constexpr uint32_t FT_BLK_ABORT_MS    = 8000; /* abort tx_blocked above this */
+
+/* V5.60: interrupt-context WDT feeder, active only while FT_STREAMING.
+   Survives writeValue() blocking inside HCI.sendAclPkt() (see header). */
+static mbed::Ticker g_ft_wdt_ticker;
+static bool g_ft_wdt_ticker_on = false;
+static void ft_wdt_feed_isr() { NRF_WDT->RR[0] = WDT_RR_RR_Reload; }
+static void ft_wdt_ticker_start()
+{
+    if (g_ft_wdt_ticker_on) return;
+    g_ft_wdt_ticker.attach_us(ft_wdt_feed_isr, 500000);  /* 500 ms << 5 s WDT */
+    g_ft_wdt_ticker_on = true;
+}
+static void ft_wdt_ticker_stop()
+{
+    if (!g_ft_wdt_ticker_on) return;
+    g_ft_wdt_ticker.detach();
+    g_ft_wdt_ticker_on = false;
+}
 
 // V5.52: Move buffer to static memory to eliminate stack overflow risk
 static uint8_t g_ft_buffer[FT_CHUNK_SIZE];
@@ -99,6 +135,7 @@ void sgc_ble_ft_abort(const char* reason)
 {
     if (g_ft_state != FT_STREAMING) return;
     g_ft_state = FT_IDLE;
+    ft_wdt_ticker_stop();  /* V5.60 */
     json_begin();
     json_kv("ev", "ft_abort");
     Serial.print(','); json_kv("reason", reason ? reason : "?");
@@ -143,6 +180,7 @@ void sgc_ble_transfer_poll()
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
+        ft_wdt_ticker_stop();  /* V5.60 */
         uint32_t final_crc = RawRunStore::crc32_finalize(g_ft_crc);
         
         // Packet Type 0x03: CRC/Finalize
@@ -169,6 +207,7 @@ void sgc_ble_transfer_poll()
 
     if (!g_runs.read_run_data(g_ft_run_id, g_ft_offset, buf + 2, send_len)) {
         g_ft_state = FT_ERROR;
+        ft_wdt_ticker_stop();  /* V5.60 */
         uint8_t err_pkt[2] = {0x04, 0x01}; // Type 0x04, Error 0x01 (Read Fail)
         sgc_ble_ft_stream_char()->writeValue(err_pkt, 2);
         BLE.poll();
@@ -233,11 +272,14 @@ void sgc_ble_transfer_poll()
     g_ft_chunks++;
     g_ft_burst_pos++;
 
-    /* V5.59 adaptive throttle: if the controller made us wait, the phone is
-       behind — hold the next chunk for an extra breathe so queues can drain.
+    /* V5.59/V5.60 adaptive throttle: if the controller made us wait, the
+       phone is behind — hold the next chunk so queues can drain. Deep
+       congestion (>1 s block) gets a 500 ms hold: the link nearly died.
        Uses a dedicated hold-until timestamp; never push g_ft_last_chunk_ms
        into the future (unsigned delta in the gate would wrap and fire early). */
-    if (wr_blocked > FT_BLK_THROTTLE_MS)
+    if (wr_blocked > FT_BLK_DEEP_MS)
+        g_ft_hold_until_ms = millis() + 500;
+    else if (wr_blocked > FT_BLK_THROTTLE_MS)
         g_ft_hold_until_ms = millis() + FT_BREATHE_MS;
 
     /* V5.57: Removed state = FT_WAITING_ACK.
@@ -346,6 +388,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_tx_blocks   = 0;   /* V5.59 */
     g_ft_tx_blk_ms   = 0;   /* V5.59 */
     g_ft_state    = FT_STREAMING;
+    ft_wdt_ticker_start();  /* V5.60: ISR WDT feed while streaming */
     
     // Sync global state machine to prevent SLEEP timers from interfering
     g_sm.force_state(DeviceState::LOGGING);
@@ -380,6 +423,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     if (cmd == 2) {  /* CMD_ABORT */
         if (g_ft_state == FT_STREAMING) {
             g_ft_state = FT_IDLE;
+            ft_wdt_ticker_stop();  /* V5.60 */
             json_begin();
             json_kv("ev", "ft_abort");
             Serial.print(','); json_kv("reason", "phone");
