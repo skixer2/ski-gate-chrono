@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-24 15:30 UTC  
-**Current baselines:** FW **5.48** (Watchdog double-feed for FT) · App **1.19** · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 07:45 UTC  
+**Current baselines:** FW **5.59** (Burst & Breathe + TX block forensics) · App **1.20** · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,10 +119,25 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW 5.50 pushed, pending JP bench test*
+*Status: **OPEN** — FW **5.59** pushed (`d501062`), pending JP bench test on S22*
 
-> **Root cause found + fixed:** S22 BLE buffer exhaustion caused `writeValue` to block for $>5\text{s}$, triggering `LINK_SUPERVISION_TIMEOUT` and Hardware Watchdog reboots.
-> Solution: Transitioned from timer-based "blind push" to ACK-based flow control. Device now waits for `0x01` ACK from App before sending the next 244 B chunk.
+> **2026-08-31 — mechanism CONFIRMED in library source:** `HCI.sendAclPkt()`
+> busy-blocks (`while (_pendingPkt >= _maxPkt) poll();`) when the nRF52
+> controller TX queue is full, and `ATT.handleNotify()` **discards** its
+> return value → `writeValue()` can freeze the FT loop for seconds with zero
+> error signal. 244 B @ 30 ms outpaces the ~40–60 ms connection-event drain,
+> so the device sits permanently at the congestion edge; when the S22
+> controller/host suffocates and delays LL ACKs, the phone kills the link
+> with `LINK_SUPERVISION_TIMEOUT` (0x08) after its supervision window.
+> ACK-loop (5.50–5.56) and turbo push (5.58) both failed because they never
+> addressed the queue-pressure trigger.
+>
+> **FW 5.59 = Burst & Breathe + forensics:**
+> - 10 chunks @ 30 ms → 100 ms breathe gap (effective ~40 ms/chunk)
+> - `writeValue()` block timing on every chunk: `ft_txblk` JSON > 50 ms,
+>   adaptive extra breathe > 100 ms, clean `ft_abort("tx_blocked")` > 3000 ms
+> - Supervision timeout hint 5 s → 10 s (recovery room for transient stalls)
+> - Wire protocol unchanged — App 1.20 needs no update
 
 ### Meta
 
@@ -178,6 +193,45 @@ All three symptoms explained:
 - `i` → SLEEP → button press → **ARMED**
 - System Off → button press → **wake** (GPIO SENSE_LOW, no DRDY race)
 - `?` status: `ldc:false,ldc_raw:0` (LDC not initialized)
+
+### 2026-08-31 — FW 5.59 Burst & Breathe (commit `d501062`)
+
+**Stall history (this case):** chunk 0 (5.54 L-STREAM) → ~50 (5.57 open-loop,
+20 B) → ~136 ≈ 33 KB (5.46 @ 50 ms **and** 5.58 @ 30 ms turbo). Faster big
+chunks got furthest → per-packet queue pressure, not per-byte volume, is the
+trigger. Library mechanism: see blockquote above (verified in
+`.pio/libdeps/nicla/ArduinoBLE/src/utility/HCI.cpp:638` + `ATT.cpp:624`).
+
+**FW 5.59 changes (`file_transfer.cpp`, `sgc_service.cpp`, `config.h`):**
+
+| # | Change | Why |
+|---|--------|-----|
+| 1 | Burst gate: 10 × 30 ms, then 100 ms breathe (~40 ms/chunk) | Keeps `_pendingPkt` off the `_maxPkt` ceiling; Android drains GATT/HCI + does LL housekeeping in the gaps |
+| 2 | `writeValue()` timed per chunk | First-ever visibility into the silent block (previously invisible — return discarded by lib) |
+| 3 | `ft_txblk` JSON when block > 50 ms | Serial forensics: shows phone falling behind seconds before supervision timeout |
+| 4 | Adaptive +100 ms hold when block > 100 ms | Self-throttle before the wedge cascades |
+| 5 | `ft_abort("tx_blocked")` when block > 3000 ms | Clean FT_ERROR to app beats zombie 5 s timeout |
+| 6 | Supervision hint 500 → 1000 (10 s) | Transient wedges < 10 s recover instead of dying |
+
+**Bench test protocol (JP, S22 + serial monitor open):**
+
+1. `git pull && pio run -t upload -e nicla` → expect `ver=5.59`
+2. App 1.20 → Download Latest Run → watch **both** phone log and device serial
+3. **PASS:** `ft_done` with CRC OK on phone; serial shows `ft_prog` … `ft_done`
+4. **If it stalls again, the serial now tells the story:**
+   - `ft_txblk` lines with rising `blk_ms` **before** the stall → phone ACK
+     starvation confirmed → next lever: `FT_BREATHE_MS` 100→200 ms or
+     `FT_BURST_COUNT` 10→5 (both one-line changes)
+   - `ft_abort,"tx_blocked"` → device detected the dying link cleanly
+     (expected to replace the zombie timeout)
+   - **No** `ft_txblk` at all + stall → block hypothesis wrong → next:
+     phone-side host drain (app) or resume-capable batch protocol
+5. Note the negotiated MTU/CI if visible in logcat
+
+**Next levers (ordered):** (a) tune breathe/burst constants; (b) CI request
+32–48 → shorter min; (c) resume-capable batch download (CMD_START with
+offset — protocol + app change); (d) vendor patched ArduinoBLE exposing
+`_pendingPkt` so pacing keys off real queue depth.
 - `c` / `z` commands: LDC lazy-inits, diagnostics work (but P0.02 recontaminated — reboot after)
 
 ### Verdict
