@@ -48,4 +48,13 @@
 //          downloads. Fixes GATT_ERROR 133 / LINK_SUPERVISION_TIMEOUT
 //          that occurs when decompression of run N blocks the main
 //          thread before run N+1's setNotifyValue can be processed.
-const String APP_VERSION = '1.19';
+//   1.20 – FT ACKs disabled (pure listener mode) — S22 GATT 133 fix.
+//          (Version constant not bumped at the time; noted retroactively.)
+//   1.21 – Resume-capable FT download (FW ≥ 5.63): on timeout/disconnect/
+//          FT error, re-request from received byte offset (CMD_START+offset,
+//          auto-reconnect, backoff 2/4/6/8 s, ≤5 resumes). Fixes two latent
+//          parser bugs: START size read from wrong offset, and chunk-index
+//          byte stored inline (corrupted every 242 B block). Live services
+//          getter (self-heal after reconnect); stream CRC32 verify via
+//          device FINAL packet; fail-fast on link drop (no 90 s hang).
+const String APP_VERSION = '1.21';

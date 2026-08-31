@@ -51,6 +51,22 @@
  *        then either recovery (adaptive deep-throttle continues) or a clean
  *        disconnect abort. No more mid-transfer reboots.
  *
+ * V5.63: RESUME-CAPABLE TRANSFER — CMD_START accepts optional offset.
+ *        5.62 bench (Garmin watch DISCONNECTED — major confounder found):
+ *        steady 60 ms cadence streamed 126/162 chunks (77.5%) before the
+ *        S22 wedged; 6 escalating retries ALL blocked 2000 ms → wedge is
+ *        TERMINAL within an attempt (never recovers, phone kills link at
+ *        supervision). Conclusion: transfers must survive phone wedges by
+ *        RESUMING from the last received byte instead of restarting.
+ *
+ *        CMD_START wire format (backwards compatible):
+ *          [0, runId_lo, runId_hi]                          → offset 0
+ *          [0, runId_lo, runId_hi, off0, off1, off2, off3]  → resume
+ *        On resume the device CRC-prefills the skipped prefix from flash
+ *        (no BLE traffic) so the final CRC32 remains valid over the whole
+ *        run, then streams from offset. App tracks received payload bytes
+ *        and re-requests from there after tx_blocked/disconnect.
+ *
  * V5.61: VENDORED + PATCHED ArduinoBLE (lib/ArduinoBLE, SGC_PATCHES.md).
  *        5.60 bench: device survived the wedge (no reboot) but ZOMBIE-HUNG
  *        inside sendAclPkt's busy-poll — _pendingPkt is never cleared on
@@ -368,9 +384,17 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     if (len < 1) return;
     uint8_t cmd = data[0];
 
-    if (cmd == 0) {  /* CMD_START: [0, runId_lo, runId_hi] */
+    if (cmd == 0) {  /* CMD_START: [0, runId_lo, runId_hi] (+opt offset V5.63) */
         if (len < 3) return;
         uint16_t run_id = (uint16_t)data[1] | ((uint16_t)data[2] << 8);
+        /* V5.63: optional little-endian resume offset in data[3..6]. */
+        uint32_t resume_off = 0;
+        if (len >= 7) {
+            resume_off = (uint32_t)data[3]
+                       | ((uint32_t)data[4] << 8)
+                       | ((uint32_t)data[5] << 16)
+                       | ((uint32_t)data[6] << 24);
+        }
 
         sgc_ble_touch_activity();
 
@@ -443,6 +467,42 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_offset   = 0;
     g_ft_crc      = 0xFFFFFFFF;
     g_ft_chunks   = 0;
+
+    /* V5.63: resume — validate offset, then CRC-prefill the skipped prefix
+       (pure flash reads, no BLE) so the final CRC32 stays valid over the
+       whole run. ~39 KB worst case ≈ tens of ms; WDT fed per block. */
+    if (resume_off > 0 && resume_off < g_ft_size) {
+        uint32_t pos = 0;
+        bool prefill_ok = true;
+        while (pos < resume_off) {
+            size_t n = (resume_off - pos > (FT_CHUNK_SIZE - 2))
+                     ? (FT_CHUNK_SIZE - 2) : (resume_off - pos);
+            if (!g_runs.read_run_data(run_id, pos, g_ft_buffer, n)) {
+                prefill_ok = false;
+                break;
+            }
+            for (size_t i = 0; i < n; i++)
+                g_ft_crc = RawRunStore::crc32_update(g_ft_crc, g_ft_buffer[i]);
+            pos += n;
+            NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+        }
+        if (prefill_ok) {
+            g_ft_offset = resume_off;
+            g_ft_chunks = resume_off / (FT_CHUNK_SIZE - 2);
+            json_begin();
+            json_kv("ev", "ft_resume");
+            Serial.print(','); json_kv("off", (long)resume_off);
+            Serial.print(','); json_kv("chunk", (long)g_ft_chunks);
+            json_end();
+        } else {
+            json_begin();
+            json_kv("ev", "ft_resume_fail");
+            Serial.print(','); json_kv("off", (long)resume_off);
+            json_end();
+            g_ft_crc = 0xFFFFFFFF;  /* fall back to full transfer */
+        }
+    }
+
     g_ft_start_ms = millis();
     g_ft_last_chunk_ms = 0;
     g_ft_burst_pos   = 0;   /* V5.59 */
@@ -475,10 +535,9 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     json_kv("ev", "ft_start");
     Serial.print(','); json_kv("run", (long)run_id);
     Serial.print(','); json_kv("sz", (long)g_ft_size);
+    Serial.print(','); json_kv("off", (long)g_ft_offset);
     Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
     Serial.print(','); json_kv("cad_ms", (long)FT_CHUNK_MS);
-    Serial.print(','); json_kv("burst", (long)FT_BURST_COUNT);
-    Serial.print(','); json_kv("breathe_ms", (long)FT_BREATHE_MS);
     Serial.print(','); json_kv("ms", (long)0);
     json_end();
     return;
