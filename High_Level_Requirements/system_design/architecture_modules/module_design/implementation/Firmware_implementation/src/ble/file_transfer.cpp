@@ -51,6 +51,17 @@
  *        then either recovery (adaptive deep-throttle continues) or a clean
  *        disconnect abort. No more mid-transfer reboots.
  *
+ * V5.64: RE-ADVERTISE ON FT EXIT — 5.63 bench: resume worked (app failed
+ *        fast at 26 620 B, re-requested) but the reconnect hit
+ *        GATT_CONNECTION_TIMEOUT: CMD_START forces the SM to LOGGING (no
+ *        ADV) and never restored it, and the txfail retry window (~18 s)
+ *        kept the device busy while the phone hammered reconnects.
+ *        Now: pre-FT state captured at CMD_START and restored on EVERY FT
+ *        exit (done/error/abort/cmd_abort) + immediate re-advertise
+ *        (100 ms) when not connected. Retry window cut to 3 fails (~6.6 s)
+ *        — the S22 wedge proved terminal in every bench (0 recoveries), so
+ *        extra patience only delayed re-advertising.
+ *
  * V5.63: RESUME-CAPABLE TRANSFER — CMD_START accepts optional offset.
  *        5.62 bench (Garmin watch DISCONNECTED — major confounder found):
  *        steady 60 ms cadence streamed 126/162 chunks (77.5%) before the
@@ -127,6 +138,10 @@ static constexpr uint32_t FT_BLK_THROTTLE_MS = 100;  /* adaptive breathe above t
 static constexpr uint32_t FT_BLK_DEEP_MS     = 1000; /* deep congestion: +500 ms hold */
 static constexpr uint32_t FT_BLK_ABORT_MS    = 8000; /* abort tx_blocked above this */
 
+/* V5.64: SM state before CMD_START forced LOGGING — restored on FT exit. */
+static DeviceState g_ft_pre_state = DeviceState::SLEEP;
+static bool        g_ft_pre_state_valid = false;
+
 /* V5.60: interrupt-context WDT feeder, active only while FT_STREAMING.
    Survives writeValue() blocking inside HCI.sendAclPkt() (see header). */
 static mbed::Ticker g_ft_wdt_ticker;
@@ -145,6 +160,22 @@ static void ft_wdt_ticker_stop()
     g_ft_wdt_ticker_on = false;
 }
 
+/* V5.64: called on EVERY FT exit — restore the pre-FT state (CMD_START
+   forces LOGGING, which stops advertising) and re-advertise immediately at
+   100 ms so a resume reconnect finds us at once. */
+static void ft_exit_restore_state()
+{
+    ft_wdt_ticker_stop();
+    if (g_ft_pre_state_valid) {
+        g_sm.force_state(g_ft_pre_state);
+        g_ft_pre_state_valid = false;
+    }
+    if (!BLE.connected()) {
+        BLE.setAdvertisingInterval(160);  /* 160 * 0.625 ms = 100 ms */
+        BLE.advertise();
+    }
+}
+
 // V5.52: Move buffer to static memory to eliminate stack overflow risk
 static uint8_t g_ft_buffer[FT_CHUNK_SIZE];
 
@@ -155,17 +186,12 @@ static uint32_t g_ft_tx_blocks   = 0;  /* cumulative blocked-write events (>50ms
 static uint32_t g_ft_tx_blk_ms   = 0;  /* cumulative ms spent blocked in writeValue */
 static uint8_t  g_ft_tx_fails    = 0;  /* V5.61: consecutive writeValue()==0 failures */
 static uint8_t  g_ft_tx_recov    = 0;  /* V5.62: recoveries after >=1 failure */
-/* V5.62: patient escalating retry — characterize the S22 wedge.
-   If the wedge is TRANSIENT (<~5 s), escalating holds let the link recover
-   and the transfer completes (ft_recover logged). If TERMINAL, the phone
-   kills the link at its supervision window (~6 s) and we abort cleanly.
-   Holds: 300, 600, 1200, 2000, 2000 → ~6.1 s patience, then give up. */
-static constexpr uint8_t FT_TX_FAIL_ABORT = 6;   /* abort after this many in a row */
-static uint32_t ft_fail_hold_ms(uint8_t fails)
-{
-    uint32_t h = 300UL << (fails > 3 ? 3 : (fails - 1));  /* 300,600,1200,2400→cap */
-    return (h > 2000) ? 2000 : h;
-}
+/* V5.64: short flat retry — the S22 wedge proved TERMINAL in every bench
+   (5.61: 3×2001 ms; 5.62: 6×2001 ms, zero recoveries). Patience beyond
+   ~6 s only delays re-advertising for the resume reconnect.
+   Holds: 300 ms flat, abort after 3 → ~6.6 s worst case. */
+static constexpr uint8_t FT_TX_FAIL_ABORT = 3;   /* abort after this many in a row */
+static uint32_t ft_fail_hold_ms(uint8_t /*fails*/) { return 300; }
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
@@ -180,7 +206,7 @@ void sgc_ble_ft_abort(const char* reason)
 {
     if (g_ft_state != FT_STREAMING) return;
     g_ft_state = FT_IDLE;
-    ft_wdt_ticker_stop();  /* V5.60 */
+    ft_exit_restore_state();  /* V5.64: restore SM + re-advertise */
     json_begin();
     json_kv("ev", "ft_abort");
     Serial.print(','); json_kv("reason", reason ? reason : "?");
@@ -225,7 +251,7 @@ void sgc_ble_transfer_poll()
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
-        ft_wdt_ticker_stop();  /* V5.60 */
+        ft_exit_restore_state();  /* V5.64: restore SM + re-advertise */
         uint32_t final_crc = RawRunStore::crc32_finalize(g_ft_crc);
         
         // Packet Type 0x03: CRC/Finalize
@@ -252,7 +278,7 @@ void sgc_ble_transfer_poll()
 
     if (!g_runs.read_run_data(g_ft_run_id, g_ft_offset, buf + 2, send_len)) {
         g_ft_state = FT_ERROR;
-        ft_wdt_ticker_stop();  /* V5.60 */
+        ft_exit_restore_state();  /* V5.64: restore SM + re-advertise */
         uint8_t err_pkt[2] = {0x04, 0x01}; // Type 0x04, Error 0x01 (Read Fail)
         sgc_ble_ft_stream_char()->writeValue(err_pkt, 2);
         BLE.poll();
@@ -514,7 +540,11 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_state    = FT_STREAMING;
     ft_wdt_ticker_start();  /* V5.60: ISR WDT feed while streaming */
     
-    // Sync global state machine to prevent SLEEP timers from interfering
+    // Sync global state machine to prevent SLEEP timers from interfering.
+    // V5.64: capture pre-FT state — restored on every FT exit so the device
+    // advertises again for the resume reconnect.
+    g_ft_pre_state = g_sm.state();
+    g_ft_pre_state_valid = true;
     g_sm.force_state(DeviceState::LOGGING);
 
     // V5.54: Send Start/Metadata packet [0x01, runId_lo, runId_hi, size...]
@@ -546,7 +576,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     if (cmd == 2) {  /* CMD_ABORT */
         if (g_ft_state == FT_STREAMING) {
             g_ft_state = FT_IDLE;
-            ft_wdt_ticker_stop();  /* V5.60 */
+            ft_exit_restore_state();  /* V5.64: restore SM + re-advertise */
             json_begin();
             json_kv("ev", "ft_abort");
             Serial.print(','); json_kv("reason", "phone");
