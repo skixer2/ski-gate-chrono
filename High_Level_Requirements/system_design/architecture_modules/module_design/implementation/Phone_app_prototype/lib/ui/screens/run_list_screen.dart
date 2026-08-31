@@ -31,6 +31,7 @@ class _RunListScreenState extends State<RunListScreen> {
   final _ble = BLEManager();
   final _storage = LocalStorage();
   SGCService? _sgc;
+  BluetoothDevice? _device;   // V1.22: kept for per-run reconnect (Phase 2)
   DeviceConfig? _config;
   int _runCount = 0;
   bool _isConnecting = false;
@@ -145,6 +146,7 @@ class _RunListScreenState extends State<RunListScreen> {
 
     try {
       await _ble.connectToDevice(device);
+      _device = device;  // V1.22: keep for per-run reconnect
       final sgc = SGCService(_ble);
 
       // Dump discovered services so we can see what the device actually exposes
@@ -193,11 +195,29 @@ class _RunListScreenState extends State<RunListScreen> {
     }
   }
 
+  /// V1.22: drop and re-establish the BLE connection so the next download
+  /// starts with a fresh GATT session (one run per connection, Phase 2).
+  Future<void> _freshConnection() async {
+    final dev = _device;
+    if (dev == null) return;
+    try { await _ble.disconnect(); } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 500));
+    try {
+      await _ble.connectToDevice(dev);
+    } catch (e) {
+      debugPrint('[SGC] freshConnection reconnect failed: $e');
+      return; // next run's download resumes/retries on its own attempts
+    }
+    // _onConnectionChanged cleared _sgc on our manual disconnect — restore.
+    if (mounted) setState(() => _sgc = SGCService(_ble));
+  }
+
   Future<void> _disconnect() async {
     await _ble.disconnect();
     if (mounted) {
       setState(() {
         _sgc = null;
+        _device = null;
         _config = null;
         _runCount = 0;
         _deviceRuns = [];
@@ -283,20 +303,24 @@ class _RunListScreenState extends State<RunListScreen> {
             'Run $_downloadCurrent/$_downloadTotal (${run.size ~/ 1024} KB)');
         debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
         final data = await _downloadOne(ft, run.id);
-        if (data == null) { failed++; continue; }
-        final decoded = await compute(_decompressRunBackground, data);
-        await _storage.save(
-          runId: run.id,
-          compressedData: data,
-          result: decoded,
-          deviceName: _config?.deviceName ?? 'SGC',
-        );
-        ok++;
-        // Inter-run cooldown: let S22 BLE stack flush between downloads.
-        // Without this, cumulative ACL buffer pressure crashes after ~3 runs.
-        if (ok < missing.length) {
-          setState(() => _downloadStatus = 'Cooling down…');
-          await Future.delayed(const Duration(seconds: 2));
+        if (data == null) {
+          failed++;
+        } else {
+          final decoded = await compute(_decompressRunBackground, data);
+          await _storage.save(
+            runId: run.id,
+            compressedData: data,
+            result: decoded,
+            deviceName: _config?.deviceName ?? 'SGC',
+          );
+          ok++;
+        }
+        // V1.22 (Phase 2): ONE RUN PER CONNECTION — disconnect/reconnect
+        // between runs so each run gets a fresh GATT session. Replaces the
+        // 2 s cooldown; kills cumulative BLE buffer pressure by design.
+        if (_downloadCurrent < missing.length) {
+          setState(() => _downloadStatus = 'Reconnecting…');
+          await _freshConnection();
         }
       }
       await _loadLocalRuns();

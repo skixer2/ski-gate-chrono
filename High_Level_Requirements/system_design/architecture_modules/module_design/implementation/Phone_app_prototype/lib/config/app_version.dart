@@ -57,4 +57,10 @@
 //          byte stored inline (corrupted every 242 B block). Live services
 //          getter (self-heal after reconnect); stream CRC32 verify via
 //          device FINAL packet; fail-fast on link drop (no 90 s hang).
-const String APP_VERSION = '1.21';
+//   1.22 – Short-transfer guard: a "completed" transfer with missing bytes
+//          throws and resumes (FW < 5.65 signalled abort with a bare 0x03
+//          byte the parser mistook for FINAL — partial buffer looked valid,
+//          run lost). Phase 2: ONE RUN PER CONNECTION — disconnect/reconnect
+//          between runs (replaces 2 s cooldown); fresh GATT session per run
+//          kills cumulative BLE buffer pressure by design.
+const String APP_VERSION = '1.22';

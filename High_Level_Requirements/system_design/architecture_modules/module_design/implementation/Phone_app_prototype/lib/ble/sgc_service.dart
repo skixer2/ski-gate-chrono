@@ -158,6 +158,13 @@ class SGCService {
         }
         await _ftAttempt(runId, st.received, buf, st, onProgress);
 
+        // V1.22: a "complete" with missing bytes is NOT complete. FW < 5.65
+        // signalled abort with a bare 0x03 byte that the parser mistook for
+        // FINAL — the partial buffer looked successful and the run was lost.
+        if (st.total > 0 && st.received < st.total) {
+          throw TimeoutException('FT: short transfer (${st.received}/${st.total} B)');
+        }
+
         final data = buf.toBytes();
         // Stream-level CRC32 (device FINAL packet) covers the whole run file
         // (header+payload+trailer) — proves BLE-level integrity up front.

@@ -51,6 +51,13 @@
  *        then either recovery (adaptive deep-throttle continues) or a clean
  *        disconnect abort. No more mid-transfer reboots.
  *
+ * V5.65: ABORT PROTOCOL FIX — the legacy abort wrote a BARE FT_ERROR (3)
+ *        byte to the stream char; in the L-STREAM packet protocol 0x03 =
+ *        FINAL/CRC, so the app completed "successfully" with a partial
+ *        buffer (run #2 never recovered, pre-reset run lost). Abort now
+ *        sends a proper ERROR packet [0x04, code]:
+ *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
+ *
  * V5.64: RE-ADVERTISE ON FT EXIT — 5.63 bench: resume worked (app failed
  *        fast at 26 620 B, re-requested) but the reconnect hit
  *        GATT_CONNECTION_TIMEOUT: CMD_START forces the SM to LOGGING (no
@@ -215,7 +222,16 @@ void sgc_ble_ft_abort(const char* reason)
     Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
     json_end();
     if (BLE.connected()) {
-        sgc_ble_ft_stream_char()->writeValue((uint8_t)FT_ERROR);
+        /* V5.65: proper ERROR packet — the bare "3" collided with packet
+           type 0x03 (FINAL) in the app parser. */
+        uint8_t code = 0xFF;
+        if (reason) {
+            if (!strcmp(reason, "tx_blocked"))  code = 0x10;
+            else if (!strcmp(reason, "phone"))       code = 0x11;
+            else if (!strcmp(reason, "new_request")) code = 0x12;
+        }
+        uint8_t pkt[2] = {0x04, code};
+        sgc_ble_ft_stream_char()->writeValue(pkt, 2);
         BLE.poll();
     }
 }
