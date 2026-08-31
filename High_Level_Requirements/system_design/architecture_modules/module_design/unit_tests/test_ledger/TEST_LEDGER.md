@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 07:45 UTC  
-**Current baselines:** FW **5.59** (Burst & Breathe + TX block forensics) · App **1.20** · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 09:45 UTC  
+**Current baselines:** FW **5.60** (WDT survival — ISR WDT feed during FT) · App **1.20** · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,21 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.59** pushed (`d501062`), pending JP bench test on S22*
+*Status: **OPEN** — FW **5.60** pushed (`4d19d26`), pending JP bench test on S22*
+
+> **2026-08-31 bench (5.59): device REBOOTED mid-transfer.** Serial:
+> `SND_DATA 78` → `{"ev":"boot","ver":"5.59","rr":2,...}`. `rr:2` =
+> RESETREAS bit 1 = **watchdog**. Sequence: phone wedged → `writeValue()`
+> blocked inside `sendAclPkt()` → nobody feeds NRF_WDT (main loop stuck)
+> → 5 s WDT fired → radio died → phone logged LINK_SUPERVISION_TIMEOUT as
+> a SYMPTOM. The phone was never the (only) problem — **the device was
+> killing itself**.
+>
+> **FW 5.60 = WDT survival:** mbed::Ticker feeds `NRF_WDT->RR[0]` every
+> 500 ms from interrupt context while FT_STREAMING (nRF52 WDT can't be
+> reconfigured once started — ISR feed is the only option). Scoped to FT
+> only; WDT still guards all other paths. Abort threshold 3 s → 8 s;
+> block > 1 s → 500 ms deep-throttle hold.
 
 > **2026-08-31 — mechanism CONFIRMED in library source:** `HCI.sendAclPkt()`
 > busy-blocks (`while (_pendingPkt >= _maxPkt) poll();`) when the nRF52
