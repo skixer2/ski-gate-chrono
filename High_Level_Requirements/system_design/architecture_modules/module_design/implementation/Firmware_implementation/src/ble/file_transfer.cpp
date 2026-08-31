@@ -50,6 +50,17 @@
  *        code paths). A phone wedge now = transfer PAUSE (blocked write),
  *        then either recovery (adaptive deep-throttle continues) or a clean
  *        disconnect abort. No more mid-transfer reboots.
+ *
+ * V5.61: VENDORED + PATCHED ArduinoBLE (lib/ArduinoBLE, SGC_PATCHES.md).
+ *        5.60 bench: device survived the wedge (no reboot) but ZOMBIE-HUNG
+ *        inside sendAclPkt's busy-poll — _pendingPkt is never cleared on
+ *        disconnect, so the loop spins forever even after the phone is gone.
+ *        Library patches: (1) sendAclPkt busy-wait bounded at 2000 ms,
+ *        returns -1; (2) _pendingPkt=0 on EVT_DISCONN_COMPLETE; (3)
+ *        handleNotify propagates the failure → writeValue() returns 0.
+ *        FT now checks writeValue() != 0: 3 consecutive TX failures with
+ *        300 ms holds → ft_abort("tx_blocked"). The main loop regains
+ *        control at least every ~2 s in the worst case.
  */
 
 #include "file_transfer.h"
@@ -121,6 +132,9 @@ static uint8_t  g_ft_burst_pos   = 0;  /* chunks sent in current burst */
 static uint32_t g_ft_hold_until_ms = 0; /* adaptive throttle: no chunk before this */
 static uint32_t g_ft_tx_blocks   = 0;  /* cumulative blocked-write events (>50ms) */
 static uint32_t g_ft_tx_blk_ms   = 0;  /* cumulative ms spent blocked in writeValue */
+static uint8_t  g_ft_tx_fails    = 0;  /* V5.61: consecutive writeValue()==0 failures */
+static constexpr uint8_t FT_TX_FAIL_ABORT = 3;   /* abort after this many in a row */
+static constexpr uint32_t FT_TX_FAIL_HOLD_MS = 300; /* hold between failed retries */
 
 void sgc_ble_transfer_init() {}
 bool sgc_ble_ft_active() { return g_ft_state == FT_STREAMING; }
@@ -230,13 +244,34 @@ void sgc_ble_transfer_poll()
 
     Serial.print("SND_DATA "); Serial.println(g_ft_chunks);
 
-    /* V5.59: writeValue() can busy-block inside HCI.sendAclPkt() while the
-       controller TX queue is full (see header). Measure the block — this is
-       the earliest possible signal that the phone is falling behind, seconds
-       before the S22 declares LINK_SUPERVISION_TIMEOUT. */
+    /* V5.59/V5.61: writeValue() can busy-block inside HCI.sendAclPkt()
+       (bounded at 2000 ms by the vendored patch, returns 0 on failure).
+       Measure the block AND check the return — the earliest possible signal
+       that the phone is falling behind. */
     uint32_t wr_t0 = millis();
-    sgc_ble_ft_stream_char()->writeValue(buf, send_len + 2);
+    int wr_rc = sgc_ble_ft_stream_char()->writeValue(buf, send_len + 2);
     uint32_t wr_blocked = millis() - wr_t0;
+
+    if (wr_rc == 0) {
+        /* V5.61: TX queue stuck (bounded poll timed out) or link gone.
+           Do NOT advance — hold, then retry the same chunk. */
+        g_ft_tx_fails++;
+        json_begin();
+        json_kv("ev", "ft_txfail");
+        Serial.print(','); json_kv("chunk", (long)g_ft_chunks);
+        Serial.print(','); json_kv("off", (long)g_ft_offset);
+        Serial.print(','); json_kv("fails", (long)g_ft_tx_fails);
+        Serial.print(','); json_kv("blk_ms", (long)wr_blocked);
+        json_end();
+        NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+        if (g_ft_tx_fails >= FT_TX_FAIL_ABORT) {
+            sgc_ble_ft_abort("tx_blocked");
+            return;
+        }
+        g_ft_hold_until_ms = millis() + FT_TX_FAIL_HOLD_MS;
+        return;
+    }
+    g_ft_tx_fails = 0;
 
     if (wr_blocked > FT_BLK_LOG_MS) {
         g_ft_tx_blocks++;
@@ -387,6 +422,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     g_ft_hold_until_ms = 0; /* V5.59 */
     g_ft_tx_blocks   = 0;   /* V5.59 */
     g_ft_tx_blk_ms   = 0;   /* V5.59 */
+    g_ft_tx_fails    = 0;   /* V5.61 */
     g_ft_state    = FT_STREAMING;
     ft_wdt_ticker_start();  /* V5.60: ISR WDT feed while streaming */
     
