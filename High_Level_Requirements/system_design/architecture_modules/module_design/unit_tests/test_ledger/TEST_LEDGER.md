@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 10:05 UTC  
-**Current baselines:** FW **5.61** (vendored+patched ArduinoBLE — bounded TX wait) · App **1.20** · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-08-31 10:30 UTC  
+**Current baselines:** FW **5.62** (steady 60 ms + patient escalating retry) · App **1.20** · HW **v4.2** · Port **COM8**  
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,22 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.61** pushed (`087979d`), pending JP bench test on S22*
+*Status: **OPEN** — FW **5.62** pushed (`a67e71c`), pending JP bench test on S22*
+
+> **2026-08-31 bench (5.61): CLEAN DETERMINISTIC FAILURE — library patch
+> verified.** `ft_prog chunks:10` → chunk 12 blocked: `ft_txfail` ×3,
+> each `blk_ms:2001` (bounded poll hit its 2000 ms cap, returned 0),
+> then `ft_abort("tx_blocked")` at ~6.3 s. **No reboot, no hang** — main
+> loop alive throughout. Hard proof: once the S22 wedges, it shows ZERO LL
+> progress for ~6 s, then kills the link (phone supervision).
+>
+> **FW 5.62 experiment (one bench run → 1:1 decision):**
+> (a) steady **60 ms** cadence, breathe disabled (2.4 KB/s) — does a gentle
+> stream avoid the wedge trigger? (b) **patient escalating retry**
+> 300/600/1200/2000/2000 ms, abort at 6 — if it still wedges, is it
+> transient (`ft_recover`) or terminal (`disconnect`/`tx_blocked`)?
+> Outcomes: completes clean → cadence was the fix · recovers → patient
+> retry suffices · terminal → build resume-capable protocol (CMD_START+offset).
 
 > **2026-08-31 bench (5.60): ZOMBIE HANG at chunk 12.** No reboot (5.60
 > Ticker WDT feed works) but `SND_DATA 12` → frozen 60 s+. Library bug
