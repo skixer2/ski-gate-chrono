@@ -36,6 +36,12 @@ android {
     }
 }
 
+dependencies {
+    // Nordic's hardened BLE operation queue — the same open-source stack family
+    // used by Nordic's Android tools. BSD-3-Clause.
+    implementation 'no.nordicsemi.android:ble:2.11.0'
+}
+
 flutter {
     source = "../.."
 }

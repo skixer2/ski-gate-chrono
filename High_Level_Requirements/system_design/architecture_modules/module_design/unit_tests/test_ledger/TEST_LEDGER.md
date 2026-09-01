@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 13:45 UTC
-**Current baselines:** FW **5.67** (post-FT WDT grace, **pending JP flash/bench**) · App **1.30** (native downloader) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 16:55 UTC
+**Current baselines:** FW **5.67** (post-FT WDT grace, **pending JP flash/bench**) · App **1.31** (Nordic BleManager native downloader, **pending JP build/bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -120,6 +120,14 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 ## 2. Active Session Test Case
 
 *Status: **OPEN** — App **1.30** completed two native downloads in one batch; FW **5.67** addresses the third-run tx_blocked → WDT reboot*
+
+> **2026-09-01 16:35 architectural correction:** nRF Connect app source is
+> closed, but Nordic's Android BLE Library is open-source BSD-3-Clause and
+> provides the hardened queued `BleManager` we should have used instead of a
+> hand-rolled `BluetoothGatt` engine. **App 1.31** adds
+> `no.nordicsemi.android:ble:2.11.0` and switches the native downloader to a
+> `NordicBleDownloader` built on `BleManager`, keeping the same FT protocol,
+> resume, one-run-per-connection batch, full notify parity, and 4 s settle.
 
 > **2026-09-01 13:27 native batch bench:** major progress — one tap completed
 > **two full downloads in a row** (expected batch behavior: one run per

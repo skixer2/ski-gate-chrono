@@ -8,11 +8,11 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "sgc_native_ble"
-    private var downloader: NativeBleDownloader? = null
+    private var downloader: NordicBleDownloader? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        downloader = NativeBleDownloader(applicationContext)
+        downloader = NordicBleDownloader(applicationContext)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->

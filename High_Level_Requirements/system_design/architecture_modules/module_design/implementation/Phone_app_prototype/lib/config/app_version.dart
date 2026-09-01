@@ -102,4 +102,9 @@
 //   1.30 – Build fix: this Flutter/Android SDK stub does not expose
 //          BluetoothGattCallback.onConnectionUpdated to Kotlin, so 1.29 did
 //          not compile. Use a fixed 4 s post-subscription settle delay instead.
-const String APP_VERSION = '1.30';
+//   1.31 – Replace the hand-rolled native BluetoothGatt engine with Nordic's
+//          open-source Android BLE Library (BleManager 2.11.0, BSD-3-Clause).
+//          nRF Connect itself is closed-source, but its hardened BLE queue is
+//          the right reusable component. Same FT protocol, resume, batching,
+//          full notify parity, and 4 s post-connect settle.
+const String APP_VERSION = '1.31';
