@@ -37,9 +37,16 @@ class NativeBleDownloader(private val context: Context) {
     companion object {
         private const val TAG = "SGC_NATIVE"
         private val SERVICE_UUID: UUID = UUID.fromString("53470000-0000-1000-8000-00805F9B34FB")
+        private val GATT_SERVICE_UUID: UUID = UUID.fromString("00001801-0000-1000-8000-00805F9B34FB")
+        private val CHAR_SERVICE_CHANGED: UUID = UUID.fromString("00002A05-0000-1000-8000-00805F9B34FB")
+        private val CHAR_STATE: UUID = UUID.fromString("5347ABC4-0000-1000-8000-00805F9B34FB")
+        private val CHAR_BATTERY: UUID = UUID.fromString("5347ABC5-0000-1000-8000-00805F9B34FB")
+        private val CHAR_FLASH_USED: UUID = UUID.fromString("5347ABC7-0000-1000-8000-00805F9B34FB")
+        private val CHAR_RUN_INFO: UUID = UUID.fromString("5347ABC8-0000-1000-8000-00805F9B34FB")
         private val CHAR_RUN_LIST: UUID = UUID.fromString("5347ABC9-0000-1000-8000-00805F9B34FB")
         private val CHAR_FT_REQUEST: UUID = UUID.fromString("5347ABCA-0000-1000-8000-00805F9B34FB")
         private val CHAR_FT_STREAM: UUID = UUID.fromString("5347ABCD-0000-1000-8000-00805F9B34FB")
+        private val CHAR_CAL: UUID = UUID.fromString("5347ABD0-0000-1000-8000-00805F9B34FB")
         private val CCC_DESCRIPTOR: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         private const val CONNECT_TIMEOUT_MS = 15_000L
@@ -215,8 +222,14 @@ class NativeBleDownloader(private val context: Context) {
             handleWrite(characteristic.uuid, status)
         }
 
-        private fun handleChanged(value: ByteArray) {
-            notifyQueue.offer(value)
+        private fun handleChanged(uuid: UUID, value: ByteArray) {
+            // During nRF-parity mode we subscribe to all SGC notify chars.
+            // Only ABCD belongs to the FT byte stream; the others are enabled
+            // to reproduce the known-good nRF Connect GATT state and are
+            // deliberately ignored by the FT parser.
+            if (uuid == CHAR_FT_STREAM) {
+                notifyQueue.offer(value)
+            }
         }
 
         @Deprecated("Deprecated in Java")
@@ -225,7 +238,7 @@ class NativeBleDownloader(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
         ) {
             val v = characteristic.value
-            if (v != null) handleChanged(v)
+            if (v != null) handleChanged(characteristic.uuid, v)
         }
 
         override fun onCharacteristicChanged(
@@ -233,7 +246,7 @@ class NativeBleDownloader(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            handleChanged(value)
+            handleChanged(characteristic.uuid, value)
         }
 
         override fun onDescriptorWrite(
@@ -317,7 +330,53 @@ class NativeBleDownloader(private val context: Context) {
         if (svc.getCharacteristic(CHAR_FT_REQUEST) == null || svc.getCharacteristic(CHAR_FT_STREAM) == null) {
             throw Exception("SGC FT characteristics missing")
         }
+        enableNrfParityNotifications()
         log("GATT ready (mtu=$mtu)")
+    }
+
+    private fun enableNrfParityNotifications() {
+        // nRF Connect completed the same 39,372 B stream after enabling the
+        // full SGC notify set. Reproduce that state exactly; FT parsing still
+        // consumes only CHAR_FT_STREAM.
+        setNotify(CHAR_STATE, true)
+        setNotify(CHAR_BATTERY, true)
+        setNotify(CHAR_FLASH_USED, true)
+        setNotify(CHAR_RUN_INFO, true)
+        setNotify(CHAR_FT_STREAM, true)
+        setNotify(CHAR_CAL, true)
+        try {
+            val g = gatt
+            val c = g?.getService(GATT_SERVICE_UUID)?.getCharacteristic(CHAR_SERVICE_CHANGED)
+            if (g != null && c != null) {
+                val d = c.getDescriptor(CCC_DESCRIPTOR)
+                if (d != null) {
+                    g.setCharacteristicNotification(c, true)
+                    val value = if ((c.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0) {
+                        BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                    } else {
+                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    }
+                    synchronized(lock) {
+                        descEvent = false
+                        descOk = false
+                    }
+                    val started = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        g.writeDescriptor(d, value) == BluetoothGatt.GATT_SUCCESS
+                    } else {
+                        @Suppress("DEPRECATION")
+                        d.value = value
+                        @Suppress("DEPRECATION")
+                        g.writeDescriptor(d)
+                    }
+                    if (started) {
+                        waitFor({ descEvent }, OP_TIMEOUT_MS, "descriptor write service-changed")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("service-changed subscription skipped: ${e.message}")
+        }
+        log("nRF-parity notifications enabled")
     }
 
     private fun characteristic(uuid: UUID): BluetoothGattCharacteristic {
@@ -368,7 +427,16 @@ class NativeBleDownloader(private val context: Context) {
         if (!g.setCharacteristicNotification(c, enabled)) {
             throw Exception("setCharacteristicNotification failed: $uuid")
         }
-        val value = if (enabled) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+        val value = if (enabled) {
+            if ((c.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0 &&
+                (c.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == 0) {
+                BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+            } else {
+                BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            }
+        } else {
+            BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+        }
         synchronized(lock) {
             descEvent = false
             descOk = false

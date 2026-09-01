@@ -90,4 +90,8 @@
 //          same S22 (FINAL CRC bytes matched device ft_done). Remove the native
 //          downloader's extra requestConnectionPriority(BALANCED); leave link
 //          parameters at Android default to match the known-good control path.
-const String APP_VERSION = '1.27';
+//   1.28 – nRF parity notifications. App 1.27 still wedged (chunk 114), and
+//          nRF's good log showed subscriptions to every SGC notify char
+//          (ABC4/ABC5/ABC7/ABC8/ABCD/ABD0 + Service Changed), not just ABCD.
+//          Native now enables the same set; the FT parser consumes only ABCD.
+const String APP_VERSION = '1.28';

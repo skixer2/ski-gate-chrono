@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 12:45 UTC
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.27** (native link-param parity with nRF Connect, **pending JP bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 13:10 UTC
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.28** (nRF full-notify parity, **pending JP bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,14 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.27** removes native connection-priority request after nRF Connect completed the same stream on the S22*
+*Status: **OPEN** — App **1.28** enables the same full notify set nRF Connect used in its successful control transfer*
+
+> **2026-09-01 13:01 App 1.27 bench:** still wedged, device `ft_txfail`
+> chunk 114 / offset 27,588 → `tx_blocked`. Removing connection-priority was
+> not sufficient. nRF's successful log showed notifications enabled for
+> ABC4/ABC5/ABC7/ABC8/ABCD/ABD0 + Service Changed, while native enabled only
+> ABCD. App 1.28 copies the full nRF subscription set; FT parser consumes
+> only ABCD packets.
 
 > **2026-09-01 12:36 nRF Connect control: PASS.** Same S22, same device,
 > same 39,372 B run. nRF Connect received FINAL `03-BE-A7-B6-28`; LE CRC
