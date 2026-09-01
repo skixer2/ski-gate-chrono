@@ -99,4 +99,7 @@
 //          parameter churn after subscription before CMD_START. Native now logs
 //          onConnectionUpdated and waits for a post-subscription update/settle
 //          window before starting FT; avoids re-writing the ABCD CCCD.
-const String APP_VERSION = '1.29';
+//   1.30 – Build fix: this Flutter/Android SDK stub does not expose
+//          BluetoothGattCallback.onConnectionUpdated to Kotlin, so 1.29 did
+//          not compile. Use a fixed 4 s post-subscription settle delay instead.
+const String APP_VERSION = '1.30';

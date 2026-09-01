@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 13:20 UTC
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.29** (connection-settle parity, **pending JP bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 13:30 UTC
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.30** (fixed connection-settle build, **pending JP bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,12 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.29** waits for post-subscription connection-parameter settle before native FT CMD_START*
+*Status: **OPEN** — App **1.30** fixes the 1.29 Kotlin build and uses a fixed 4 s settle delay before native FT CMD_START*
+
+> **2026-09-01 13:18 App 1.29 build failure:** this Flutter/Android SDK stub
+> does not expose `BluetoothGattCallback.onConnectionUpdated` to Kotlin
+> (`overrides nothing`). App 1.30 removes the callback and uses a fixed 4 s
+> post-subscription settle delay instead.
 
 > **2026-09-01 13:06 App 1.28 bench:** still wedged, device `ft_txfail`
 > chunk 121 / offset 29,282 → `tx_blocked`. Full notification parity was not

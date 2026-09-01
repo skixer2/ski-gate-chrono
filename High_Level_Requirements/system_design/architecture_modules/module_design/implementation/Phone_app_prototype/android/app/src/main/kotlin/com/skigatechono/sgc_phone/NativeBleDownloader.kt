@@ -84,10 +84,6 @@ class NativeBleDownloader(private val context: Context) {
     private var descEvent = false
     private var descOk = false
 
-    private var connUpdateEvent = false
-    private var connInterval = -1
-    private var connLatency = -1
-    private var connTimeout = -1
     private var ftNotifyEnabled = false
 
     @Volatile
@@ -131,7 +127,6 @@ class NativeBleDownloader(private val context: Context) {
             readEvent = false
             writeEvent = false
             descEvent = false
-            connUpdateEvent = false
             readValue = null
         }
     }
@@ -163,23 +158,6 @@ class NativeBleDownloader(private val context: Context) {
                 lock.notifyAll()
             }
             log("connection state: status=$status newState=$newState")
-        }
-
-        override fun onConnectionUpdated(
-            g: BluetoothGatt,
-            interval: Int,
-            latency: Int,
-            timeout: Int,
-            status: Int,
-        ) {
-            synchronized(lock) {
-                connUpdateEvent = true
-                connInterval = interval
-                connLatency = latency
-                connTimeout = timeout
-                lock.notifyAll()
-            }
-            log("connection updated: interval=$interval latency=$latency timeout=$timeout status=$status")
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
@@ -356,7 +334,6 @@ class NativeBleDownloader(private val context: Context) {
         if (svc.getCharacteristic(CHAR_FT_REQUEST) == null || svc.getCharacteristic(CHAR_FT_STREAM) == null) {
             throw Exception("SGC FT characteristics missing")
         }
-        synchronized(lock) { connUpdateEvent = false }
         enableNrfParityNotifications()
         waitForConnectionSettle()
         log("GATT ready (mtu=$mtu)")
@@ -366,22 +343,10 @@ class NativeBleDownloader(private val context: Context) {
         // nRF Connect's successful path had a human delay between service
         // subscription and CMD_START. Android was still issuing connection-
         // parameter updates in that window; starting FT during that churn is
-        // a likely wedge trigger on the S22. Wait for one update, or a fixed
-        // settle window if the controller does not emit one.
-        val deadline = System.currentTimeMillis() + 3_500L
-        var seenUpdate = false
-        synchronized(lock) {
-            while (!connUpdateEvent && System.currentTimeMillis() < deadline && !cancelled) {
-                lock.wait(250)
-            }
-            seenUpdate = connUpdateEvent
-        }
-        if (seenUpdate) {
-            log("connection settled: interval=$connInterval latency=$connLatency timeout=$connTimeout")
-        } else {
-            log("connection settle window elapsed without onConnectionUpdated")
-        }
-        Thread.sleep(500)
+        // a likely wedge trigger on the S22. This Flutter/Android SDK stub
+        // does not expose onConnectionUpdated, so use a fixed settle window.
+        log("waiting for BLE connection parameters to settle")
+        Thread.sleep(4_000)
     }
 
     private fun enableNrfParityNotifications() {
