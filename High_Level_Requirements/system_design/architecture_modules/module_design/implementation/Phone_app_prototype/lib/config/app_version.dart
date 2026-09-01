@@ -86,4 +86,8 @@
 //          link loss instead of waiting 20 s idle, fail connect attempts
 //          immediately on Android GATT status, and wait for the device
 //          advertisement before resume reconnect to avoid status 147 storms.
-const String APP_VERSION = '1.26';
+//   1.27 – nRF Connect control test completed the full 39,372 B stream on the
+//          same S22 (FINAL CRC bytes matched device ft_done). Remove the native
+//          downloader's extra requestConnectionPriority(BALANCED); leave link
+//          parameters at Android default to match the known-good control path.
+const String APP_VERSION = '1.27';

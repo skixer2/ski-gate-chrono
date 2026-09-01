@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 11:55 UTC
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.26** (native resume hardening, **pending JP bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 12:45 UTC
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.27** (native link-param parity with nRF Connect, **pending JP bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,14 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.26** hardens native resume after first SGC_NATIVE bench reached 39,204/39,372 B before S22 status=8*
+*Status: **OPEN** — App **1.27** removes native connection-priority request after nRF Connect completed the same stream on the S22*
+
+> **2026-09-01 12:36 nRF Connect control: PASS.** Same S22, same device,
+> same 39,372 B run. nRF Connect received FINAL `03-BE-A7-B6-28`; LE CRC
+> `0x28B6A7BE = 683059134`, matching device `ft_done`. Device and S22 BLE
+> path are both capable. Main setup difference in native downloader was
+> `requestConnectionPriority(BALANCED)`; App 1.27 removes it and leaves link
+> parameters at Android default.
 
 > **2026-09-01 11:44 first native bench evidence:** Kotlin engine connected,
 > negotiated MTU 247, started run #0 and received **39,204/39,372 B**. Device

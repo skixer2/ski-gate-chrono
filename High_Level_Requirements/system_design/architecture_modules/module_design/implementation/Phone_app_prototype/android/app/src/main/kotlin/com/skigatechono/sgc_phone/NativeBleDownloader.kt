@@ -307,9 +307,11 @@ class NativeBleDownloader(private val context: Context) {
                 log("MTU request failed; continuing at mtu=$mtu")
             }
         }
-        try {
-            g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
-        } catch (_: Exception) {}
+        // Do NOT request a connection-priority change here. The nRF Connect
+        // control test completed the full 39,372-byte stream on the same S22;
+        // the native downloader's extra priority request was the main visible
+        // setup difference and triggers Samsung connection-update churn.
+        log("leaving connection priority at Android default")
 
         val svc = g.getService(SERVICE_UUID) ?: throw Exception("SGC service not found")
         if (svc.getCharacteristic(CHAR_FT_REQUEST) == null || svc.getCharacteristic(CHAR_FT_STREAM) == null) {
