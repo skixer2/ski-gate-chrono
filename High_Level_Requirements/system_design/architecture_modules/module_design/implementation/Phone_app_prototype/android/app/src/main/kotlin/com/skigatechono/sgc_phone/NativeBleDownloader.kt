@@ -84,6 +84,12 @@ class NativeBleDownloader(private val context: Context) {
     private var descEvent = false
     private var descOk = false
 
+    private var connUpdateEvent = false
+    private var connInterval = -1
+    private var connLatency = -1
+    private var connTimeout = -1
+    private var ftNotifyEnabled = false
+
     @Volatile
     private var cancelled = false
 
@@ -125,6 +131,7 @@ class NativeBleDownloader(private val context: Context) {
             readEvent = false
             writeEvent = false
             descEvent = false
+            connUpdateEvent = false
             readValue = null
         }
     }
@@ -150,11 +157,29 @@ class NativeBleDownloader(private val context: Context) {
                 connected = (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED)
                 if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     connected = false
+                    ftNotifyEnabled = false
                     notifyQueue.clear()
                 }
                 lock.notifyAll()
             }
             log("connection state: status=$status newState=$newState")
+        }
+
+        override fun onConnectionUpdated(
+            g: BluetoothGatt,
+            interval: Int,
+            latency: Int,
+            timeout: Int,
+            status: Int,
+        ) {
+            synchronized(lock) {
+                connUpdateEvent = true
+                connInterval = interval
+                connLatency = latency
+                connTimeout = timeout
+                lock.notifyAll()
+            }
+            log("connection updated: interval=$interval latency=$latency timeout=$timeout status=$status")
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
@@ -279,6 +304,7 @@ class NativeBleDownloader(private val context: Context) {
         synchronized(lock) {
             gatt = null
             connected = false
+            ftNotifyEnabled = false
             notifyQueue.clear()
         }
     }
@@ -330,8 +356,32 @@ class NativeBleDownloader(private val context: Context) {
         if (svc.getCharacteristic(CHAR_FT_REQUEST) == null || svc.getCharacteristic(CHAR_FT_STREAM) == null) {
             throw Exception("SGC FT characteristics missing")
         }
+        synchronized(lock) { connUpdateEvent = false }
         enableNrfParityNotifications()
+        waitForConnectionSettle()
         log("GATT ready (mtu=$mtu)")
+    }
+
+    private fun waitForConnectionSettle() {
+        // nRF Connect's successful path had a human delay between service
+        // subscription and CMD_START. Android was still issuing connection-
+        // parameter updates in that window; starting FT during that churn is
+        // a likely wedge trigger on the S22. Wait for one update, or a fixed
+        // settle window if the controller does not emit one.
+        val deadline = System.currentTimeMillis() + 3_500L
+        var seenUpdate = false
+        synchronized(lock) {
+            while (!connUpdateEvent && System.currentTimeMillis() < deadline && !cancelled) {
+                lock.wait(250)
+            }
+            seenUpdate = connUpdateEvent
+        }
+        if (seenUpdate) {
+            log("connection settled: interval=$connInterval latency=$connLatency timeout=$connTimeout")
+        } else {
+            log("connection settle window elapsed without onConnectionUpdated")
+        }
+        Thread.sleep(500)
     }
 
     private fun enableNrfParityNotifications() {
@@ -452,6 +502,7 @@ class NativeBleDownloader(private val context: Context) {
         if (!started) throw Exception("descriptor write start failed: $uuid")
         waitFor({ descEvent }, OP_TIMEOUT_MS, "descriptor write $uuid")
         if (!descOk) throw Exception("descriptor write failed: $uuid")
+        if (uuid == CHAR_FT_STREAM) ftNotifyEnabled = enabled
     }
 
     private fun le32(data: ByteArray, offset: Int): Long {
@@ -530,7 +581,7 @@ class NativeBleDownloader(private val context: Context) {
             try {
                 deviceCrc = null
                 if (!connected) connect(address)
-                setNotify(CHAR_FT_STREAM, true)
+                if (!ftNotifyEnabled) setNotify(CHAR_FT_STREAM, true)
                 notifyQueue.clear()
 
                 val offset = buffer.size()

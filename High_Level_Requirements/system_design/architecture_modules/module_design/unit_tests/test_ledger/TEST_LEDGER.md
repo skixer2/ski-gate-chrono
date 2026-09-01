@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 13:10 UTC
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.28** (nRF full-notify parity, **pending JP bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 13:20 UTC
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.29** (connection-settle parity, **pending JP bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,14 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.28** enables the same full notify set nRF Connect used in its successful control transfer*
+*Status: **OPEN** — App **1.29** waits for post-subscription connection-parameter settle before native FT CMD_START*
+
+> **2026-09-01 13:06 App 1.28 bench:** still wedged, device `ft_txfail`
+> chunk 121 / offset 29,282 → `tx_blocked`. Full notification parity was not
+> sufficient. Remaining nRF difference: manual human delay between service
+> subscription and CMD_START allowed Android connection updates to settle.
+> App 1.29 logs `onConnectionUpdated`, waits up to 3.5 s for a post-
+> subscription update + 500 ms grace, and avoids re-writing the ABCD CCCD.
 
 > **2026-09-01 13:01 App 1.27 bench:** still wedged, device `ft_txfail`
 > chunk 114 / offset 27,588 → `tx_blocked`. Removing connection-priority was

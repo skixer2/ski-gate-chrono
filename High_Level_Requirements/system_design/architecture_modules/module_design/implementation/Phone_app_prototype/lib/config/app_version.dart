@@ -94,4 +94,9 @@
 //          nRF's good log showed subscriptions to every SGC notify char
 //          (ABC4/ABC5/ABC7/ABC8/ABCD/ABD0 + Service Changed), not just ABCD.
 //          Native now enables the same set; the FT parser consumes only ABCD.
-const String APP_VERSION = '1.28';
+//   1.29 – Connection-settle parity. App 1.28 still wedged (chunk 121); nRF's
+//          manual flow gave Android several seconds to finish connection-
+//          parameter churn after subscription before CMD_START. Native now logs
+//          onConnectionUpdated and waits for a post-subscription update/settle
+//          window before starting FT; avoids re-writing the ABCD CCCD.
+const String APP_VERSION = '1.29';
