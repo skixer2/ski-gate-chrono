@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 13:30 UTC
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.30** (fixed connection-settle build, **pending JP bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 13:45 UTC
+**Current baselines:** FW **5.67** (post-FT WDT grace, **pending JP flash/bench**) · App **1.30** (native downloader) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,15 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.30** fixes the 1.29 Kotlin build and uses a fixed 4 s settle delay before native FT CMD_START*
+*Status: **OPEN** — App **1.30** completed two native downloads in one batch; FW **5.67** addresses the third-run tx_blocked → WDT reboot*
+
+> **2026-09-01 13:27 native batch bench:** major progress — one tap completed
+> **two full downloads in a row** (expected batch behavior: one run per
+> connection). Third transfer wedged at chunk 115 → clean `tx_blocked`, then
+> the device unexpectedly rebooted (`boot rr:2` WDT). Root hole: FT ISR WDT
+> feeder stopped immediately at `ft_abort` while the wedged BLE link was still
+> tearing down. **FW 5.67:** 3 s post-FT WDT grace via `mbed::Timeout` +
+> explicit feeds around abort ERROR notify.
 
 > **2026-09-01 13:18 App 1.29 build failure:** this Flutter/Android SDK stub
 > does not expose `BluetoothGattCallback.onConnectionUpdated` to Kotlin

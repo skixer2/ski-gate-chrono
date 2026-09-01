@@ -58,6 +58,13 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.67: POST-FT WDT GRACE — 2026-09-01 native bench: two runs completed,
+ *        third wedged → clean tx_blocked, then the device rebooted (rr:2).
+ *        The FT ISR WDT feeder was stopped immediately on ft_abort while the
+ *        wedged BLE link was still tearing down. Keep feeding for a 3 s grace
+ *        window via mbed::Timeout (stops even if the main loop is blocked),
+ *        and feed explicitly around the abort ERROR notify.
+ *
  * V5.64: RE-ADVERTISE ON FT EXIT — 5.63 bench: resume worked (app failed
  *        fast at 26 620 B, re-requested) but the reconnect hit
  *        GATT_CONNECTION_TIMEOUT: CMD_START forces the SM to LOGGING (no
@@ -153,18 +160,33 @@ static bool        g_ft_pre_state_valid = false;
    Survives writeValue() blocking inside HCI.sendAclPkt() (see header). */
 static mbed::Ticker g_ft_wdt_ticker;
 static bool g_ft_wdt_ticker_on = false;
+static mbed::Timeout g_ft_wdt_stop_timeout;
 static void ft_wdt_feed_isr() { NRF_WDT->RR[0] = WDT_RR_RR_Reload; }
+static void ft_wdt_ticker_stop_isr()
+{
+    /* Runs even if the main loop is blocked in Cordio after ft_abort: the
+       FT grace period really expires, then the normal WDT guards again. */
+    g_ft_wdt_ticker.detach();
+    g_ft_wdt_ticker_on = false;
+}
 static void ft_wdt_ticker_start()
 {
+    g_ft_wdt_stop_timeout.detach();
     if (g_ft_wdt_ticker_on) return;
     g_ft_wdt_ticker.attach_us(ft_wdt_feed_isr, 500000);  /* 500 ms << 5 s WDT */
     g_ft_wdt_ticker_on = true;
 }
 static void ft_wdt_ticker_stop()
 {
+    g_ft_wdt_stop_timeout.detach();
     if (!g_ft_wdt_ticker_on) return;
     g_ft_wdt_ticker.detach();
     g_ft_wdt_ticker_on = false;
+}
+static void ft_wdt_ticker_grace(uint32_t grace_ms)
+{
+    if (!g_ft_wdt_ticker_on) return;
+    g_ft_wdt_stop_timeout.attach_us(ft_wdt_ticker_stop_isr, grace_ms * 1000);
 }
 
 /* V5.64: called on EVERY FT exit — restore the pre-FT state (CMD_START
@@ -172,7 +194,13 @@ static void ft_wdt_ticker_stop()
    100 ms so a resume reconnect finds us at once. */
 static void ft_exit_restore_state()
 {
-    ft_wdt_ticker_stop();
+    /* V5.67: keep the ISR WDT feed alive briefly AFTER FT exits. The link is
+       still tearing down: the abort/error notify + next BLE.poll() can sit on
+       the same wedged Cordio path that triggered tx_blocked. Stopping the feed
+       here let the 5 s WDT fire immediately after ft_abort (bench 2026-09-01:
+       two native downloads OK, third tx_blocked → boot rr:2). The Timeout
+       detaches the Ticker even if the main loop stays blocked. */
+    ft_wdt_ticker_grace(3000);
     if (g_ft_pre_state_valid) {
         g_sm.force_state(g_ft_pre_state);
         g_ft_pre_state_valid = false;
@@ -224,6 +252,7 @@ void sgc_ble_ft_abort(const char* reason)
     if (BLE.connected()) {
         /* V5.65: proper ERROR packet — the bare "3" collided with packet
            type 0x03 (FINAL) in the app parser. */
+        NRF_WDT->RR[0] = WDT_RR_RR_Reload;
         uint8_t code = 0xFF;
         if (reason) {
             if (!strcmp(reason, "tx_blocked"))  code = 0x10;
@@ -233,6 +262,7 @@ void sgc_ble_ft_abort(const char* reason)
         uint8_t pkt[2] = {0x04, code};
         sgc_ble_ft_stream_char()->writeValue(pkt, 2);
         BLE.poll();
+        NRF_WDT->RR[0] = WDT_RR_RR_Reload;
     }
 }
 
