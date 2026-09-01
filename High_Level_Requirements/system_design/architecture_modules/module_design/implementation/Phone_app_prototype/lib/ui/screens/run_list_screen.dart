@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../ble/ble_manager.dart' hide ScanResult;
 import '../../ble/sgc_service.dart';
+import '../../ble/native_ble_downloader.dart';
 import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
 import '../../storage/local_storage.dart';
@@ -203,21 +204,29 @@ class _RunListScreenState extends State<RunListScreen> {
     }
   }
 
-  /// V1.22: drop and re-establish the BLE connection so the next download
-  /// starts with a fresh GATT session (one run per connection, Phase 2).
-  Future<void> _freshConnection() async {
+  /// V1.22/V1.24: drop and re-establish the BLE connection so the next
+  /// download starts with a fresh GATT session (one run per connection,
+  /// Phase 2). Retry a few times: after a transfer the S22 may need a longer
+  /// settle window before it can open the next link.
+  Future<bool> _freshConnection() async {
     final dev = _device;
-    if (dev == null) return;
+    if (dev == null) return false;
     try { await _ble.disconnect(); } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 500));
-    try {
-      await _ble.connectToDevice(dev);
-    } catch (e) {
-      debugPrint('[SGC] freshConnection reconnect failed: $e');
-      return; // next run's download resumes/retries on its own attempts
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      await Future.delayed(Duration(milliseconds: 600 * attempt));
+      try {
+        await _ble.connectToDevice(dev);
+        if (mounted) setState(() => _sgc = SGCService(_ble));
+        debugPrint('[SGC] freshConnection OK on attempt $attempt (mtu=${_ble.mtu})');
+        return true;
+      } catch (e) {
+        debugPrint('[SGC] freshConnection attempt $attempt/3 failed: $e');
+      }
     }
-    // _onConnectionChanged cleared _sgc on our manual disconnect — restore.
+    // Keep a live SGCService around even on failure — downloadRun() has its
+    // own reconnect/resume attempts and self-heals from ble.services.
     if (mounted) setState(() => _sgc = SGCService(_ble));
+    return false;
   }
 
   Future<void> _disconnect() async {
@@ -289,7 +298,11 @@ class _RunListScreenState extends State<RunListScreen> {
       _deviceRuns = await ft.getRunList();
       await _loadLocalRuns();
       final missing = _missingRuns;
-      debugPrint('[SGC] Device runs: ${_deviceRuns.length}, missing: ${missing.length}');
+      String metaKey(RunMetadata r) => '#${r.id}@${r.timestamp}';
+      String savedKey(SavedRun r) => '#${r.id}@${r.timestamp}';
+      debugPrint('[SGC] Device runs (${_deviceRuns.length}): ${_deviceRuns.map(metaKey).join(', ')}');
+      debugPrint('[SGC] Local runs (${_localRuns.length}): ${_localRuns.map(savedKey).join(', ')}');
+      debugPrint('[SGC] Missing runs (${missing.length}): ${missing.map(metaKey).join(', ')}');
 
       if (missing.isEmpty) {
         if (mounted) {
@@ -303,18 +316,34 @@ class _RunListScreenState extends State<RunListScreen> {
       }
 
       int ok = 0, failed = 0;
+      final failedRuns = <RunMetadata>[];
       _downloadTotal = missing.length;
-      for (final run in missing) {
+      for (int i = 0; i < missing.length; i++) {
         if (!_isDownloading) break;  // V1.23: user cancelled mid-batch
+        final run = missing[i];
         _downloadCurrent++;
         _downloadBytes = 0;
         _downloadRunSize = run.size;
+        // V1.22 (Phase 2): ONE RUN PER CONNECTION — reconnect BEFORE each
+        // run after the first so every run gets a fresh GATT session.
+        // V1.24: retry the reconnect; multi-run benches showed the batch can
+        // otherwise stop after ~2 runs when the S22 is slow to reopen BLE.
+        if (i > 0) {
+          setState(() => _downloadStatus = 'Reconnecting…');
+          final reconnected = await _freshConnection();
+          if (!reconnected) {
+            debugPrint('[SGC] reconnect before run ${metaKey(run)} failed; transfer layer will retry');
+          }
+          setState(() => _downloadStatus =
+              'Run $_downloadCurrent/$_downloadTotal (${run.size ~/ 1024} KB)');
+        }
         setState(() => _downloadStatus =
             'Run $_downloadCurrent/$_downloadTotal (${run.size ~/ 1024} KB)');
-        debugPrint('[SGC] Downloading run #${run.id} (${run.size} bytes, side=${run.side})');
-        final data = await _downloadOne(ft, run.id);
+        debugPrint('[SGC] Downloading run ${metaKey(run)} (${run.size} bytes, side=${run.side})');
+        final data = await _downloadOne(FileTransfer(_sgc ?? SGCService(_ble)), run.id);
         if (data == null) {
           failed++;
+          failedRuns.add(run);
         } else {
           final decoded = await compute(_decompressRunBackground, data);
           await _storage.save(
@@ -324,30 +353,27 @@ class _RunListScreenState extends State<RunListScreen> {
             deviceName: _config?.deviceName ?? 'SGC',
           );
           ok++;
-        }
-        // V1.22 (Phase 2): ONE RUN PER CONNECTION — disconnect/reconnect
-        // between runs so each run gets a fresh GATT session. Replaces the
-        // 2 s cooldown; kills cumulative BLE buffer pressure by design.
-        if (_downloadCurrent < missing.length) {
-          setState(() => _downloadStatus = 'Reconnecting…');
-          await _freshConnection();
+          // Keep the missing-run identity current while the batch is still
+          // running; also makes a later cancel leave an accurate screen.
+          await _loadLocalRuns();
         }
       }
       await _loadLocalRuns();
       // V1.23: refresh the device run list + service after the batch so the
       // screen reflects reality (Phase-2 reconnects cleared them).
       try {
-        _deviceRuns = await ft.getRunList();
+        _deviceRuns = await FileTransfer(_sgc ?? SGCService(_ble)).getRunList();
         if (mounted && _ble.isConnected && _sgc == null) {
           setState(() => _sgc = SGCService(_ble));
         }
       } catch (_) {}
       if (mounted) {
+        final failedIds = failedRuns.map((r) => '#${r.id}').join(', ');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(failed == 0
                 ? 'Downloaded $ok run(s)'
-                : 'Downloaded $ok run(s), $failed failed'),
+                : 'Downloaded $ok/${missing.length} · failed: $failedIds'),
             backgroundColor: failed > 0 ? Colors.orange : Colors.green,
           ),
         );
@@ -385,7 +411,10 @@ class _RunListScreenState extends State<RunListScreen> {
       });
       if (result.compressedData.isEmpty) {
         debugPrint('[SGC] run #$runId: empty data (attempt $attempt)');
-        if (attempt < maxAttempts) await Future.delayed(const Duration(milliseconds: 500));
+        if (attempt < maxAttempts) {
+          debugPrint('[SGC] run #$runId: retrying on a fresh GATT session');
+          await _freshConnection();
+        }
         continue;
       }
       final decompressor = Decompressor();
@@ -394,9 +423,127 @@ class _RunListScreenState extends State<RunListScreen> {
         return result.compressedData;
       }
       debugPrint('[SGC] ⚠️ CRC FAILED for run #$runId (attempt $attempt/$maxAttempts)');
-      if (attempt < maxAttempts) await Future.delayed(const Duration(milliseconds: 500));
+      if (attempt < maxAttempts) {
+        debugPrint('[SGC] run #$runId: CRC retry on a fresh GATT session');
+        await _freshConnection();
+      }
     }
     return null;
+  }
+
+  /// V1.25: native Android BluetoothGatt downloader (beta spike).
+  ///
+  /// Flutter disconnects and hands the radio to the Kotlin engine. Native code
+  /// downloads only the runs currently missing locally, then Flutter resumes
+  /// its normal role: decompression, payload CRC validation, local storage,
+  /// and UI refresh.
+  Future<void> _downloadRunsNative() async {
+    final dev = _device;
+    if (dev == null || _isDownloading) return;
+
+    await _loadLocalRuns();
+    final missing = _missingRuns;
+    if (missing.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All device runs already downloaded')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isDownloading = true;
+      _downloadStatus = 'Native BLE preparing…';
+      _downloadCurrent = 0;
+      _downloadTotal = missing.length;
+      _downloadBytes = 0;
+      _downloadRunSize = 0;
+    });
+
+    try {
+      final address = dev.remoteId.str;
+      final ids = missing.map((r) => r.id).toList();
+      debugPrint('[SGC-NATIVE] batch start: ${ids.map((id) => '#$id').join(', ')} via $address');
+
+      // Native must own the GATT session; release the FlutterBluePlus link.
+      await _ble.disconnect();
+      await Future.delayed(const Duration(milliseconds: 700));
+
+      final result = await NativeBleDownloader().downloadRuns(
+        address: address,
+        runIds: ids,
+      );
+      for (final line in result.log) {
+        debugPrint('[SGC-NATIVE] $line');
+      }
+
+      int saved = 0;
+      final payloadFailed = <int>[];
+      for (final run in result.runs) {
+        _downloadCurrent++;
+        if (!Decompressor().validateCRC(run.data)) {
+          debugPrint('[SGC-NATIVE] ⚠️ payload CRC FAILED for run #${run.id}');
+          payloadFailed.add(run.id);
+          continue;
+        }
+        final decoded = await compute(_decompressRunBackground, run.data);
+        await _storage.save(
+          runId: run.id,
+          compressedData: run.data,
+          result: decoded,
+          deviceName: _config?.deviceName ?? 'SGC',
+        );
+        saved++;
+        await _loadLocalRuns();
+      }
+
+      if (mounted) {
+        final nativeFailed = result.failed.map((r) => '#${r.id}').join(', ');
+        final crcFailed = payloadFailed.map((id) => '#$id').join(', ');
+        final parts = <String>['Native downloaded $saved/${missing.length}'];
+        if (nativeFailed.isNotEmpty) parts.add('BLE failed: $nativeFailed');
+        if (crcFailed.isNotEmpty) parts.add('CRC failed: $crcFailed');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(parts.join(' · ')),
+            backgroundColor: (result.failed.isEmpty && payloadFailed.isEmpty)
+                ? Colors.green
+                : Colors.orange,
+          ),
+        );
+      }
+    } catch (e, stack) {
+      debugPrint('[SGC-NATIVE] error: $e');
+      debugPrint('[SGC-NATIVE] $stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Native download error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadStatus = '';
+          _downloadBytes = 0;
+          _downloadRunSize = 0;
+        });
+      }
+      // Reconnect the normal Flutter path so the screen reflects reality.
+      try {
+        await _ble.connectToDevice(dev);
+        if (mounted) setState(() => _sgc = SGCService(_ble));
+        _deviceRuns = await FileTransfer(_sgc!).getRunList();
+        await _loadLocalRuns();
+      } catch (e) {
+        debugPrint('[SGC-NATIVE] Flutter reconnect after native batch failed: $e');
+        if (mounted) {
+          setState(() {
+            _sgc = null;
+            _deviceRuns = [];
+          });
+        }
+      }
+    }
   }
 
   @override
@@ -532,6 +679,22 @@ class _RunListScreenState extends State<RunListScreen> {
                 : Text('${_deviceRuns.length} on device · ${_missingRuns.length} not downloaded'),
             trailing: const Icon(Icons.chevron_right),
             onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: _isDownloading
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.memory),
+            title: Text(_isDownloading
+                ? 'Downloading…'
+                : 'Native Download Missing (${_missingRuns.length})'),
+            subtitle: Text(_isDownloading
+                ? _downloadStatus
+                : 'Android BluetoothGatt engine (beta)'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRunsNative : null,
           ),
         ),
         // ── Local runs section ──

@@ -68,4 +68,17 @@
 //          state — runs WERE saved but nothing displayed until app relaunch.
 //          Batch cancel via disconnect button; device list + service
 //          refreshed after the batch.
-const String APP_VERSION = '1.23';
+//   1.24 – Multi-run batch hardening + observability. JP's 5-run bench showed
+//          only 2/5 runs landed locally and 3 remained "to download" even
+//          though the earlier 2-run bench looked clean. Log device/local/
+//          missing run keys (#id@timestamp), retry inter-run reconnects
+//          (3× with increasing settle), retry failed/CRC-bad runs on a fresh
+//          GATT session, refresh the local index after every save, and show
+//          failed run ids in the final snackbar.
+//   1.25 – Native Android BluetoothGatt downloader (beta spike). FlutterBluePlus
+//          keeps the existing UI path, but a new "Native Download Missing"
+//          card hands the radio to a serialized Kotlin GATT engine modeled on
+//          the old working SGC_06/BlueSTSDK architecture. Native downloads
+//          only the currently-missing run IDs; Flutter then decompresses,
+//          validates payload CRC, saves locally, and reconnects its BLE path.
+const String APP_VERSION = '1.25';

@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-08-31 21:15 UTC  
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.23** (UI survives download) · HW **v4.2** · Port **COM8**  
+**Last updated:** 2026-09-01 11:15 UTC
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.25** (native Android BLE downloader beta, **pending JP bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,35 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — FW **5.66** + App **1.23** pushed (`24e17ac`), pending JP bench test on S22*
+*Status: **OPEN** — App **1.25** adds a native Android BluetoothGatt downloader; JP to bench “Native Download Missing” on the 5-run inventory*
+
+> **2026-09-01 10:58 JP direction:** after ~2 weeks on the BLE connection
+> issue, compare against the old working pair `SGC_SensiBLE2_1` + `SGC_06`.
+> The old phone side was native Android BlueSTSDK, with explicit
+> `BluetoothGatt` queues on dedicated handler threads; the working transfer
+> style was small request/response timestamp pulls. This supports moving the
+> current BLE-critical path out of FlutterBluePlus.
+>
+> **App 1.25 native spike:** new Kotlin `NativeBleDownloader` + Dart bridge +
+> “Native Download Missing” card. Native downloads only currently-missing run
+> IDs with one-operation-at-a-time GATT sequencing, resume-capable FT, fresh
+> connection per run; Flutter keeps decompression/CRC/local storage/UI.
+> Bench target: all available missing runs, not a fixed count.
+
+> **2026-09-01 09:14 JP correction (5-run device inventory):** the earlier
+> "two runs, two ft_done / runs were saved" result was **not the full batch**.
+> The phone lists **5 runs on the device**; after download only **2 appear
+> locally**, and **3 remain reported as to-download**. Interpretation: the
+> two completed transfers were real, but the batch did not land the full
+> device inventory. Most likely phone-side multi-run/GATT reconnect gap after
+> the Phase-2 one-run-per-connection transition; need run-key logs to rule
+> out an identity mismatch (`#id@timestamp`).
+>
+> **App 1.24 response:** log device/local/missing run keys, retry inter-run
+> reconnects 3× with increasing settle, retry empty/CRC-bad runs on a fresh
+> GATT session, refresh local index after every save, and show failed run IDs
+> in the final snackbar. Bench request: capture Flutter console from batch
+> start; expected evidence = full 5-run plan line plus per-run outcome.
 
 > **2026-08-31 21:00 bench (5.65 + 1.22): TWO RUNS, TWO ft_done ✓✓**
 > (run 0: 39 372 B/163 chunks/0 blocks/9.85 s · run 1: 39 668 B/164 chunks/
