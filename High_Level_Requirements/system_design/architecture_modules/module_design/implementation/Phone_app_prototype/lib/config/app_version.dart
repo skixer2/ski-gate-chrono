@@ -81,4 +81,9 @@
 //          the old working SGC_06/BlueSTSDK architecture. Native downloads
 //          only the currently-missing run IDs; Flutter then decompresses,
 //          validates payload CRC, saves locally, and reconnects its BLE path.
-const String APP_VERSION = '1.25';
+//   1.26 – Native resume hardening from first SGC_NATIVE bench: S22 dropped the
+//          link at 39,204/39,372 B (last 168 B + CRC lost). Fail fast on FT
+//          link loss instead of waiting 20 s idle, fail connect attempts
+//          immediately on Android GATT status, and wait for the device
+//          advertisement before resume reconnect to avoid status 147 storms.
+const String APP_VERSION = '1.26';

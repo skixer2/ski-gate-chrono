@@ -9,11 +9,16 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.Build
 import android.util.Log
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.zip.CRC32
@@ -285,7 +290,7 @@ class NativeBleDownloader(private val context: Context) {
         } ?: throw Exception("connectGatt returned null")
         gatt = g
 
-        waitFor({ connEvent && connected }, CONNECT_TIMEOUT_MS, "connect")
+        waitFor({ connEvent }, CONNECT_TIMEOUT_MS, "connect")
         if (!connected) throw Exception("connect failed status=$connStatus")
 
         log("connected; discovering services")
@@ -392,6 +397,39 @@ class NativeBleDownloader(private val context: Context) {
         return crc.value
     }
 
+    private fun waitForAdvertisement(address: String, timeoutMs: Long): Boolean {
+        val scanner = adapter?.bluetoothLeScanner ?: return false
+        val found = CountDownLatch(1)
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                if (result.device.address.equals(address, ignoreCase = true)) {
+                    found.countDown()
+                }
+            }
+
+            override fun onBatchScanResults(results: MutableList<ScanResult>) {
+                if (results.any { it.device.address.equals(address, ignoreCase = true) }) {
+                    found.countDown()
+                }
+            }
+        }
+        return try {
+            val filter = ScanFilter.Builder().setDeviceAddress(address).build()
+            val settings = ScanSettings.Builder()
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .build()
+            scanner.startScan(listOf(filter), settings, callback)
+            val seen = found.await(timeoutMs, TimeUnit.MILLISECONDS)
+            if (seen) log("advertisement seen for $address")
+            seen
+        } catch (e: Exception) {
+            log("advertisement wait failed: ${e.message}")
+            false
+        } finally {
+            try { scanner.stopScan(callback) } catch (_: Exception) {}
+        }
+    }
+
     private fun parseTimestamp(data: ByteArray): Int {
         if (data.size < 6) return 0
         return le32(data, 2).toInt()
@@ -435,6 +473,9 @@ class NativeBleDownloader(private val context: Context) {
                 while (System.currentTimeMillis() < totalDeadline && !cancelled) {
                     val waitMs = minOf(1_000L, progressDeadline - System.currentTimeMillis())
                     if (waitMs <= 0) throw Exception("FT idle timeout at ${buffer.size()} B")
+                    if (!connected) {
+                        throw Exception("FT link lost at ${buffer.size()} B")
+                    }
                     val pkt = notifyQueue.poll(waitMs, TimeUnit.MILLISECONDS) ?: continue
                     if (pkt.isEmpty()) continue
                     when (pkt[0].toInt() and 0xFF) {
@@ -479,6 +520,10 @@ class NativeBleDownloader(private val context: Context) {
                 try { setNotify(CHAR_FT_STREAM, false) } catch (_: Exception) {}
                 if (attempt < MAX_RESUME_ATTEMPTS) {
                     Thread.sleep((2_000L * attempt).coerceAtMost(8_000L))
+                    // A status=8 drop at the end of FT races the device's own
+                    // disconnect handler + re-advertise. Waiting for ADV avoids
+                    // the Android 147/GATT_CONNECTION_TIMEOUT reconnect storm.
+                    waitForAdvertisement(address, 10_000L)
                     try { connect(address) } catch (ce: Exception) {
                         log("reconnect for resume failed: ${ce.message}")
                     }

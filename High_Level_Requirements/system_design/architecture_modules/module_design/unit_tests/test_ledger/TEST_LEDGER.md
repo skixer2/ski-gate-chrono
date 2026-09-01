@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 11:15 UTC
-**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.25** (native Android BLE downloader beta, **pending JP bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-01 11:55 UTC
+**Current baselines:** FW **5.66** (quiet state_blocked) · App **1.26** (native resume hardening, **pending JP bench**) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,17 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.25** adds a native Android BluetoothGatt downloader; JP to bench “Native Download Missing” on the 5-run inventory*
+*Status: **OPEN** — App **1.26** hardens native resume after first SGC_NATIVE bench reached 39,204/39,372 B before S22 status=8*
+
+> **2026-09-01 11:44 first native bench evidence:** Kotlin engine connected,
+> negotiated MTU 247, started run #0 and received **39,204/39,372 B**. Device
+> completed (`ft_done`, 163 chunks, 0 blocks); phone lost the final **168 B +
+> CRC** when Android dropped the link `status=8`. Native then hit reconnect
+> `status=147` while racing device re-advertising.
+>
+> **App 1.26 response:** fail fast on FT link loss (no 20 s idle wait), fail
+> connect immediately on Android GATT status, and scan/wait for the device
+> advertisement before resume reconnect.
 
 > **2026-09-01 10:58 JP direction:** after ~2 weeks on the BLE connection
 > issue, compare against the old working pair `SGC_SensiBLE2_1` + `SGC_06`.
