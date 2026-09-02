@@ -305,8 +305,15 @@ void sgc_ble_init()
        during heavy FT transfers, allowing more leeway for HCI buffer saturation.
        V5.59: 5 s -> 10 s hint. Burst & Breathe prevents the wedge; if a
        transient controller stall still occurs, a wider window lets the link
-       recover instead of dying at the first 5 s of silence. */
-    BLE.setSupervisionTimeout(1000); 
+       recover instead of dying at the first 5 s of silence.
+       V5.70: 10 s -> 4 s. The wedge proved TERMINAL in every bench (zero LL
+       recoveries ever) and the resume protocol now works — so a shorter
+       supervision just frees the single connection slot FASTER after a
+       wedge (natural disconnect → instant re-advertise → phone resume
+       reconnects in ~6–8 s total instead of ~27 s). Supervision counts LL
+       packets (controllers exchange empty PDUs every CI even when idle),
+       so 4 s can only fire on a truly dead link — never on a quiet one. */
+    BLE.setSupervisionTimeout(400); 
 
     /* V5.56: Request a more aggressive Connection Interval.
        Standard NUS practice for stability with Android.

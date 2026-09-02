@@ -58,6 +58,19 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.70: LAZY RECOVERY + 4 s SUPERVISION — 2026-09-02 bench (JP, S22): all
+ *        5 runs downloaded with auto-resume ✓ but each wedge cost ~27 s:
+ *        5.69's hard radio restart hit BLE.begin() failure on the still-
+ *        tearing-down controller → NVIC reboot → old WDT fired mid-boot
+ *        (rr:4 → rr:2) → two boots before connectable. Fix: on tx_blocked,
+ *        touch the link NOT AT ALL — no notify/disconnect/restart. The
+ *        wedge is LL-terminal; device-side supervision kills it naturally
+ *        (now 4 s instead of 10 s — resume works, so fast free > recovery
+ *        room), on_ble_disconnected re-advertises, phone resume reconnects
+ *        on a freed slot. Also FT_TX_FAIL_ABORT 3 → 2 (no wedge recovery
+ *        has ever been observed; third retry was pure latency). Target:
+ *        ~8 s per interruption instead of ~27 s.
+ *
  * V5.69: TX_BLOCKED = HARD RADIO RESTART — 2026-09-02 benches (JP, S22):
  *        5.68 stopped the post-abort reboots (verified ×2: clean tx_blocked,
  *        no rr:2), but the phone resume reconnects all bounced (147 / -5),
@@ -245,8 +258,10 @@ static uint8_t  g_ft_tx_recov    = 0;  /* V5.62: recoveries after >=1 failure */
 /* V5.64: short flat retry — the S22 wedge proved TERMINAL in every bench
    (5.61: 3×2001 ms; 5.62: 6×2001 ms, zero recoveries). Patience beyond
    ~6 s only delays re-advertising for the resume reconnect.
-   Holds: 300 ms flat, abort after 3 → ~6.6 s worst case. */
-static constexpr uint8_t FT_TX_FAIL_ABORT = 3;   /* abort after this many in a row */
+   Holds: 300 ms flat, abort after 2 → ~4.3 s worst case (V5.70: was 3,
+   ~6.6 s; not a single wedge recovery has EVER been observed, so the
+   third attempt is pure latency). */
+static constexpr uint8_t FT_TX_FAIL_ABORT = 2;   /* abort after this many in a row */
 static uint32_t ft_fail_hold_ms(uint8_t /*fails*/) { return 300; }
 
 void sgc_ble_transfer_init() {}
@@ -281,25 +296,19 @@ void sgc_ble_ft_abort(const char* reason)
            on EVT_DISCONN_COMPLETE), the main loop is free, and the phone
            sees the drop immediately → its auto-resume reconnects sooner. */
         if (reason && !strcmp(reason, "tx_blocked")) {
-            /* V5.69: HARD RADIO RESTART instead of a bare disconnect.
-               5.68's BLE.disconnect() sent an LL terminate the wedged phone
-               never ACKs → the device controller kept the half-open link
-               occupying its SINGLE connection slot until its own 10 s
-               supervision fired. Every phone resume reconnect inside that
-               window bounced (status 147 / -5) — only reconnects >10 s
-               (mcp by hand) landed. Bench 2026-09-02 (×2): abort at ~4–6 s,
-               phone attempts at +4/+6 s all failed; no ble_conn ever logged.
-               radio_restart tears down the controller (BLE.end/begin) →
-               pristine radio + fresh ADV in <1 s; the phone's +4 s resume
-               attempt finds a connectable device. Safe here: tx_blocked only
-               fires from sgc_ble_transfer_poll() = main-loop context (never
-               a BLE event handler — radio_restart's documented constraint),
-               and its internal ft_abort call early-returns (state is IDLE). */
-            ft_wdt_ticker_grace(8000);  /* cover BLE.end/begin + re-adv */
-            NRF_WDT->RR[0] = WDT_RR_RR_Reload;
-            /* Deferred (V5.04 pattern): consumed at the bottom of loop() —
-               keeps BLE.end/begin out of any non-main-loop context. */
-            request_ble_radio_restart("tx_blocked");
+            /* V5.70: DO NOTHING to the link — no error notify, no forced
+               disconnect, no radio restart. Just wait for device-side
+               supervision (now 4 s, see sgc_service.cpp) to kill the wedged
+               link naturally; on_ble_disconnected then re-advertises at once
+               and the phone's resume reconnect lands on a FREED slot.
+               5.68's forced BLE.disconnect() sent an LL terminate the wedged
+               phone never ACKs → slot stuck ~10 s → fast reconnects bounced
+               (147/-5). 5.69's hard radio restart hit BLE.begin() failure →
+               NVIC reboot → old WDT fired mid-boot (rr:4 → rr:2) → ~27 s per
+               interruption (bench 2026-09-02). Doing nothing is faster AND
+               safer: the main loop is free the moment we stop writing to the
+               wedged queue, so the WDT needs no special coverage. */
+            ft_wdt_ticker_grace(6000);  /* belt & braces until ble_disc lands */
             NRF_WDT->RR[0] = WDT_RR_RR_Reload;
         } else {
             /* V5.65: proper ERROR packet — the bare "3" collided with packet
