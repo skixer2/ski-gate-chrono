@@ -58,6 +58,18 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.69: TX_BLOCKED = HARD RADIO RESTART — 2026-09-02 benches (JP, S22):
+ *        5.68 stopped the post-abort reboots (verified ×2: clean tx_blocked,
+ *        no rr:2), but the phone resume reconnects all bounced (147 / -5),
+ *        no ble_conn ever logged. Root cause: BLE.disconnect() on a wedged
+ *        link sends an LL terminate the phone never ACKs → the nRF52
+ *        controller keeps the half-open link in its single connection slot
+ *        until device-side supervision (10 s) frees it; every reconnect
+ *        inside that window fails. mcp's manual +8–13 s reconnects landed
+ *        AFTER the window — that's why nRF Connect "always works".
+ *        Now: sgc_ble_radio_restart() on tx_blocked (proven V5.15 path) —
+ *        controller teardown + BLE.begin + fresh ADV in <1 s.
+ *
  * V5.68: TX_BLOCKED = DROP LINK — 2026-09-02 bench (JP, S22): wedge at
  *        chunk 118 → clean tx_blocked → reboot rr:2 despite the 5.67 grace.
  *        Root cause: after aborting, FW wrote the ERROR notify into the
@@ -269,8 +281,25 @@ void sgc_ble_ft_abort(const char* reason)
            on EVT_DISCONN_COMPLETE), the main loop is free, and the phone
            sees the drop immediately → its auto-resume reconnects sooner. */
         if (reason && !strcmp(reason, "tx_blocked")) {
-            ft_wdt_ticker_grace(6000);  /* cover disconnect processing */
-            BLE.disconnect();
+            /* V5.69: HARD RADIO RESTART instead of a bare disconnect.
+               5.68's BLE.disconnect() sent an LL terminate the wedged phone
+               never ACKs → the device controller kept the half-open link
+               occupying its SINGLE connection slot until its own 10 s
+               supervision fired. Every phone resume reconnect inside that
+               window bounced (status 147 / -5) — only reconnects >10 s
+               (mcp by hand) landed. Bench 2026-09-02 (×2): abort at ~4–6 s,
+               phone attempts at +4/+6 s all failed; no ble_conn ever logged.
+               radio_restart tears down the controller (BLE.end/begin) →
+               pristine radio + fresh ADV in <1 s; the phone's +4 s resume
+               attempt finds a connectable device. Safe here: tx_blocked only
+               fires from sgc_ble_transfer_poll() = main-loop context (never
+               a BLE event handler — radio_restart's documented constraint),
+               and its internal ft_abort call early-returns (state is IDLE). */
+            ft_wdt_ticker_grace(8000);  /* cover BLE.end/begin + re-adv */
+            NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+            /* Deferred (V5.04 pattern): consumed at the bottom of loop() —
+               keeps BLE.end/begin out of any non-main-loop context. */
+            request_ble_radio_restart("tx_blocked");
             NRF_WDT->RR[0] = WDT_RR_RR_Reload;
         } else {
             /* V5.65: proper ERROR packet — the bare "3" collided with packet
