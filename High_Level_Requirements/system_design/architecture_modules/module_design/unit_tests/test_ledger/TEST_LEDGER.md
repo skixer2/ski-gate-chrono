@@ -585,6 +585,20 @@ Arduino  9 → P0.11 (SCK)
 wedge → `tx_blocked` → `ble_disc` shortly after → **no `rr:2` boot** →
 native resume (offset ≈ 28 KB) → `ft_resume` → completion → `ft_done`.
 
+#### Bench outcome (2026-09-02, 19:20 UTC) — FW 5.68 VERIFIED + resume-reconnect gap
+- Wedge @ chunk 62 (off 15004) → 3× `ft_txfail` → `ft_abort("tx_blocked")` →
+  **NO rr:2 reboot** ✓ — device recovered (`ble_adv`/`ble_recover desync`).
+- Phone: attempt 1 lost link at 14036 B (status 8) → **resume fired** ✓ but
+  attempts 2–5 never reached the device (no `ble_conn`): attempt 2 hit the
+  device post-abort recovery window (status 147); attempts 3–5 ran with the
+  **app backgrounded / screen off** (logcat `VRI stopped`, `surfaceDestroyed`)
+  → Android BLE throttling → 147 / -5 timeouts.
+- **App 1.34 (`10d119d`):** KEEP_SCREEN_ON + partial WakeLock during native
+  batch; resume attempts 6→10; connect retry 3/250→5/500; 1 s settle after
+  advertisement sighting before connectGatt.
+- Bench expectation: wedge → tx_blocked → ble_disc (no reboot) → resume
+  reconnect succeeds within 2–3 attempts → `ft_resume` → `ft_done`.
+
 ## 2b. Closed / parked this session
 
 ### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
