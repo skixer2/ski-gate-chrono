@@ -121,4 +121,10 @@
 //          was backgrounded mid-resume and Android throttled BLE);
 //          resume attempts 6 → 10; connect retry 3/250 → 5/500; 1 s settle
 //          after advertisement sighting (device post-abort recovery window).
-const String APP_VERSION = '1.34';
+//   1.35 – Foreground service during native batches. Bench proof 2026-09-02:
+//          nRF Connect downloaded a full 39 KB run on the same phone/FW/
+//          params (CI 60 ms, 10 s supervision, 244 B chunks) with blocks:0
+//          while our app wedged — and mcp's own earlier link ALSO died with
+//          status=8, so the wedge is stochastic, but Samsung Freecess only
+//          throttles OUR process. Foreground priority closes that gap.
+const String APP_VERSION = '1.35';

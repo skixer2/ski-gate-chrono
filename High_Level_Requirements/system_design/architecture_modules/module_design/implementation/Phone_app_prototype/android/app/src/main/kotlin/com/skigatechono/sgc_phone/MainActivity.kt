@@ -27,12 +27,17 @@ class MainActivity : FlutterActivity() {
             lock.acquire(15 * 60 * 1000L)  // hard cap 15 min
             wakeLock = lock
         } catch (_: Exception) {}
+        // V1.35: foreground service — Samsung's Freecess throttles BLE apps
+        // that lack foreground priority (nRF Connect downloads cleanly on the
+        // same phone/params; our app wedged mid-transfer).
+        NativeDownloadService.start(this)
     }
 
     private fun exitDownloadMode() {
         runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
         try { wakeLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
         wakeLock = null
+        NativeDownloadService.stop(this)
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

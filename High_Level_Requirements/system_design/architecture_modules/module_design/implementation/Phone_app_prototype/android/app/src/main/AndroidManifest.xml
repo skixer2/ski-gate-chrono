@@ -20,6 +20,12 @@
          screen-off / backgrounding doesn't throttle the BLE stack mid-resume -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- V1.35: foreground service for download-time process priority
+         (Samsung Freecess throttles background BLE apps mid-transfer) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- BLE feature (optional — app works without BLE hardware) -->
     <uses-feature
         android:name="android.hardware.bluetooth_le"
@@ -51,5 +57,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <service
+            android:name=".NativeDownloadService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
     </application>
 </manifest>
