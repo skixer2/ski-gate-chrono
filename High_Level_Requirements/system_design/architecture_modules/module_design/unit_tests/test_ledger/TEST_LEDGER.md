@@ -553,6 +553,38 @@ Arduino  8 → P0.27 (MOSI)
 Arduino  9 → P0.11 (SCK)
 ```
 
+### Timeline (2026-09-02) — native path + post-abort WDT reboot
+
+#### JP bench — FW 5.67 + App 1.31 (Nordic BleManager, S22)
+1. Press "Native Download Missing" → **no visible feedback** (native batch
+   reports only at end; connect retry cycle can run 20–60 s silently).
+2. After restarting both sides: wedge at chunk 118 → 3× `ft_txfail`
+   (blk 2001 ms) → clean `ft_abort("tx_blocked")` → **reboot `rr:2`**
+   despite the 5.67 3 s grace.
+
+#### Root causes
+1. **Post-abort WDT reset:** after `tx_blocked`, FW wrote the ERROR notify
+   into the wedged TX queue and kept polling Cordio. Each wedged
+   `sendAclPkt` blocks ~2 s (patched bound); ≥3 queued packets in one
+   `BLE.poll()` > 5 s WDT → reset. The 3 s grace only covered ~1.5 packets.
+2. **Mute UI:** zero native→Dart progress until batch end.
+
+#### Fixes
+- **FW 5.68 (`556f827`):** on `tx_blocked`, skip ERROR notify and force
+  `BLE.disconnect()` — controller flushes TX queue (patched lib zeroes
+  `_pendingPkt` on disconnect), loop is free, phone sees the drop →
+  auto-resume reconnects sooner. Grace 3 s → 6 s.
+- **App 1.32 (`556f827`):** `sgc_native_ble_events` channel — Kotlin log
+  lines + throttled FT byte progress (~250 ms) → `_downloadStatus` /
+  `_downloadBytes` / `_downloadRunSize`. Listener cleared in `finally`.
+- Also today: 1.31 build fixes (`720d840`, `83671ac`) — `ReadResponse`
+  has no `.value`; no-arg `await()` is void (TimeoutableRequest); typed
+  `await(ReadResponse::class.java)` + `rawData?.value`.
+
+#### Bench expectation (5.68 + 1.32)
+wedge → `tx_blocked` → `ble_disc` shortly after → **no `rr:2` boot** →
+native resume (offset ≈ 28 KB) → `ft_resume` → completion → `ft_done`.
+
 ## 2b. Closed / parked this session
 
 ### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
