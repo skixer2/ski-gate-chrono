@@ -12,6 +12,7 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.util.Log
 import no.nordicsemi.android.ble.BleManager
+import no.nordicsemi.android.ble.response.ReadResponse
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -166,8 +167,10 @@ class NordicBleDownloader(private val context: Context) {
 
         fun readRunList(): String {
             val c = runListChar ?: throw Exception("run-list characteristic unavailable")
-            // ReadRequest.await() returns ReadResponse; the bytes live on its rawData (Data.value).
-            val data = readCharacteristic(c).await().rawData?.value ?: ByteArray(0)
+            // The no-arg await() is void (TimeoutableRequest); the typed await(Class)
+            // returns a filled ReadResponse, whose rawData (Data) carries the bytes.
+            val response = readCharacteristic(c).await(ReadResponse::class.java)
+            val data = response.rawData?.value ?: ByteArray(0)
             return String(data, Charsets.UTF_8)
         }
 
