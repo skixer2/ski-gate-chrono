@@ -166,7 +166,8 @@ class NordicBleDownloader(private val context: Context) {
 
         fun readRunList(): String {
             val c = runListChar ?: throw Exception("run-list characteristic unavailable")
-            val data = readCharacteristic(c).await().value ?: ByteArray(0)
+            // ReadRequest.await() returns ReadResponse; the bytes live on its rawData (Data.value).
+            val data = readCharacteristic(c).await().rawData?.value ?: ByteArray(0)
             return String(data, Charsets.UTF_8)
         }
 
