@@ -612,6 +612,21 @@ native resume (offset ≈ 28 KB) → `ft_resume` → completion → `ft_done`.
   ongoing notification during native batch → foreground scheduling priority.
   Foundation for Phase 3 Auto-Sync.
 
+#### Resume-reconnect root cause FOUND (2026-09-02, 20:00 UTC) → FW 5.69
+- App 1.35 bench: wedge @ chunk 90 (20812 B phone / 21780 device) → clean
+  tx_blocked, no reboot ✓ — but attempt 2 connect failed 147, sub-retry -5.
+- **Root cause:** 5.68's `BLE.disconnect()` on a wedged link sends an LL
+  terminate the phone never ACKs → nRF52 controller keeps the half-open
+  link in its single connection slot until device-side supervision (10 s)
+  frees it. Every phone resume inside the window bounces; mcp's manual
+  +8–13 s reconnects land after it. Explains ALL resume failures today.
+- **FW 5.69 (`f1003d3`):** tx_blocked → deferred hard radio restart
+  (V5.04 `request_ble_radio_restart` → BLE.end/begin, proven V5.15 path).
+  Pristine radio + ADV in <1 s; phone attempt 2 (+4 s) finds connectable
+  device. WDT grace 8 s covers the restart.
+- Bench expectation: wedge → tx_blocked → `ble_radio ok:1` → attempt 2
+  connects (`ble_conn`) → `ft_resume` → `ft_done`.
+
 ## 2b. Closed / parked this session
 
 ### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
