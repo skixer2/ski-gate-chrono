@@ -599,6 +599,19 @@ native resume (offset ≈ 28 KB) → `ft_resume` → completion → `ft_done`.
 - Bench expectation: wedge → tx_blocked → ble_disc (no reboot) → resume
   reconnect succeeds within 2–3 attempts → `ft_resume` → `ft_done`.
 
+#### nRF Connect reference run (2026-09-02, 21:44 UTC) — WEDGE IS NOT APP-SPECIFIC
+- mcp downloaded a full run on FW 5.68: `ft_done 39372 B, chunks:163,
+  blocks:0 blk_ms:0, 9.86 s` — SAME params as our sessions (CI 60 ms,
+  supervision 10 s, 244 B chunks), Garmin connected the whole time.
+- **mcp's own earlier link (clientIf=13) ALSO died status=8 at 21:44:12** —
+  the wedge is stochastic, not app-specific. mcp just recovers by hand.
+- Remaining mcp-vs-us delta: Samsung **Freecess** (visible in logcat:
+  `BlueToothConnectedFilter`) can CPU-throttle our process mid-transfer →
+  host HCI drain slows → controller RX backs up → LL stall → wedge.
+- **App 1.35 (`275dffd`):** foreground service (`connectedDevice` type) +
+  ongoing notification during native batch → foreground scheduling priority.
+  Foundation for Phase 3 Auto-Sync.
+
 ## 2b. Closed / parked this session
 
 ### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
