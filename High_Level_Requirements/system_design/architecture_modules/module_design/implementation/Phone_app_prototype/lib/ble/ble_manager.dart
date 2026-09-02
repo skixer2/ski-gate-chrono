@@ -92,7 +92,24 @@ class BLEManager {
 
   /// Connect directly to a device from scan results (preferred).
   /// Discovers services once and caches them for all subsequent reads/writes.
+  ///
+  /// V1.33: one automatic retry. On the S22 the first connect right after a
+  /// device reboot/adv restart often fails transiently (GATT busy, MTU or
+  /// service-discovery error, or a connect timeout that leaves a half-open
+  /// link the device still counts as connected). The download path already
+  /// retries for this exact reason; the initial connect deserves the same.
   Future<List<BluetoothService>> connectToDevice(BluetoothDevice device) async {
+    try {
+      return await _connectOnce(device);
+    } catch (e) {
+      debugPrint('[BLE] connect attempt 1 failed: $e — cleaning up, retry in 1.5 s');
+      await _onConnectFailed(device);
+      await Future.delayed(const Duration(milliseconds: 1500));
+      return _connectOnce(device);
+    }
+  }
+
+  Future<List<BluetoothService>> _connectOnce(BluetoothDevice device) async {
     // If already connected to a different device, disconnect first.
     // If reconnecting to the SAME device after a drop (device reboot/reset),
     // clear the GATT cache first to avoid stale ATT table / bond issues.

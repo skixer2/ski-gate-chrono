@@ -112,4 +112,8 @@
 //          UI, so a long connect/resume cycle no longer looks like
 //          "pressed, nothing happened". Also: 1.31 build fixes (typed
 //          ReadRequest.await(ReadResponse::class.java)).
-const String APP_VERSION = '1.32';
+//   1.33 – Connect resilience: one automatic retry on initial connect (the
+//          S22 often fails the first connect transiently right after a
+//          device reboot, leaving a half-open link the device still counts
+//          as connected) + full exception text in the failure snackbar.
+const String APP_VERSION = '1.33';

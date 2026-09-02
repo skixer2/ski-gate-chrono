@@ -191,13 +191,21 @@ class _RunListScreenState extends State<RunListScreen> {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stack) {
+      // V1.33: full error visibility — the first line alone hid the real
+      // failure stage (connect vs MTU vs service discovery).
+      debugPrint('[SGC] connection failed: $e');
+      debugPrint('[SGC] $stack');
       setState(() => _isConnecting = false);
       if (mounted) {
+        final msg = e.toString();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connection failed: ${e.toString().split('\n').first}'),
+            content: Text(
+              'Connection failed: ${msg.length > 220 ? '${msg.substring(0, 220)}…' : msg}',
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
           ),
         );
       }
