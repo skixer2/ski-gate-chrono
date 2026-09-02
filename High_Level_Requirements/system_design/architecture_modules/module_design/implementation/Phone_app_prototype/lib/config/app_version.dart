@@ -116,4 +116,9 @@
 //          S22 often fails the first connect transiently right after a
 //          device reboot, leaving a half-open link the device still counts
 //          as connected) + full exception text in the failure snackbar.
-const String APP_VERSION = '1.33';
+//   1.34 – Resume robustness: KEEP_SCREEN_ON + partial wake lock during
+//          native batches (attempts 3–5 on 2026-09-02 died because the app
+//          was backgrounded mid-resume and Android throttled BLE);
+//          resume attempts 6 → 10; connect retry 3/250 → 5/500; 1 s settle
+//          after advertisement sighting (device post-abort recovery window).
+const String APP_VERSION = '1.34';

@@ -16,6 +16,10 @@
     <!-- Internet for cloud sync -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- V1.34: keep the device awake during native BLE batch downloads so a
+         screen-off / backgrounding doesn't throttle the BLE stack mid-resume -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- BLE feature (optional — app works without BLE hardware) -->
     <uses-feature
         android:name="android.hardware.bluetooth_le"

@@ -45,7 +45,9 @@ class NordicBleDownloader(private val context: Context) {
 
         private const val FT_IDLE_TIMEOUT_MS = 20_000L
         private const val FT_TOTAL_TIMEOUT_MS = 90_000L
-        private const val MAX_RESUME_ATTEMPTS = 6
+        private const val MAX_RESUME_ATTEMPTS = 10  /* V1.34: 6 → 10 — resume
+            reconnects hit the device's post-abort recovery window (status 147)
+            or transient phone-stack throttling; both heal in seconds. */
         private const val CONNECT_SETTLE_MS = 4_000L
     }
 
@@ -153,7 +155,8 @@ class NordicBleDownloader(private val context: Context) {
             }
             log("Nordic BleManager connecting to $address")
             connect(device)
-                .retry(3, 250)
+                .retry(5, 500)  /* V1.34: 3/250 → 5/500 — first connect after
+                    the device's post-abort BLE recover often fails fast (147) */
                 .timeout(15_000)
                 .useAutoConnect(false)
                 .await()
@@ -339,7 +342,12 @@ class NordicBleDownloader(private val context: Context) {
                 manager = null
                 if (attempt < MAX_RESUME_ATTEMPTS) {
                     Thread.sleep((2_000L * attempt).coerceAtMost(8_000L))
-                    waitForAdvertisement(address, 10_000L)
+                    if (waitForAdvertisement(address, 10_000L)) {
+                        /* V1.34: the device JUST recovered its BLE stack
+                           (post-abort force-recover). Give it 1 s before
+                           connectGatt or the connect hits status 147. */
+                        Thread.sleep(1_000)
+                    }
                 }
             }
         }
