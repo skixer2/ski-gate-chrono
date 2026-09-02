@@ -627,6 +627,24 @@ native resume (offset ≈ 28 KB) → `ft_resume` → completion → `ft_done`.
 - Bench expectation: wedge → tx_blocked → `ble_radio ok:1` → attempt 2
   connects (`ble_conn`) → `ft_resume` → `ft_done`.
 
+#### FW 5.69 bench (2026-09-02, 20:23 UTC) — ALL 5 RUNS DOWNLOADED ✓ but 27 s/wedge
+- Auto-resume worked end-to-end: 5/5 runs, ~3 min total, multiple resumes.
+- But: `ble_radio ok:0 retry:1 reboot:1` — BLE.begin() failed on the still-
+  tearing-down controller → NVIC reboot (rr:4) → old WDT fired mid-boot
+  (rr:2) → two boots ≈ 27 s per interruption.
+- Pre-reset symptom "phone doesn't see device" despite ble_adv: stale
+  half-open link occupying the single slot blocks connectable ADV until
+  supervision frees it — consistent with the single-slot theory.
+- **FW 5.70 (`d78420c`):** lazy recovery — on tx_blocked touch the link NOT
+  AT ALL (no notify/disconnect/restart); device-side supervision kills the
+  wedged link naturally → on_ble_disconnected re-advertises → phone resume
+  on freed slot. Supervision hint 10 s → **4 s** (resume works → fast free
+  beats recovery room; LL empty PDUs keep quiet links alive, only dead
+  links fire). FT_TX_FAIL_ABORT 3 → 2 (zero recoveries ever observed).
+- Target: ~8 s per interruption (~6.6 s detect+hold → ~4.3 s; supervision
+  fires ≈ same window; phone attempt 2 at +2 s + scan + 1 s settle →
+  connect ≈ +7 s).
+
 ## 2b. Closed / parked this session
 
 ### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
