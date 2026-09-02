@@ -8,11 +8,18 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "sgc_native_ble"
+    private val eventsChannelName = "sgc_native_ble_events"
     private var downloader: NordicBleDownloader? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         downloader = NordicBleDownloader(applicationContext)
+
+        // V1.32: native -> Dart live events (log lines + FT byte progress).
+        val eventsChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, eventsChannelName)
+        downloader?.onEvent = { ev ->
+            Handler(Looper.getMainLooper()).post { eventsChannel.invokeMethod("onEvent", ev) }
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->

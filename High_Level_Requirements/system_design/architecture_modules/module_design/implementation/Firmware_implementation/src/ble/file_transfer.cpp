@@ -58,6 +58,15 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.68: TX_BLOCKED = DROP LINK — 2026-09-02 bench (JP, S22): wedge at
+ *        chunk 118 → clean tx_blocked → reboot rr:2 despite the 5.67 grace.
+ *        Root cause: after aborting, FW wrote the ERROR notify into the
+ *        wedged queue and kept polling Cordio — 2 s per queued packet,
+ *        ≥3 packets in one BLE.poll() > 5 s WDT. Now: on tx_blocked, skip
+ *        the notify and BLE.disconnect() (controller flushes TX queue;
+ *        patched lib zeroes _pendingPkt; phone sees the drop → resume
+ *        reconnects sooner). Grace extended to 6 s to cover the disconnect.
+ *
  * V5.67: POST-FT WDT GRACE — 2026-09-01 native bench: two runs completed,
  *        third wedged → clean tx_blocked, then the device rebooted (rr:2).
  *        The FT ISR WDT feeder was stopped immediately on ft_abort while the
@@ -250,19 +259,33 @@ void sgc_ble_ft_abort(const char* reason)
     Serial.print(','); json_kv("chunks", (long)g_ft_chunks);
     json_end();
     if (BLE.connected()) {
-        /* V5.65: proper ERROR packet — the bare "3" collided with packet
-           type 0x03 (FINAL) in the app parser. */
-        NRF_WDT->RR[0] = WDT_RR_RR_Reload;
-        uint8_t code = 0xFF;
-        if (reason) {
-            if (!strcmp(reason, "tx_blocked"))  code = 0x10;
-            else if (!strcmp(reason, "phone"))       code = 0x11;
-            else if (!strcmp(reason, "new_request")) code = 0x12;
+        /* V5.68: tx_blocked means the link is PROVABLY dead (3 × 2001 ms
+           blocked writes — zero LL progress for ~6.6 s). Writing the ERROR
+           notify into that wedged queue + subsequent BLE.poll() grinds
+           2 s per queued packet; ≥3 packets in one poll > 5 s WDT → the
+           post-abort rr:2 reboot seen on 5.67 (the 3 s grace only covered
+           the first ~1.5 packets). Instead: force-drop the link. The
+           controller flushes the TX queue (patched lib zeroes _pendingPkt
+           on EVT_DISCONN_COMPLETE), the main loop is free, and the phone
+           sees the drop immediately → its auto-resume reconnects sooner. */
+        if (reason && !strcmp(reason, "tx_blocked")) {
+            ft_wdt_ticker_grace(6000);  /* cover disconnect processing */
+            BLE.disconnect();
+            NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+        } else {
+            /* V5.65: proper ERROR packet — the bare "3" collided with packet
+               type 0x03 (FINAL) in the app parser. */
+            NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+            uint8_t code = 0xFF;
+            if (reason) {
+                if (!strcmp(reason, "phone"))       code = 0x11;
+                else if (!strcmp(reason, "new_request")) code = 0x12;
+            }
+            uint8_t pkt[2] = {0x04, code};
+            sgc_ble_ft_stream_char()->writeValue(pkt, 2);
+            BLE.poll();
+            NRF_WDT->RR[0] = WDT_RR_RR_Reload;
         }
-        uint8_t pkt[2] = {0x04, code};
-        sgc_ble_ft_stream_char()->writeValue(pkt, 2);
-        BLE.poll();
-        NRF_WDT->RR[0] = WDT_RR_RR_Reload;
     }
 }
 

@@ -107,4 +107,9 @@
 //          nRF Connect itself is closed-source, but its hardened BLE queue is
 //          the right reusable component. Same FT protocol, resume, batching,
 //          full notify parity, and 4 s post-connect settle.
-const String APP_VERSION = '1.31';
+//   1.32 – Live native progress: sgc_native_ble_events channel forwards
+//          Kotlin log lines + throttled FT byte progress (~250 ms) to the
+//          UI, so a long connect/resume cycle no longer looks like
+//          "pressed, nothing happened". Also: 1.31 build fixes (typed
+//          ReadRequest.await(ReadResponse::class.java)).
+const String APP_VERSION = '1.32';

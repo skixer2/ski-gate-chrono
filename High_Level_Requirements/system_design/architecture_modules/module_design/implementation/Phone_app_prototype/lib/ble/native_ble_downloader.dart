@@ -40,6 +40,37 @@ class NativeBatchResult {
 /// critical path with explicit serialized GATT operations.
 class NativeBleDownloader {
   static const MethodChannel _channel = MethodChannel('sgc_native_ble');
+  static const MethodChannel _events = MethodChannel('sgc_native_ble_events');
+
+  /// V1.32: live native events. Register before [downloadRuns] to receive
+  /// log lines and throttled FT byte progress (every ~250 ms), so the UI
+  /// never looks dead during long connect/resume cycles.
+  static void setListener({
+    void Function(String msg)? onLog,
+    void Function(int runId, int bytes, int expected)? onProgress,
+  }) {
+    if (onLog == null && onProgress == null) {
+      _events.setMethodCallHandler(null);
+      return;
+    }
+    _events.setMethodCallHandler((call) async {
+      if (call.method != 'onEvent') return;
+      final ev = call.arguments as Map<dynamic, dynamic>?;
+      if (ev == null) return;
+      switch (ev['type']) {
+        case 'log':
+          onLog?.call(ev['msg']?.toString() ?? '');
+          break;
+        case 'ft_progress':
+          onProgress?.call(
+            (ev['runId'] as num?)?.toInt() ?? 0,
+            (ev['bytes'] as num?)?.toInt() ?? 0,
+            (ev['expected'] as num?)?.toInt() ?? 0,
+          );
+          break;
+      }
+    });
+  }
 
   Future<NativeBatchResult> downloadRuns({
     required String address,

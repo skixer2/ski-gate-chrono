@@ -56,9 +56,20 @@ class NordicBleDownloader(private val context: Context) {
     private val logs = mutableListOf<String>()
     @Volatile private var cancelled = false
 
+    /** V1.32: live event sink (wired to Flutter via sgc_native_ble_events).
+        The batch call only returns at the END — without this the UI shows
+        nothing for tens of seconds during connect/FT ("pressed, nothing
+        happened"). Set from MainActivity on the main thread. */
+    @Volatile var onEvent: ((Map<String, Any>) -> Unit)? = null
+
+    private fun emit(ev: Map<String, Any>) {
+        try { onEvent?.invoke(ev) } catch (_: Exception) {}
+    }
+
     private fun log(msg: String) {
         Log.d(TAG, msg)
         synchronized(logs) { logs.add(msg) }
+        emit(mapOf("type" to "log", "msg" to msg))
     }
 
     fun cancel() {
@@ -250,6 +261,7 @@ class NordicBleDownloader(private val context: Context) {
         var expected = 0
         var lastError: Exception? = null
         var manager: SgcBleManager? = null
+        var lastProgressMs = 0L
 
         for (attempt in 1..MAX_RESUME_ATTEMPTS) {
             if (cancelled) throw Exception("cancelled")
@@ -285,6 +297,16 @@ class NordicBleDownloader(private val context: Context) {
                             if (pkt.size >= 2) {
                                 buffer.write(pkt, 2, pkt.size - 2)
                                 progressDeadline = System.currentTimeMillis() + FT_IDLE_TIMEOUT_MS
+                                val nowMs = System.currentTimeMillis()
+                                if (nowMs - lastProgressMs >= 250) {
+                                    lastProgressMs = nowMs
+                                    emit(mapOf(
+                                        "type" to "ft_progress",
+                                        "runId" to runId,
+                                        "bytes" to buffer.size(),
+                                        "expected" to expected,
+                                    ))
+                                }
                             }
                         }
                         0x03 -> {

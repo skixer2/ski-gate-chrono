@@ -459,6 +459,23 @@ class _RunListScreenState extends State<RunListScreen> {
       _downloadRunSize = 0;
     });
 
+    // V1.32: live native progress — connect attempts, FT bytes, resumes.
+    NativeBleDownloader.setListener(
+      onLog: (msg) {
+        debugPrint('[SGC-NATIVE] $msg');
+        if (mounted) setState(() => _downloadStatus = msg);
+      },
+      onProgress: (runId, bytes, expected) {
+        if (mounted) {
+          setState(() {
+            _downloadStatus = 'Native FT run #$runId';
+            _downloadBytes = bytes;
+            _downloadRunSize = expected;
+          });
+        }
+      },
+    );
+
     try {
       final address = dev.remoteId.str;
       final ids = missing.map((r) => r.id).toList();
@@ -520,6 +537,7 @@ class _RunListScreenState extends State<RunListScreen> {
         );
       }
     } finally {
+      NativeBleDownloader.setListener();
       if (mounted) {
         setState(() {
           _isDownloading = false;
