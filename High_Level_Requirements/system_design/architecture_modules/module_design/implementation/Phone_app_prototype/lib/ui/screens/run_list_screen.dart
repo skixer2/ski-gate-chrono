@@ -467,7 +467,12 @@ class _RunListScreenState extends State<RunListScreen> {
       _downloadRunSize = 0;
     });
 
+    int saved = 0;
+    final payloadFailed = <int>[];
+    final nativeFailed = <String>[];
+
     // V1.32: live native progress — connect attempts, FT bytes, resumes.
+    // V1.41: Incremental save from streamed run complete events on a SINGLE connection!
     NativeBleDownloader.setListener(
       onLog: (msg) {
         debugPrint('[SGC-NATIVE] $msg');
@@ -482,6 +487,29 @@ class _RunListScreenState extends State<RunListScreen> {
           });
         }
       },
+      onRunComplete: (runId, timestamp, data) async {
+        debugPrint('[SGC-NATIVE] incremental save event for run #$runId');
+        _downloadCurrent++;
+        if (!Decompressor().validateCRC(data)) {
+          debugPrint('[SGC-NATIVE] ⚠️ payload CRC FAILED for run #$runId');
+          payloadFailed.add(runId);
+          return;
+        }
+        try {
+          final decoded = await compute(_decompressRunBackground, data);
+          await _storage.save(
+            runId: runId,
+            compressedData: data,
+            result: decoded,
+            deviceName: _config?.deviceName ?? 'SGC',
+          );
+          saved++;
+          await _loadLocalRuns();
+        } catch (e) {
+          debugPrint('[SGC-NATIVE] decompress/save error for run #$runId: $e');
+          payloadFailed.add(runId);
+        }
+      },
     );
 
     try {
@@ -493,49 +521,20 @@ class _RunListScreenState extends State<RunListScreen> {
       await _ble.disconnect();
       await Future.delayed(const Duration(milliseconds: 700));
 
-      // V1.36: ONE NATIVE CALL PER RUN + save immediately after each.
-      // 1.35 batched all ids in one call and saved only after the FINAL
-      // result returned — when the last run never recovered, an exception/
-      // stuck await above meant 4 completed runs were never persisted
-      // (bench 2026-09-03: runs invisible even after app relaunch).
-      int saved = 0;
-      final payloadFailed = <int>[];
-      final nativeFailed = <String>[];
-      for (final id in ids) {
-        if (!_isDownloading) break;  // batch cancelled via disconnect button
-        if (mounted) setState(() => _downloadStatus = 'Native FT run #$id');
-        try {
-          final result = await NativeBleDownloader().downloadRuns(
-            address: address,
-            runIds: [id],
-          );
-          for (final line in result.log) {
-            debugPrint('[SGC-NATIVE] $line');
-          }
-          for (final f in result.failed) {
-            nativeFailed.add('#${f.id} (${f.reason})');
-          }
-          for (final run in result.runs) {
-            if (!Decompressor().validateCRC(run.data)) {
-              debugPrint('[SGC-NATIVE] ⚠️ payload CRC FAILED for run #${run.id}');
-              payloadFailed.add(run.id);
-              continue;
-            }
-            final decoded = await compute(_decompressRunBackground, run.data);
-            await _storage.save(
-              runId: run.id,
-              compressedData: run.data,
-              result: decoded,
-              deviceName: _config?.deviceName ?? 'SGC',
-            );
-            saved++;
-            await _loadLocalRuns();
-          }
-        } catch (e) {
-          debugPrint('[SGC-NATIVE] run #$id error: $e');
-          nativeFailed.add('#$id ($e)');
-        }
-        _downloadCurrent++;
+      // V1.41: SINGLE NATIVE CALL for the entire batch.
+      // 1.36 called downloadRuns() in a loop, disconnecting and reconnecting
+      // for every single run, which caused GATT client leakage (clientIf pile-up)
+      // and S22 link collapse. Now Kotlin connects once, downloads all, streams
+      // completed runs via onRunComplete, and disconnects once at the end!
+      final result = await NativeBleDownloader().downloadRuns(
+        address: address,
+        runIds: ids,
+      );
+      for (final line in result.log) {
+        debugPrint('[SGC-NATIVE] $line');
+      }
+      for (final f in result.failed) {
+        nativeFailed.add('#${f.id} (${f.reason})');
       }
 
       if (mounted) {

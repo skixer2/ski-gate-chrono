@@ -45,11 +45,14 @@ class NativeBleDownloader {
   /// V1.32: live native events. Register before [downloadRuns] to receive
   /// log lines and throttled FT byte progress (every ~250 ms), so the UI
   /// never looks dead during long connect/resume cycles.
+  /// V1.41: Added [onRunComplete] to receive finished run bytes incrementally
+  /// during a single-connection batch, preventing connection-churn leaks.
   static void setListener({
     void Function(String msg)? onLog,
     void Function(int runId, int bytes, int expected)? onProgress,
+    void Function(int runId, int timestamp, Uint8List data)? onRunComplete,
   }) {
-    if (onLog == null && onProgress == null) {
+    if (onLog == null && onProgress == null && onRunComplete == null) {
       _events.setMethodCallHandler(null);
       return;
     }
@@ -66,6 +69,13 @@ class NativeBleDownloader {
             (ev['runId'] as num?)?.toInt() ?? 0,
             (ev['bytes'] as num?)?.toInt() ?? 0,
             (ev['expected'] as num?)?.toInt() ?? 0,
+          );
+          break;
+        case 'ft_run_complete':
+          onRunComplete?.call(
+            (ev['runId'] as num?)?.toInt() ?? 0,
+            (ev['timestamp'] as num?)?.toInt() ?? 0,
+            ev['data'] as Uint8List,
           );
           break;
       }

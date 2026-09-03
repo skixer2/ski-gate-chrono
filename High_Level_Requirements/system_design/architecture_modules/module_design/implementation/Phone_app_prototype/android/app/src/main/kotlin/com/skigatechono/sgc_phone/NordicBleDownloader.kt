@@ -382,7 +382,16 @@ class NordicBleDownloader(private val context: Context) {
             if (cancelled) break
             if (index > 0) Thread.sleep(750)
             try {
-                done.add(downloadOne(address, runId))
+                val run = downloadOne(address, runId)
+                done.add(run)
+                // V1.41: Stream completed run bytes back to Dart immediately so the
+                // UI can save them incrementally without connection-churn disconnects!
+                emit(mapOf(
+                    "type" to "ft_run_complete",
+                    "runId" to run.id,
+                    "timestamp" to run.timestamp,
+                    "data" to run.data
+                ))
             } catch (e: Exception) {
                 log("run #$runId failed: ${e.message}")
                 failed.add(FailedRun(runId, e.message ?: e.javaClass.simpleName))

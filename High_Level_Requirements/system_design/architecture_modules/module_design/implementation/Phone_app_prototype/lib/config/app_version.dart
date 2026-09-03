@@ -141,8 +141,12 @@
 //          connection-churn window (conn-param/PHY/data-length updates).
 //          If 12 s eliminates wedges, latency will be engineered back down
 //          (adaptive settle or single-connection batch).
-//   1.40 – Enforce High Connection Priority in Kotlin (11.25-15 ms Connection
-//          Interval). Gives the BLE link 4x retransmission headroom per 60 ms
-//          SGC packet cadence on the S22, preventing queue starvation and
-//          eliminating the post-connect status=8 supervision timeouts.
-const String APP_VERSION = '1.40';
+//   1.41 – SINGLE-CONNECTION BATCH + INCREMENTAL STREAMED SAVES.
+//          App 1.36-1.40 called downloadRuns() in a loop, disconnecting and
+//          reconnecting for every single run, which caused GATT client leakage
+//          (multiple active clientIfs) and S22 link collapse. Now Kotlin connects
+//          once for the entire batch, downloads all runs, streams completed runs
+//          via a new 'ft_run_complete' event, and disconnects once at the end!
+//          This matches nRF Connect's single-connection profile perfectly while
+//          preserving 100% incremental saving.
+const String APP_VERSION = '1.41';
