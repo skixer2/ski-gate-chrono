@@ -645,6 +645,18 @@ native resume (offset ≈ 28 KB) → `ft_resume` → completion → `ft_done`.
   fires ≈ same window; phone attempt 2 at +2 s + scan + 1 s settle →
   connect ≈ +7 s).
 
+#### Second clean mcp run (2026-09-03, 08:17 UTC, FW 5.70) → chunk-size A/B
+- mcp: run 0 full 39372 B, 163 chunks, blocks:0 blk_ms:0, 9.8 s — SECOND
+  clean mcp run. Our app: 6+ wedges. No longer stochastic.
+- **Key unknown:** did mcp ever negotiate MTU 247? If not, Cordio silently
+  truncates writeValue(244) → 20 B notifies → mcp "reliability" = 4.97-era
+  20 B profile; our app always gets 244 B. Would explain everything.
+- **FW 5.71 (`3e177f3`):** CMD_START chunk-size code — len 4 [0,lo,hi,code]
+  or len 8 [0,lo,hi,code,off0..3]; 1=128, 2=64, 3=20 B, else 244 B;
+  echoed in ft_start JSON. JP can A/B from nRF Connect without app changes.
+- A/B protocol: (a) mcp + explicit MTU 247 request, 244 B → wedge? (b)
+  mcp + code 3 (20 B) → clean? (c) mcp + code 1 (128 B) → ?
+
 ## 2b. Closed / parked this session
 
 ### TC-2026-08-14-002 — BLE zombie / no ADV (5.03)
