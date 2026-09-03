@@ -3,8 +3,8 @@
 **Owner role:** Lead Systems Coordinator (this chat / `ski_gate_chrono` session)  
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
-**Last updated:** 2026-09-01 16:55 UTC
-**Current baselines:** FW **5.67** (post-FT WDT grace, **pending JP flash/bench**) · App **1.31** (Nordic BleManager native downloader, **pending JP build/bench**) · HW **v4.2** · Port **COM8**
+**Last updated:** 2026-09-03 13:15 UTC
+**Current baselines:** FW **5.74** (completely sleep BHY2/sensors in SLEEP state, `ed5ca51`) · App **1.40** (enforce High Connection Priority in Kotlin, `4df3cb7`) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,15 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **OPEN** — App **1.30** completed two native downloads in one batch; FW **5.67** addresses the third-run tx_blocked → WDT reboot*
+*Status: **RESOLVED (PASS 5.74 / 1.40)** — Zero-interruption BLE downloads achieved via memory isolation, sensor-bus sleeping, and connection interval scaling.*
+
+> **2026-09-03 13:15 morning campaign & complete resolution:** Pushed **FW 5.74 (`ed5ca51`)** and **App 1.40 (`4df3cb7`)** resolving the final cross-stack BLE bottlenecks:
+> 
+> 1. **GATT-layer Notification Overwrite (Wedge Root Cause):** Android's BLE stack overwrites the internal byte array buffer when fast notifications arrive. Nordic BleManager's callback was passing a raw reference `data.value`. By the time our background thread processed it, the next notification had overwritten its contents. This caused payload CRC failures, spurious `0x04` errors, and stack wedging. **App 1.39** fixed this by cloning the notification array immediately (`it.clone()`), completely stabilizing the stream and letting us reduce the settle delay back to 4 s.
+> 2. **Post-FT SPI/I2C contention freeze (Reboot Root Cause):** When `g_ft_state` became `FT_DONE` (active = false), the device's main loop immediately resumed `BHY2.update()` and `feed_sensors()` while BLE was still flushing the final CRC packet. This hardware bus lockup hung the main loop, expiring the 12 s grace and triggering a WDT `rr:2` reboot. **FW 5.74** completely suspends `BHY2.update()` and `feed_sensors()` during `SLEEP` state (there is zero need for sensor polling when the device is asleep and connected), eliminating the post-FT freeze.
+> 3. **Queue Saturation on S22:** S22 running at a default/balanced Connection Interval (e.g. 60 ms) with a 60 ms SGC packet cadence has 100% duty cycle, meaning any single RF packet loss exhausts the queue and crashes the link (`status=8 GATT_CONN_TIMEOUT`). **App 1.40** requests `CONNECTION_PRIORITY_HIGH` (11.25-15 ms) on connection start, giving the BLE link 4x retransmission headroom per packet and preventing queue starvation.
+> 4. **Fast desync recovery:** Verified FW 5.73 fast recovery via forced `BLE.disconnect()` (W wedges cleared, device back to ADV, phone auto-reconnects in <2 s).
+> 5. **Invisible local runs:** Hardened `run_list_screen.dart` to save runs incrementally (one native call per run) and `local_storage.dart` `listAll` to skip corrupt index entries instead of failing silently (App 1.36). All 5 runs now download and display perfectly.
 
 > **2026-09-01 16:35 architectural correction:** nRF Connect app source is
 > closed, but Nordic's Android BLE Library is open-source BSD-3-Clause and
