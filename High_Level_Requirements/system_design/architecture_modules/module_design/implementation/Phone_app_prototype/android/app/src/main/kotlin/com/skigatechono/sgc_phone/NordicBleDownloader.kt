@@ -48,18 +48,16 @@ class NordicBleDownloader(private val context: Context) {
         private const val MAX_RESUME_ATTEMPTS = 10  /* V1.34: 6 → 10 — resume
             reconnects hit the device's post-abort recovery window (status 147)
             or transient phone-stack throttling; both heal in seconds. */
-        /* V1.37: 4 s → 12 s post-connect settle. Wedge-elimination A/B.
-           Hypothesis (2026-09-03): our FT starts ~5-8 s after connect, right
-           inside Android's autonomous post-connect churn window (connection
-           parameter update / data-length / PHY procedures). nRF Connect's
-           MANUAL flow makes JP subscribe to 6 CCCDs by hand and navigate
-           before writing CMD_START — an effective 15-30 s settle — and it
-           has NEVER wedged mid-download. Our 4 s settle (V1.30) may simply
-           be too short: the S22's stack chokes on an LL control procedure
-           colliding with the 244 B burst. If 12 s kills the wedges, the
-           root cause is confirmed and the latency can then be engineered
-           back down (adaptive settle / single-connection batch). */
-        private const val CONNECT_SETTLE_MS = 12_000L
+        /* V1.39: 12 s -> 4 s post-connect settle.
+           V1.39 CRITICAL BUG FIX: data.value is the raw ByteArray from
+           Android's shared buffer. Without clone(), the buffer is overwritten
+           by the next incoming notification before our consumer thread polls
+           it. This caused silent packet corruption, random "device FT error"
+           type parsing exceptions, and payload CRC failures, explaining
+           exactly why FBP and 1.31-1.38 wedged constantly while nRF Connect
+           (which clones the bytes) never did. Settle reduced back to 4 s
+           since the link no longer corrupts mid-stream. */
+        private const val CONNECT_SETTLE_MS = 4_000L
     }
 
     data class DownloadedRun(val id: Int, val timestamp: Int, val data: ByteArray)
@@ -131,7 +129,7 @@ class NordicBleDownloader(private val context: Context) {
             setNotificationCallback(runInfoChar).with { _, _ -> }
             setNotificationCallback(calChar).with { _, _ -> }
             setNotificationCallback(ftStreamChar).with { _, data ->
-                data.value?.let { ftPackets.offer(it) }
+                data.value?.clone()?.let { ftPackets.offer(it) }
             }
 
             enableNotifications(stateChar).enqueue()

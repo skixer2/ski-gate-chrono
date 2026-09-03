@@ -141,9 +141,11 @@
 //          connection-churn window (conn-param/PHY/data-length updates).
 //          If 12 s eliminates wedges, latency will be engineered back down
 //          (adaptive settle or single-connection batch).
-//   1.38 – Auto-reconnect on unexpected FBP disconnect (max 2 attempts,
-//          2 s apart). Bench 2026-09-03: the S22 killed the IDLE link
-//          status=8 seconds after connect, before JP could press Start —
-//          same churn-window disease as the mid-download wedges, caught
-//          with zero traffic. The UI now heals itself instead of stranding.
-const String APP_VERSION = '1.38';
+//   1.39 – CRITICAL BUG FIX: clone the notification ByteArray in Kotlin.
+//          Android's BluetoothGatt reuse buffer means data.value points to
+//          a shared byte array that gets overwritten by the next incoming
+//          notification before our background thread can poll it. This caused
+//          silent data corruption, random "device FT error" type exceptions,
+//          and CRC failures. Settle reduced back to 4 s now that the stream
+//          is rock solid.
+const String APP_VERSION = '1.39';
