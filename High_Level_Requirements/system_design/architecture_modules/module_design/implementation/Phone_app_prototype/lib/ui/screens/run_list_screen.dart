@@ -493,44 +493,60 @@ class _RunListScreenState extends State<RunListScreen> {
       await _ble.disconnect();
       await Future.delayed(const Duration(milliseconds: 700));
 
-      final result = await NativeBleDownloader().downloadRuns(
-        address: address,
-        runIds: ids,
-      );
-      for (final line in result.log) {
-        debugPrint('[SGC-NATIVE] $line');
-      }
-
+      // V1.36: ONE NATIVE CALL PER RUN + save immediately after each.
+      // 1.35 batched all ids in one call and saved only after the FINAL
+      // result returned — when the last run never recovered, an exception/
+      // stuck await above meant 4 completed runs were never persisted
+      // (bench 2026-09-03: runs invisible even after app relaunch).
       int saved = 0;
       final payloadFailed = <int>[];
-      for (final run in result.runs) {
-        _downloadCurrent++;
-        if (!Decompressor().validateCRC(run.data)) {
-          debugPrint('[SGC-NATIVE] ⚠️ payload CRC FAILED for run #${run.id}');
-          payloadFailed.add(run.id);
-          continue;
+      final nativeFailed = <String>[];
+      for (final id in ids) {
+        if (!_isDownloading) break;  // batch cancelled via disconnect button
+        if (mounted) setState(() => _downloadStatus = 'Native FT run #$id');
+        try {
+          final result = await NativeBleDownloader().downloadRuns(
+            address: address,
+            runIds: [id],
+          );
+          for (final line in result.log) {
+            debugPrint('[SGC-NATIVE] $line');
+          }
+          for (final f in result.failed) {
+            nativeFailed.add('#${f.id} (${f.reason})');
+          }
+          for (final run in result.runs) {
+            if (!Decompressor().validateCRC(run.data)) {
+              debugPrint('[SGC-NATIVE] ⚠️ payload CRC FAILED for run #${run.id}');
+              payloadFailed.add(run.id);
+              continue;
+            }
+            final decoded = await compute(_decompressRunBackground, run.data);
+            await _storage.save(
+              runId: run.id,
+              compressedData: run.data,
+              result: decoded,
+              deviceName: _config?.deviceName ?? 'SGC',
+            );
+            saved++;
+            await _loadLocalRuns();
+          }
+        } catch (e) {
+          debugPrint('[SGC-NATIVE] run #$id error: $e');
+          nativeFailed.add('#$id ($e)');
         }
-        final decoded = await compute(_decompressRunBackground, run.data);
-        await _storage.save(
-          runId: run.id,
-          compressedData: run.data,
-          result: decoded,
-          deviceName: _config?.deviceName ?? 'SGC',
-        );
-        saved++;
-        await _loadLocalRuns();
+        _downloadCurrent++;
       }
 
       if (mounted) {
-        final nativeFailed = result.failed.map((r) => '#${r.id}').join(', ');
         final crcFailed = payloadFailed.map((id) => '#$id').join(', ');
         final parts = <String>['Native downloaded $saved/${missing.length}'];
-        if (nativeFailed.isNotEmpty) parts.add('BLE failed: $nativeFailed');
+        if (nativeFailed.isNotEmpty) parts.add('BLE failed: ${nativeFailed.join(', ')}');
         if (crcFailed.isNotEmpty) parts.add('CRC failed: $crcFailed');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(parts.join(' · ')),
-            backgroundColor: (result.failed.isEmpty && payloadFailed.isEmpty)
+            backgroundColor: (nativeFailed.isEmpty && payloadFailed.isEmpty)
                 ? Colors.green
                 : Colors.orange,
           ),

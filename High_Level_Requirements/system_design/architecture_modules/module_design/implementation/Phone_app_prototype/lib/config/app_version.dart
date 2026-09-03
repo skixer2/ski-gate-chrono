@@ -127,4 +127,10 @@
 //          while our app wedged — and mcp's own earlier link ALSO died with
 //          status=8, so the wedge is stochastic, but Samsung Freecess only
 //          throttles OUR process. Foreground priority closes that gap.
-const String APP_VERSION = '1.35';
+//   1.36 – Incremental native saves (bench 2026-09-03: 4/5 runs completed
+//          but none visible even after relaunch — 1.35 saved only after the
+//          WHOLE batch returned, so a terminal last run lost all completed
+//          ones). Now one native call per run, persisted immediately; per-run
+//          try/catch so one failure can't abort the rest. LocalStorage.listAll
+//          skips corrupt index entries instead of returning an empty list.
+const String APP_VERSION = '1.36';

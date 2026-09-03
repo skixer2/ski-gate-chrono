@@ -112,7 +112,17 @@ class LocalStorage {
       if (!await indexFile.exists()) return [];
       final json = await indexFile.readAsString();
       final list = jsonDecode(json) as List<dynamic>;
-      return list.map((e) => SavedRun.fromJson(e as Map<String, dynamic>)).toList();
+      // V1.36: per-entry guard — one corrupt/legacy entry must not nuke
+      // the whole list (previously a single fromJson throw returned []).
+      final out = <SavedRun>[];
+      for (final e in list) {
+        try {
+          out.add(SavedRun.fromJson(e as Map<String, dynamic>));
+        } catch (err) {
+          debugPrint('[LocalStorage] skipping corrupt index entry: $err');
+        }
+      }
+      return out;
     } catch (e) {
       debugPrint('[LocalStorage] Error reading index: $e');
       return [];
