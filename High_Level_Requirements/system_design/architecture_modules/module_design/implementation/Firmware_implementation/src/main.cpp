@@ -1165,6 +1165,17 @@ void setup()
             Serial.print("\"");
         }
     }
+    /* V5.73: GPREGRET loop-forensics report (codes documented above loop()).
+       Retained through WDT reset; cleared after reporting so a power-on
+       boot (register = 0) prints nothing. */
+    {
+        uint8_t fcpv = (uint8_t)(NRF_POWER->GPREGRET & 0xFF);
+        if (fcpv) {
+            Serial.print(",\"fcp\":");
+            Serial.print((long)fcpv);
+        }
+        NRF_POWER->GPREGRET = 0;
+    }
     Serial.println("}");
     // V5.27: if woke from System Off, log raw GPIO state for wake debugging
     if (rr & POWER_RESETREAS_OFF_Msk) {
@@ -1359,6 +1370,31 @@ void setup()
     NRF_WDT->TASKS_START = 1;
 }
 
+/* V5.73: GPREGRET loop forensics. The 5.70/5.72 post-abort rr:2 reboots
+   outlast even a 12 s ISR-fed WDT grace → a ≥17 s main-loop block in the
+   post-FT window, invisible on serial (nothing logged after ft_abort).
+   GPREGRET survives WDT reset (hardware register, unlike .noinit whose
+   placement is linker-dependent): stamp the last COMPLETED subsystem; the
+   boot JSON prints it as "fcp". Windowed (armed 20 s at every FT exit) so
+   a stale stamp can't mislead. Codes:
+     0x10 ft_abort entry · 0x11 abort returned
+     0x20 loop top · 0x21 ble_poll ok · 0x22 transfer_poll ok
+     0x23 led ok · 0x24 serial ok · 0x25 sm_tick ok · 0x26 feed_sensors ok
+     0x27 BHY2.update ok · 0x28 ambient ok · 0x29 button ok
+     0x2A radio_restart ok · 0x2B battery/cal ok · 0x01 window expired (idle) */
+static uint32_t g_fcp_until = 0;
+void sgc_fcp_arm(uint32_t window_ms) { g_fcp_until = millis() + window_ms; }
+static inline void fcp(uint8_t code)
+{
+    if (!g_fcp_until) return;
+    if ((int32_t)(millis() - g_fcp_until) < 0) {
+        NRF_POWER->GPREGRET = code;
+    } else {
+        g_fcp_until = 0;
+        NRF_POWER->GPREGRET = 0x01;  /* window over: idle sentinel */
+    }
+}
+
 /* ================================================================== */
 void loop()
 {
@@ -1371,6 +1407,7 @@ void loop()
        anywhere (e.g. writeValue stuck inside Cordio HCI), the WDT isn't
        fed, and after 5s the device reboots. */
     NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+    fcp(0x20);  /* V5.73 */
 
     /* ── Path split by mode/state for max LOGGING sample rate ──
        Stream: skip BHY2/BLE/LDC (USB pull path).
@@ -1402,8 +1439,9 @@ void loop()
            bus and wedged the SPI peripheral after a few seconds → loop() hung
            → device unresponsive → LINK_SUPERVISION_TIMEOUT. Sensor data is not
            needed during a download (device is in IDLE). */
-        if (!sgc_ble_ft_active()) BHY2.update();
-        sgc_ble_poll(); sgc_ble_transfer_poll();
+        if (!sgc_ble_ft_active()) { BHY2.update(); fcp(0x27); }
+        sgc_ble_poll(); fcp(0x21);
+        sgc_ble_transfer_poll(); fcp(0x22);
         /* V5.03: desync heal — connect flag set but link gone means the
            disconnect event was missed; force-recover so we don't hold IDLE
            forever / stop being scannable. */
@@ -1422,12 +1460,12 @@ void loop()
         }
         /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
         g_sm.set_hold_sleep(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
-        g_led.update();
-        handle_serial();
+        g_led.update(); fcp(0x23);
+        handle_serial(); fcp(0x24);
     }
 
     /* ── Unified state machine (runs regardless of stream mode) ── */
-    g_sm.tick();
+    g_sm.tick(); fcp(0x25);
 
     /* V5.04: consume a one-shot hard BLE radio restart (serial 'i' / stream
        end / escape). Runs here, outside BLE.poll and transition callbacks, so
@@ -1435,6 +1473,7 @@ void loop()
     if (g_ble_radio_restart_pending) {
         g_ble_radio_restart_pending = false;
         sgc_ble_radio_restart(g_ble_radio_restart_why);
+        fcp(0x2A);
     }
 
     /* ── Piezo button arming/factory — real-world, non-stream, non-LOGGING ── */
@@ -1468,6 +1507,7 @@ void loop()
             return;
         }
     }
+    fcp(0x29);  /* V5.73: button block passed (or skipped) */
 
     /* ── Feed sensors (10 ms). Start det is fed inside feed_sensors() ARMED
        path from the same frame written to the ring (v4.86). No second poll.
@@ -1479,6 +1519,7 @@ void loop()
         if ((int32_t)(now - g_last_sensor_ms) > 50)
             g_last_sensor_ms = now;  /* resync after long stall */
     }
+    fcp(0x26);  /* V5.73 */
 
     /* ── IDLE ambient pressure (BHY2) every ~5 s ──
        Production ARMED already feeds live BHY2 into start_det via feed_sensors.
@@ -1501,6 +1542,7 @@ void loop()
         }
         g_last_ambient_ms = now;
     }
+    fcp(0x28);  /* V5.73 */
 
     if (now - g_last_battery_ms >= 30000) {
         int8_t batt = nicla::getBatteryVoltagePercentage();
@@ -1520,4 +1562,5 @@ void loop()
         sgc_ble_set_cal(0);
         g_last_cal_ms = now;
     }
+    fcp(0x2B);  /* V5.73 */
 }

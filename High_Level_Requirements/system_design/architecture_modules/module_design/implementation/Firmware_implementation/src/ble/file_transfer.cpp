@@ -58,6 +58,20 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.73: FORCED DISCONNECT REDUX + GPREGRET FORENSICS — 2026-09-03 bench
+ *        (JP, S22): 5.72 changed NOTHING — rr:2 still fired right after
+ *        ft_abort, and the boot JSON showed NO ftcp → the stop-ISR had
+ *        already cleared it → the main-loop block outlasted grace(12 s)
+ *        + WDT(5 s) = ≥17 s. Not a slow grind: a LONG/permanent hang that
+ *        only exists while the wedged link LINGERS (5.70 lazy recovery).
+ *        5.68's forced BLE.disconnect() was verified rr:2-free ×2; its only
+ *        drawback (reconnects bouncing on the half-open slot for ~10 s)
+ *        shrank with 5.70's 4 s supervision, and App ≥1.34 waits for ADV
+ *        with 10 resume attempts. So: disconnect again on tx_blocked, keep
+ *        the 5.72 poison window + 12 s grace, and add GPREGRET loop
+ *        forensics (main.cpp, "fcp" in boot JSON) that names the exact
+ *        hanging subsystem if an rr:2 EVER happens again.
+ *
  * V5.72: POST-FT rr:2 KILLER — 2026-09-03 bench (JP, S22, FW 5.70):
  *        reboot rr:2 IMMEDIATELY after a clean ft_done (wedge at FINAL —
  *        phone never got chunk 162 + CRC; resume later completed in 79 ms)
@@ -291,6 +305,8 @@ static void ft_wdt_ticker_grace(uint32_t grace_ms)
    100 ms so a resume reconnect finds us at once. */
 static void ft_exit_restore_state()
 {
+    extern void sgc_fcp_arm(uint32_t);  /* V5.73: main.cpp GPREGRET forensics */
+    sgc_fcp_arm(20000);  /* 20 s post-FT window: name the subsystem if we hang */
     /* V5.67: keep the ISR WDT feed alive briefly AFTER FT exits. The link is
        still tearing down: the abort/error notify + next BLE.poll() can sit on
        the same wedged Cordio path that triggered tx_blocked. Stopping the feed
@@ -342,6 +358,7 @@ void sgc_ble_ft_handle_ack()
 void sgc_ble_ft_abort(const char* reason)
 {
     if (g_ft_state != FT_STREAMING) return;
+    NRF_POWER->GPREGRET = 0x10;  /* V5.73 forensics: inside ft_abort */
     g_ft_state = FT_IDLE;
     ft_exit_restore_state();  /* V5.64: restore SM + re-advertise */
     json_begin();
@@ -362,25 +379,23 @@ void sgc_ble_ft_abort(const char* reason)
            on EVT_DISCONN_COMPLETE), the main loop is free, and the phone
            sees the drop immediately → its auto-resume reconnects sooner. */
         if (reason && !strcmp(reason, "tx_blocked")) {
-            /* V5.70: DO NOTHING to the link — no error notify, no forced
-               disconnect, no radio restart. Just wait for device-side
-               supervision (now 4 s, see sgc_service.cpp) to kill the wedged
-               link naturally; on_ble_disconnected then re-advertises at once
-               and the phone's resume reconnect lands on a FREED slot.
-               5.68's forced BLE.disconnect() sent an LL terminate the wedged
-               phone never ACKs → slot stuck ~10 s → fast reconnects bounced
-               (147/-5). 5.69's hard radio restart hit BLE.begin() failure →
-               NVIC reboot → old WDT fired mid-boot (rr:4 → rr:2) → ~27 s per
-               interruption (bench 2026-09-02). Doing nothing is faster AND
-               safer: the main loop is free the moment we stop writing to the
-               wedged queue, so the WDT needs no special coverage. */
-            /* V5.72: mark the link poisoned + 12 s grace. 6 s was not
-               enough on 2026-09-03: the post-abort grind (queued packets
-               × 2001 ms) outlasted the grace → rr:2 right after ft_abort. */
+            /* V5.73: BACK TO FORCED DISCONNECT (5.68, verified rr:2-free ×2)
+               now that supervision is 4 s (5.70). 5.70's lazy "touch nothing"
+               let the wedged link LINGER — and a lingering wedged link hangs
+               the main loop ≥17 s somewhere in the post-abort window: 5.70
+               AND 5.72 rebooted rr:2 right after ft_abort, outlasting even
+               the 12 s grace (ftcp was already cleared by the stop-ISR →
+               block > grace + 5 s). The 147/-5 reconnect bouncing that
+               motivated lazy recovery was under 10 s supervision; at 4 s
+               the half-open slot frees ~2.5× faster, and App ≥1.34 waits
+               for ADV + retries 10×, so 5.68's drawback is now much cheaper.
+               GPREGRET loop forensics (main.cpp) names the exact hanging
+               subsystem if an rr:2 still happens. */
             g_ft_link_poisoned_until = millis() + FT_POISON_MS;
             ft_cp("txblk");
             ft_wdt_ticker_grace(FT_POISON_MS);  /* belt & braces until ble_disc lands */
             NRF_WDT->RR[0] = WDT_RR_RR_Reload;
+            BLE.disconnect();  /* 5.68-proven rr:2 killer: controller flushes TX */
         } else {
             /* V5.65: proper ERROR packet — the bare "3" collided with packet
                type 0x03 (FINAL) in the app parser. */
@@ -396,6 +411,7 @@ void sgc_ble_ft_abort(const char* reason)
             NRF_WDT->RR[0] = WDT_RR_RR_Reload;
         }
     }
+    NRF_POWER->GPREGRET = 0x11;  /* V5.73 forensics: abort returned to loop */
 }
 
 void sgc_ble_transfer_poll()
