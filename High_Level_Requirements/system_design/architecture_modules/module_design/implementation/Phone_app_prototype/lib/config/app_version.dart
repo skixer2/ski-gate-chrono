@@ -133,4 +133,12 @@
 //          ones). Now one native call per run, persisted immediately; per-run
 //          try/catch so one failure can't abort the rest. LocalStorage.listAll
 //          skips corrupt index entries instead of returning an empty list.
-const String APP_VERSION = '1.36';
+//   1.37 – Wedge-elimination A/B: post-connect settle 4 s → 12 s. JP's
+//          directive: no interruptions, not fast recovery. nRF Connect has
+//          NEVER wedged mid-download; its manual flow effectively settles
+//          15-30 s (hand-subscribing 6 CCCDs + navigation) while our FT
+//          starts ~5-8 s post-connect, inside Android's autonomous
+//          connection-churn window (conn-param/PHY/data-length updates).
+//          If 12 s eliminates wedges, latency will be engineered back down
+//          (adaptive settle or single-connection batch).
+const String APP_VERSION = '1.37';
