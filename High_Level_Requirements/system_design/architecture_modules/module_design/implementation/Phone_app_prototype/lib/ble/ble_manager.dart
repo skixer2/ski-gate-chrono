@@ -153,6 +153,7 @@ class BLEManager {
     }
 
     _connected = true;
+    _autoReconnectAttempts = 0;  // V1.38: fresh link resets the retry budget
     _connectionController.add(true);
     debugPrint('[BLE] connected to ${device.remoteId.str} (mtu=$_mtu, ${_services!.length} services)');
     return _services!;
@@ -169,8 +170,36 @@ class BLEManager {
         debugPrint('[BLE] unexpected disconnect from ${device.remoteId.str}');
         _clearInternalState();
         _connectionController.add(false);
+        // V1.38: auto-reconnect. The S22 kills links status=8 inside the
+        // post-connect churn window even with ZERO traffic (bench 2026-09-03:
+        // link died idle before JP could press Start). Don't strand the UI —
+        // reconnect quietly (max 2 attempts, 2 s apart). Intentional
+        // disconnect() cancels this listener first, so it never fires here.
+        unawaited(_autoReconnect(device));
       }
     });
+  }
+
+  int _autoReconnectAttempts = 0;
+  static const int _kAutoReconnectMax = 2;
+
+  Future<void> _autoReconnect(BluetoothDevice device) async {
+    if (_autoReconnectAttempts >= _kAutoReconnectMax) return;
+    _autoReconnectAttempts++;
+    await Future.delayed(const Duration(seconds: 2));
+    if (_connected || _device == null) {
+      _autoReconnectAttempts = 0;
+      return;  // already reconnected (or detached) meanwhile
+    }
+    debugPrint('[BLE] auto-reconnect attempt $_autoReconnectAttempts/$_kAutoReconnectMax');
+    try {
+      await connectToDevice(device);
+      _autoReconnectAttempts = 0;
+      debugPrint('[BLE] auto-reconnect OK');
+    } catch (e) {
+      debugPrint('[BLE] auto-reconnect failed: $e');
+      unawaited(_autoReconnect(device));
+    }
   }
 
   void _clearInternalState() {

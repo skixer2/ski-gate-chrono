@@ -141,4 +141,9 @@
 //          connection-churn window (conn-param/PHY/data-length updates).
 //          If 12 s eliminates wedges, latency will be engineered back down
 //          (adaptive settle or single-connection batch).
-const String APP_VERSION = '1.37';
+//   1.38 – Auto-reconnect on unexpected FBP disconnect (max 2 attempts,
+//          2 s apart). Bench 2026-09-03: the S22 killed the IDLE link
+//          status=8 seconds after connect, before JP could press Start —
+//          same churn-window disease as the mid-download wedges, caught
+//          with zero traffic. The UI now heals itself instead of stranding.
+const String APP_VERSION = '1.38';
