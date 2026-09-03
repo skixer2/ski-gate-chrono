@@ -58,6 +58,15 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.71: SELECTABLE FT CHUNK SIZE — nRF Connect downloaded two full runs
+ *        back-to-back (5.68 + 5.70) with blocks:0 while our app wedges
+ *        ~every time. Open question: did mcp ever negotiate MTU 247? If
+ *        not, Cordio silently truncates writeValue(244) to 20 B notifies
+ *        and mcp's "reliability" is just the 4.97-era 20 B profile. Settle
+ *        it empirically: CMD_START now accepts a chunk-size code —
+ *        [0,lo,hi,code] (len 4) or [0,lo,hi,code,off0..3] (len 8):
+ *        1=128, 2=64, 3=20 B, else 244 B. Echoed in ft_start JSON.
+ *
  * V5.70: LAZY RECOVERY + 4 s SUPERVISION — 2026-09-02 bench (JP, S22): all
  *        5 runs downloaded with auto-resume ✓ but each wedge cost ~27 s:
  *        5.69's hard radio restart hit BLE.begin() failure on the still-
@@ -168,8 +177,12 @@ static uint32_t  g_ft_chunks  = 0;
 static uint32_t  g_ft_start_ms = 0;
 static uint32_t  g_ft_last_chunk_ms = 0;
 
-/* Use production MTU: 244 B (nRF52/Android standard) */
-static constexpr size_t   FT_CHUNK_SIZE  = 244;
+/* Use production MTU: 244 B (nRF52/Android standard).
+   V5.71: runtime-selectable via CMD_START byte (see sgc_ble_ft_on_request)
+   so the S22 wedge can be A/B-tested against chunk size (244 vs 128/64/20)
+   from nRF Connect or the app without reflashing. */
+static constexpr size_t   FT_CHUNK_MAX   = 244;
+static size_t             g_ft_chunk_size = 244;
 /* V5.62 pacing experiment: steady 60 ms cadence, NO breathe.
    Bench history: 30 ms turbo wedges the S22 within seconds (stalls at
    chunk 12/78/136 — noisy, always early). Hypothesis to test: a gentle
@@ -246,7 +259,7 @@ static void ft_exit_restore_state()
 }
 
 // V5.52: Move buffer to static memory to eliminate stack overflow risk
-static uint8_t g_ft_buffer[FT_CHUNK_SIZE];
+static uint8_t g_ft_buffer[FT_CHUNK_MAX];
 
 /* V5.59 state */
 static uint16_t g_ft_burst_pos   = 0;  /* chunks sent in current burst */
@@ -354,7 +367,7 @@ void sgc_ble_transfer_poll()
     uint8_t* buf = g_ft_buffer;
     size_t remaining = (g_ft_offset < g_ft_size) ? (g_ft_size - g_ft_offset) : 0;
     // Reserve 2 bytes for Type and Index
-    size_t send_len = (remaining > (FT_CHUNK_SIZE - 2)) ? (FT_CHUNK_SIZE - 2) : remaining;
+    size_t send_len = (remaining > (g_ft_chunk_size - 2)) ? (g_ft_chunk_size - 2) : remaining;
 
     if (send_len == 0) {
         g_ft_state = FT_DONE;
@@ -517,12 +530,31 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     if (len < 1) return;
     uint8_t cmd = data[0];
 
-    if (cmd == 0) {  /* CMD_START: [0, runId_lo, runId_hi] (+opt offset V5.63) */
+    if (cmd == 0) {  /* CMD_START: [0, runId_lo, runId_hi] (+opt V5.63/V5.71) */
         if (len < 3) return;
         uint16_t run_id = (uint16_t)data[1] | ((uint16_t)data[2] << 8);
-        /* V5.63: optional little-endian resume offset in data[3..6]. */
+        /* V5.71: optional chunk-size code — len==4 [.., code] or len>=8
+           [.., code, off0..3]. Codes: 1=128, 2=64, 3=20 B, anything
+           else/omitted = 244 B. Lets nRF Connect / the app A/B the S22
+           wedge vs chunk size without a reflash. */
+        size_t want_chunk = 244;
+        if (len == 4 || len >= 8) {
+            switch (data[3]) {
+                case 1:  want_chunk = 128; break;
+                case 2:  want_chunk = 64;  break;
+                case 3:  want_chunk = 20;  break;
+                default: want_chunk = 244; break;
+            }
+        }
+        /* V5.63: optional little-endian resume offset: legacy form in
+           data[3..6] (len==7), V5.71 form in data[4..7] (len>=8). */
         uint32_t resume_off = 0;
-        if (len >= 7) {
+        if (len >= 8) {
+            resume_off = (uint32_t)data[4]
+                       | ((uint32_t)data[5] << 8)
+                       | ((uint32_t)data[6] << 16)
+                       | ((uint32_t)data[7] << 24);
+        } else if (len >= 7) {
             resume_off = (uint32_t)data[3]
                        | ((uint32_t)data[4] << 8)
                        | ((uint32_t)data[5] << 16)
@@ -597,6 +629,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
 
     g_ft_run_id   = run_id;
     g_ft_size     = sizeof(RunHeader) + data_sz + CRC32_TRAILER_SIZE;
+    g_ft_chunk_size = want_chunk;  /* V5.71 */
     g_ft_offset   = 0;
     g_ft_crc      = 0xFFFFFFFF;
     g_ft_chunks   = 0;
@@ -608,8 +641,8 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
         uint32_t pos = 0;
         bool prefill_ok = true;
         while (pos < resume_off) {
-            size_t n = (resume_off - pos > (FT_CHUNK_SIZE - 2))
-                     ? (FT_CHUNK_SIZE - 2) : (resume_off - pos);
+            size_t n = (resume_off - pos > (g_ft_chunk_size - 2))
+                     ? (g_ft_chunk_size - 2) : (resume_off - pos);
             if (!g_runs.read_run_data(run_id, pos, g_ft_buffer, n)) {
                 prefill_ok = false;
                 break;
@@ -621,7 +654,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
         }
         if (prefill_ok) {
             g_ft_offset = resume_off;
-            g_ft_chunks = resume_off / (FT_CHUNK_SIZE - 2);
+            g_ft_chunks = resume_off / (g_ft_chunk_size - 2);
             json_begin();
             json_kv("ev", "ft_resume");
             Serial.print(','); json_kv("off", (long)resume_off);
@@ -680,7 +713,7 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
     Serial.print(','); json_kv("run", (long)run_id);
     Serial.print(','); json_kv("sz", (long)g_ft_size);
     Serial.print(','); json_kv("off", (long)g_ft_offset);
-    Serial.print(','); json_kv("chunk", (long)FT_CHUNK_SIZE);
+    Serial.print(','); json_kv("chunk", (long)g_ft_chunk_size);
     Serial.print(','); json_kv("cad_ms", (long)FT_CHUNK_MS);
     Serial.print(','); json_kv("ms", (long)0);
     json_end();
