@@ -1439,7 +1439,16 @@ void loop()
            bus and wedged the SPI peripheral after a few seconds → loop() hung
            → device unresponsive → LINK_SUPERVISION_TIMEOUT. Sensor data is not
            needed during a download (device is in IDLE). */
-        if (!sgc_ble_ft_active()) { BHY2.update(); fcp(0x27); }
+        /* V5.74: While connected or in SLEEP, completely suspend BHY2.update()
+           and feed_sensors(). There is zero need for sensor polling in SLEEP state.
+           Alternating BHY2 I2C transactions with intense BLE/Flash SPI activity
+           on the shared nRF52 instances often led to a terminal SPI/I2C bus
+           wedge right after ft_done (WDT rr:2 after 12 s grace). Suspending
+           BHY2 completely during SLEEP resolves the post-FT freeze. */
+        if (!sgc_ble_ft_active() && loop_st != DeviceState::SLEEP) {
+            BHY2.update();
+            fcp(0x27);
+        }
         sgc_ble_poll(); fcp(0x21);
         sgc_ble_transfer_poll(); fcp(0x22);
         /* V5.03: desync heal — connect flag set but link gone means the
@@ -1512,8 +1521,10 @@ void loop()
     /* ── Feed sensors (10 ms). Start det is fed inside feed_sensors() ARMED
        path from the same frame written to the ring (v4.86). No second poll.
        V4.96+: skip entirely while BLE FT is active — production path reads
-       BHY2 sensor objects (same SPI bus as flash). ── */
-    if (!sgc_ble_ft_active() && now - g_last_sensor_ms >= 10) {
+       BHY2 sensor objects (same SPI bus as flash).
+       V5.74: also skip entirely in SLEEP state to avoid any SPI/I2C/driver
+       conflicts during the BLE session. ── */
+    if (!sgc_ble_ft_active() && loop_st != DeviceState::SLEEP && now - g_last_sensor_ms >= 10) {
         feed_sensors();
         g_last_sensor_ms += 10;
         if ((int32_t)(now - g_last_sensor_ms) > 50)
