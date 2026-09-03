@@ -120,6 +120,13 @@ class NordicBleDownloader(private val context: Context) {
         }
 
         override fun initialize() {
+            // V1.40: Force High Connection Priority to get a 11.25-15 ms interval.
+            // On the S22, default/balanced intervals (~60 ms) running at 60 ms SGC packet
+            // cadence operate at 100% duty cycle, meaning any single RF/antenna miss immediately
+            // exhausts the queue and collapses the link (status=8). High priority gives the link
+            // 4x retransmission headroom per packet, making it incredibly robust.
+            requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH).enqueue()
+
             // Match the known-good nRF Connect GATT state: subscribe to the
             // full SGC notify set, then request MTU. BleManager serializes
             // all of these operations on its proven queue.

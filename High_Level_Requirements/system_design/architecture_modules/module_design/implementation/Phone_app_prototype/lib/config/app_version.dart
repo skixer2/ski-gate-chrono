@@ -141,11 +141,8 @@
 //          connection-churn window (conn-param/PHY/data-length updates).
 //          If 12 s eliminates wedges, latency will be engineered back down
 //          (adaptive settle or single-connection batch).
-//   1.39 – CRITICAL BUG FIX: clone the notification ByteArray in Kotlin.
-//          Android's BluetoothGatt reuse buffer means data.value points to
-//          a shared byte array that gets overwritten by the next incoming
-//          notification before our background thread can poll it. This caused
-//          silent data corruption, random "device FT error" type exceptions,
-//          and CRC failures. Settle reduced back to 4 s now that the stream
-//          is rock solid.
-const String APP_VERSION = '1.39';
+//   1.40 – Enforce High Connection Priority in Kotlin (11.25-15 ms Connection
+//          Interval). Gives the BLE link 4x retransmission headroom per 60 ms
+//          SGC packet cadence on the S22, preventing queue starvation and
+//          eliminating the post-connect status=8 supervision timeouts.
+const String APP_VERSION = '1.40';
