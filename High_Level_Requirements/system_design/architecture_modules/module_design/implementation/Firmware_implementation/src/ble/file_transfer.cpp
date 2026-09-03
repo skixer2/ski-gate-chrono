@@ -58,6 +58,23 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.72: POST-FT rr:2 KILLER — 2026-09-03 bench (JP, S22, FW 5.70):
+ *        reboot rr:2 IMMEDIATELY after a clean ft_done (wedge at FINAL —
+ *        phone never got chunk 162 + CRC; resume later completed in 79 ms)
+ *        AND right after a tx_blocked abort (run 1, chunk 118). The 5.67/
+ *        5.70 grace (3 s/6 s) expired while the main loop still ground on
+ *        the wedged Cordio TX queue (≤2001 ms × ~3 queued packets ≈ 6 s)
+ *        or while the phone pushed a new CMD_START into the dead queue.
+ *        Also on 2026-09-03: MTU theory DEAD (mcp requests 517 by default,
+ *        negotiates 247 — same ATT geometry as our app).
+ *        Now: grace 12 s everywhere (worst-case grind + 4 s supervision +
+ *        margin; still-stuck after that = WDT reboot is correct); poison
+ *        window after tx_blocked rejects CMD_START with ERROR 0x13
+ *        "recovering" until connect/disconnect proves the queue clean;
+ *        noinit g_ft_wdt_cp checkpoint ("ft_exit"/"txblk"/"cmd_start"/
+ *        "rej_start") printed as "ftcp" in the boot JSON so the next
+ *        rr:2 names its own culprit.
+ *
  * V5.71: SELECTABLE FT CHUNK SIZE — nRF Connect downloaded two full runs
  *        back-to-back (5.68 + 5.70) with blocks:0 while our app wedges
  *        ~every time. Open question: did mcp ever negotiate MTU 247? If
@@ -209,12 +226,45 @@ static mbed::Ticker g_ft_wdt_ticker;
 static bool g_ft_wdt_ticker_on = false;
 static mbed::Timeout g_ft_wdt_stop_timeout;
 static void ft_wdt_feed_isr() { NRF_WDT->RR[0] = WDT_RR_RR_Reload; }
+
+/* V5.72: post-FT forensics + poisoned-link window.
+   Bench 2026-09-03 (FW 5.70, TC-2026-08-26-001): rr:2 reboots IMMEDIATELY
+   after a clean ft_done AND right after a tx_blocked abort. The 3 s/6 s
+   grace expired while the main loop was still grinding on the wedged
+   Cordio TX queue (up to 2001 ms per queued packet: last chunk + FINAL +
+   state notify ≈ 3 packets ≈ 6 s) or while the phone started a new FT
+   into the dead queue. Fixes:
+   - grace extended to 12 s (worst-case grind + 4 s supervision + margin);
+     if the loop is STILL blocked after that, the WDT reboot is correct.
+   - g_ft_wdt_cp (noinit → survives warm reset) names the post-FT phase;
+     the boot JSON prints it as "ftcp" so the next rr:2 names its culprit.
+   - g_ft_link_poisoned_until: after tx_blocked, CMD_START is rejected
+     with ERROR 0x13 "recovering" until the natural supervision disconnect
+     has flushed the queue (cleared on any connect/disconnect). */
+static constexpr uint32_t FT_POISON_MS = 12000;
+static uint32_t g_ft_link_poisoned_until = 0;
+char g_ft_wdt_cp[12] __attribute__((section(".noinit")));
+static void ft_cp(const char* tag) {
+    size_t i = 0;
+    for (; tag[i] && i < 11; i++) g_ft_wdt_cp[i] = tag[i];
+    g_ft_wdt_cp[i] = 0;
+}
+bool sgc_ble_ft_link_poisoned() {
+    return g_ft_link_poisoned_until &&
+           (int32_t)(millis() - g_ft_link_poisoned_until) < 0;
+}
+void sgc_ble_ft_link_ready() {  /* call on BLE connect/disconnect: queue clean */
+    g_ft_link_poisoned_until = 0;
+    ft_cp("");
+}
+
 static void ft_wdt_ticker_stop_isr()
 {
     /* Runs even if the main loop is blocked in Cordio after ft_abort: the
        FT grace period really expires, then the normal WDT guards again. */
     g_ft_wdt_ticker.detach();
     g_ft_wdt_ticker_on = false;
+    g_ft_wdt_cp[0] = 0;  /* V5.72: grace survived — no post-FT death to report */
 }
 static void ft_wdt_ticker_start()
 {
@@ -246,8 +296,11 @@ static void ft_exit_restore_state()
        the same wedged Cordio path that triggered tx_blocked. Stopping the feed
        here let the 5 s WDT fire immediately after ft_abort (bench 2026-09-01:
        two native downloads OK, third tx_blocked → boot rr:2). The Timeout
-       detaches the Ticker even if the main loop stays blocked. */
-    ft_wdt_ticker_grace(3000);
+       detaches the Ticker even if the main loop stays blocked.
+       V5.72: 3 s → 12 s — bench 2026-09-03 showed the poisoned-queue grind
+       (≤2001 ms × ~3 queued packets) + 4 s supervision outlasts 3 s/6 s. */
+    ft_wdt_ticker_grace(FT_POISON_MS);
+    ft_cp("ft_exit");
     if (g_ft_pre_state_valid) {
         g_sm.force_state(g_ft_pre_state);
         g_ft_pre_state_valid = false;
@@ -321,7 +374,12 @@ void sgc_ble_ft_abort(const char* reason)
                interruption (bench 2026-09-02). Doing nothing is faster AND
                safer: the main loop is free the moment we stop writing to the
                wedged queue, so the WDT needs no special coverage. */
-            ft_wdt_ticker_grace(6000);  /* belt & braces until ble_disc lands */
+            /* V5.72: mark the link poisoned + 12 s grace. 6 s was not
+               enough on 2026-09-03: the post-abort grind (queued packets
+               × 2001 ms) outlasted the grace → rr:2 right after ft_abort. */
+            g_ft_link_poisoned_until = millis() + FT_POISON_MS;
+            ft_cp("txblk");
+            ft_wdt_ticker_grace(FT_POISON_MS);  /* belt & braces until ble_disc lands */
             NRF_WDT->RR[0] = WDT_RR_RR_Reload;
         } else {
             /* V5.65: proper ERROR packet — the bare "3" collided with packet
@@ -564,7 +622,26 @@ void sgc_ble_ft_on_request(const uint8_t* data, int len)
         sgc_ble_touch_activity();
 
         // Settle Gap: Give S22 time to clear internal GATT lock after the write.
-        delay(100); 
+        delay(100);
+
+    /* V5.72: poisoned link — a tx_blocked abort just happened and the
+       natural supervision disconnect hasn't landed yet. Starting a new FT
+       now would write into the dead queue (2001 ms/packet grind → the
+       rr:2 seen on 5.70). Tell the app to back off; its resume logic
+       reconnects and lands on a clean link. */
+    if (sgc_ble_ft_link_poisoned()) {
+        ft_cp("rej_start");
+        uint8_t rec_pkt[2] = {0x04, 0x13};  /* Type 0x04 ERROR, 0x13 = recovering */
+        sgc_ble_ft_stream_char()->writeValue(rec_pkt, 2);
+        BLE.poll();
+        json_begin();
+        json_kv("ev", "ft_error");
+        Serial.print(','); json_kv("reason", "recovering");
+        Serial.print(','); json_kv("run", (long)run_id);
+        json_end();
+        return;
+    }
+    ft_cp("cmd_start");
 
     if (g_ft_state == FT_STREAMING) {
         g_ft_state = FT_IDLE;

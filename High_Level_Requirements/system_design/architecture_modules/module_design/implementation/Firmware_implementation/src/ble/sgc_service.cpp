@@ -222,6 +222,7 @@ static void on_ble_connected(BLEDevice central)
     g_central_connected = true;
     g_sm.set_hold_sleep(true);
     g_last_ble_activity_ms = millis();  // V5.07
+    sgc_ble_ft_link_ready();  // V5.72: fresh link = clean controller TX queue
     json_begin();
     json_kv("ev", "ble_conn");
     Serial.print(','); json_kv("addr", central.address().c_str());
@@ -235,6 +236,7 @@ static void on_ble_disconnected(BLEDevice central)
     g_last_ble_activity_ms = millis();  // V5.07: prevent immediate zombie re-trigger after real disconnect
     /* Abort FT first so sgc_ble_ft_active() clears before hold_sleep. */
     sgc_ble_ft_abort("disconnect");
+    sgc_ble_ft_link_ready();  // V5.72: controller flushed TX on disconnect — poison window over
     g_sm.set_hold_sleep(false);
     /* V5.47: reset SLEEP→System-Off timer so a long connection does not
        cause immediate System Off on disconnect (original SLEEP entry time

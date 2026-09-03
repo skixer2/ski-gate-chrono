@@ -33,6 +33,10 @@ void sgc_ble_ft_abort(const char* reason);
 /** Handle phone write request (CMD_START / CMD_ABORT). */
 void sgc_ble_ft_on_request(const uint8_t* data, int len);
 void sgc_ble_ft_handle_ack();
+/** V5.72: true while the post-tx_blocked poison window is open (CMD_START rejected). */
+bool sgc_ble_ft_link_poisoned();
+/** V5.72: call on BLE connect/disconnect — controller TX queue is clean. */
+void sgc_ble_ft_link_ready();
 
 extern "C" {
     BLECharacteristic* sgc_ble_ft_request_char();

@@ -1149,6 +1149,22 @@ void setup()
     } else {
         Serial.print("\"UNKNOWN\"");
     }
+    /* V5.72: post-FT WDT checkpoint — if the last reset was the WDT firing
+       inside a post-FT window, this names the phase (ft_exit / txblk /
+       cmd_start / rej_start). noinit RAM, garbage-filtered. */
+    {
+        extern char g_ft_wdt_cp[12];
+        bool ok = g_ft_wdt_cp[0] != 0;
+        for (int i = 0; i < 12 && ok; i++) {
+            char c = g_ft_wdt_cp[i];
+            if (c != 0 && (c < 32 || c > 126)) ok = false;
+        }
+        if (ok) {
+            Serial.print(",\"ftcp\":\"");
+            Serial.print(g_ft_wdt_cp);
+            Serial.print("\"");
+        }
+    }
     Serial.println("}");
     // V5.27: if woke from System Off, log raw GPIO state for wake debugging
     if (rr & POWER_RESETREAS_OFF_Msk) {
