@@ -215,6 +215,15 @@ static const char* g_ble_radio_restart_why     = "stream_end";
 
 void request_ble_radio_restart(const char* why)
 {
+    /* V5.75: paper trail — a radio restart ends in NVIC_SystemReset (rr:4
+       via T-008c fallback). The 2026-09-08 bench showed a SILENT rr:4 with
+       no ble_radio/ble_conn preamble; log the request the moment it is
+       queued so every future rr:4 has a named source (or is proven to be
+       a raw fault, which prints nothing). */
+    json_begin();
+    json_kv("ev", "rr_req");
+    Serial.print(','); json_kv("why", why ? why : "?");
+    json_end();
     g_ble_radio_restart_pending = true;
     g_ble_radio_restart_why     = why;
 }
@@ -1136,6 +1145,13 @@ void setup()
         g_wake_source = WAKE_UNKNOWN;
     }
     NRF_POWER->RESETREAS = 0xFFFFFFFF;  /* clear for next boot */
+    /* V5.75: the nRF52 WDT SURVIVES warm resets (soft/WDT) and keeps counting
+       down from the crashed session's last feed. setup() only STARTS it at the
+       end (V5.09), so nothing feeds the surviving WDT during init — boot can
+       be shot mid-init by the OLD watchdog (2026-09-08 bench: rr:4 → boot died
+       inside BLE.begin → rr:2 → double boot). Feed RR[0] at every boot
+       milestone. Harmless on cold boot (WDT not started, write ignored). */
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;
     Serial.print("{\"ev\":\"boot\",\"ver\":\"");
     Serial.print(FW_VERSION);
     Serial.print("\",\"rr\":");
@@ -1234,6 +1250,7 @@ void setup()
     Serial.print(','); json_kv("keep", (long)PREROLL_KEEP);
     Serial.print(','); json_kv("why", "boot");
     json_end();
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;  /* V5.75: surviving-WDT feed (preroll erase) */
 
     /* V5.34: LDC1612 NOT initialized at boot — but chip powers up in
        active mode by default (DRDY fires, INTB pulls P0.02 LOW).
@@ -1267,6 +1284,7 @@ void setup()
     }
 
     /* ── BLE first — needs heap for thread before BHY2 exhausts it ── */
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;  /* V5.75: feed before the riskiest init call */
     json_begin();
     json_kv("ev", "init");
     Serial.print(','); json_kv("sub", "ble");
@@ -1294,8 +1312,10 @@ void setup()
         while (1) { g_led.set_pattern(LedPattern::RED_FLASH_3); delay(1000); }
     }
     /* First-run slot ready before any ARM (S04 -R / cold boot). */
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;  /* V5.75: feed before 244 KB raw_prep erase */
     g_runs.ensure_space_for_new_run();
     g_runs.prepare_next_run();
+    NRF_WDT->RR[0] = WDT_RR_RR_Reload;  /* V5.75 */
 
     /* ── BHY2 init (standalone — only sensor hub, no BLE/I2C/DFU handlers) ── */
     json_begin();
@@ -1464,6 +1484,10 @@ void loop()
         if (sgc_ble_central_connected() && !BLE.connected() && !sgc_ble_ft_active()) {
             uint32_t idle = millis() - sgc_ble_last_activity_ms();
             if (idle > BLE_ZOMBIE_TIMEOUT_MS) {
+                json_begin();              /* V5.75: zombie arm forensics */
+                json_kv("ev", "zombie_arm");
+                Serial.print(','); json_kv("idle_ms", (long)idle);
+                json_end();
                 request_ble_radio_restart("zombie");
             }
         }

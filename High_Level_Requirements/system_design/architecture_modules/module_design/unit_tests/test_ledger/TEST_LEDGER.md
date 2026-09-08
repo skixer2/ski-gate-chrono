@@ -782,6 +782,82 @@ test_s04_bhy2_rate     ✅ 1/1   S04 99.7 fps store=raw we=0 ver=5.03
 
 **Not claimed green** until JP flashes and scans.
 
+#### JP bench 2026-09-08 15:24 UTC — FW 5.74 + App 1.41 (first field data)
+
+**Pre-bench:** device in SLEEP, not scannable from phone → JP hard-reset the
+device to start. Same signature as the known "phone holds stale link" issue.
+New suspect: App 1.38 auto-reconnect re-establishing the link after the
+batch-end intentional disconnect, then idling connected (1.35 foreground
+service keeps process alive). Next-occurrence protocol: force-stop app →
+rescan → BT toggle → report which step frees it BEFORE hard-resetting device.
+
+**Wedge + recovery (serial):**
+
+```text
+{"ev":"ft_prog","off":36300,"sz":39044,"chunks":150,"blocks":0,"blk_ms":0,"recov":0,"ms":9016}   ← 93 % through, 9 s in
+{"ev":"ft_txfail","chunk":150,"off":36300,"fails":1,"blk_ms":2001}
+{"ev":"ft_txfail","chunk":150,"off":36300,"fails":2,"blk_ms":2001}
+{"ev":"ft_abort","reason":"tx_blocked","off":36300,"sz":39044,"chunks":150}
+{"ev":"ble_adv","why":"desync"}
+{"ev":"ble_recover","why":"desync","st":"SLEEP"}
+```
+
+- Designed failure path ran CLEAN end-to-end: wedge → 2×2 s fails → abort →
+  desync recovery → SLEEP + re-ADV. **No rr:2** — first wild run of the full
+  5.73/5.74 chain.
+- Phone logcat (17:24 local = 15:24 UTC): two `btif_gattc_open_impl` to the
+  same public addr **11 s apart** (17:24:27.505 → 17:24:38.277) — initial
+  connect + post-wedge resume candidate. `phy=1` at open (**LE 1M**) — first
+  PHY datapoint. Two other opens to random addresses 230 ms apart = ambient.
+- **OPEN:** did the run complete after the 38.277 reconnect? Need serial tail
+  (`ft_start` resume @36300 → `ft_done` + CRC) + app save confirmation.
+- **OPEN:** map logcat addresses to SGC MAC; capture `onPhyUpdate` lines.
+- Chunk-size datapoint (JP): historically tried 244 → … → 28 B — smaller was
+  WORSE; cadence 60 → 120 ms no effect. Confirms stochastic phone-side link
+  failure model, not congestion. Strategy unchanged: fast recovery; KPI =
+  seconds per interruption.
+- **Node plan:** JP installing Windows Hub node on PC → coordinator gets adb
+  logcat + serial capture + pio flash/install loop directly.
+
+#### CORRECTION 15:38 UTC — NOT clean: silent rr:4 + double boot (JP full log)
+
+Earlier "failure path ran clean" read was WRONG. Full serial shows:
+
+```text
+ft_abort(tx_blocked) → ble_adv(desync) → ble_recover(desync,SLEEP)
+{"ev":"boot","ver":"5.74","rr":4,"wrs":"UNKNOWN","fcp":1}     ← silent SOFT reset
+  boot #1: … ble_warm_deinit(rr:4) → {"ev":"init","sub":"ble"     ← TRUNCATED
+{"ev":"boot","ver":"5.74","rr":2,"wrs":"UNKNOWN"}              ← WDT mid-BLE.begin
+  boot #2: clean … raw_prep slot 5 (244 KB erase) … ble_conn(65:63:fc:51:25:9d)
+{"ev":"ft_resume","off":35332,"chunk":146} → ft_start → chunk 150 in 222 ms → …
+```
+
+Decode (source-verified):
+- **rr:4 fcp=1:** GPREGRET 0x01 = fcp window EXPIRED sentinel (`fcp()` at
+  main.cpp:1394) → crash happened **≥20 s post-abort** (window 20 s, armed
+  at FT exit, file_transfer.cpp:309). No `ble_radio`/`ble_conn`/`reboot` JSON
+  before it → not a preamble'd NVIC site. Prime suspect: **zombie path**
+  (30 s idle → request_ble_radio_restart("zombie") → begin fail → NVIC at
+  sgc_service.cpp:378) after a missed disconnect event. Timing fits (30 s
+  zombie > 20 s fcp). NEED: confirm log contiguity between ble_recover and
+  boot (any dropped ble_conn/ble_radio lines?).
+- **Boot #1 BLE.begin() hang:** `init sub:ble` split-print truncated → WDT
+  fired mid-begin() → rr:2. 5.69-era rr:4→rr:2 double boot is back.
+- **Resume worked:** app re-requested @35332 (chunk 146), 150 re-reached in
+  222 ms. Tail after last SND_DATA 150 unknown (second cycle? ft_done?).
+- **Total >60 s** = 5 s abort + ≥20 s mystery gap + 5 s WDT + boots + phone
+  reconnect latency. KPI far off target; two reboots per wedge unacceptable.
+
+FW 5.75 plan: (1) fcp window 20 s → 120 s; (2) zombie de-escalation → lazy
+re-ADV, no BLE.end/NVIC; (3) boot hardening: WDT feeds + per-step boot
+timing, 300 ms settle before BLE.begin on warm boots; (4) optional FW-side
+idle-connected timeout in SLEEP (~3 min) vs app-held stale links.
+App 1.42 plan: batch end tears down BOTH stacks (native GATT + Dart link),
+suppress 1.38 auto-reconnect via batch-complete flag, stop foreground
+service. (Force-stop test CONFIRMED app holds link; 1.41 = single-connection
+batch per git 50fdc12.)
+PHY: no onPhyUpdate lines → LE 1M end-to-end; variable eliminated.
+
 ---
 
 ## 6. Case history index
@@ -819,3 +895,37 @@ cd ..\..\..\unit_tests   # adjust to unit_tests path on PC
 Path note: JP PC canonical tree may be `F:\Documents\Progetti\ski-gate-chrono`; workspace mirror is under OpenClaw `ski_gate_chrono/`.
 ## L-STREAM (v5.54) Architecture
 Consolidated FT characteristics into single Stream characteristic to eliminate S22 GATT stall.
+
+### 2026-09-08 16:34 UTC — bench tail + FW 5.75 implemented
+
+**JP answers:** (1) "boot rr:4 appears nowhere" — it IS in his 15:38 paste:
+`{"ev":"boot","ver":"5.74","rr":4,"wrs":"UNKNOWN","fcp":1}` (shorthand "rr:4" =
+the `rr` field). (2) Tail after resume: **RUN COMPLETED** — chunks 158-162,
+`ft_done crc=1820547675 sz=39044 chunks=162 ms=986`, then clean
+`ble_adv(disconnect)` + `ble_disc(SLEEP)`. Resume protocol proven end-to-end
+again (986 ms, zero blocks). Run save in app unconfirmed. (3) logcat ≥17:24:38
+lost.
+
+**Double-boot root cause FOUND (surviving WDT):** the nRF52 WDT is NOT cleared
+by warm resets — it keeps counting from the crashed session's last feed.
+setup() only STARTS the WDT at the end (V5.09); nothing feeds the surviving
+WDT during init → boot #1 (rr:4 path) was shot mid-`BLE.begin()` by the OLD
+watchdog (rr:2). Boot #2 survived because preroll was already erased (faster
+init). The 5.69-era "old WDT fired mid-boot" note described the same disease;
+5.70 avoided it by not resetting — now that resets are back (5.73 forced
+disconnect), the boot path must be robust.
+
+**FW 5.75 (implemented, this commit):**
+1. Boot WDT feeds at every init milestone (RESETREAS read, post-preroll,
+   pre-BLE.begin, around 244 KB raw_prep, post) — kills the double boot
+2. `request_ble_radio_restart()` prints `{"ev":"rr_req","why":...}` when
+   queued — every deliberate rr:4 now has a preamble
+3. Zombie arm prints `{"ev":"zombie_arm","idle_ms":...}` before requesting
+4. fcp window 20 s → 120 s — forensics outlive zombie (30 s) + recovery
+5. Silent rr:4 source remains UNKNOWN (zombie needs a ble_conn that isn't
+   in the log; monitor fidelity unproven) — items 2-4 will name it next bench
+
+**Bench ask (5.75):** pull → build → flash → same 5-run protocol. Watch:
+`rr_req`/`zombie_arm`/`fcp` lines, wedge count, seconds wedge→ft_done, no
+double boots. Pending: App 1.42 (batch-end dual-stack teardown + auto-reconnect
+suppress + service stop).

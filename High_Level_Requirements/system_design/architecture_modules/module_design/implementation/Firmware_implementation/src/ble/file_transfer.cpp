@@ -58,6 +58,20 @@
  *        sends a proper ERROR packet [0x04, code]:
  *        0x10 tx_blocked · 0x11 phone · 0x12 new_request · 0xFF other.
  *
+ * V5.75: SURVIVING-WDT BOOT FEED + RR FORENSICS — 2026-09-08 bench (JP,
+ *        S22, FW 5.74 + App 1.41): run 2 wedged @93 % → clean tx_blocked →
+ *        desync recover → SILENT soft reset (rr:4, fcp=0x01 = window-expired
+ *        sentinel — crash ≥20 s post-abort) → boot #1 killed mid-BLE.begin
+ *        by the OLD WDT (rr:2) → double boot → reconnect → ft_resume
+ *        @35332 → ft_done 986 ms (resume PROVEN end-to-end again).
+ *        Double-boot root cause: the nRF52 WDT survives warm resets and
+ *        keeps counting from the crashed session's last feed; setup() only
+ *        STARTS it at the end (V5.09) — nothing feeds it during init. Fix:
+ *        feed RR[0] at every boot milestone (main.cpp). The silent rr:4
+ *        source is still unknown (no ble_radio/ble_conn preamble in the
+ *        log): request_ble_radio_restart() prints "rr_req" when queued,
+ *        zombie arm prints "zombie_arm"+idle_ms, fcp window 20 s → 120 s.
+ *
  * V5.73: FORCED DISCONNECT REDUX + GPREGRET FORENSICS — 2026-09-03 bench
  *        (JP, S22): 5.72 changed NOTHING — rr:2 still fired right after
  *        ft_abort, and the boot JSON showed NO ftcp → the stop-ISR had
@@ -306,7 +320,7 @@ static void ft_wdt_ticker_grace(uint32_t grace_ms)
 static void ft_exit_restore_state()
 {
     extern void sgc_fcp_arm(uint32_t);  /* V5.73: main.cpp GPREGRET forensics */
-    sgc_fcp_arm(20000);  /* 20 s post-FT window: name the subsystem if we hang */
+    sgc_fcp_arm(120000);  /* V5.75: 120 s post-FT window — 20 s expired BEFORE the silent rr:4 (2026-09-08 bench, fcp=0x01 idle sentinel) and disarmed itself; make the forensics outlive the zombie timer (30 s) + recovery */
     /* V5.67: keep the ISR WDT feed alive briefly AFTER FT exits. The link is
        still tearing down: the abort/error notify + next BLE.poll() can sit on
        the same wedged Cordio path that triggered tx_blocked. Stopping the feed
