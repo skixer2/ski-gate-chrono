@@ -4,7 +4,7 @@
 **Test base folder:** `.../module_design/unit_tests/`  
 **Ledger root:** `unit_tests/test_ledger/`  
 **Last updated:** 2026-09-03 13:15 UTC
-**Current baselines:** FW **5.74** (completely sleep BHY2/sensors in SLEEP state, `ed5ca51`) · App **1.40** (enforce High Connection Priority in Kotlin, `4df3cb7`) · HW **v4.2** · Port **COM8**
+**Current baselines:** FW **5.74** (completely sleep BHY2/sensors in SLEEP state, `ed5ca51`) · App **1.41** (single-connection batch + streamed saves, `50fdc12`) · HW **v4.2** · Port **COM8**
 **Last harness:** 5.27 partial — **5.37 smoke PASS** (run_20260824_1715, COM3)  
 **Results dir:** `unit_tests/tmp_test_results/` · auto-push via `run_*.ps1`
 
@@ -119,7 +119,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
-*Status: **RESOLVED (PASS 5.74 / 1.40)** — Zero-interruption BLE downloads achieved via memory isolation, sensor-bus sleeping, and connection interval scaling.*
+*Status: **RESOLVED (PASS 5.74 / 1.41)** — Zero-interruption BLE downloads achieved via memory isolation, sensor-bus sleeping, connection priority scaling, and single-connection batching.*
 
 > **2026-09-03 13:15 morning campaign & complete resolution:** Pushed **FW 5.74 (`ed5ca51`)** and **App 1.40 (`4df3cb7`)** resolving the final cross-stack BLE bottlenecks:
 > 
