@@ -929,3 +929,37 @@ disconnect), the boot path must be robust.
 `rr_req`/`zombie_arm`/`fcp` lines, wedge count, seconds wedge→ft_done, no
 double boots. Pending: App 1.42 (batch-end dual-stack teardown + auto-reconnect
 suppress + service stop).
+
+### 2026-09-09 14:56 UTC — 5.75 bench: Freecess caught red-handed (logcat)
+
+**Bench:** start-invisible again (app stale link — JP hardware-reset instead
+of force-stop protocol; "? " worked over serial = device alive). After 2nd
+reset, connect OK → native download → **wedge @ chunk 51/163, 3.0 s in** →
+2× ft_txfail(2001) → tx_blocked → desync recover → SLEEP + re-ADV. Tail NOT
+pasted — 5.75 forensics (rr_req/zombie_arm/fcp, single boot?) unverified.
+
+**SMOKING GUN (logcat 16:53:48.255 local, filtered "BLE"):**
+```
+FreecessHandler$MainHandler.handleLcdOnFreeze
+→ FreecessController.freeze
+→ BlueToothConnectedFilter.updateBTUsingPackages
+→ BluetoothAdapter.getHWUsingApps → getAdvertisingSetUids
+→ (16:53:48.303) PowerManagerService: SetWakeLockEnableDisable uid=10535 disable=true
+```
+Samsung Freecess freezing an app on an LCD-state event; the BT filter only
+checks **ADVERTISING** uids — a pure CENTRAL app (us) isn't on the list →
+freeze proceeds. PWL line right after DISABLES wake-lock acquisition for
+uid 10535. If 10535 = com.skigatechono.sgc_phone: Freecess froze our process
+(mid-download), KILLING KEEP_SCREEN_ON(1.34) + partial wakelock(1.34) +
+foreground service(1.35) protections — explaining why wedges survived all
+three. Wedge model upgraded: stochastic → **screen-event-triggered Samsung
+freezer**. Retroactively closes PHY/MTU/cadence/chunk-size chapters (never RF).
+
+**Validation protocol (JP, no code needed):**
+1. `adb shell dumpsys package com.skigatechono.sgc_phone | grep userId` → 10535?
+2. Settings → Battery → Background usage limits → **Never sleeping apps** → add SGC
+3. Re-bench with screen OFF mid-download. Prediction: wedge count ≈ 0.
+
+**App 1.42 (queued):** REQUEST_IGNORE_BATTERY_OPTIMIZATIONS + exemption UX;
+batch-end teardown BOTH stacks (kills stale link) + autoReconnect suppress;
+verify enterDownloadMode still on 1.41 path (it is — MainActivity.kt:68).
