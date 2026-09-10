@@ -247,6 +247,12 @@ void sgc_pull_poll()
         json_kv("ev", "pull_wdt");
         Serial.print(','); json_kv("idle_ms", (long)(millis() - g_last_req_ms));
         json_end();
-        sgc_ble_force_recover("pull_wdt");
+        /* 5.76 bench: soft force_recover is NOT enough after a wedge —
+           BLE.connected() is false while the CONTROLLER still holds the
+           half-open link in its single connection slot, so re-ADV is
+           un-connectable (14:13 bench: 6 phone reconnects, zero reached
+           the device). Hard radio restart = proven pristine-radio path
+           (V5.69); deferred one-shot, consumed safely in the main loop. */
+        request_ble_radio_restart("pull_wdt");
     }
 }
