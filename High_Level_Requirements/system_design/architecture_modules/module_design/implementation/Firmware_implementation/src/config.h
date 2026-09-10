@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "5.75"
+#define FW_VERSION "5.76"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
@@ -49,6 +49,20 @@ static constexpr uint32_t FT_STALL_TIMEOUT_MS    = 20000;  // 20s — S22 GATT c
 
 /* Zombie BLE link: 30s no BLE activity (GATT write / connect / FT chunk) = dead phone. */
 static constexpr uint32_t BLE_ZOMBIE_TIMEOUT_MS  = 30000;
+
+/* --- Phone-pull transfer (FW 5.76, PULL_TRANSFER_REDESIGN.md) --- */
+/* Watchdog: no console request for 2 s while connected → disconnect + re-ADV.
+   Armed on first request after connect (S22 service discovery can exceed 2 s). */
+static constexpr uint32_t PULL_WDT_MS            = 2000;
+/* Logical chunk per request: ≥500 B target (IR-3). 512 = 77 requests per
+   39 KB run ≈ 3–10 s at 30–60 ms round trips. */
+static constexpr uint32_t PULL_CHUNK_BYTES       = 512;
+/* Payload bytes per notification frame: hex-doubled on air → 234 chars +
+   header ≈ 242 ≤ 244 usable at ATT MTU 247. */
+static constexpr uint16_t PULL_FRAME_PAYLOAD     = 117;
+/* Pace between notification frames — keep the LL TX queue shallow
+   (the V5.59 wedge lesson; device-push engine disabled in 5.76). */
+static constexpr uint16_t PULL_FRAME_GAP_MS      = 20;
 
 /* --- Detector thresholds (per design spec) --- */
 static constexpr float    SPEED_THRESHOLD_MPS     = 1.5f;    /* m/s for 200ms window */

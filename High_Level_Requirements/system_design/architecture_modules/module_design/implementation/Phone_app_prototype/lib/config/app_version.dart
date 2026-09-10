@@ -141,7 +141,7 @@
 //          connection-churn window (conn-param/PHY/data-length updates).
 //          If 12 s eliminates wedges, latency will be engineered back down
 //          (adaptive settle or single-connection batch).
-//   1.41 – SINGLE-CONNECTION BATCH + INCREMENTAL STREAMED SAVES.
+//   1.43 – SINGLE-CONNECTION BATCH + INCREMENTAL STREAMED SAVES.
 //          App 1.36-1.40 called downloadRuns() in a loop, disconnecting and
 //          reconnecting for every single run, which caused GATT client leakage
 //          (multiple active clientIfs) and S22 link collapse. Now Kotlin connects

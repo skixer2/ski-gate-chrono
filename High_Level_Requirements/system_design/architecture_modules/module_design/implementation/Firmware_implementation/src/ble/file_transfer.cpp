@@ -613,8 +613,14 @@ void sgc_ble_transfer_poll()
 /* V5.45: simplified request handler — phone sends CMD_START only.
    No CMD_CHUNK, no CMD_ABORT — device-push, phone just listens.
    Keep CMD_ABORT for clean cancel. */
+/* FWR-5 (FW 5.76): device-push FT is DISABLED. The BLE product path is the
+   phone-pull console (pull_transfer.cpp). Code kept for USB/lab use. */
+bool sgc_push_ft_enabled() { return false; }
+
 void sgc_ble_ft_on_request(const uint8_t* data, int len)
 {
+    if (!sgc_push_ft_enabled()) return;   /* silent no-op: legacy apps retire */
+
     if (len < 1) return;
     uint8_t cmd = data[0];
 

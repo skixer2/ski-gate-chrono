@@ -133,6 +133,7 @@ extern volatile uint8_t g_meta_event_count;
 void bhy2_cal_hook_init();
 #include "ble/sgc_service.h"
 #include "ble/file_transfer.h"
+#include "ble/pull_transfer.h"
 #include "test_mode.h"
 #include "led/led.h"
 #include "sensors/ldc1612.h"
@@ -464,6 +465,18 @@ void handle_serial()
         return;
     }
     case 'd': g_runs.list_files(); return;
+    case 'D': sgc_pull_handle_line("D", false); return;   /* 5.76 pull: dir */
+    case 'r': {                                          /* 5.76 pull: chunk */
+        char rl[80]; int rn = 0;
+        while (Serial.available() && rn < (int)sizeof(rl) - 1) {
+            char rc = (char)Serial.read();
+            if (rc == '\n' || rc == '\r') break;
+            rl[rn++] = rc;
+        }
+        rl[rn] = '\0';
+        char full[84]; snprintf(full, sizeof(full), "r %s", rl);
+        sgc_pull_handle_line(full, false);
+        return; }
     case 'h': {
         /* Hex/baro dump for a specific run.
            Uses same read_run_data() as BLE file transfer — fork at output.
@@ -730,6 +743,7 @@ void handle_serial()
         json_begin();
         json_kv("ev", "version");
         Serial.print(','); json_kv("ver", FW_VERSION);
+        Serial.print(','); json_kv_bool("adv", sgc_ble_advertising());   /* 5.76 FWR-4 */
         json_end();
         return;
     case 'R':
@@ -1471,6 +1485,7 @@ void loop()
         }
         sgc_ble_poll(); fcp(0x21);
         sgc_ble_transfer_poll(); fcp(0x22);
+        sgc_pull_poll(); fcp(0x2D);
         /* V5.03: desync heal — connect flag set but link gone means the
            disconnect event was missed; force-recover so we don't hold IDLE
            forever / stop being scannable. */

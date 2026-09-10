@@ -21,12 +21,24 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.CRC32
 
 /**
- * Native SGC downloader built on Nordic's hardened Android BLE Library.
+ * SGC downloader — FW 5.76 PHONE-PULL protocol ("serial replacement").
  *
- * The previous hand-rolled BluetoothGatt engine proved the protocol works but
- * kept re-implementing Android queue/reconnect edge cases that Nordic already
- * solved. BleManager serializes GATT operations on its own worker thread and
- * provides synchronous await() calls, so the FT protocol stays simple here.
+ * PULL_TRANSFER_REDESIGN.md (App 1.43): the phone drives every byte. It
+ * writes ASCII requests to the console characteristic (ABCA) and receives
+ * text frames back on the same characteristic:
+ *   "D"                  → {"run":id,"ts":...,"sz":total,"side":...} lines
+ *                          terminated by {"d_end":n}
+ *   "r <id> <off> <len>" → "[<seq> <n> <HEX>]" frames, then "OK <sent>"
+ *                          or "E <code>"
+ *
+ * The blob layout is unchanged (16B header + payload + 6B CRC trailer), so
+ * the Dart decompressor/storage pipeline is untouched. The device is
+ * stateless: a disconnect at any moment costs one reconnect and the next
+ * request continues from the last received offset.
+ *
+ * Kept from 1.40–1.42: CONNECTION_PRIORITY_HIGH, notification byte clone()
+ * (V1.39 — Android overwrites the shared callback buffer), connect retry
+ * 5/500, ADV-wait before reconnect, incremental per-run streaming to Dart.
  */
 @SuppressLint("MissingPermission")
 class NordicBleDownloader(private val context: Context) {
@@ -38,25 +50,16 @@ class NordicBleDownloader(private val context: Context) {
         private val CHAR_BATTERY: UUID = UUID.fromString("5347ABC5-0000-1000-8000-00805F9B34FB")
         private val CHAR_FLASH_USED: UUID = UUID.fromString("5347ABC7-0000-1000-8000-00805F9B34FB")
         private val CHAR_RUN_INFO: UUID = UUID.fromString("5347ABC8-0000-1000-8000-00805F9B34FB")
-        private val CHAR_RUN_LIST: UUID = UUID.fromString("5347ABC9-0000-1000-8000-00805F9B34FB")
-        private val CHAR_FT_REQUEST: UUID = UUID.fromString("5347ABCA-0000-1000-8000-00805F9B34FB")
-        private val CHAR_FT_STREAM: UUID = UUID.fromString("5347ABCD-0000-1000-8000-00805F9B34FB")
+        private val CHAR_CONSOLE: UUID = UUID.fromString("5347ABCA-0000-1000-8000-00805F9B34FB")
         private val CHAR_CAL: UUID = UUID.fromString("5347ABD0-0000-1000-8000-00805F9B34FB")
 
-        private const val FT_IDLE_TIMEOUT_MS = 20_000L
-        private const val FT_TOTAL_TIMEOUT_MS = 90_000L
-        private const val MAX_RESUME_ATTEMPTS = 10  /* V1.34: 6 → 10 — resume
-            reconnects hit the device's post-abort recovery window (status 147)
-            or transient phone-stack throttling; both heal in seconds. */
-        /* V1.39: 12 s -> 4 s post-connect settle.
-           V1.39 CRITICAL BUG FIX: data.value is the raw ByteArray from
-           Android's shared buffer. Without clone(), the buffer is overwritten
-           by the next incoming notification before our consumer thread polls
-           it. This caused silent packet corruption, random "device FT error"
-           type parsing exceptions, and payload CRC failures, explaining
-           exactly why FBP and 1.31-1.38 wedged constantly while nRF Connect
-           (which clones the bytes) never did. Settle reduced back to 4 s
-           since the link no longer corrupts mid-stream. */
+        /* Per-request idle timeout: the device answers a request in ~150 ms
+           (5 paced frames + OK). 8 s covers reconnect-class stalls before the
+           attempt loop takes over. Device-side watchdog is 2 s (pull_wdt). */
+        private const val PULL_REQ_TIMEOUT_MS = 8_000L
+        private const val PULL_TOTAL_TIMEOUT_MS = 120_000L
+        private const val PULL_CHUNK = 512
+        private const val MAX_FRESH_ATTEMPTS = 3
         private const val CONNECT_SETTLE_MS = 4_000L
     }
 
@@ -64,13 +67,11 @@ class NordicBleDownloader(private val context: Context) {
     data class FailedRun(val id: Int, val reason: String)
     data class BatchResult(val runs: List<DownloadedRun>, val failed: List<FailedRun>, val log: List<String>)
 
+    data class PullDirEntry(val id: Int, val ts: Int, val sz: Int, val side: Int)
+
     private val logs = mutableListOf<String>()
     @Volatile private var cancelled = false
 
-    /** V1.32: live event sink (wired to Flutter via sgc_native_ble_events).
-        The batch call only returns at the END — without this the UI shows
-        nothing for tens of seconds during connect/FT ("pressed, nothing
-        happened"). Set from MainActivity on the main thread. */
     @Volatile var onEvent: ((Map<String, Any>) -> Unit)? = null
 
     private fun emit(ev: Map<String, Any>) {
@@ -93,12 +94,10 @@ class NordicBleDownloader(private val context: Context) {
         var batteryChar: BluetoothGattCharacteristic? = null
         var flashChar: BluetoothGattCharacteristic? = null
         var runInfoChar: BluetoothGattCharacteristic? = null
-        var runListChar: BluetoothGattCharacteristic? = null
-        var ftRequestChar: BluetoothGattCharacteristic? = null
-        var ftStreamChar: BluetoothGattCharacteristic? = null
+        var consoleChar: BluetoothGattCharacteristic? = null
         var calChar: BluetoothGattCharacteristic? = null
 
-        val ftPackets = LinkedBlockingQueue<ByteArray>()
+        val consoleLines = LinkedBlockingQueue<ByteArray>()
 
         override fun getMinLogPriority(): Int = Log.DEBUG
 
@@ -112,40 +111,34 @@ class NordicBleDownloader(private val context: Context) {
             batteryChar = svc.getCharacteristic(CHAR_BATTERY)
             flashChar = svc.getCharacteristic(CHAR_FLASH_USED)
             runInfoChar = svc.getCharacteristic(CHAR_RUN_INFO)
-            runListChar = svc.getCharacteristic(CHAR_RUN_LIST)
-            ftRequestChar = svc.getCharacteristic(CHAR_FT_REQUEST)
-            ftStreamChar = svc.getCharacteristic(CHAR_FT_STREAM)
+            consoleChar = svc.getCharacteristic(CHAR_CONSOLE)
             calChar = svc.getCharacteristic(CHAR_CAL)
-            return ftRequestChar != null && ftStreamChar != null
+            return consoleChar != null
         }
 
         override fun initialize() {
-            // V1.40: Force High Connection Priority to get a 11.25-15 ms interval.
-            // On the S22, default/balanced intervals (~60 ms) running at 60 ms SGC packet
-            // cadence operate at 100% duty cycle, meaning any single RF/antenna miss immediately
-            // exhausts the queue and collapses the link (status=8). High priority gives the link
-            // 4x retransmission headroom per packet, making it incredibly robust.
+            // V1.40: High priority → 11.25–15 ms interval (link headroom).
             requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH).enqueue()
 
-            // Match the known-good nRF Connect GATT state: subscribe to the
-            // full SGC notify set, then request MTU. BleManager serializes
-            // all of these operations on its proven queue.
             setNotificationCallback(stateChar).with { _, _ -> }
             setNotificationCallback(batteryChar).with { _, _ -> }
             setNotificationCallback(flashChar).with { _, _ -> }
             setNotificationCallback(runInfoChar).with { _, _ -> }
             setNotificationCallback(calChar).with { _, _ -> }
-            setNotificationCallback(ftStreamChar).with { _, data ->
-                data.value?.clone()?.let { ftPackets.offer(it) }
+            setNotificationCallback(consoleChar).with { _, data ->
+                // V1.39 discipline: clone the shared Android buffer immediately.
+                data.value?.clone()?.let { consoleLines.offer(it) }
             }
 
             enableNotifications(stateChar).enqueue()
             enableNotifications(batteryChar).enqueue()
             enableNotifications(flashChar).enqueue()
             enableNotifications(runInfoChar).enqueue()
-            enableNotifications(ftStreamChar).enqueue()
+            enableNotifications(consoleChar).enqueue()
             enableNotifications(calChar).enqueue()
-            requestMtu(247).enqueue()
+            // F38: request the largest MTU; device caps at 247 (parsing is
+            // line-based, so any negotiated value works).
+            requestMtu(517).enqueue()
         }
 
         override fun onServicesInvalidated() {
@@ -153,11 +146,9 @@ class NordicBleDownloader(private val context: Context) {
             batteryChar = null
             flashChar = null
             runInfoChar = null
-            runListChar = null
-            ftRequestChar = null
-            ftStreamChar = null
+            consoleChar = null
             calChar = null
-            ftPackets.clear()
+            consoleLines.clear()
         }
 
         fun connectToSgc(address: String) {
@@ -169,39 +160,25 @@ class NordicBleDownloader(private val context: Context) {
             } catch (e: Exception) {
                 throw Exception("bad BLE address '$address': ${e.message}")
             }
-            log("Nordic BleManager connecting to $address")
+            log("pull: connecting to $address")
             connect(device)
-                .retry(5, 500)  /* V1.34: 3/250 → 5/500 — first connect after
-                    the device's post-abort BLE recover often fails fast (147) */
+                .retry(5, 500)
                 .timeout(15_000)
                 .useAutoConnect(false)
                 .await()
-            log("Nordic BleManager ready; settling ${CONNECT_SETTLE_MS} ms")
+            log("pull: connected; settling ${CONNECT_SETTLE_MS} ms")
             Thread.sleep(CONNECT_SETTLE_MS)
         }
 
-        fun writeFtStart(runId: Int, offset: Int) {
-            val c = ftRequestChar ?: throw Exception("FT request characteristic unavailable")
-            val cmd = ByteArray(if (offset > 0) 7 else 3)
-            cmd[0] = 0
-            cmd[1] = (runId and 0xFF).toByte()
-            cmd[2] = ((runId shr 8) and 0xFF).toByte()
-            if (offset > 0) {
-                cmd[3] = (offset and 0xFF).toByte()
-                cmd[4] = ((offset shr 8) and 0xFF).toByte()
-                cmd[5] = ((offset shr 16) and 0xFF).toByte()
-                cmd[6] = ((offset shr 24) and 0xFF).toByte()
-            }
-            writeCharacteristic(c, cmd, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
+        fun sendRequest(line: String) {
+            val c = consoleChar ?: throw Exception("console characteristic unavailable")
+            writeCharacteristic(c, line.toByteArray(Charsets.US_ASCII), BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
         }
 
-        fun readRunList(): String {
-            val c = runListChar ?: throw Exception("run-list characteristic unavailable")
-            // The no-arg await() is void (TimeoutableRequest); the typed await(Class)
-            // returns a filled ReadResponse, whose rawData (Data) carries the bytes.
-            val response = readCharacteristic(c).await(ReadResponse::class.java)
-            val data = response.rawData?.value ?: ByteArray(0)
-            return String(data, Charsets.UTF_8)
+        /** Await one text line from the console (or null on timeout). */
+        fun readLine(timeoutMs: Long): String? {
+            val pkt = consoleLines.poll(timeoutMs, TimeUnit.MILLISECONDS) ?: return null
+            return String(pkt, Charsets.US_ASCII).trim()
         }
 
         fun shutdown() {
@@ -223,15 +200,58 @@ class NordicBleDownloader(private val context: Context) {
             ((data[offset + 3].toLong() and 0xFF) shl 24)
     }
 
-    private fun streamCrc32(data: ByteArray): Long {
-        val crc = CRC32()
-        crc.update(data)
-        return crc.value
-    }
-
     private fun parseTimestamp(data: ByteArray): Int {
         if (data.size < 6) return 0
         return le32(data, 2).toInt()
+    }
+
+    /* ── Pull protocol helpers ─────────────────────────────────────── */
+
+    /** Fetch the run directory via "D". */
+    private fun pullDirectory(m: SgcBleManager, timeoutPerLineMs: Long = 3_000L): List<PullDirEntry> {
+        m.consoleLines.clear()
+        m.sendRequest("D")
+        val out = mutableListOf<PullDirEntry>()
+        val deadline = System.currentTimeMillis() + 20_000L
+        while (System.currentTimeMillis() < deadline && !cancelled) {
+            val line = m.readLine(timeoutPerLineMs) ?: throw Exception("D: no reply (device on <5.76?)")
+            if (line.startsWith("{\"run\"")) {
+                val id = Regex("\"run\":(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                val ts = Regex("\"ts\":(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                val sz = Regex("\"sz\":(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                val side = Regex("\"side\":(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull()
+                if (id != null && sz != null) {
+                    out.add(PullDirEntry(id, ts ?: 0, sz, side ?: 0))
+                }
+            } else if (line.startsWith("{\"d_end\"")) {
+                return out
+            } else {
+                log("D: unexpected line: $line")
+            }
+        }
+        throw Exception("D: directory timeout")
+    }
+
+    /** Verify the blob trailer: [0xC3 0x32][CRC32 LE] over payload bytes. */
+    private fun verifyTrailerCrc(blob: ByteArray) {
+        if (blob.size < 22) throw Exception("blob too short (${blob.size} B)")
+        val cs = blob.size - 22
+        if ((blob[16].toInt() and 0xFF) != 0xC3 || (blob[17].toInt() and 0xFF) != 0x32) {
+            throw Exception("CRC trailer magic mismatch")
+        }
+        val expected = le32(blob, 18)
+        val crc = CRC32()
+        crc.update(blob, 16, cs)
+        if (crc.value != expected) {
+            throw Exception("blob CRC mismatch device=0x${java.lang.Long.toHexString(expected)} local=0x${java.lang.Long.toHexString(crc.value)}")
+        }
+    }
+
+    private fun hexNybble(c: Char): Int = when (c) {
+        in '0'..'9' -> c - '0'
+        in 'A'..'F' -> c - 'A' + 10
+        in 'a'..'f' -> c - 'a' + 10
+        else -> throw Exception("bad hex char '$c'")
     }
 
     private fun waitForAdvertisement(address: String, timeoutMs: Long): Boolean {
@@ -242,7 +262,6 @@ class NordicBleDownloader(private val context: Context) {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 if (result.device.address.equals(address, ignoreCase = true)) found.countDown()
             }
-
             override fun onBatchScanResults(results: MutableList<ScanResult>) {
                 if (results.any { it.device.address.equals(address, ignoreCase = true) }) found.countDown()
             }
@@ -275,14 +294,19 @@ class NordicBleDownloader(private val context: Context) {
         }
     }
 
-    private fun downloadOne(address: String, runId: Int): DownloadedRun {
+    /**
+     * Download one run via stateless pull. On failure: teardown → ADV-wait →
+     * reconnect → continue from the last received offset (free in a
+     * stateless protocol — no restart-from-scratch needed).
+     */
+    private fun downloadOne(address: String, runId: Int, dirCache: MutableMap<Int, PullDirEntry>): DownloadedRun {
         val buffer = ByteArrayOutputStream()
         var expected = 0
         var lastError: Exception? = null
         var manager: SgcBleManager? = null
         var lastProgressMs = 0L
 
-        for (attempt in 1..MAX_RESUME_ATTEMPTS) {
+        for (attempt in 1..MAX_FRESH_ATTEMPTS) {
             if (cancelled) throw Exception("cancelled")
             try {
                 if (manager == null || !manager.isConnected) {
@@ -290,85 +314,93 @@ class NordicBleDownloader(private val context: Context) {
                     manager = newConnectedManager(address)
                 }
                 val m = manager!!
-                m.ftPackets.clear()
 
-                val offset = buffer.size()
-                log("FT run #$runId attempt $attempt offset=$offset")
-                m.writeFtStart(runId, offset)
+                if (expected == 0) {
+                    val entry = dirCache[runId] ?: pullDirectory(m).also {
+                        it.forEach { e -> dirCache[e.id] = e }
+                    }.firstOrNull { it.id == runId }
+                        ?: throw Exception("run #$runId not in device directory")
+                    expected = entry.sz
+                    log("pull run #$runId total=$expected B")
+                }
 
-                val totalDeadline = System.currentTimeMillis() + FT_TOTAL_TIMEOUT_MS
-                var progressDeadline = System.currentTimeMillis() + FT_IDLE_TIMEOUT_MS
+                val totalDeadline = System.currentTimeMillis() + PULL_TOTAL_TIMEOUT_MS
 
-                while (System.currentTimeMillis() < totalDeadline && !cancelled) {
-                    val waitMs = minOf(1_000L, progressDeadline - System.currentTimeMillis())
-                    if (waitMs <= 0) throw Exception("FT idle timeout at ${buffer.size()} B")
-                    if (!m.isConnected) throw Exception("FT link lost at ${buffer.size()} B")
-                    val pkt = m.ftPackets.poll(waitMs, TimeUnit.MILLISECONDS) ?: continue
-                    if (pkt.isEmpty()) continue
-                    when (pkt[0].toInt() and 0xFF) {
-                        0x01 -> {
-                            if (pkt.size >= 7) {
-                                expected = le32(pkt, 3).toInt()
-                                log("FT START run #$runId total=$expected")
-                            }
-                        }
-                        0x02 -> {
-                            if (pkt.size >= 2) {
-                                buffer.write(pkt, 2, pkt.size - 2)
-                                progressDeadline = System.currentTimeMillis() + FT_IDLE_TIMEOUT_MS
-                                val nowMs = System.currentTimeMillis()
-                                if (nowMs - lastProgressMs >= 250) {
-                                    lastProgressMs = nowMs
-                                    emit(mapOf(
-                                        "type" to "ft_progress",
-                                        "runId" to runId,
-                                        "bytes" to buffer.size(),
-                                        "expected" to expected,
-                                    ))
+                while (buffer.size() < expected && System.currentTimeMillis() < totalDeadline && !cancelled) {
+                    if (!m.isConnected) throw Exception("link lost at ${buffer.size()} B")
+                    val off = buffer.size()
+                    val want = minOf(PULL_CHUNK, expected - off)
+                    m.consoleLines.clear()
+                    m.sendRequest("r $runId $off $want")
+                    var got = 0
+                    var seq = 0
+                    val reqDeadline = System.currentTimeMillis() + PULL_REQ_TIMEOUT_MS
+                    while (System.currentTimeMillis() < reqDeadline) {
+                        if (!m.isConnected) throw Exception("link lost at ${buffer.size()} B")
+                        val line = m.readLine(1_000) ?: continue
+                        when {
+                            line.startsWith("[") -> {
+                                val close = line.lastIndexOf(']')
+                                if (close < 0) throw Exception("bad frame at $off")
+                                val sp1 = line.indexOf(' ')
+                                val sp2 = line.indexOf(' ', sp1 + 1)
+                                if (sp1 < 0 || sp2 < 0) throw Exception("bad frame header: $line")
+                                val fseq = line.substring(1, sp1).toIntOrNull() ?: -1
+                                val flen = line.substring(sp1 + 1, sp2).toIntOrNull() ?: -1
+                                if (fseq != seq) throw Exception("frame seq gap: got $fseq want $seq")
+                                val hex = line.substring(sp2 + 1, close)
+                                if (hex.length != flen * 2) throw Exception("frame len mismatch")
+                                val bytes = ByteArray(flen)
+                                for (i in 0 until flen) {
+                                    bytes[i] = ((hexNybble(hex[2 * i]) shl 4) or hexNybble(hex[2 * i + 1])).toByte()
                                 }
+                                buffer.write(bytes)
+                                got += flen
+                                seq++
                             }
-                        }
-                        0x03 -> {
-                            val deviceCrc = if (pkt.size >= 5) le32(pkt, 1) else null
-                            val data = buffer.toByteArray()
-                            if (expected > 0 && data.size < expected) {
-                                throw Exception("short transfer (${data.size}/$expected B)")
+                            line.startsWith("OK") -> {
+                                if (got <= 0) throw Exception("OK with no frames at $off")
+                                break
                             }
-                            if (deviceCrc != null) {
-                                val local = streamCrc32(data)
-                                if (local != deviceCrc) {
-                                    throw Exception("stream CRC mismatch device=0x${java.lang.Long.toHexString(deviceCrc)} local=0x${java.lang.Long.toHexString(local)}")
-                                }
-                            }
-                            log("FT DONE run #$runId bytes=${data.size} attempts=$attempt")
-                            return DownloadedRun(runId, parseTimestamp(data), data)
+                            line.startsWith("E ") -> throw Exception("device error ${line.substring(2)} at $off")
+                            else -> log("unexpected line: $line")
                         }
-                        0x04 -> {
-                            val code = if (pkt.size > 1) pkt[1].toInt() and 0xFF else 0
-                            throw Exception("device FT error 0x${code.toString(16)} at ${buffer.size()} B")
-                        }
-                        else -> log("unknown FT packet 0x${(pkt[0].toInt() and 0xFF).toString(16)}")
+                    }
+                    if (got <= 0) throw Exception("request timeout at $off/${expected} B")
+
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastProgressMs >= 250) {
+                        lastProgressMs = nowMs
+                        emit(mapOf(
+                            "type" to "ft_progress",
+                            "runId" to runId,
+                            "bytes" to buffer.size(),
+                            "expected" to expected,
+                        ))
                     }
                 }
-                throw Exception("FT total timeout at ${buffer.size()} B")
+
+                if (buffer.size() < expected) throw Exception("short pull (${buffer.size()}/$expected B)")
+
+                val data = buffer.toByteArray()
+                verifyTrailerCrc(data)
+                log("pull DONE run #$runId bytes=${data.size} attempts=$attempt")
+                return DownloadedRun(runId, parseTimestamp(data), data)
             } catch (e: Exception) {
                 lastError = e
-                log("FT run #$runId attempt $attempt failed at ${buffer.size()} B: ${e.message}")
+                log("pull run #$runId attempt $attempt failed at ${buffer.size()} B: ${e.message}")
                 try { manager?.shutdown() } catch (_: Exception) {}
                 manager = null
-                if (attempt < MAX_RESUME_ATTEMPTS) {
-                    Thread.sleep((2_000L * attempt).coerceAtMost(8_000L))
+                if (attempt < MAX_FRESH_ATTEMPTS) {
+                    Thread.sleep((2_000L * attempt).coerceAtMost(6_000L))
                     if (waitForAdvertisement(address, 10_000L)) {
-                        /* V1.34: the device JUST recovered its BLE stack
-                           (post-abort force-recover). Give it 1 s before
-                           connectGatt or the connect hits status 147. */
                         Thread.sleep(1_000)
                     }
                 }
             }
         }
         try { manager?.shutdown() } catch (_: Exception) {}
-        throw lastError ?: Exception("FT failed")
+        throw lastError ?: Exception("pull failed")
     }
 
     fun downloadRuns(address: String, runIds: List<Int>): BatchResult {
@@ -376,16 +408,15 @@ class NordicBleDownloader(private val context: Context) {
         synchronized(logs) { logs.clear() }
         val done = mutableListOf<DownloadedRun>()
         val failed = mutableListOf<FailedRun>()
+        val dirCache = mutableMapOf<Int, PullDirEntry>()
 
-        log("nordic batch start: address=$address runs=${runIds.joinToString(",") { "#$it" }}")
+        log("pull batch start: address=$address runs=${runIds.joinToString(",") { "#$it" }}")
         for ((index, runId) in runIds.withIndex()) {
             if (cancelled) break
             if (index > 0) Thread.sleep(750)
             try {
-                val run = downloadOne(address, runId)
+                val run = downloadOne(address, runId, dirCache)
                 done.add(run)
-                // V1.41: Stream completed run bytes back to Dart immediately so the
-                // UI can save them incrementally without connection-churn disconnects!
                 emit(mapOf(
                     "type" to "ft_run_complete",
                     "runId" to run.id,
@@ -398,14 +429,21 @@ class NordicBleDownloader(private val context: Context) {
             }
         }
 
-        log("nordic batch end: ok=${done.size} failed=${failed.size}")
+        log("pull batch end: ok=${done.size} failed=${failed.size}")
         return BatchResult(done, failed, synchronized(logs) { logs.toList() })
     }
 
+    /**
+     * Same JSON shape the legacy run-list characteristic produced, so the
+     * Dart side is unchanged: [{"id":..,"ts":..,"size":..,"side":..},..]
+     */
     fun readRunListJson(address: String): String {
         val manager = newConnectedManager(address)
         return try {
-            manager.readRunList()
+            val entries = pullDirectory(manager)
+            entries.joinToString(",", "[", "]") { e ->
+                "{\"id\":${e.id},\"ts\":${e.ts},\"size\":${e.sz - 22},\"side\":${e.side}}"
+            }
         } finally {
             manager.shutdown()
         }

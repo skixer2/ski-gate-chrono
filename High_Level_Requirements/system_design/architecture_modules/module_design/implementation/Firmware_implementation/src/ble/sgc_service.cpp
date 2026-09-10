@@ -13,6 +13,7 @@
  */
 
 #include "sgc_service.h"
+#include "pull_transfer.h"
 #include "file_transfer.h"
 #include "../state_machine/state_machine.h"
 #include "../storage/spi_flash.h"
@@ -50,12 +51,16 @@ static BLEByteCharacteristic    char_flash_used(SGC_UUID("ABC7"), BLERead | BLEN
 static BLECharacteristic        char_run_info (SGC_UUID("ABC8"), BLERead | BLENotify, 6);  // heap (tiny)
 static BLECharacteristic        char_run_list (SGC_UUID("ABC9"), BLERead, 512);            // heap (JSON)
 
-/* ── File transfer ────────────────────────────────────────────── */
-static BLECharacteristic        char_ft_req (SGC_UUID("ABCA"), BLEWrite, 8);
+/* ── File transfer / PULL CONSOLE (FW 5.76) ───────────────────── */
+/* ABCA is now the pull console: phone writes ASCII requests, device
+   notifies text frames (PULL_TRANSFER_REDESIGN.md IR-1). Legacy push-FT
+   is disabled (FWR-5) — binary CMD_START writes are ignored. */
+static BLECharacteristic        char_ft_req (SGC_UUID("ABCA"), BLEWrite | BLENotify, 247);
 static BLECharacteristic        char_ft_stream (SGC_UUID("ABCD"), BLENotify, 247);
 static BLEByteCharacteristic    char_cal       (SGC_UUID("ABD0"), BLERead | BLENotify);
 
 /* V5.56: Keep-Alive State */
+static bool g_advertising = false;   /* 5.76: adv flag for status JSON */
 static uint32_t g_last_heartbeat_ms = 0;
 static uint8_t  g_heartbeat_seq = 0;
 
@@ -123,6 +128,17 @@ static void on_ft_request(BLEDevice c, BLECharacteristic ch) {
     (void)c;
     const uint8_t* data = ch.value();
     int len = ch.valueLength();
+    sgc_pull_touch();               /* any console write feeds the watchdog */
+    if (len > 0 && data[0] >= 0x20 && data[0] <= 0x7E) {
+        /* ASCII request line → pull protocol (capture only; poll executes) */
+        char line[80];
+        int n = (len < (int)sizeof(line) - 1) ? len : (int)sizeof(line) - 1;
+        memcpy(line, data, n);
+        line[n] = '\0';
+        sgc_pull_handle_line(line, true);
+        return;
+    }
+    /* Legacy binary push-FT command (disabled in 5.76 — no-op guard inside) */
     sgc_ble_ft_on_request(data, len);
 }
 
@@ -173,10 +189,10 @@ void sgc_ble_restart_advertising(const char* why)
        bare advertise() is a no-op. Full stop → restore ADV payload → start.
        Do NOT disconnect here — caller decides; disconnect while already in
        BLEDisconnected handler is unsafe / recursive. */
-    BLE.stopAdvertise();
+    BLE.stopAdvertise(); g_advertising = false;
     BLE.setLocalName(g_dev_name);
     BLE.setAdvertisedService(svc);
-    BLE.advertise();
+    BLE.advertise(); g_advertising = true;
     if (why) {
         json_begin();
         json_kv("ev", "ble_adv");
@@ -195,7 +211,7 @@ void sgc_ble_force_recover(const char* why)
     const char* reason = why ? why : "state";
 
     sgc_ble_ft_abort(reason);
-    BLE.stopAdvertise();
+    BLE.stopAdvertise(); g_advertising = false;
     if (BLE.connected()) {
         BLE.disconnect();
         /* A few short polls let Cordio finish link teardown. Non-blocking. */
@@ -216,6 +232,7 @@ void sgc_ble_force_recover(const char* why)
 }
 
 bool sgc_ble_central_connected() { return g_central_connected; }
+bool sgc_ble_advertising() { return g_advertising; }   /* 5.76 FWR-4 */
 
 static void on_ble_connected(BLEDevice central)
 {
@@ -223,6 +240,7 @@ static void on_ble_connected(BLEDevice central)
     g_sm.set_hold_sleep(true);
     g_last_ble_activity_ms = millis();  // V5.07
     sgc_ble_ft_link_ready();  // V5.72: fresh link = clean controller TX queue
+    sgc_pull_touch();          // 5.76: first request arms the watchdog
     json_begin();
     json_kv("ev", "ble_conn");
     Serial.print(','); json_kv("addr", central.address().c_str());
@@ -231,6 +249,7 @@ static void on_ble_connected(BLEDevice central)
 
 static void on_ble_disconnected(BLEDevice central)
 {
+    sgc_pull_link_reset();      // 5.76: pull session + watchdog die with the link
     (void)central;
     g_central_connected = false;
     g_last_ble_activity_ms = millis();  // V5.07: prevent immediate zombie re-trigger after real disconnect
@@ -288,6 +307,7 @@ static void sgc_ble_add_service()
 
 void sgc_ble_init()
 {
+    sgc_pull_init();
     sgc_ble_add_service();
 
     sgc_ble_config_load();
@@ -324,7 +344,7 @@ void sgc_ble_init()
        Min: 32 * 1.25 = 40ms, Max: 48 * 1.25 = 60ms. */
     BLE.setConnectionInterval(32, 48); 
 
-    BLE.advertise();
+    BLE.advertise(); g_advertising = true;
 
     g_last_ble_activity_ms = millis();  // V5.07: boot counts as activity
 }
@@ -341,7 +361,7 @@ bool sgc_ble_radio_restart(const char* why)
        BLE.poll()/HCI dispatch; BLE.end() tears down the very stack that is
        dispatching it). Use from serial, stream-end, or recovery escalation. */
     sgc_ble_ft_abort(reason);
-    BLE.stopAdvertise();
+    BLE.stopAdvertise(); g_advertising = false;
     if (BLE.connected()) {
         BLE.disconnect();
         /* A few short polls let Cordio finish link teardown. */
@@ -393,7 +413,7 @@ bool sgc_ble_radio_restart(const char* why)
     BLE.setAdvertisedService(svc);
     DeviceState st = g_sm.state();
     if (st == DeviceState::SLEEP || st == DeviceState::POST_RUN)
-        BLE.advertise();
+        BLE.advertise(); g_advertising = true;
 
     g_last_ble_activity_ms = millis();  // V5.07: fresh start after radio restart
 
@@ -436,12 +456,12 @@ void sgc_ble_update_state(DeviceState s)
             BLE.setLocalName(g_dev_name);
         } else {
             BLE.setAdvertisingInterval(3200);  // 3200 * 0.625 ms = 2000 ms
-            BLE.advertise();
+            BLE.advertise(); g_advertising = true;
         }
         break;
     default:
         /* ARMED/LOGGING — save power, prevent brown-out; keep link if any */
-        BLE.stopAdvertise();
+        BLE.stopAdvertise(); g_advertising = false;
         break;
     }
     uint8_t sf = char_state.value() & 0xE0;
@@ -509,6 +529,8 @@ void sgc_ble_set_run_count(uint16_t count)
 /* ═══════════════════════════════════════════════════════════════ */
 
 extern "C" {
+    /* 5.76: pull console char accessor (pull_transfer.cpp) */
+    BLECharacteristic* sgc_ble_console_char() { return &char_ft_req; }
     BLECharacteristic* sgc_ble_ft_request_char() { return &char_ft_req; }
     BLECharacteristic* sgc_ble_ft_stream_char()  { return &char_ft_stream; }
 }

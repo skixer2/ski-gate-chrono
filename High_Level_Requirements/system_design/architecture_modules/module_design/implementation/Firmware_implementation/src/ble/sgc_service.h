@@ -24,6 +24,7 @@ void sgc_ble_force_recover(const char* why = nullptr);
 bool sgc_ble_radio_restart(const char* why = nullptr);
 /** True while a central is connected (updated on connect/disconnect events). */
 bool sgc_ble_central_connected();
+bool sgc_ble_advertising();   /* 5.76: ADV flag for status JSON */
 
 void request_ble_radio_restart(const char* why = nullptr);  // V5.07: declared here for file_transfer.cpp
 
