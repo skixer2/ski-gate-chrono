@@ -499,8 +499,10 @@ sgc_context_gemini_01.md (marked frozen). Historical sections preserved.
 **Date:** 2026-09-10 · **Status:** accepted (JP directives, documentation-only)
 
 The custom production board uses the **u-blox ANNA-B402** (open CPU,
-nRF52833): more powerful than the B112 and able to run the exact same
-firmware code as the B112-based Nicla Sense ME line. The **companion
+nRF52833). Decisive criterion (JP, 2026-09-10): the **B402 is open CPU** —
+we run our own firmware on it, the exact same code as the B112-based Nicla
+Sense ME line — while the **B412 is a u-connect module** (u-blox's closed
+AT-command stack, cannot host our code) and is therefore rejected. The **companion
 carrier PCB concept is dropped** — there is no Nicla-on-carrier production
 phase. Hardware phases: Nicla Sense ME prototypes (P0) → standalone custom
 PCB with ANNA-B402 (P1+). B112 pin-map tables in the hardware architecture

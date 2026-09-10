@@ -1281,3 +1281,9 @@ sections/ledgers preserved (not rewritten).
 - **Companion carrier PCB DROPPED:** production = Nicla prototypes (P0) →
   standalone custom PCB ANNA-B402 (P1+). No Nicla+carrier phase.
   sgc_production_strategy.md v1.6; hardware arch v2.4; BOM note added.
+
+### 2026-09-10 09:28 — AD-019 rationale corrected (JP)
+
+B402 chosen because **open CPU** (own firmware, same code as B112/Nicla
+line); B412 rejected because **u-connect** (closed AT stack — cannot run
+our code). Hardware arch v2.4 + AD-019 wording updated accordingly.

@@ -1,6 +1,6 @@
 # SGC — Architecture: Hardware (v2.4 — Pole-Mount)
 
-*2026-09-10 — v2.4 (JP): Custom board module = **ANNA-B402** (u-blox open CPU, nRF52833) — more capable than B112 and runs the exact same code as the Nicla line. **Companion/carrier-PCB concept DROPPED**: no Nicla-on-carrier production phase — Nicla is the prototype platform (P0), the standalone custom PCB (ANNA-B402) carries all later phases. Pin-map sections below still describe the B112 pinout — revalidate against the B402 datasheet during the PCB redesign.*
+*2026-09-10 — v2.4 (JP): Custom board module = **ANNA-B402** (u-blox open CPU, nRF52833) — **open CPU = we run our own firmware**, the exact same code as the B112/Nicla line. The B412 was rejected because it is a **u-connect** module (u-blox's closed AT-command stack — cannot host our code). **Companion/carrier-PCB concept DROPPED**: no Nicla-on-carrier production phase — Nicla is the prototype platform (P0), the standalone custom PCB (ANNA-B402) carries all later phases. Pin-map sections below still describe the B112 pinout — revalidate against the B402 datasheet during the PCB redesign.*
 
 *2026-09-10 — v2.3: Synced to HLR v6.0 (piezo-button era): power table SLEEP row corrected (no LDC polling — LDC off board); sleep model = immediate SLEEP + System Off after 1 h (F12). Arming/factory-reset behavior already correct since v2.2.*
 
@@ -24,7 +24,7 @@
 
 ### Terminology: ANNA-B402 Module vs Custom SGC PCB
 
-The production radio module is the **ANNA-B402** (u-blox open CPU, nRF52833 + BLE antenna in a single SMD package) — chosen 2026-09-10: more powerful than the B112 and able to run the exact same firmware code as the B112-based Nicla line. *(Historical note: v2.0–v2.3 of this doc specified ANNA-B112; an ANNA-B412 was evaluated in Aug 2026 — the B402 is the final choice.)*
+The production radio module is the **ANNA-B402** (u-blox open CPU, nRF52833 + BLE antenna in a single SMD package) — chosen 2026-09-10: more powerful than the B112 and able to run the exact same firmware code as the B112-based Nicla line. *(Historical note: v2.0–v2.3 specified ANNA-B112; the ANNA-B412 was considered in Aug 2026 but rejected — B412 is a **u-connect** module, while the **B402 is open CPU** and can run our own nRF52 firmware directly.)*
 It is NOT a bare chip — it's a complete subsystem that gets soldered onto a larger PCB.
 
 That larger PCB is the **carrier PCB** (custom SGC board, 22 × 55 mm, 4-layer) which:
