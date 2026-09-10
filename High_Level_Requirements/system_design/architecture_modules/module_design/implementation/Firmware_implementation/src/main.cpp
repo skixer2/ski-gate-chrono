@@ -738,7 +738,6 @@ void handle_serial()
         json_begin();
         json_kv("ev", "version");
         Serial.print(','); json_kv("ver", FW_VERSION);
-        Serial.print(','); json_kv_bool("adv", sgc_ble_advertising());   /* 5.76 FWR-4 */
         json_end();
         return;
     case 'R':
@@ -777,6 +776,7 @@ void handle_serial()
         Serial.print(','); json_kv("ldc_raw", (long)(g_ldc_inited ? g_ldc.data() : 0));
         Serial.print(','); json_kv("flash_pct", (long)g_runs.flash_used_pct());
         Serial.print(','); json_kv("ver", FW_VERSION);
+        Serial.print(','); json_kv_bool("adv", sgc_ble_advertising());   /* 5.76 FWR-4 */
         /* Non-destructive test-mode read — S04 must not toggle 'T' to query. */
         Serial.print(','); json_kv_bool("tm", test_mode_active());
         Serial.print(','); json_kv("strip_n", (long)g_led.strip_count());

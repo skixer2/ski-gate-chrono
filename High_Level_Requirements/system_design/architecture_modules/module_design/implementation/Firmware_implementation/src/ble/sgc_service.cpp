@@ -240,7 +240,9 @@ static void on_ble_connected(BLEDevice central)
     g_sm.set_hold_sleep(true);
     g_last_ble_activity_ms = millis();  // V5.07
     sgc_ble_ft_link_ready();  // V5.72: fresh link = clean controller TX queue
-    sgc_pull_touch();          // 5.76: first request arms the watchdog
+    /* 5.76 bench fix: do NOT arm the pull watchdog at connect — S22 service
+       discovery can exceed 2 s. It arms on the first console request only
+       (on_ft_request). Arming here killed every connect at exactly 2 s. */
     json_begin();
     json_kv("ev", "ble_conn");
     Serial.print(','); json_kv("addr", central.address().c_str());
