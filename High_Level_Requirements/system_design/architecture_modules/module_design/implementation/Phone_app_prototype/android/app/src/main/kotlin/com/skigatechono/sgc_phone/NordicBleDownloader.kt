@@ -236,10 +236,13 @@ class NordicBleDownloader(private val context: Context) {
     private fun verifyTrailerCrc(blob: ByteArray) {
         if (blob.size < 22) throw Exception("blob too short (${blob.size} B)")
         val cs = blob.size - 22
-        if ((blob[16].toInt() and 0xFF) != 0xC3 || (blob[17].toInt() and 0xFF) != 0x32) {
+        /* Trailer sits at the END of the on-disk run:
+           [header 16B][payload cs B][0xC3 0x32][CRC32 LE over payload] */
+        if ((blob[blob.size - 6].toInt() and 0xFF) != 0xC3 ||
+            (blob[blob.size - 5].toInt() and 0xFF) != 0x32) {
             throw Exception("CRC trailer magic mismatch")
         }
-        val expected = le32(blob, 18)
+        val expected = le32(blob, blob.size - 4)
         val crc = CRC32()
         crc.update(blob, 16, cs)
         if (crc.value != expected) {

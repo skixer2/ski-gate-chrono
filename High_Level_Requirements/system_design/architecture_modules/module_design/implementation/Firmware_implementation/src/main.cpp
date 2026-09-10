@@ -345,7 +345,7 @@ void handle_serial()
     h_args[0] = '\0';
     size_t h_len = 0;
     bool h_line_timeout = false;
-    if (c == 'h') {
+    if (c == 'h' || c == 'r') {   /* 5.76: 'r' needs its args too (pull) */
         h_len = read_rest_of_line(h_args, sizeof(h_args), 2000);
         h_line_timeout = (h_len == (size_t)-1);
         if (h_line_timeout) h_args[0] = '\0';  /* ensure NUL for safety */
@@ -467,14 +467,9 @@ void handle_serial()
     case 'd': g_runs.list_files(); return;
     case 'D': sgc_pull_handle_line("D", false); return;   /* 5.76 pull: dir */
     case 'r': {                                          /* 5.76 pull: chunk */
-        char rl[80]; int rn = 0;
-        while (Serial.available() && rn < (int)sizeof(rl) - 1) {
-            char rc = (char)Serial.read();
-            if (rc == '\n' || rc == '\r') break;
-            rl[rn++] = rc;
-        }
-        rl[rn] = '\0';
-        char full[84]; snprintf(full, sizeof(full), "r %s", rl);
+        /* Args come from h_args (full line buffered above, V4.45 pattern) —
+           a live Serial.read() here finds nothing: the line is consumed. */
+        char full[44]; snprintf(full, sizeof(full), "r %s", h_args);
         sgc_pull_handle_line(full, false);
         return; }
     case 'h': {

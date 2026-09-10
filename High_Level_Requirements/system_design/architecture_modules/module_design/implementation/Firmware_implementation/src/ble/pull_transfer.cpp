@@ -135,6 +135,9 @@ static void parse_request()
         long id = -1, off = -1, len = -1;
         if (sscanf(g_req, "r %ld %ld %ld", &id, &off, &len) != 3 ||
             id < 0 || off < 0 || len <= 0) {
+            Serial.print("{\"ev\":\"pull_dbg\",\"req\":\"");
+            Serial.print(g_req);
+            Serial.println("\"}");   /* 5.76 bench: why E 3 */
             strncpy(g_tail, "E 3", sizeof(g_tail));   /* malformed */
             g_tx = TxState::TAIL; g_tx_last_ms = millis();
             return;
