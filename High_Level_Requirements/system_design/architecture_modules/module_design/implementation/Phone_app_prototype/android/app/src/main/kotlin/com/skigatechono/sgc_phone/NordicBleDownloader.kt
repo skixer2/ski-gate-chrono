@@ -59,8 +59,12 @@ class NordicBleDownloader(private val context: Context) {
         private const val PULL_REQ_TIMEOUT_MS = 8_000L
         private const val PULL_TOTAL_TIMEOUT_MS = 120_000L
         private const val PULL_CHUNK = 512
-        private const val MAX_FRESH_ATTEMPTS = 3
-        private const val CONNECT_SETTLE_MS = 4_000L
+        /* 5.76 bench 14:40: wedges cluster inside the first ~15 s post-connect
+           (churn window). 8 attempts × stateless continue = batch completes. */
+        private const val MAX_FRESH_ATTEMPTS = 8
+        /* 1.37 A/B finally running: 4 s → 12 s settle — start pulling outside
+           Android's connection-parameter churn window (nRF Connect profile). */
+        private const val CONNECT_SETTLE_MS = 12_000L
     }
 
     data class DownloadedRun(val id: Int, val timestamp: Int, val data: ByteArray)
