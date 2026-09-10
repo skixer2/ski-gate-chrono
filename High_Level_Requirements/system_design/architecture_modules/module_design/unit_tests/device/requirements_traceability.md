@@ -29,7 +29,7 @@ Maps every v1 requirement to the tests that verify it.
 |----|-------------|------|-------------|--------|------------|-------|
 | **F01** | 100 Hz sensor acquisition ± 1% | U04 (descent triggers), U14 (compression flow) | | S01 (full run) | A01 | 🔧 Frequency verification needs oscilloscope; test mode exercises data flow |
 | **F02** | Linear ARMED pre-roll (cap 3000 ≈ 30 s @ 100 Hz; keep 1000 ≈ 10 s) | U09 (fill past ready), U10 (keeps filling), U11 (resets on re-arm); S05 | | S05 | A01 | Opt-A linear buffer, not circular 500 |
-| **F03** | Arm via 1000 ms inductive proximity | 🔧 | | | A01 | 🔧 Needs LDC1612 hardware + copper target disc at known distance |
+| **F03** | Arm via single piezo-button press (P0.02) | U01 | | | A01 | Bench device has the button — no extra hardware needed |
 | **F04** | Dual-mode barometric start: speed > 1.5 m/s OR drop > 2.0 m | U04 (speed), U05 (drop), U06 (no false trigger) | | S01 | A02 | |
 | **F05** | Drain pre-roll pop2+push1 (~1000 keep ≈ 10 s) | U13 (run cycle); S06 | | S06 | A02 | keep=1000 drain ~10.8 s on v4.79 |
 | **F06** | Auto-terminate after 10s flatline + stillness | U07 (flatline → POST_RUN), U08 (no premature stop) | | S01 | A02 | |
@@ -38,15 +38,15 @@ Maps every v1 requirement to the tests that verify it.
 | **F09** | Run metadata via BLE GATT | | I01 (read run count, run list) | | A03 | |
 | **F10** | Run file transfer via BLE + CRC32 | | I03 (file transfer, CRC) | | A03 | |
 | **F11** | Config R/W via BLE: name, arm side, discipline | | I02 (read config chars) | | | 🔧 Write + persist test planned (BLE write + reboot check) |
-| **F12** | Sleep after 5 min inactivity | U01 (SLEEP ↔ IDLE forced) | | | A04 | 🔧 Natural sleep timeout needs 5-minute wait; force-tested via serial |
-| **F13** | Wake from sleep via LDC1612 INTB | 🔧 | | | A04 | 🔧 Needs LDC1612 hardware + GPIO interrupt verification |
-| **F14** | Audible beeper when armed | 🔧 | | | | 🔧 Arm device, listen for beep (PWM on P0.09) |
+| **F12** | SLEEP immediately; System Off after 1 h unconnected | U01 (SLEEP ↔ IDLE forced) | | | A04 | Natural System-Off needs 1 h wait; forced via serial 'i' (constant SLEEP_SYSTEM_OFF_MS) |
+| **F13** | Wake from sleep via piezo button (GPIO sense) | 🔧 | | | A04 | Bench: button press wakes SLEEP/System Off — no extra hardware |
+| **F14** | No beeper in v1 (DNP footprint only) | — | | | | PCB inspection: footprint present, unpopulated — no audio test |
 | **F37** | Time sync from phone on every connect | | I01 (BLE connect triggers time write) | | | 📱 Phone writes `ABC0`; serial echo confirms |
 | **F38** | BLE MTU ≥ 247 | | I01 (verify MTU via BLE) | | | 🔧 BLE sniffer for definitive verification; test mode confirms connection |
 | **F39** | BLE bonding (LE Secure Connections) | 🔧 | | | | 🔧 Pair/unpair/reconnect cycle; ArduinoBLE handles bonding |
 | **F40** | BLE OTA firmware update | ⏳ | | | | ⏳ OTA trigger char added (ABCF); full DFU flow not yet tested |
 | **F41** | RGB LED visual status | 🔧 | | | | 🔧 Visual: verify LED pattern per state (onboard IS31FL3194) |
-| **F42** | Factory reset via 20s inductive hold | 🔧 | | S02 (serial factory reset) | | 🔧 Serial `R` tests flash reset; inductive hold needs LDC1612 |
+| **F42** | Factory reset via 5 presses in 3 s (button) | 🔧 | | S02 (serial factory reset) | | Serial `R` tests flash reset; button sequence testable on bench |
 | **F52** | ⚠️ v2 ONLY — UHF RFID footprint | | | | | ⚠️ |
 | **F53** | ⚠️ v2 ONLY — RFID inventory rounds | | | | | ⚠️ |
 | **F54** | ⚠️ v2 ONLY — RSSI nearest-tag | | | | | ⚠️ |
@@ -90,7 +90,7 @@ Maps every v1 requirement to the tests that verify it.
 | **F48** | Browse cloud runs for comparison | ☁️ | | | | ☁️ Requires cloud server |
 | **F49** | Single-arm mode gate classification | 📱 | | | | 📱 Dart test: single-arm run, verify gate side from device config |
 | **F50** | GDPR deletion with warning | ☁️ | | | | ☁️ Requires cloud server; 📱 verify warning dialog |
-| **F51** | Display calibration status + prevent arming if < 2 | 📱 | | | | 📱 Dart test: read accuracy from BLE, verify arming refusal |
+| **F51** | ⚠️ N/A (v1) — BMM150 unused, calibration display dropped | — | | | | Dropped in v6.0 |
 | **F57.1** | Course setup Mode A (sequential recording) | 📱 | | | | 📱 Dart test: tap sequence, verify gate list |
 | **F57.2** | Course setup Mode B (update existing) | 📱 | | | | 📱 Dart test: move/delete/add gates |
 | **F57.3** | Dual course view (map ↔ list) | 📱 | | | | 📱 Dart widget test: toggle view |
@@ -125,13 +125,13 @@ Maps every v1 requirement to the tests that verify it.
 | **H01** | −20°C to +40°C operating | 🔧 Environmental chamber |
 | **H02** | ≥ 8 hours battery at −10°C | 🔧 Cold chamber + battery logger |
 | **H03** | IP67 enclosure | 🔧 IP67 certification lab |
-| **H04** | Inductive trigger through shell | 🔧 Bench: LDC1612 with enclosure material between coil and target |
+| **H04** | ⚠️ v2 only — inductive through shell (LDC1612 removed from v1 board) | ⚠️ v2 |
 | **H05** | Module thickness < 16 mm | 🔧 Caliper measurement |
 | **H06** | Weight ≤ 40 g (prototype) | 🔧 Scale |
 | **H07** | ≥ 10 runs storage before sync | 🔧 Fill flash with runs, verify count |
-| **H08** | No ferromagnetic near BMM150 | 🔧 BMM150 calibration with Qi coil + transducer powered |
+| **H08** | ⚠️ N/A (v1) — BMM150 unused, no Qi coil | — |
 | **H09** | 200g shock survival | 🔧 Shock table / drop test |
-| **H10** | Qi wireless charging | 🔧 Qi pad, measure charge time + verify LED |
+| **H10** | USB-C charging (sealable tethered cap) | 🔧 USB-C PSU: verify charging, cap seals (IP67) |
 | **H11** | ⚠️ v2 ONLY — UHF RFID footprint | ⚠️ |
 | **H12** | ⚠️ v2 ONLY — RFID/BMM150 non-interference | ⚠️ |
 | **H13** | DW3000 UWB footprint unpopulated | 🔧 Visual PCB inspection: verify QFN footprint, keepout, SPI traces, CSn pad; verify unpopulated = no effect on BMM150 |
@@ -144,13 +144,13 @@ Maps every v1 requirement to the tests that verify it.
 |----|-------------|-------------|
 | **I01** | BHI260AP ↔ nRF52832 I²C | 🔧 I²C bus analyzer + FIFO watermark scope |
 | **I02** | BMP390 ↔ nRF52832 I²C | 🔧 I²C bus analyzer, verify 100 Hz read rate |
-| **I03** | LDC1612 ↔ nRF52832 I²C + INTB | 🔧 I²C analyzer + scope on INTB for wake-from-sleep |
+| **I03** | REMOVED — LDC1612 off board; P0.02 = piezo button (I12) | — |
 | **I04** | SPI Flash ↔ nRF52832 SPI | U12 (flash self-test) — exercises read/write/erase |
 | **I05** | Device ↔ Phone BLE 5.0 + GATT + DFU | I01 (connect + read chars), I03 (file transfer) |
-| **I06** | Left ↔ Right cross-arm proximity | 🔧 Bench: bring two arms together, verify each LDC1612 triggers independently |
+| **I06** | ⚠️ v2/historical — cross-arm proximity abandoned (v1: independent button arm) | ⚠️ |
 | **I07** | Phone ↔ Cloud HTTPS | ☁️ Requires cloud server |
-| **I08** | Beeper ↔ nRF52832 GPIO PWM | 🔧 Scope on P0.09 during arming |
-| **I09** | Qi ↔ Battery charger | 🔧 Bench: Qi pad → measure charge current |
+| **I08** | Beeper DNP — no beeper in v1 (F14) | — |
+| **I09** | USB-C (GCT USB4085) → BQ25120 charging | 🔧 USB-C PSU → measure charge current |
 | **I10** | ⚠️ v2 ONLY — RFID ↔ nRF52832 SPI | ⚠️ |
 | **I11** | DW3000 UWB ↔ nRF52832 SPI | 🔧 Visual: footprint + traces; scope: verify CSn never asserted, power-gate OFF |
 
@@ -162,7 +162,7 @@ Maps every v1 requirement to the tests that verify it.
 |----|-------------|------|-------------|--------|------------|-------|
 | **R01** | False arm reject (< 500 ms) | 🔧 | | | | 🔧 Serial pulse < 500ms, verify no state change |
 | **R02** | Aborted start timeout (30s) | 🔧 | | | | 🔧 Arm, wait 30s, verify → IDLE |
-| **R03** | Mid-run inductive trigger ignored | 🔧 | | | | 🔧 Bench: trigger LDC1612 during LOGGING, verify no effect |
+| **R03** | Mid-run button press ignored | 🔧 Bench: press button during LOGGING, verify no effect |
 | **R04** | Low-battery shutdown < 3.3V | 🔧 | | | | 🔧 Variable PSU → simulate VBAT drop, verify file closed |
 | **R05** | Flash CRC mismatch → mark corrupt | | I03 (CRC verification) | | | 🔧 Inject bit errors in flash, verify run skipped in list |
 | **R06** | BLE disconnect mid-transfer resume | | I03 (partial transfer recovery) | | | 🔧 Disconnect during chunk streaming, reconnect |
@@ -199,10 +199,10 @@ Maps every v1 requirement to the tests that verify it.
 
 | ID | Reason |
 |----|--------|
-| F03 | LDC1612 hardware needed for proximity test |
+| F03 | Bench device has the button — testable directly |
 | F08 auto-overwrite | Requires 12+ runs in flash |
-| F13 wake-from-sleep | LDC1612 INTB → GPIO wake needs hardware |
-| F14 beeper | Audio verification — manual listen test |
+| F13 wake-from-sleep | Button wake — no extra hardware needed |
+| F14 beeper | Dropped in v1 (DNP footprint) — no audio verification needed |
 | F38 MTU | BLE sniffer needed |
 | F39 bonding | Manual pair/unpair cycle |
 | F40 OTA DFU | Not yet implemented (planned) |

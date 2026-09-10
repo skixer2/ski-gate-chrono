@@ -1,5 +1,6 @@
-# SGC — High-Level Requirements (v5.9 — Pole-Mount)
+# SGC — High-Level Requirements (v6.0 — Piezo-Button Pole-Mount)
 
+*2026-09-10 — v6.0: Arming/wake/factory = sealed piezo button (LDC1612 removed from board 2026-08-22; reed switch never built). F04 drop-only start trigger. F02/F05 corrected to Flash pre-roll reality (10 s, pop-2/push-1). F12 immediate SLEEP + System Off after 1 h. F38 MTU 500+. F14 no beeper (DNP). F51/H08 N/A (BMM150 unused). H10/I09 Qi → sealable USB-C. F03a proposed (one-press arms both). JP directives, doc-only — code untouched.*
 *2026-08-11 — v5.9: AD-017 pole-mount pivot. H04/H09/I06 → v2 only. H05/H06 relaxed for pole mount. H14/I12 added for reed switch arming.*
 *2026-06-09 — v5.7: Post-review fixes — F58–F61, P09, H11–H12, I10, course_gates schema marked v2 only. Silver tier removed.
 *2026-06-09 — v5.6: F04 dual start detection (speed OR drop). F52–F57 marked v2 only (RFID unpopulated). F41 SETUP/white reserved for v2.*
@@ -14,25 +15,26 @@
 | ID | Requirement | Verification |
 |---|---|---|
 | **F01** | The device shall acquire 9-axis fused sensor data (quaternion + linear acceleration) at 100 Hz ± 1% | Oscilloscope on interrupt pin, sample count vs. elapsed time |
-| **F02** | The device shall maintain a 5-second rolling RAM ring buffer (500 samples) at all times while armed | Timestamped buffer dump, verify 500-sample depth |
-| **F03** | The device shall arm the ring buffer upon detecting a continuous **1000 ms ± 100 ms** inductive proximity trigger, independently on each arm | Bench: metal target on LDC1612, measure arm latency |
-| **F04** | The device shall detect run start via **dual-mode barometric trigger**: (A) vertical descent > 1.5 m/s sustained for 200 ms, OR (B) cumulative vertical drop > 2.0 m from arming pressure P₀. **Whichever fires first.** P₀ captured at arming; cumulative drop resets to zero on arm. No athlete toggle needed — both conditions monitored simultaneously | Pressure chamber or field: descending elevator / actual slope; flat start → verify drop mode triggers after 2.0m descent |
-| **F05** | The device shall flush the 5-second pre-start buffer to Flash while simultaneously logging live data — draining 2 historical samples per 10 ms cycle, completing the 500-sample drain in 2.5 s (250 cycles) without dropping samples | File inspection: verify pre-start timestamps precede start, no chronological gaps |
+| **F02** | The device shall maintain a **10-second (1000-sample) linear Flash pre-roll** while armed. The ARM phase fills up to 3000 slots (30 s cap); at run start the most recent 1000 frames (10 s) are retained as pre-start history. Storage is Flash (FlashRing, 4000×20 B slots at 0x0000–0x13FFF), **not RAM** — the RAM-ring design was abandoned after nRF52 heap pressure (v4.60). *Code refs: flash_layout.h, ARM_FILL_CAP 3000; unit tests S05/S06.* | S05 ring-fill + S06 ring-drain green; dump a run: 10 s of pre-start timestamps precede start, contiguous, no gaps |
+| **F03** | The device shall arm upon a **single press of the sealed piezo button** (P0.02, falling edge, 20 ms debounce), independently on each device (device mounts on the ski pole). *The inductive/LDC1612 approach is abandoned: LDC1612 physically removed from the board (2026-08-22); inductance sensing on metallic poles proved unmanageable.* | Bench: press button in SLEEP → ARMED within 1 s, LED chase confirms; accidental press bounded by 30 s arm timeout |
+| **F03a** | ⚠️ **PROPOSED — NOT IMPLEMENTED** — Pressing the button on ONE device shall arm BOTH devices (e.g., arm flag broadcast in the advertising payload; peer devices scan-and-arm). Removes the need to press two buttons at the start gate | Design note only; deferred until pull transfer (v1.x) is validated |
+| **F04** | The device shall detect run start via **cumulative barometric drop**: vertical drop > 2.0 m from arming pressure P₀. P₀ captured at arming; cumulative drop resets to zero on arm. *The dual-mode descent-speed trigger (v5.6 option A) is dropped — only the drop condition is retained.* | Pressure chamber or field: verify start triggers after 2.0 m descent from P₀; flat ground → no start |
+| **F05** | On run start the device shall merge the 10-s Flash pre-roll into the run while simultaneously logging live data: per 10 ms cycle **2 backlog samples are popped while 1 new live sample is pushed** (net −1/cycle) — the 1000-sample backlog fully merges in ~10 s with no dropped samples. *(The old "500-sample drain in 2.5 s" figure ignored ongoing acquisition and is withdrawn — the code has always pushed live samples during drain.)* | File inspection: pre-start timestamps precede start, no chronological gaps; S06 drain unit test green |
 | **F06** | The device shall auto-terminate logging after 10 continuous seconds of barometric flatline (±0.3 m/s) combined with IMU stillness | Post-run: verify file is closed, device enters low-power sleep |
 | **F07** | The device shall apply adaptive bit-packing (3 packet types) and store compressed data to 2 MB SPI Flash | Decode stored file, verify compression ratio ≥ 35% vs. raw 20B/sample |
 | **F08** | The device shall implement a **circular Flash buffer**: when full, the oldest run is automatically overwritten. BLE advertises Flash % used and oldest run age | Fill Flash with 12+ runs, verify 13th overwrites 1st without error |
 | **F09** | The device shall expose run metadata (count, timestamps, sizes, Flash %) via BLE GATT service | BLE scanner / phone app: read characteristics |
 | **F10** | The device shall transfer selected run files to the phone via BLE with CRC32 integrity verification | Download file, compare CRC; inject bit errors, verify rejection |
 | **F11** | The device shall expose read/write configuration parameters via BLE: device name, left/right arm designation, discipline (SL/GS/SG/DH), mount type (arm/pole — reserved for future use) | Phone writes parameter, reads back, verify persistence across reboot |
-| **F12** | The device shall enter low-power sleep after 5 minutes of inactivity (no arming, no BLE connection). RTC keeps running, RAM is retained | Stopwatch: arm device at 4:59 — still armed; wait 5:01 — verify sleep; bring forearms together → verify instant wake without reboot |
-| **F13** | The device shall wake from sleep upon inductance switch activation | Bring forearms together, verify device wakes to IDLE within 2 s. *Feasibility: LDC1612 INTB pin → nRF52832 GPIO interrupt. The nRF52 stays in System ON low-power sleep (WFE) — RAM and RTC preserved, no reboot needed. Wake latency is negligible (< 100 µs from INTB to CPU active).* |
-| **F14** | The device shall include an audible beeper to signal that the RAM ring buffer is armed (active). *Hardware: surface transducer driven through the enclosure wall (PWM → piezo element bonded to inner enclosure surface). Preserves IP67 — no sound port needed.* | Arm trigger → beep; disarm → no beep; field: audible through helmet |
+| **F12** | The device shall enter low-power **SLEEP immediately** when idle — SLEEP is the primary waiting state (entered at boot, after POST_RUN, and on arm timeout; slow 2 s advertising). After **1 h** of unconnected SLEEP it enters **System Off** (deep shutdown, button-wake only). While BLE-connected the device stays in SLEEP. *Supersedes the 5-minute-inactivity rule (code: SLEEP_SYSTEM_OFF_MS = 3600000).* | Boot → status JSON shows st:SLEEP; leave unattended 1 h → serial {"ev":"sm","from":"SLEEP","to":"SYSTEM_OFF"}; button press wakes from System Off |
+| **F13** | The device shall wake from sleep on a **piezo button press** (P0.02 GPIO sense, wake source WAKE_BUTTON). System-On SLEEP wake is instant (< 100 ms, no reboot, no sensor re-init); System Off wake = cold boot via button sense (rr:4) | Press button in SLEEP → ARMED without reboot; press button in System Off → clean cold boot |
+| **F14** | The device shall **not include an audible beeper in v1**. The transducer footprint is kept **DNP (not populated)** on the custom PCB, reserved in case users request it. Arming feedback is visual only (LED, F41) | PCB inspection: beeper footprint present, unpopulated |
 | **F37** | The device shall receive the current UTC date and time from the phone on every BLE connection, before any other GATT interaction | Connect phone, disconnect, wait 1 hour, reconnect — verify time is re-synced |
-| **F38** | The device shall negotiate BLE ATT MTU to ≥ 247 bytes on connection to enable 244-byte file transfer chunks. Fall back to LE 1M PHY minimum; prefer LE 2M PHY for ≥ 20 KB/s throughput (P04) | BLE sniffer: verify MTU exchange on connect |
+| **F38** | The device shall negotiate the largest BLE ATT MTU available — **request 517, target ≥ 500 B effective payload per transfer request** (pull transport: a ≥ 500 B logical chunk = 2×244 B notifications if the stack caps MTU at 247, as observed on Cordio). Fall back to LE 1M PHY minimum; prefer LE 2M PHY (P04). *Aligns with PULL_TRANSFER_REDESIGN.md IR-3.* | BLE sniffer / serial log: verify MTU exchange on connect and negotiated value |
 | **F39** | The device shall support BLE bonding (LE Secure Connections, Just Works pairing) — bond on first connection, encrypt subsequent sessions. Bonding info persists across sleep (RAM retained) | Pair phone, disconnect, reconnect — verify encryption without re-pairing |
 | **F40** | The device shall support BLE OTA firmware update via Nordic DFU service. Firmware images are pushed from the phone | Flash known-good firmware, verify device boots new version; inject corrupted image, verify device rejects and retains previous version |
 | **F41** | The device shall include an RGB LED for visual status. **Onboard (Nicla stock):** IS31FL3194 I2C driver on Wire1 (P0.15/P0.16, 0x53) — off = sleep, blue breathing = BLE advertising. **Custom PCB only:** 5× SK6812-mini strip on P0.19 with sequential flowing-point animation (blue slow flowing = uncalibrated, solid blue chase = calibrated ≥2, green fast chase = armed, red fast chase = logging, yellow rapid blink = low battery/error). Co-located with the surface transducer inside the enclosure (light pipes through translucent polycarbonate). *White SETUP mode reserved for v2 (RFID).* | Visual: verify each color/pattern matches state machine state; verify LED changes from flowing to chase after figure-8 calibration |
-| **F42** | The device shall detect a **20-second continuous inductive hold** as a factory reset trigger: clear BLE bonding, reset device name to default, erase all run data from Flash, restart | Hold cross-arm proximity 20 s, verify LED flashes red 3×, reconnect → verify bonding lost, name = default, run count = 0 |
+| **F42** | The device shall detect a **5-presses-within-3-s sequence** on the piezo button as a factory reset trigger: clear BLE bonding, reset device name to default, erase all run data from Flash, restart. *(Supersedes the 20 s inductive/magnetic hold — no inductive sensor exists. Code: FACTORY_PRESS_COUNT=5, PRESS_WINDOW_MS=3000.)* | Bench: 5 quick presses → LED red 3× + reboot; reconnect → bonding lost, name = default, run count = 0; verify < 5 presses does nothing |
 | **F52** | ⚠️ **v2 ONLY** — UHF RFID reader footprint on PCB (Impinj E310), unpopulated in v1. Reserved for future gate identification if pressure-only detection proves insufficient | PCB inspection: verify footprint present, no IC populated |
 | **F53** | ⚠️ **v2 ONLY** — RFID inventory rounds at discipline rate: SL 5 Hz, GS 10 Hz, SG/DH 20 Hz. Single-tag inventory ≤ 15 ms | Bench: scope RF enable pin (v2 only) |
 | **F54** | ⚠️ **v2 ONLY** — RSSI-based nearest-tag selection when multiple gate tags are within range | Bench: two tags at known distances (v2 only) |
@@ -42,14 +44,17 @@
 
 ### Wake-from-Sleep Detail (F13)
 
-The device uses **System ON low-power sleep** (ARM WFE), not System OFF. RAM is retained, the 32 kHz LFCLK keeps running, and the RTC peripheral continues counting. The LDC1612 is configured for low-duty-cycle monitoring (~10 Hz, ~50 µA). When the athlete brings forearms together (cross-arm proximity):
+SLEEP is the primary waiting state — entered immediately at boot, after POST_RUN, and on arm timeout. The device uses **System ON low-power sleep**: RAM retained, 32 kHz LFCLK and RTC running, BLE advertising at a slow 2 s interval.
 
-1. LDC1612 detects the approaching copper/iron target disc on the opposite arm → threshold crossing → asserts INTB
-2. INTB triggers nRF52832 GPIO interrupt → CPU wakes from WFE
-3. State machine transitions from SLEEP → IDLE
-4. BLE advertising resumes
+When the athlete presses the piezo button:
 
-Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no sensor re-initialization. Total time from forearms-together to BLE advertising: < 100 ms (dominated by BLE stack initialization, which may already be initialized if RAM was retained). RTC time is preserved.
+1. P0.02 falling edge (GPIO SENSE) wakes the CPU
+2. State machine transitions SLEEP → ARMED (P₀ captured)
+3. LED confirms arming (green chase, F41)
+
+Wake latency < 100 ms — no reboot, no sensor re-initialization. RTC time preserved.
+
+After **1 h** of unconnected SLEEP the device enters **System Off** (T4): full shutdown, no advertising, no serial — only a button press (GPIO SENSE low) wakes it into a clean cold boot (rr:4). A BLE connection holds SLEEP indefinitely (no System Off while connected, V5.00).
 
 ---
 
@@ -87,7 +92,7 @@ Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no
 | **F48** | The phone shall allow browsing and selecting runs stored on the cloud (not just locally) for comparison views (F22, F32, F34). The user may select one run for solo viewing or two runs for simultaneous comparison — runs can be from the same or different athletes | Login, browse cloud runs across group, select two runs from different athletes, verify comparison renders correctly |
 | **F49** | When operating in single-arm mode (R08), the phone shall use the device's configured arm side (F11) for gate classification. For GS/SG/DH: gate side is determined directly from arm side. For SL: when comparing two athletes' runs, the phone shall compare same-side arm data only | Compare two SL runs of different arm sides, verify each run shows only its own side's gates; compare two same-side SL runs, verify full comparison |
 | **F50** | The phone shall implement a data deletion procedure: upon authenticated request, permanently delete all athlete data (runs, timestamps, barometric_data, profile) from the cloud. Display a prominent, explicit warning to the athlete listing exactly what will be deleted before confirming. This action is irreversible | Initiate deletion, verify warning dialog appears, confirm, verify all cloud records for the athlete return 404 |
-| **F51** | The phone shall display the device's magnetometer calibration status (BHI260AP accuracy field 0–3) on the device screen. Show a visual indicator: 🔴 0–1 = calibrate now (do figure-8 motion), 🟢 2–3 = ready. Prevent arming/logging if accuracy < 2 (P05) | Connect uncalibrated device, verify red indicator; perform figure-8, verify transitions to green; attempt to arm while red, verify phone warns/refuses |
+| **F51** | ⚠️ **NOT APPLICABLE (v1)** — Magnetometer calibration display dropped: the BMM150 is not used in the v1 product and there is no magnetometer calibration gating. (Quaternion fusion-accuracy gating remains, see P05.) | — |
 | **F57.1** | The phone shall support **Mode A (New Course)** course setup: trainer walks the course sequentially from START to FINISH, tapping the phone at each gate position to record it. Each tap captures the phone's barometric pressure (ΔP from START) and GPS position. The phone auto-increments the gate counter. START is always gate 0 — the trainer taps once to confirm START, then walks to and taps each subsequent gate | Walk a known course, tap at each gate, verify recorded gate count = physical gate count; verify gate numbers increment sequentially from 0 |
 | **F57.2** | The phone shall support **Mode B (Update Existing Course)** course setup: phone detects the nearest existing gate via dual-signal matching — GPS proximity (±5 m) combined with pressure delta comparison (±50 Pa). The trainer can perform three actions at the detected gate: **Move** (re-record GPS + pressure at the same gate number), **Delete** (remove the gate from the course, renumber subsequent gates), or **Add** (insert a new gate after the current one, shift subsequent gate numbers). Partial update of any subset of gates is supported — the trainer does not need to re-walk the entire course | Load a saved course, move gate 3 to a new position, verify coordinates and ΔP updated; delete gate 5, verify gate 6 → gate 5 (renumbered); add a gate after gate 2, verify new gate 3 inserted, old gate 3 → gate 4 |
 | **F57.3** | The phone shall provide a **dual course view**: a graphical map view (when GPS is available, showing gate positions on a map) and a text list view (always available, showing gate number + ΔP + altitude). A toggle button switches between the two views. The text list is the fallback when GPS signal is poor or unavailable | Toggle between map and text list views; disable GPS on phone, verify text list still shows all gates; verify toggle button visible in both modes |
@@ -110,7 +115,7 @@ Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no
 | **P05** | Quaternion fusion accuracy (after calibration) | BHI260AP self-reported accuracy field ≥ 2 (of Bosch's 0–3 scale: 0=unreliable, 1=low, 2=medium, 3=high) before logging permitted |
 | **P06** | Cross-correlation T=0 precision | < 10 ms (1 sample) |
 | **P07** | Compression ratio (bit-packed vs. raw 20B/sample) | ≥ 35% on typical slalom/GS run |
-| **P08** | BLE PHY | LE 2M PHY preferred; fall back to LE 1M. MTU ≥ 247 bytes negotiated on connect |
+| **P08** | BLE PHY | LE 2M PHY preferred; fall back to LE 1M. MTU: request 517, target ≥ 500 B payload (247 negotiated fallback — see F38) |
 | **P09** | ⚠️ **v2 ONLY** — UHF RFID inventory round latency (single tag) | < 15 ms |
 
 ---
@@ -121,15 +126,15 @@ Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no
 |---|---|---|
 | **H01** | Operating temperature range | −20°C to +40°C |
 | **H02** | Battery life (active logging, cold-derated) | ≥ 8 hours continuous at −10°C. Reference session: 3 hours, 10 runs |
-| **H03** | Enclosure ingress protection | IP67 (sealed, no mechanical buttons or ports). Beeper uses surface transducer bonded to inner enclosure wall — no sound port |
+| **H03** | Enclosure ingress protection | IP67 sealed enclosure with sealed push button (piezo pad, P0.02) and sealable USB-C port (tethered cap). No sound port — no beeper in v1 (F14) |
 | **H04** | ⚠️ **v2/Forearm Guard Only** — Inductive trigger detection through polycarbonate shell | Reliable cross-arm proximity detection: target disc approach from ~30 mm down to near-contact. Coil sensitivity designed for forearm-to-forearm distance at start gate — athlete brings forearms together, LDC1612 detects approaching copper/iron disc in opposite strap. v1 pole mount uses reed switch arming instead (see H14) |
 | **H05** | Total module thickness (pole mount v1) | ~25 mm (device + enclosure). Not critical for pole-mount form factor. Forearm guard thickness (<16 mm) deferred to v2 |
 | **H06** | Total module weight (single device) | ≤ 50 g (electronics + enclosure + strap). Pole mount; weight not critical for shaft attachment |
 | **H07** | Onboard storage capacity | ≥ 10 runs per arm before sync required |
-| **H08** | No ferromagnetic materials near the BMM150 magnetometer | BMM150 calibration must remain stable. The Qi charging coil and surface transducer may contain magnets — these must be shielded or placed > 10 mm from the BMM150 |
+| **H08** | ⚠️ **NOT APPLICABLE (v1)** — BMM150 magnetometer is not used; no ferromagnetic-placement constraint. (Historical rationale — Qi coil / transducer shielding — dropped together with H10/I09.) | — |
 | **H09** | ⚠️ **v2/Forearm Guard Only** — The device shall withstand accelerations from gate pole impacts without damage or sensor decalibration | **200 g** shock test (typical slalom pole strike 100-200g at the grip); verify functional post-impact. v1 pole mount: device on back side of pole is shielded — pole shaft absorbs impact energy |
-| **H14** | The device shall detect magnetic arming via reed switch (v1 pole mount) | NO reed switch on GPIO P0.02 (internal pull-up). N52 neodymium magnet (Ø6×2mm) in opposite pole grip. Athlete brings pole grips together → 1000 ms continuous magnetic hold → arm. Same timing as F03. Also supports 20 s continuous hold for factory reset (F42) |
-| **H10** | The device shall be rechargeable via **Qi wireless charging** (no exposed contacts, fully sealed, compatible with IP67) | Place on Qi pad, verify charging LED (F41) lights. Charge from 0% to 100%, verify full charge within 3 hours |
+| **H14** | The device shall arm via a **sealed piezo push button** (v1 pole mount) on GPIO P0.02 (internal pull-up, falling edge = press, 20 ms debounce). The same button provides wake from SLEEP/System Off (F13) and the 5-press factory reset (F42). *Supersedes the reed-switch concept (never implemented) and LDC1612 arming (removed from board 2026-08-22).* | Bench: press → ARMED; scope: 20 ms debounce effective |
+| **H10** | The device shall be rechargeable via a **sealable USB-C connector** (GCT USB4085-GF-A, tethered IP67 silicone cap, CC 5.1 kΩ sink pull-downs, TVS ESD). VBUS → BQ25120 charger. *Qi wireless charging was dropped — space constraints and coil alignment difficulties. See sgc_usb_c_charging_spec.md (HW v4.2).* | Charge via USB-C, verify charging; cap fitted → IP67 maintained |
 | **H11** | ⚠️ **v2 ONLY** — The PCB shall include an unpopulated Impinj E310-based UHF RFID module footprint with SPI routing and ceramic antenna keepout. *v1: footprint only, no IC populated.* | Module footprint present; no IC soldered |
 | **H12** | ⚠️ **v2 ONLY** — UHF RFID frontend vs. BMM150 magnetometer non-interference. *v1: RFID unpopulated — not applicable.* | BMM150 calibration with RFID active/inactive (v2 only) |
 | **H13** | The custom PCB shall include an **unpopulated** Qorvo DW3000 UWB module footprint (5×5 mm QFN, IEEE 802.15.4z) with ceramic chip antenna keepout zone and SPI traces routed to the nRF52832. The DW3000 shall be connected to the shared SPI bus with a dedicated CSn line. VDD rail is routed but not loaded — power-gated via GPIO-controlled MOSFET for zero leakage when unpopulated. Antenna keepout zone shall be > 15 mm from BMM150 and > 10 mm from UHF RFID ceramic antenna. ⚠️ **UWB is NOT a v1 feature. No DW3000 IC is populated. No UWB firmware is written. No UWB testing is required. This is a board layout hedge ONLY — if UWB infrastructure ever materializes, the v2 PCB can populate the DW3000 without a complete board redesign.** | Visual PCB inspection: verify DW3000 QFN footprint, antenna keepout zone, SPI traces, and CSn pad present; verify unpopulated position does not affect board operation. BMM150 + RFID calibration: verify accuracy unchanged with DW3000 footprint unpopulated |
@@ -142,32 +147,32 @@ Wake latency is negligible (< 100 µs from INTB to CPU active) — no reboot, no
 |---|---|---|
 | **I01** | BHI260AP ↔ nRF52832 | I²C host interface, FIFO watermark interrupt at 10-sample threshold |
 | **I02** | BMP390 ↔ nRF52832 | I²C, 100 Hz pressure reads |
-| **I03** | LDC1612 ↔ nRF52832 | I²C, continuous inductance monitoring. INTB pin → nRF52 GPIO for sleep wake (F13) |
+| **I03** | ~~LDC1612 ↔ nRF52832~~ — **REMOVED**: LDC1612 physically removed from the board (2026-08-22); no inductive sensing in v1. Pin P0.02 reassigned to the piezo button (I12) | — |
 | **I04** | SPI Flash ↔ nRF52832 | SPI, circular run storage with per-file CRC32 |
 | **I05** | Device ↔ Phone | BLE 5.0, LE 2M PHY preferred, custom GATT + Nordic DFU service (run list, file transfer, device config R/W, OTA firmware). Bonded pairing with LE Secure Connections |
 | **I06** | ⚠️ **v2/Forearm Guard Only** — Left arm ↔ Right arm | **No active radio link.** Each arm arms independently on its own LDC1612 sensor. A passive copper/iron foil disc is embedded in each strap. When the athlete brings forearms together at the start gate, each LDC1612 detects the approaching foil disc on the **opposite** arm's strap via cross-arm inductive proximity. No cross-arm BLE, no scan windows, no radio latency. "Cross-arm" refers to the physical proximity between forearms, not an inter-device link. v1 pole mount uses reed switch arming (see I12) — each device arms independently on its own reed switch |
-| **I12** | Reed Switch ↔ nRF52832 (v1 pole mount) | GPIO P0.02 with internal pull-up. NO reed switch (glass-encapsulated, 10–15 AT sensitivity). LOW = magnet present (pole grips together). Polled at 10 Hz in IDLE; edge-detect interrupt for wake from SLEEP. Same pin as LDC1612 INTB (v2) — mutually exclusive |
+| **I12** | **Piezo button ↔ nRF52832** (v1 pole mount) | GPIO P0.02 with internal pull-up, falling edge = press, 20 ms debounce, edge interrupt. Wake from System-On SLEEP and from System Off (GPIO SENSE low). Functions: arm (F03), factory reset 5 presses / 3 s (F42), wake (F13). *Same physical pin previously assigned to LDC1612 INTB / reed switch.* |
 | **I07** | Phone ↔ Cloud | HTTPS REST API, endpoint URL retrieved from hardcoded bootstrap address |
-| **I08** | Beeper ↔ nRF52832 | GPIO PWM → surface transducer bonded to inner enclosure wall (IP67, no sound port) |
-| **I09** | Qi Receiver ↔ Battery Charger | Qi coil → rectifier → 5V → Nicla BQ25100 charger. Coil placed opposite side of PCB from BMM150 |
+| **I08** | ~~Beeper ↔ nRF52832~~ — **DNP footprint only** (no beeper in v1, F14); reserved for a future user-requested transducer | — |
+| **I09** | Charging input: **USB-C (GCT USB4085) → BQ25120 charger**. Qi receiver dropped (space/alignment — see H10). Tethered IP67 cap, ESD protection | — |
 | **I10** | ⚠️ **v2 ONLY** — UHF RFID Reader ↔ nRF52832 | SPI, reader IC controlled by nRF52832. *v1: footprint only, no reader populated.* |
 | **I11** | DW3000 UWB ↔ nRF52832 | ⚠️ **FOOTPRINT ONLY — NOT POPULATED, NOT TESTED, NO FIRMWARE.** SPI (shared bus with Flash + RFID), dedicated CSn line. Power-gated (GPIO-controlled MOSFET on VDD_UWB rail, default OFF). Antenna: ceramic chip antenna footprint, tuned for UWB channel 5 (6.5 GHz) or channel 9 (8 GHz). Reserved purely to avoid PCB redesign if UWB is adopted in v2+ |
 
-### Arming: Reed Switch (v1 Pole Mount) — Why BLE Is Not Needed
+### Arming: Sealed Piezo Button (v1 Pole Mount) — Why BLE Is Not Needed
 
-The arming mechanism is purely magnetic — no mechanical button, no moving parts:
+Each device mounts on a ski pole (poles are typically metallic — a further reason inductive sensing was abandoned). The athlete presses the device's sealed button at the start gate:
 
-1. Athlete brings **pole grips together** at the start gate → N52 magnet in each pole grip triggers the opposite pole's reed switch
-2. Each device detects continuous magnetic hold for 1000 ms → **both devices arm simultaneously** (F03)
-3. Same gesture as the original cross-arm design — natural pre-start motion
+1. Single press (20 ms debounce) → SLEEP → ARMED, P₀ captured
+2. Each device arms independently — no cross-device link, no radio latency
+3. An accidental press is benign: the 30 s arm timeout (ARM_TIMEOUT_MS) returns the device to SLEEP
 
-Each device arms independently on its own reed switch. No cross-device BLE, no radio latency.
+Each device operates independently; single-device operation is supported (R08) — gate detection remains functional from one pole's sensor data.
 
-**What if one device fails to arm?** The athlete separates and brings pole grips together again. Each device operates independently. Single-device operation is supported (R08) — gate detection still functional from one pole's sensor data.
+**F03a (PROPOSED — not implemented):** one-press-arms-both via a flag in the advertising payload (peer scan-and-arm). Design direction recorded for v1.x.
 
-### Cross-Arm Arming: LDC1612 (⚠️ v2 Forearm Guard)
+### Cross-Arm Arming: LDC1612 (⚠️ historical — abandoned)
 
-*Preserved for v2. The v1 pole mount uses reed switch arming instead.*
+*Superseded twice: cross-arm LDC1612 proximity (v5.5) → reed switch (v5.9, never built) → sealed piezo button (current). LDC1612 is physically removed from the board.*
 
 ---
 
@@ -175,9 +180,9 @@ Each device arms independently on its own reed switch. No cross-device BLE, no r
 
 | ID | Requirement | Description |
 |---|---|---|
-| **R01** | False arm reject | Inductive trigger must require 1000 ms continuous hold — momentary contact (< 500 ms) must not arm |
-| **R02** | Aborted start timeout | If barometric descent does not follow within 30 s of arming, return to IDLE |
-| **R03** | Mid-run inductive trigger ignored | Once LOGGING, LDC1612 input is masked until run ends |
+| **R01** | False arm reject | Button presses are debounced (20 ms); no hold requirement. An accidental arm is bounded by the 30 s arm timeout. The factory-reset sequence (5 presses in 3 s, F42) is deliberately distinct from the single-press arm |
+| **R02** | Aborted start timeout | If barometric descent does not follow within 30 s of arming, return to SLEEP (ARM_TIMEOUT_MS) |
+| **R03** | Mid-run button press ignored | Once LOGGING, button input is masked until the run ends (end-detector terminates logging) |
 | **R04** | Low-battery graceful shutdown | At VBAT < 3.3V: close current file, write metadata, enter low-power sleep |
 | **R05** | Flash write failure recovery | CRC mismatch on readback → mark run as corrupt, skip in BLE list |
 | **R06** | BLE disconnect mid-transfer | Resume from last acknowledged chunk on reconnect |
@@ -288,6 +293,7 @@ REQ-HW  (H01–H14)   ◄─────────────── ENVIRONME
 | 2026-06-08 | v5.5 | **Cross-arm proximity arming:** Replaced button-press mechanism with forearms-together proximity detection. Each strap embeds a passive copper/iron target disc; LDC1612 on each arm detects the approaching disc on the opposite arm. No mechanical button, no moving parts — preserves IP67. F12/F13/F42 verification updated. H04 range changed from 1-2 mm to ~30 mm approach distance. I06 rewritten as cross-arm proximity. F41 LED upgraded to 5× SK6812-mini strip with sequential flowing-point animation. Cross-Arm Arming section rewritten. |
 | 2026-06-09 | v5.8 | **v1 course setup requirements:** Added F57.1–F57.4 for phone-side course setup (Mode A: New sequential recording, Mode B: Update with GPS+ΔP dual-signal detection + Move/Delete/Add, dual course view, delta-based course map format). Updated course_gates DB comment with delta-format clarification. Updated F58 cross-reference to point to F57.1–F57.4. V-Model traceability extended to F57.1–F57.4. |
 | 2026-08-11 | v5.9 | **AD-017 pole-mount pivot:** H04, H09 marked v2/forearm guard only. H05, H06 relaxed for pole mount. H14 (reed switch arming) added. I06 marked v2; I12 (reed switch interface) added. Cross-arm arming section split into v1 reed switch / v2 LDC1612. V-Model updated (H01–H14). |
+| 2026-09-10 | v6.0 | **Piezo-button era sync (JP directives — DOC-ONLY, code untouched):** F02/F05 rewritten to Flash pre-roll reality (10 s = 1000 samples; ARM cap 30 s/3000 slots; drain = pop-2 + push-1 live, net −1/10 ms → ~10 s merge). F03 arm = single piezo-button press (LDC1612 removed from board 2026-08-22; inductive dropped — metallic poles unmanageable). F03a PROPOSED: one-press-arms-both via advertising flag. F04 drop-only start trigger (> 2.0 m from P₀; descent-speed mode removed). F12 SLEEP immediately + System Off after 1 h (SLEEP_SYSTEM_OFF_MS=3600000; BLE holds SLEEP). F13 button wake (System-On instant; System Off cold boot). F14 no beeper — DNP footprint only. F38/P08 MTU: request 517, ≥ 500 B payload target (pull redesign IR-3; 247 fallback = 2×244 B notifications). F42 factory reset = 5 presses in 3 s (FACTORY_PRESS_COUNT). F51 N/A (BMM150 unused). H03 sealed button + USB-C cap. H08 N/A. H10 Qi → sealable USB-C (GCT USB4085 → BQ25120). H14/I12 reed → piezo button. I03 LDC removed. I08 beeper DNP. I09 USB-C charging path. R01/R02/R03 button-era wording. Wake-from-Sleep + Arming sections rewritten; cross-arm section marked historical. |
 
 ---
 

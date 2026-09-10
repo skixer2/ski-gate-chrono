@@ -318,7 +318,7 @@ class SGCService {
   Future<PairingResult> pairArms(List<Run> downloadedRuns);
   
   // Charging status
-  Stream<bool> get chargingStream;       // notifies on Qi state change (H10)
+  Stream<bool> get chargingStream;       // notifies on USB-C charge state change (H10)
 }
 ```
 

@@ -471,3 +471,25 @@ Advantages over alternatives:
 - Requirements H06 (weight ≤40g) → tightened to ≤50g
 - Interface I06 (cross-arm) → marked v2; new I12 (reed switch → nRF52 GPIO)
 
+
+## AD-018: Piezo-Button Era Documentation Sync (HLR v6.0)
+
+**Date:** 2026-09-10 · **Status:** accepted (JP directives, documentation-only)
+
+Arming, wake, and factory reset are exclusively the sealed piezo button on
+P0.02 (single press = arm; 5 presses in 3 s = factory reset; GPIO sense =
+wake from SLEEP and System Off). The LDC1612 is physically removed from the
+board (2026-08-22) — inductive sensing abandoned (unmanageable on metallic
+poles); the v5.9 reed switch was never built. Start detection = barometric
+drop only (> 2.0 m from P₀ — descent-speed mode dropped). Sleep model =
+immediate SLEEP + System Off after 1 h unconnected. Pre-roll = 10 s (1000
+frames) in Flash, ARM cap 30 s, drain = pop-2 + push-1 (net −1/10 ms). No
+beeper in v1 (DNP footprint). Charging = sealable USB-C (Qi dropped). BMM150
+unused (H08 N/A). BLE MTU target ≥ 500 B payload (pull transport — see
+PULL_TRANSFER_REDESIGN.md). F03a proposed: one-press-arms-both via
+advertising flag (not implemented).
+
+**Docs updated:** sgc_requirements.md v6.0, sgc_system_design.md,
+integration_tests/hardware.md, acceptance_tests/device.md,
+requirements_traceability.md, sgc_architecture_hardware.md v2.3,
+sgc_context_gemini_01.md (marked frozen). Historical sections preserved.

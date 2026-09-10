@@ -960,6 +960,312 @@ freezer**. Retroactively closes PHY/MTU/cadence/chunk-size chapters (never RF).
 2. Settings → Battery → Background usage limits → **Never sleeping apps** → add SGC
 3. Re-bench with screen OFF mid-download. Prediction: wedge count ≈ 0.
 
+> **🚨 RETRACTED for SGC (2026-09-09 17:39 local):** JP ran
+> `pm list packages --uid 10535` → **`package:com.alibaba.aliexpresshd
+> uid:10535`**. The freezer victim + wakelock-disable target was **AliExpress**,
+> NOT our app. The "Freecess froze SGC mid-download" mechanism is UNPROVEN —
+> we were watching the wrong uid. What survives: (a) wedges correlate with
+> screen/LCD-transition events; (b) Freecess + BT-filter churn fires at those
+> same moments (system-wide BT binder traffic); (c) AliExpress is BLE-active
+> in background (scanner/GATT) — candidate RF/BT-stack interferer, not proven
+> killer. Never-sleeping-apps test for SGC still worth running.
+>
+> **Revised A/B protocol:** (1) get SGC real uid (dumpsys userId) + owner of
+> pid 27803; (2) `am force-stop com.alibaba.aliexpresshd` → re-bench →
+> wedge rate; (3) if clean, re-enable → re-bench → wedge returns =
+> interference confirmed.
+
+#### 17:44 local — AliExpress UNINSTALLED, 1st A/B run: WEDGE PERSISTS
+
+Serial: `SND_DATA 10/11/12 → ft_txfail chunk:12 off:2904 fails:1 blk_ms:2001
+→ retry 12 → fails:2 → ft_abort tx_blocked → ble_adv desync →
+ble_recover desync SLEEP`.
+
+- **Wedge @ chunk 12 / 163 (~2.9 KB, earliest yet)** — with AliExpress
+  GONE. Interferer theory WEAKENED (n=1, stochastic baseline unknown).
+- **FW 5.75 graceful path: textbook.** 2×2 s fails → abort @ ~4 s → desync
+  re-ADV → SLEEP. **No rr:2, no fcp, no zombie.** Interruption cost
+  device-side ≈ 4 s + reconnect. This is the designed KPI behavior.
+- Wedge chunk distribution now 12, 26, 51, 62, 90, 100, 118, 162 — spans the
+  whole 163-chunk transfer ≈ 0–10 s of streaming ≈ 4–15 s post-connect.
+  **Every wedge ever observed lives in the "fragile first 15 s of
+  connection" window.** Churn-window hypothesis (settle >15 s before FT)
+  still viable — queued as App A/B (1.37's 12 s probe was reverted at 1.39
+> when the ghost-buffer bug landed; retry at 15–20 s).
+- App-side outcome of this run — **RECOVERY LOOP BROKEN (JP 15:52): app
+  attempted reconnect after the abort; device saw NOTHING.** No serial
+  events at all after `ble_recover desync SLEEP` — no connection, no ft_start.
+  The wedge→abort→re-ADV half worked; the phone→device reconnect step died
+  silently. **Now the #1 user-facing bug: post-tx_blocked recovery never
+  completes.** Candidate mechanisms: (A) phone stack holds half-open link
+  until ~10 s supervision → Android swallows early reconnect attempts →
+  count-based retry budget (1.34: 10×) exhausts inside the blind window;
+  (B) SLEEP/desync ADV non-connectable or short-lived; (C) desync re-ADV is
+  one-shot, phone scans after it stops. Discriminators queued: (1) fresh
+  scan in app — device visible? (2) force-stop app → rescan (stale-link
+  protocol); (3) serial tail after ble_recover — repeated ble_adv? (4) if
+  bench_full.txt was recording: onClientConnectionState + GATT status codes
+  around the abort.
+  App fix direction (→ 1.42): reconnect only AFTER onConnectionStateChange
+  DISCONNECTED + ~1–2 s grace; time-based retry budget (≥60 s), not
+  count-based.
+
+#### 17:50 — ROOT CAUSE OF "INVISIBLE DEVICE": ZOMBIE CONNECTION (device-side)
+
+- dumpsys + serial cross-reference, two independent zombie episodes:
+  - **17:22-17:36 (App 1.41):** connect 17:22:53 → wedge 17:23:23 (status=8,
+    17 s in) → **13+ min of 147s** (Direct connection timeout = device
+    never answers CONNECT_IND = not advertising).
+  - **19:41 (App 1.42):** ble_conn 19:41:42 → phone ACL CONNECTION_TIMEOUT
+    (0x08) at 19:41:55 (13 s in) → 147 storm 19:42:07–19:47+ → my force-stop
+    19:49. **Serial: NO ble_disc EVER — the device never noticed the link
+    died.** It still thinks it's connected → stopped advertising → invisible.
+- **Mechanism:** device's dead-link detection only exists on the ACTIVE TX
+  path (ft_txfail → tx_blocked → BLE.disconnect → re-ADV; worked 15:46/
+  15:57). When the wedge hits EARLY/IDLE (during settle/subscriptions, before
+  TX pressure), NOTHING on the device detects it: phone supervision fired
+  (0x08) but device supervision/controller clock never did (frozen by the
+  same radio wedge). Zombie until pin reset.
+- Retroactively explains: every "device invisible, serial says sleep, must
+  reset" incident; phone was innocent every time (no ghost link — connected: 0).
+- **FW 5.76 fix list (concrete):** (1) app-level liveness watchdog — if
+  connected and no GATT traffic for ~15–30 s → force BLE.disconnect() +
+  re-ADV (never trust controller supervision); (2) unconditional re-ADV on
+  every disconnect path; (3) `adv:1/0` in status JSON; (4) keep tx_blocked
+  path for active TX.
+- App 1.42 note: patch went to NativeBleDownloader.kt but the LIVE engine is
+  NordicBleDownloader.kt (SGC_NORDIC tags) — port restart-from-scratch +
+  teardown recipe to NordicBleDownloader next build.
+- Bench reality: every wedge so far bricks the device until reset — 1.42's
+  reconnect can't help until FW 5.76 makes the device re-advertise.
+
+#### 15:57 — App+phone restarted → ABORTED RUN AUTO-RESUMED AND COMPLETED ✓; next run wedged @ 36
+
+- After app + phone restart, connecting auto-triggered download of the
+  previously aborted run → **SUCCESS**. Resume protocol + run persistence
+  work end-to-end — currently gated on manual restarts (App 1.42 fix).
+- Fresh run 2: wedge @ **chunk 36/163** (off 8712, sz 38950) → 2× ft_txfail
+  (~2001 ms) → tx_abort tx_blocked → desync re-ADV → SLEEP. No rr:2, no
+  fcp — 5.75 stays textbook.
+- **AliExpress-uninstalled wedge tally: 2/2 runs wedge** (chunks 12, 36).
+  Interferer theory DEAD as primary cause. Remaining viable hypothesis:
+  churn-window — every wedge ever observed sits ≤ ~15 s post-connect.
+#### 16:06 — JP DIRECTIVE: SIMPLIFY. Kill download rescue. Restart from scratch.
+
+- **Policy change:** no resume-on-failure. Transfer fails → full teardown →
+  reconnect → restart transfer from chunk 0. Rationale: resume saves ≤10 s
+  (163 × 60 ms total) while adding offset bookkeeping, partial-buffer state,
+  and bug surface; reconnect dominates recovery cost anyway. Today's rescue
+  needed app+phone restarts = minutes — useless.
+- **Implementation insight: APP-ONLY change.** FW 5.75 already implements the
+  restart-from-scratch protocol (abort @4 s → re-ADV → SLEEP → fresh
+  connection); FW keeps offset support but app stops using it. No reflash.
+- **App 1.42 (simplified scope):** (1) on ANY transfer failure (ERROR
+  packet / GATT disconnect / timeout): gatt.disconnect()+close(), full
+  teardown; (2) wait for onConnectionStateChange DISCONNECTED + 1–2 s
+  grace (out-wait phone 10 s ghost link); (3) reconnect → CMD_START offset 0
+  → fresh 10 s transfer; (4) time-based budget (~3 attempts / 60 s), then
+  clear per-run UI error + next run; (5) discard partial buffers; keep
+  save-on-complete + auto-download-missing. CONNECT_SETTLE_MS stays 4 s.
+- **KPI:** wedge → automatic full recovery → complete run, ≤30 s, zero
+  manual steps. Bench n≥5 runs, count wedges + s-per-interruption.
+- Root-cause hunt (settle 18 s A/B) queued AFTER 1.42 loop proven — it's
+  one constant.
+- Critical path: Windows node pairing (JP installing; npm PATH resolved
+  after fresh terminal).
+
+#### 17:15 — APP 1.42 BUILT, INSTALLED ON S22, COMMITTED (`e2da657`)
+
+- Built on JP-PC via node (flutter 3.47.1, debug APK 175 MB), installed
+  with `adb install -r` — **Success**. Commit: 2 files, +47/−30.
+- Diff: MAX_FRESH_ATTEMPTS=3 (was 6 resume); buffer/CRC/expected fresh per
+  attempt; CMD_START always offset 0 (3-byte); on failure: closeGatt (waits
+  DISCONNECTED ≤4 s) → 2 s×attempt backoff → ADV wait ≤15 s (logs if not
+  seen) → fresh connect; onPhyUpdate/onPhyRead logged + gatt.readPhy()
+  post-MTU. FW unchanged (5.75).
+- Node exec transport lessons (for future builds): NO hand-typed base64
+  (write file → gateway `base64 -w0` → paste literal); no `$()` substitution
+  in node commands; long builds = detached Popen + log polling; git commit
+  via `-F` file (cmd eats quoted -m); findstr breaks on fwd-slash flags+paths
+  (use py); `echo X >` adds trailing space (strip when parsing).
+- Bench infrastructure live: serial logger pid 32816 →
+  C:\Users\v17ni\sgc_serial.log (timestamped, auto-reconnect); logcat
+  cleared; adb S22 attached.
+
+#### 16:40 — **BENCH STATION LIVE: Windows node JP-PC fully operational**
+
+- Node host 2026.9.3 paired + connected (needed: allowCommands config set by
+  JP + nodes remove/re-pair to refresh command snapshot + fresh node.json).
+- Verified end-to-end from agent: `adb devices` (S22 R3CT30H0M2X ✓),
+  serial COM3 → `?` status: **{"st":"SLEEP","bat":94,"runs":5,"ver":"5.75"}** ✓,
+  git repo @ f001964 ✓, Flutter 3.47.1 ✓, PlatformIO 6.2.0 installed ✓,
+  Python 3.13.15 + pyserial ✓ (use `py`; cmd quoting → b64-wrap python -c).
+- **The agent now flashes FW, builds/installs the app, drives adb+serial,
+  and reads logs directly. JP = hands on bench only.**
+- Device at bench start: SLEEP, bat 94%, 5 runs stored, flash 62%.
+- Next: App 1.42 (restart-from-scratch retry) built via node → install on
+  S22 → bench n≥5.
+- Package name `com.skigatechono.sgc_phone` WRONG (dumpsys empty; pid 27803
+  dead) → get real applicationId: `pm list packages | grep -i ski`.
+
 **App 1.42 (queued):** REQUEST_IGNORE_BATTERY_OPTIMIZATIONS + exemption UX;
 batch-end teardown BOTH stacks (kills stale link) + autoReconnect suppress;
 verify enterDownloadMode still on 1.41 path (it is — MainActivity.kt:68).
+
+#### Bench window 2026-09-09 17:22–17:23 local (JP, app+device relaunched, logcat filter live)
+
+Filter: `onPhyUpdate|handleLcdOnFreeze|uid=10535|status=8|froze` (WSL:
+`adb.exe logcat -v time | grep -iE ...`). JP: "No, not appearing" — no wedge,
+no wakelock-disable event this window. Caught:
+
+- **17:23:23 status=8 was MID-DOWNLOAD (JP 15:36): transfer in flight when the
+  link died, app did NOT auto-recover ("No restart").** → New defect: native
+  NordicBleDownloader has no handler for raw GATT disconnect mid-transfer
+  (1.34 retry = tx_blocked path; 1.38 auto-reconnect = FBP/Dart link only).
+  Proven resume protocol (79 ms re-attach) never gets invoked on this path.
+  → **App 1.42 scope grows:** onUnexpectedDisconnect mid-batch → wait ~5 s
+  (device 4 s supervision + re-ADV) → reconnect → CMD_START resume offset.
+  Serial tail at that moment still unknown (tx_blocked printed?).
+- Freecess machinery ACTIVE on screen events: `handleLcdOnFreeze` at
+  17:22:09/17/23/29 (~6 s apart). Lines are stack noise only — no victim named.
+- uid=10535 churn: network **BLOCKED** 17:22:39 → UNBLOCKED 17:22:08/17:23:51;
+  procState 19↔10, then 19→8→10→19 at 17:23:51. **ALL of this is AliExpress
+  traffic, not SGC** (uid resolved 17:39 — see retraction above).
+- uid=10535 side traffic: keystore2 `store_new_key ... uid=10535` (17:22:15),
+  RemoteDesktopService `Permission Denied uid=10535` (17:22:22) — **resolved:
+  AliExpress crypto + framework pokes, not SGC.**
+- `onPhyUpdate`: **zero lines — app never calls `readPhy()`**, callback never
+  invoked → PHY undiagnosable via logcat until app logs it. → App 1.42:
+  call `gatt.readPhy()` post-connect + log `onPhyUpdate`/`onPhyUpdate` status.
+- `sync unfroze` 17:22:53 victims all Samsung bloat (dqagent, biometrics,
+  fmm, wssyncmldm, sohservice) — not us.
+
+**Open now:** (1) SGC app's REAL uid (`dumpsys package
+com.skigatechono.sgc_phone | grep userId`) + pid 27803 owner (`ps -A |
+grep 27803`); (2) A/B: force-stop AliExpress → wedge rate; (3)
+Never-sleeping-apps for SGC; (4) serial tail (rr_req/zombie_arm/fcp) from
+5.75 bench.
+
+### 2026-09-10 05:39 — JP review: zombie-gate AND/OR + repo audit (no code change)
+
+**Q (JP):** main.cpp L1484 `sgc_ble_central_connected() && !BLE.connected()
+&& !sgc_ble_ft_active()` — why AND, not OR ("one missing = no connection")?
+
+**A:** The gate is not "is a link absent" — it is "**our connect flag
+contradicts the stack** (we believe connected, stack says not) **and FT
+doesn't own the link**". Truth table over flag/stack: idle (0/0 — OR would
+fire here: 30 s after ANY idle → BLE.end/begin loop, kills SLEEP power
+design + murders fresh connects); fresh connect (0/1 — V5.11:
+BLE.connected() lags on_ble_connected by a poll; single-signal logic killed
+fresh links until update_state learned to trust the flag); live link (1/1);
+**the lie (1/0)** = the only sick state → L1477 desync heal (SOFT:
+force_recover clears flag + re-ADV) fires immediately; L1484 is only the
+delayed HARD escalation (radio restart) if the state persists 30 s
+(`BLE_ZOMBIE_TIMEOUT_MS`, config.h:51).
+
+- `!sgc_ble_ft_active()`: never BLE.end()/begin() mid-transfer — the FT
+  engine owns link recovery during a transfer (tx_blocked → abort → phone
+  restart-from-scratch, App 1.42).
+- The 30 s idle gate separates the persistent lie from the V5.11 transient.
+- Contrast L1495: `set_hold_sleep(central || connected || ft)` uses OR —
+  that question IS "might anything be alive?" (conservative sleep hold).
+  Same three signals, two different questions → two connectives.
+- **Reachability note:** force_recover (L1477) clears g_central_connected
+  before L1484 evaluates in the same pass → in 5.75 the zombie arm is a
+  dormant safety net; a zombie_arm print would itself signal an ordering
+  bug — exactly why 5.75 instruments it. History: v5.07 zombie had NO
+  !connected() gate (T-007: `ble_radio ok=0 why=zombie` after heavy FT on
+  5.10-5.11); 5.17 added the gate to protect live-but-idle links.
+
+**Repo audit (JP-PC, 05:39 UTC):** FW **5.75** (`f001964`) = workspace
+mirror = repo tip; App **1.42** (`e2da657`) installed on S22. **Code
+complete + committed; bench validation pending** (n≥5 runs, serial tail
+rr_req/zombie_arm/fcp). Stray uncommitted: `sgc_service.dart` braces-only
+formatting artifact in `_findChar` (no semantics — discard or commit,
+JP's call). ⚠️ Untracked `ubuntu_credentials_UM790pro.txt` sits IN REPO
+ROOT — credentials in a git tree = accidental-commit risk; move out or
+.gitignore. Node-exec lesson: quoted grep patterns leak literal quotes
+through the cmd wrapper (greps silently return empty) — unquoted patterns
+only; `git grep <pattern>` unquoted works.
+
+**Ledger sync note:** workspace ledger had diverged from repo copy by
+~12.5 KB (repo missing 09-08/09-09 bench-station entries). Workspace copy
+re-shipped to repo in full and committed — workspace = master.
+
+### 2026-09-10 06:23 — RECOVERED: 09-09 evening pull-transfer decisions (session died 19:43) + requirements-first rule
+
+**What happened:** the 09-09 webchat session (15:17–19:43 UTC) died at
+19:43:51 mid-FW-5.76-recon; its transcript was archived at 05:39:34 today
+when the session reset. None of its decisions had been written to the
+ledger → this morning's fresh session answered "no record". All decisions
+recovered verbatim from archive `b18840c2-*.jsonl.reset.2026-09-10T05-39-34`.
+
+**Decision record (09-09):**
+- 18:47 JP: model download on old SGC (SGC_06): phone asks record-by-record, lean transactions.
+- 19:08 JP: **no structure change to the Nicla system** — transport only;
+strategies a) char per data type, b) single 500+ B text char (**serial
+replacement**).
+- 19:14 JP: **b is the way; watchdog 2 s (not 20 s)**.
+- Locked scope (19:14:32): FW 5.76 = pull commands in serial parser (USB+BLE
+same path) + console characteristic (write req → notify reply, `[seq len
+data]` text-hex frames, ≥500 B logical chunk = 2×244 B notifications at MTU
+247) + 2 s request watchdog → disconnect → re-ADV + unconditional re-ADV +
+`adv` in status JSON; push FT engine disabled behind flag (USB/lab).
+App 1.43 = lean pull engine (request→receive→assemble→CRC) feeding the SAME
+blob to existing decompressor/analysis; restart-from-scratch recovery kept.
+- References: github.com/skixer2/SGC_06 (app: read→notify one-record pull,
+SGC_TextualViewModel.kt) + github.com/skixer2/SGC_SensiBLE2_1 (fw:
+{num,type,time} newest-first from NVM, read→notify→index++, time-sync).
+- Superseded same-evening proposal (19:04): port pole-tap detector /
+timestamps-only-over-BLE — **rejected by JP 19:08**, recorded to prevent
+re-introduction.
+
+**Code state: NOTHING pull-related written.** Session died during recon
+(ArduinoBLE vendored+SGC-patched in lib/, warmup build started, upload via
+cmsis-dap). No commits/stash/branch; tree = e2da657 + trivial dart diff.
+App 1.42 (17:14, restart-from-scratch) survived and is installed.
+
+**Requirements:** `module_design/PULL_TRANSFER_REDESIGN.md` — full PR/SR/IR/
+FWR/APR/verification levels + this decision record. **Awaiting JP go before
+any FW 5.76 / App 1.43 code.**
+
+**🚨 BINDING PROCESS RULE (JP, 2026-09-10):** every decision goes into the
+test ledger + requirements doc BEFORE implementation. Requirements first
+(all levels), then code. Session transcripts are not memory — write it
+down or it never happened.
+
+
+### 2026-09-10 08:33 — JP doc-review directives → HLR v6.0 (DOC-ONLY, code untouched)
+
+JP reviewed the requirements docs; corrections applied everywhere:
+
+- **F03** arm = single piezo-button press (inductive abandoned — LDC1612
+  removed from board 2026-08-22; metallic poles unmanageable). **F03a
+  PROPOSED (not implemented):** one-press-arms-both via advertising flag.
+- **F42** factory reset = **5 presses within 3 s** (piezo_button.h:
+  FACTORY_PRESS_COUNT=5, PRESS_WINDOW_MS=3000) — supersedes 20 s hold.
+- **F12** SLEEP **immediately** (primary waiting state); **System Off after
+  1 h** unconnected (SLEEP_SYSTEM_OFF_MS=3600000); BLE holds SLEEP.
+- **F13** wake = button GPIO sense (System-On instant; System Off cold boot).
+- **F04** start trigger = **drop-only** (> 2.0 m from P₀); descent-speed
+  mode removed.
+- **F02** (JP asked 5 s or 10 s): **10 s** — 1000 frames in **Flash**
+  (FlashRing linear pre-roll; ARM fill cap 3000/30 s; RAM ring abandoned
+  v4.60 after heap pressure). Verified from flash_layout.h + main.cpp.
+- **F05** corrected: drain = **pop 2 + push 1 live per 10 ms (net −1)** →
+  1000-frame backlog merges in ~10 s. Old "500-sample/2.5 s" math ignored
+  ongoing acquisition — withdrawn. Code untouched (it was always correct).
+- **F14** no beeper in v1 (DNP footprint, reserved for user request).
+- **F38/P08** MTU: **request 517, ≥ 500 B payload target** (pull transport
+  IR-3; 247 fallback = 2×244 B notifications).
+- **F51/H08/H12-adjacent** BMM150 magnetometer unused → N/A.
+- **H10/I09** Qi → **sealable USB-C** (GCT USB4085 → BQ25120, HW v4.2).
+- **H14/I12** reed switch (never built) → piezo button. **I03** LDC removed.
+
+**Docs updated:** sgc_requirements.md **v6.0**, sgc_system_design.md
+(state diagram + tables rebuilt), integration_tests/hardware.md,
+acceptance_tests/device.md, requirements_traceability.md,
+sgc_architecture_hardware.md v2.3, sgc_architecture_phone.md (charge stream),
+sgc_architecture_decisions.md **AD-018**, sgc_context_gemini_01.md (marked
+FROZEN — historical). BOM already correct (v4.x DNP markers). Historical
+sections/ledgers preserved (not rewritten).

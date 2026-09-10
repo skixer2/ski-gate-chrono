@@ -19,99 +19,89 @@
 ## 1. Device State Machine
 
 ```
-                         ┌──────────────────────────────────────┐
-                         │           SLEEP                     │
-                         │  nRF52: System ON sleep (WFE)       │
-                         │         RTC running, RAM retained   │
-                         │         ~3 µA                       │
-                         │  LDC1612: 10 Hz poll (~50 µA)       │
-                         │  BMP390: OFF                        │
-                         │  BHI260AP: OFF                      │
-                         │  Total sleep: ~53 µA                │
-                         └──────────┬──────────────────────────┘
-                                    │ LDC1612 INTB → GPIO interrupt (F13)
-                                    ▼
-                         ┌──────────────────────────────────────┐
-                         │              IDLE                    │
-                         │  nRF52: awake, BLE advertising      │
-                         │  LDC1612: continuous monitor        │
-                         │  Sensors: initialized, not logging  │
-                         │  Cal: accuracy < 2 → slow blue blink│
-                         │  Cal: accuracy ≥ 2 → solid blue     │
-                         │  Timeout → SLEEP after 5 min        │
-                         └──────────┬──────────────────────────┘
-                                    │ 1000 ms proximity AND accuracy ≥ 2 (F03, F51, P05)
-                                    ▼
-                         ┌──────────────────────────────────────┐
-                         │             ARMED                   │
-                         │  Phase 1: fill (5s → 500 samples)  │
-                         │  Phase 2: freshen (pop 1, push 1)  │
-                         │  LED: green (F41)                   │
-                         │  Beeper ON (F14)                    │
-                         │  BMP390: monitoring descent (drop)  │
-                         │  30 s timeout → IDLE (R02)          │
-                         └──────────┬──────────────────────────┘
-                                    │ Cumulative vertical drop > 2.0 m from P₀ (F04)
-                                    ▼
-                         ┌──────────────────────────────────────┐
-                         │            LOGGING                  │
-                         │  Drain: pop N=min(2,ring.count)     │
-                         │  push 1 live. Data-driven.         │
-                         │  LED: red (F41)                     │
-                         │  LDC1612: masked (R03)              │
-                         │  Beeper: OFF                        │
-                         │  5-s elevation delta → POST        │
-                         └──────────┬──────────────────────────┘
-                                    │ Auto-terminate (F06)
-                                    ▼
-                         ┌──────────────────────────────────────┐
-                         │           POST_RUN                  │
-                         │  File closed, CRC32 written         │
-                         │  BLE: advertise updated run count   │
-                         │  Re-arm allowed after 2 s cooldown  │
-                         │  5 min inactivity → SLEEP           │
-                         └──────────────────────────────────────┘
+                    ┌──────────────────────────────────────┐
+   ENTERED at       │               SLEEP                  │
+   boot / POST_RUN  │  nRF52: System ON sleep (WFE)       │
+   / arm-timeout    │  RTC running, RAM retained           │
+   (F12 — no wait)  │  BLE advertising @ 2 s interval      │
+                    │  BMP390: OFF   BHI260AP: OFF         │
+                    │  Button: GPIO sense wake (F13)       │
+                    │  1 h unconnected → SYSTEM OFF (F12)  │
+                    └──────────────────┬───────────────────┘
+                                       │ Piezo button press (F13)
+                                       ▼
+                    ┌──────────────────────────────────────┐
+                    │               ARMED                   │
+                    │  P₀ captured (arming pressure)       │
+                    │  Pre-roll: Flash linear fill         │
+                    │  10 s kept / 30 s cap (F02)          │
+                    │  LED: green (F41)                    │
+                    │  BMP390: monitoring descent (drop)   │
+                    │  30 s timeout → SLEEP (R02)          │
+                    └──────────────────┬───────────────────┘
+                                       │ Cumulative drop > 2.0 m from P₀ (F04)
+                                       ▼
+                    ┌──────────────────────────────────────┐
+                    │              LOGGING                  │
+                    │  Drain: pop 2 backlog + push 1 live  │
+                    │  per 10 ms, net −1 (F05)             │
+                    │  LED: red (F41)                      │
+                    │  Button: masked (R03)                │
+                    │  5-s elevation delta → POST          │
+                    └──────────────────┬───────────────────┘
+                                       │ Auto-terminate (F06)
+                                       ▼
+                    ┌──────────────────────────────────────┐
+                    │              POST_RUN                 │
+                    │  File closed, CRC32 written          │
+                    │  BLE: advertise updated run count    │
+                    │  Re-arm allowed after cooldown       │
+                    │  → SLEEP immediately (F12)           │
+                    └──────────────────────────────────────┘
 
-    ┌─ LOW_BATTERY (R04) ──────────────────────────────────────┐
-    │  Any state → VBAT < 3.3V → close file → SLEEP            │
-    └──────────────────────────────────────────────────────────┘
+  ┌─ LOW_BATTERY (R04) ────────────────────────────────────┐
+  │  Any state → VBAT < 3.3V → close file → SLEEP          │
+  └────────────────────────────────────────────────────────┘
 
-    ┌─ CHARGING (H10) ─────────────────────────────────────────┐
-    │  Qi power detected (any state):                          │
-    │    → If LOGGING: continue logging (charging non-blocking)│
-    │    → BLE advertising + GATT operations allowed           │
-    │    → ARMED / LOGGING transitions allowed as normal       │
-    │    → Charging status notified via GATT (...ABCF)         │
-    │    → No separate CHARGING state — Qi is a side condition │
-    └──────────────────────────────────────────────────────────┘
+  ┌─ CHARGING (H10) ───────────────────────────────────────┐
+  │  USB-C VBUS detected (any state):                      │
+  │    → If LOGGING: continue logging (non-blocking)       │
+  │    → BLE advertising + GATT allowed                    │
+  │    → Charging status notified via GATT                 │
+  │    → No CHARGING state — side condition (v6.0:         │
+  │      Qi dropped, sealable USB-C instead — H10)         │
+  └────────────────────────────────────────────────────────┘
 
-    ┌─ FACTORY RESET (F42) ────────────────────────────────────┐
-    │  20 s continuous inductive hold (IDLE):                  │
-    │    → LED flashes red 3×                                  │
-    │    → Clear BLE bonding                                   │
-    │    → Reset device name to default                        │
-    │    → Erase all run data from Flash                       │
-    │    → Restart                                             │
-    └──────────────────────────────────────────────────────────┘
+  ┌─ FACTORY RESET (F42) ──────────────────────────────────┐
+  │  5 button presses within 3 s:                          │
+  │    → LED flashes red 3×                                │
+  │    → Clear BLE bonding                                 │
+  │    → Reset device name to default                      │
+  │    → Erase all run data from Flash                     │
+  │    → Restart                                           │
+  └────────────────────────────────────────────────────────┘
 ```
+
+*IDLE remains in the enum for bench/service (serial) paths, but SLEEP is the
+primary waiting state (F12) — the production flow never dwells in IDLE.*
+
 
 ### State Transition Table
 
 | From | Trigger | To | Notes |
 |---|---|---|---|
-| SLEEP | LDC1612 INTB (cross-arm proximity) | IDLE | Wake to IDLE (F13). RTC preserved — no time lost |
-| IDLE | 20 s continuous inductive hold | (factory reset) | LED flashes red 3× → clear bonding + Flash → restart (F42) |
-| IDLE | 1000 ms continuous proximity **AND** BHI260AP accuracy ≥ 2 | ARMED | Ring buffer starts, LED=green chase, beeper on (F03, F14, F51, P05). If accuracy < 2: ignore (arming refused, no LED change) |
-| IDLE | 5 min no arming, no BLE connection | SLEEP | F12 |
+| SLEEP | Piezo button press (GPIO sense) | ARMED | Instant wake, no reboot (F13); P₀ captured, pre-roll starts (F03) |
+| SLEEP | 1 h unconnected | SYSTEM_OFF | Deep shutdown (F12); button press → cold boot (rr:4) |
+| SLEEP/IDLE | 5 button presses within 3 s | (factory reset) | LED flashes red 3× → clear bonding + Flash → restart (F42) |
 | ARMED | Cumulative vertical drop > 2.0 m from arming P₀ | LOGGING | Drain begins, LED=red chase (F04, F05, F41). Single-mode: drop only (speed removed v2.2 — BMP390 quantization noise caused false triggers) |
-| ARMED | 30 s no descent | IDLE | R02 |
+| ARMED | 30 s no descent | SLEEP | R02 |
 | LOGGING | Descent < 2 m over last 5 s (0.5 Hz sampling) | POST_RUN | Close file, write CRC32 (F06). Altitude-adaptive PA_PER_M. Ignores ascent (dp < 0) |
-| POST_RUN | 2 s cooldown elapsed | IDLE | Ready for next arming |
-| POST_RUN | 5 min inactivity | SLEEP | F12 |
-| SLEEP | LDC1612 INTB (cross-arm proximity) | IDLE | Wake to IDLE (F13). RTC preserved — no time lost |
+| POST_RUN | Cooldown elapsed | SLEEP | Ready for next arming (F12) |
+| POST_RUN | (default) | SLEEP | F12 — SLEEP entered immediately |
+| SLEEP | (duplicate row removed — see above) | — | — |
 | * | VBAT < 3.3V | LOW_BATTERY → SLEEP | Close file first (R04) |
-| * | BLE disconnect during transfer | (resume on reconnect) | R06 |
-| * | Qi power detected | (unchanged) | Charging status notified via GATT. No state change — Qi is a side condition. Arming/logging proceed normally while charging. |
+| * | BLE disconnect during transfer | (restart transfer on reconnect) | R06 — pull protocol, see PULL_TRANSFER_REDESIGN.md |
+| * | USB-C VBUS detected | (unchanged) | Charging status notified via GATT. No state change — side condition. Arming/logging proceed normally while charging. |
 
 ---
 
@@ -545,7 +535,7 @@ src/
 ├── sensors/
 │   ├── bhi260ap.cpp             # BHI260AP init, FIFO read, fusion config
 │   ├── bmp390.cpp               # BMP390 init, 100 Hz pressure reads
-│   └── ldc1612.cpp              # LDC1612 init, proximity detection, INTB config
+│   └── piezo_button.cpp         # Sealed button: arm / wake / factory (P0.02)
 ├── storage/
 │   ├── ring_buffer.cpp          # 500-sample circular RAM buffer
 │   ├── bit_packer.cpp           # Adaptive 3-type delta encoder
@@ -557,9 +547,9 @@ src/
 ├── state_machine.cpp            # State transitions, timeout timers
 ├── start_detector.cpp           # Barometric descent detection
 ├── end_detector.cpp             # Elevation delta: descent < 2m over 5s
-├── beeper.cpp                   # GPIO PWM → surface transducer (IP67)
+├── beeper.cpp                   # DNP — footprint only, no beeper in v1 (F14)
 ├── led.cpp                      # SK6812-mini strip: off=sleep, blue slow flowing=uncalibrated, blue chase=calibrated, green chase=armed, red chase=logging, yellow blink=low battery/error; factory reset = flash red 3× (F41, F42)
-├── battery.cpp                  # VBAT monitoring, Qi charging detection, low-battery shutdown
+├── battery.cpp                  # VBAT monitoring, USB-C charging detection, low-battery shutdown
 ├── rfid_reader.cpp              # ⚠️ v2 only — UHF RFID: SPI control, inventory rounds, RSSI-based nearest-tag (F52–F56). Not compiled in v1.
 ├── uwb_tag.cpp                   # ⚠️ [NOT v1 — stub only, never built, never linked] DW3000 UWB: GPIO power-gate, SPI init, TDoA blink scheduler. Reserved for potential v2+ when/if UWB snow-cannon infrastructure exists
 └── sleep.cpp                    # System ON WFE sleep entry, GPIO interrupt wake. 20s hold detection for factory reset (F42)
@@ -679,7 +669,7 @@ main loop (polling)
   │     └── LOGGING: feed EndDetector
   │
   ├── every 50 ms:
-  │     └── Read LDC1612, check 1000 ms continuous threshold
+  │     └── Read button, debounce 20 ms (single press arms)
   │
   └── idle:
         └── Process BLE events (ArduinoBLE.poll())
@@ -699,7 +689,7 @@ main loop (polling)
 
 ### Power States
 
-| State | nRF52 | LDC1612 | BMP390 | BHI260AP | Beeper | BLE TX | LED | Total |
+| State | nRF52 | Button | BMP390 | BHI260AP | (Beeper DNP) | BLE TX | LED | Total |
 |---|---|---|---|---|---|---|---|
 | **SLEEP** (System ON WFE) | ~3 µA | ~50 µA (10 Hz poll) | OFF | OFF | OFF | OFF | OFF | **~53 µA** |
 | **IDLE** (BLE advertising) | ~5 mA | ~100 µA (continuous) | ~3 µA (1 Hz) | ~3 mA (idle) | OFF | ~5 mA avg | ~1 mA (LED) | **~14 mA** |
@@ -737,9 +727,9 @@ Reference session: 3 hours, 10 runs (FIS training day)
 At −10°C: derate 25% → ~11 sessions
 ```
 
-### Qi Wireless Charging
+### Charging (USB-C — Qi dropped v6.0)
 
-Qi receiver coil + rectifier outputs 5V → feeds Nicla's BQ25100 battery charger via VBAT pin. Coil is a thin (~0.8 mm) flexible PCB coil placed on the opposite side of the PCB from the BMM150 magnetometer to minimize magnetic interference (H08). Standard Qi pad (5W) charges the 600 mAh battery from 0% to 100% in ~1.5 hours.
+USB-C (GCT USB4085-GF-A, sealable tethered IP67 cap) → VBUS → BQ25120 charger. Qi wireless charging was dropped (space constraints, coil alignment). The BMM150 magnetometer is unused in v1 — no placement constraint (H08 N/A). See sgc_usb_c_charging_spec.md.
 
 ### Flash Wear Leveling
 
@@ -762,7 +752,7 @@ Flash wear is not a concern for the expected product lifetime. The circular buff
 | SPI Flash write latency > 10 ms → dropped samples | High | Bench-test Flash chip; if marginal, buffer 2–3 samples before SPI write burst |
 | BMP390 noise → false start detection | Medium | Resolved v2.2: removed speed mode. Drop-only (2.0m cumulative) requires ~24 Pa sustained increase — well above quantization noise (±3 Pa pp) |
 | BHI260AP FIFO overflow (FIFO not read fast enough) | High | Watermark at 10 samples → flush every 100 ms. If watermark interrupt missed, BHI260AP drops oldest → flag error |
-| LDC1612 false arm from metal ski pole nearby | Low | 1000 ms hold requirement (R01) filters brief proximity; coil tuned for short-range (~3 mm) |
+| Accidental button press arms the device | Low | Bounded by 30 s arm timeout → SLEEP (R02); factory sequence (5×/3 s) distinct from single-press arm |
 | BLE throughput < 20 KB/s on older phones | Medium | 2-min run = ~108 KB → ~5.4 s at 20 KB/s, well within acceptable range |
 | Cold battery derating worse than 20% | Medium | H02 targets 8 h at −10°C with 20% derating; field-test early prototypes in real cold |
 | Quaternion cross-correlation fails on very short runs | Low | Single-arm fallback (R08); runs < 10 s skipped for cross-correlation |

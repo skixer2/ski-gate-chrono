@@ -1,4 +1,6 @@
-# SGC — Architecture: Hardware (v2.2 — Pole-Mount)
+# SGC — Architecture: Hardware (v2.3 — Pole-Mount)
+
+*2026-09-10 — v2.3: Synced to HLR v6.0 (piezo-button era): power table SLEEP row corrected (no LDC polling — LDC off board); sleep model = immediate SLEEP + System Off after 1 h (F12). Arming/factory-reset behavior already correct since v2.2.*
 
 *2026-08-12 — v2.2: Arming changed from magnetic reed switch (rejected — magnet field de-calibrates the BMM150 magnetometer in the BHI260AP) to a Langir 16 mm piezoelectric pushbutton on P0.02. LDC1612 dropped from active BOM (footprint retained for v2). See sgc_bom.md v4.0.*
 
@@ -603,7 +605,7 @@ AC1                  AC2     ← IP6833 pins
 
 | State | Total draw | Notes |
 |-------|-----------|-------|
-| SLEEP | ~55 µA | LDC1612 10 Hz poll, boost shut down (EN LOW) |
+| SLEEP | ~55 µA | Button GPIO sense wake, boost shut down (EN LOW); after 1 h unconnected → System Off (F12) |
 | IDLE | ~14 mA | BLE advertising, sensors idle, boost off (LEDs off) |
 | ARMED | ~26 mA | 100 Hz fusion, ring buffer filling, boost active (LEDs chasing green) |
 | LOGGING | ~24 mA | Flash writes active, BLE off, boost active (LEDs chasing red). **RFID unpopulated in v1** |

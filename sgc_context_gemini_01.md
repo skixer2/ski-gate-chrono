@@ -1,5 +1,11 @@
 # High-Frequency Ski Telemetry & Timing Device
 
+> ⚠️ **FROZEN HISTORICAL DOCUMENT (2026-09-10):** written 2026-06-04+ — pre-dates the
+> piezo-button era, pole mount, USB-C charging, drop-only start trigger, flash
+> pre-roll, and the pull transfer redesign. Arming/wake/factory here are
+> inductive-era and superseded by HLR v6.0. Kept as design history — do not use
+> as current spec (see sgc_requirements.md v6.0).
+
 **Status: Requirements v5.4 complete, System Design v1.8 complete, Phone Architecture v1.3 — 2026-06-06**
 
 > This document is the original enriched plan. As of 2026-06-04, two additional documents capture the evolved design:

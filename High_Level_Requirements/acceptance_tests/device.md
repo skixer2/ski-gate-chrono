@@ -25,7 +25,7 @@ from an end-user perspective. They map directly to `sgc_requirements.md` REQ-FUN
 
 **Procedure:**
 1. Device starts in SLEEP or IDLE
-2. Serial command `a` → ARMED (simulates inductive trigger F03 for bench testing)
+2. Serial command `a` → ARMED (simulates piezo button press F03 for bench testing)
 3. Serial injection of barometric descent data → LOGGING (F04)
 4. 500+ frames logged, then barometric flatline + stillness → POST_RUN (F06)
 5. Verify run metadata via `l` command (F09)
@@ -67,11 +67,11 @@ from an end-user perspective. They map directly to `sgc_requirements.md` REQ-FUN
 
 **Procedure:**
 1. Leave device idle > 5 min → verify sleep (F12)
-2. Bring forearms together → verify wake within 2 s (F13)
+2. Press piezo button → verify wake without reboot (F13)
 3. Verify RTC time preserved across sleep
 4. Verify BLE advertising resumes after wake
 
-**Manual:** Requires LDC1612 hardware + 5-minute wait
+**Manual:** Piezo button on bench device; sleep entry is immediate (F12) — no wait
 
 ---
 
