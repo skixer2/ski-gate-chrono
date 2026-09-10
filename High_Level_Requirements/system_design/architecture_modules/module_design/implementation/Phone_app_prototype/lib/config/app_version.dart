@@ -149,4 +149,9 @@
 //          via a new 'ft_run_complete' event, and disconnects once at the end!
 //          This matches nRF Connect's single-connection profile perfectly while
 //          preserving 100% incremental saving.
-const String APP_VERSION = '1.41';
+
+///          Settle 12s->4s. 2M PHY requested.
+
+///   1.44 - V2 STREAMING PULL (FW 5.77): one command, binary stream,
+///          NO RESUME. Settle 12s to 4s. 2M PHY requested.
+const String APP_VERSION = '1.44';

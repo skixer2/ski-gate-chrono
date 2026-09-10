@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "5.76"
+#define FW_VERSION "5.77"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
@@ -60,9 +60,17 @@ static constexpr uint32_t PULL_CHUNK_BYTES       = 512;
 /* Payload bytes per notification frame: hex-doubled on air → 234 chars +
    header ≈ 242 ≤ 244 usable at ATT MTU 247. */
 static constexpr uint16_t PULL_FRAME_PAYLOAD     = 117;
-/* Pace between notification frames — keep the LL TX queue shallow
-   (the V5.59 wedge lesson; device-push engine disabled in 5.76). */
+/* Pace between ASCII-mode frames (debug path 'r'). Stream mode ('s')
+   sends up to STREAM_FRAMES_PER_LOOP per loop pass with NO timer gap —
+   paced by queue capacity, not timers (V2: the 5.59 queue-pressure theory
+   was disproven on the 2026-09-10 bench). */
 static constexpr uint16_t PULL_FRAME_GAP_MS      = 20;
+
+/* V2 streaming pull (FW 5.77): binary frames [seq:2B][len:1B][≤240B payload]
+   sent back-to-back, ≤2 per loop pass. 244 usable at MTU 247 − 3 ATT − 4 hdr
+   = 240 payload + 3 hdr = 243 ≤ 244. */
+static constexpr uint16_t PULL_STREAM_PAYLOAD    = 240;
+static constexpr uint8_t  STREAM_FRAMES_PER_LOOP = 2;
 
 /* --- Detector thresholds (per design spec) --- */
 static constexpr float    SPEED_THRESHOLD_MPS     = 1.5f;    /* m/s for 200ms window */

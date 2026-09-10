@@ -44,11 +44,12 @@ static uint16_t  g_job_run = 0;
 static uint32_t  g_job_off = 0;
 static uint32_t  g_job_len = 0;      /* requested (already clamped) */
 static uint32_t  g_job_sent = 0;
-static uint8_t   g_job_seq = 0;
+static uint16_t  g_job_seq = 0;   /* V2: 16-bit for stream mode */
+static bool      g_job_stream = false;  /* V2: 's' command → binary stream */
 static char      g_tail[24];         /* "OK <n>" or "E <n>" */
 static bool      g_job_err = false;
 
-static uint8_t   g_frame[PULL_FRAME_PAYLOAD];
+static uint8_t   g_frame[PULL_STREAM_PAYLOAD];   /* V2: sized for stream */
 
 /* ── Watchdog ──────────────────────────────────────────────────────── */
 static bool      g_wdt_armed = false;
@@ -84,6 +85,18 @@ static void emit_line(const char* s)
     Serial.println(s);   /* USB always mirrors (forensics / serial parity) */
 }
 
+/* V2: emit a raw binary frame (stream mode) */
+static void emit_bin(const uint8_t* d, size_t n)
+{
+    if (g_req_via_ble) {
+        BLECharacteristic* c = sgc_ble_console_char();
+        if (c) c->writeValue(d, n);
+    }
+    Serial.write(d, n);   /* USB mirror for forensics */
+    Serial.println();
+    sgc_pull_touch();     /* V2: every emitted frame feeds the watchdog */
+}
+
 static const char* HEXD = "0123456789ABCDEF";
 static size_t hex_encode(const uint8_t* d, size_t n, char* out)
 {
@@ -117,12 +130,13 @@ static void start_dir()
     g_tx_last_ms = 0;   /* first line immediately */
 }
 
-static void start_chunk(uint16_t run, uint32_t off, uint32_t len)
+static void start_chunk(uint16_t run, uint32_t off, uint32_t len, bool stream)
 {
     g_job_run = run; g_job_off = off; g_job_len = len;
     g_job_sent = 0; g_job_seq = 0; g_job_err = false;
+    g_job_stream = stream;
     g_tx = TxState::FRAME;
-    g_tx_last_ms = millis();
+    g_tx_last_ms = 0;   /* V2 stream: no initial gap */
 }
 
 static void parse_request()
@@ -130,6 +144,33 @@ static void parse_request()
     char cmd = g_req[0];
 
     if (cmd == 'D') { start_dir(); return; }
+
+    if (cmd == 's') {   /* V2: streaming pull — binary frames, no pacing */
+        long id = -1, off = -1, len = -1;
+        if (sscanf(g_req, "s %ld %ld %ld", &id, &off, &len) != 3 ||
+            id < 0 || off < 0 || len <= 0) {
+            strncpy(g_tail, "E 3", sizeof(g_tail));
+            g_tx = TxState::TAIL; g_tx_last_ms = millis();
+            return;
+        }
+        const RunEntry* e = g_runs.get_entry_by_id((uint16_t)id);
+        if (!e) {
+            strncpy(g_tail, "E 1", sizeof(g_tail));
+            g_tx = TxState::TAIL; g_tx_last_ms = millis();
+            return;
+        }
+        uint32_t total = sizeof(RunHeader) + e->compressed_size + CRC32_TRAILER_SIZE;
+        if ((uint32_t)off >= total) {
+            strncpy(g_tail, "E 2", sizeof(g_tail));
+            g_tx = TxState::TAIL; g_tx_last_ms = millis();
+            return;
+        }
+        uint32_t remain = total - (uint32_t)off;
+        if ((uint32_t)len > remain) len = (long)remain;
+        /* V2: no clamp to PULL_CHUNK_BYTES — stream the whole rest */
+        start_chunk((uint16_t)id, (uint32_t)off, (uint32_t)len, true);
+        return;
+    }
 
     if (cmd == 'r') {
         long id = -1, off = -1, len = -1;
@@ -158,7 +199,7 @@ static void parse_request()
         uint32_t remain = total - (uint32_t)off;
         if ((uint32_t)len > remain) len = (long)remain;
         if ((uint32_t)len > PULL_CHUNK_BYTES) len = PULL_CHUNK_BYTES;
-        start_chunk((uint16_t)id, (uint32_t)off, (uint32_t)len);
+        start_chunk((uint16_t)id, (uint32_t)off, (uint32_t)len, false);
         return;
     }
 
@@ -195,6 +236,57 @@ static void tx_poll()
     }
 
     if (g_tx == TxState::FRAME) {
+        if (g_job_stream) {
+            /* V2 stream: send up to STREAM_FRAMES_PER_LOOP binary frames,
+               no timer gap — queue capacity paces us. */
+            for (uint8_t i = 0; i < STREAM_FRAMES_PER_LOOP; i++) {
+                uint32_t remain = g_job_len - g_job_sent;
+                if (remain == 0) {
+                    /* End marker: seq=0xFFFF, len=0 */
+                    uint8_t end[3] = {0xFF, 0xFF, 0};
+                    emit_bin(end, 3);
+                    g_tx = TxState::IDLE;
+                    return;
+                }
+                uint32_t take = (remain > PULL_STREAM_PAYLOAD) ? PULL_STREAM_PAYLOAD : remain;
+                if (!g_runs.read_run_data(g_job_run, g_job_off + g_job_sent,
+                                          g_frame, take)) {
+                    strncpy(g_tail, "E 5", sizeof(g_tail));
+                    g_tx = TxState::TAIL;
+                    return;
+                }
+                /* [seq:2B LE][len:1B][payload] */
+                uint8_t hdr[3];
+                hdr[0] = (uint8_t)(g_job_seq & 0xFF);
+                hdr[1] = (uint8_t)(g_job_seq >> 8);
+                hdr[2] = (uint8_t)take;
+                BLECharacteristic* c = sgc_ble_console_char();
+                if (g_req_via_ble && c) {
+                    uint8_t buf[3 + PULL_STREAM_PAYLOAD];
+                    memcpy(buf, hdr, 3);
+                    memcpy(buf + 3, g_frame, take);
+                    emit_bin(buf, 3 + take);
+                } else {
+                    /* Serial: hex for readability */
+                    Serial.print("[");
+                    Serial.print(g_job_seq);
+                    Serial.print(" ");
+                    Serial.print(take);
+                    Serial.print(" ");
+                    for (uint32_t j = 0; j < take; j++) {
+                        Serial.print(HEXD[g_frame[j] >> 4]);
+                        Serial.print(HEXD[g_frame[j] & 0xF]);
+                    }
+                    Serial.println("]");
+                    sgc_pull_touch();
+                }
+                g_job_sent += take;
+                g_job_seq++;
+            }
+            return;   /* more frames next loop pass */
+        }
+
+        /* ASCII mode ('r' debug path) — unchanged */
         if (now - g_tx_last_ms < PULL_FRAME_GAP_MS) return;
         g_tx_last_ms = now;
 
