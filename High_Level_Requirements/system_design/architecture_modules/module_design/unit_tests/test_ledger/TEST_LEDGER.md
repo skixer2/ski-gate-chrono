@@ -1287,3 +1287,29 @@ sections/ledgers preserved (not rewritten).
 B402 chosen because **open CPU** (own firmware, same code as B112/Nicla
 line); B412 rejected because **u-connect** (closed AT stack — cannot run
 our code). Hardware arch v2.4 + AD-019 wording updated accordingly.
+
+### 2026-09-10 12:39–12:55 — ✅ OTA BENCH COMPLETE: ALL 5 RUNS SYNCED (pull protocol)
+
+**Result: 5/5 runs on the phone, CRC-verified, ZERO manual intervention on the
+final batch.** The objective of TC-2026-08-26-001 — complete batch download on
+the S22 without manual recovery — is MET by the phone-pull architecture
+(FW 5.76 + App 1.43).
+
+- Batch 1 (old app, attempts=3): #0 ✓(2 att), #2 ✓(3 att), #3 ✓(3 att);
+  #1/#4 failed (budget). Batch 2 (attempts=8, settle 12 s): #1 ✓(4 att),
+  #4 ✓(4 att) — **"pull batch end: ok=2 failed=0"**.
+- Wedge evidence: struck mid-transfer even with device pacing on-demand at
+  20 ms (512 B/req, ~210 ms RT) → **stochastic phone-side, NOT device TX
+  pressure. Churn-window theory (12 s settle) RETIRED — wedges continued.**
+- Full recovery loop proven repeatedly: wedge → phone teardown → device
+  pull_wdt @2 s → hard radio restart (ok:1, or ok:0→clean reboot) → phone
+  reconnect (ADV-wait) → **continue from last offset** → DONE.
+  Cost per wedge ≈ 30–40 s; every attempt converts to forward progress.
+- Device never lost data, never WDT-crashed; only intentional radio-recovery
+  reboots (rr) after failed BLE.begin retries.
+- Fixes this bench cycle: `c8e5fce` (wdt arming), `679e404` (hard radio
+  restart on pull_wdt), `d2b4a1d` (attempts 8 / settle 12 s A/B).
+
+**Remaining tuning (non-blocking):** wedge cost 30–40 s (backoff+ADV+settle);
+settle can return to 4–6 s (no protective effect measured); possible: request
+pacing 30 ms, WRITE_TYPE_NO_RESPONSE (kills echo), phone-BT-state hygiene.
