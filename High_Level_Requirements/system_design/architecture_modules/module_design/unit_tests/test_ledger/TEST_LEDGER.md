@@ -1269,3 +1269,15 @@ sgc_architecture_hardware.md v2.3, sgc_architecture_phone.md (charge stream),
 sgc_architecture_decisions.md **AD-018**, sgc_context_gemini_01.md (marked
 FROZEN — historical). BOM already correct (v4.x DNP markers). Historical
 sections/ledgers preserved (not rewritten).
+
+### 2026-09-10 09:21 — JP directives round 2 → AD-019 (doc-only)
+
+- **F13 confirmed:** no IDLE state (removed FW V5.19); SLEEP → ARMED
+  directly on button press. System-design note corrected accordingly.
+- **Custom board module = ANNA-B402** (u-blox open CPU, nRF52833; more
+  powerful, same code as B112/Nicla line). Supersedes B112 (v2.0-2.3 docs)
+  and the Aug-2026 B412 evaluation. B112 pin-map tables marked for B402
+  revalidation at PCB redesign.
+- **Companion carrier PCB DROPPED:** production = Nicla prototypes (P0) →
+  standalone custom PCB ANNA-B402 (P1+). No Nicla+carrier phase.
+  sgc_production_strategy.md v1.6; hardware arch v2.4; BOM note added.

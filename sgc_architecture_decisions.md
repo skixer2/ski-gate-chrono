@@ -493,3 +493,20 @@ advertising flag (not implemented).
 integration_tests/hardware.md, acceptance_tests/device.md,
 requirements_traceability.md, sgc_architecture_hardware.md v2.3,
 sgc_context_gemini_01.md (marked frozen). Historical sections preserved.
+
+## AD-019: ANNA-B402 Module + Direct-to-Custom-Board Production
+
+**Date:** 2026-09-10 · **Status:** accepted (JP directives, documentation-only)
+
+The custom production board uses the **u-blox ANNA-B402** (open CPU,
+nRF52833): more powerful than the B112 and able to run the exact same
+firmware code as the B112-based Nicla Sense ME line. The **companion
+carrier PCB concept is dropped** — there is no Nicla-on-carrier production
+phase. Hardware phases: Nicla Sense ME prototypes (P0) → standalone custom
+PCB with ANNA-B402 (P1+). B112 pin-map tables in the hardware architecture
+doc must be revalidated against the B402 datasheet during the PCB redesign.
+Also confirmed: no IDLE state in the production state machine (removed
+FW V5.19; SLEEP → ARMED directly on button press).
+
+**Docs:** sgc_architecture_hardware.md v2.4, sgc_production_strategy.md
+v1.6, sgc_bom.md note, sgc_system_design.md (IDLE note), HLR v6.0 (F13).

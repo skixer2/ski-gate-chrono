@@ -65,7 +65,7 @@ benefits at half the price and still in active production from Langir.
 - LDC-specific passives: 100 nF + 33 pF tank cap + 2× 2.2 kΩ I²C pull-ups (reflected in #6)
 
 **Not included in SGC BOM (part of Nicla replica):**
-- nRF52832 (ANNA-B112 module), BHI260AP, BMP390, BMM150, BME688 — already on Nicla
+- nRF52832 (ANNA-B112 module), BHI260AP, BMP390, BMM150, BME688 — already on Nicla. **Custom-board radio module: ANNA-B402** (nRF52833, decided 2026-09-10 — supersedes B112/B412 evaluations); add to the module line-item at the next BOM revision
 - MX25R6435F Flash U7 (8 MB) — pin-compatible swap from MX25R1635F (2 MB). Same SOIC-8
   pinout, same JEDEC SPI command set + SFDP. Firmware auto-detects size (SPIFBlockDevice
   SFDP); layout re-mapped for 8 MB (pre-roll stays 0x0000–0x13FFF).

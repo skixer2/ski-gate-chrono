@@ -82,8 +82,8 @@
   └────────────────────────────────────────────────────────┘
 ```
 
-*IDLE remains in the enum for bench/service (serial) paths, but SLEEP is the
-primary waiting state (F12) — the production flow never dwells in IDLE.*
+*There is no IDLE state (removed in FW V5.19): SLEEP is the primary waiting
+state (F12) and the button press transitions SLEEP → ARMED directly.*
 
 
 ### State Transition Table
@@ -92,7 +92,7 @@ primary waiting state (F12) — the production flow never dwells in IDLE.*
 |---|---|---|---|
 | SLEEP | Piezo button press (GPIO sense) | ARMED | Instant wake, no reboot (F13); P₀ captured, pre-roll starts (F03) |
 | SLEEP | 1 h unconnected | SYSTEM_OFF | Deep shutdown (F12); button press → cold boot (rr:4) |
-| SLEEP/IDLE | 5 button presses within 3 s | (factory reset) | LED flashes red 3× → clear bonding + Flash → restart (F42) |
+| SLEEP / ARMED / POST_RUN | 5 button presses within 3 s | (factory reset) | LED flashes red 3× → clear bonding + Flash → restart (F42). Button masked during LOGGING (R03) |
 | ARMED | Cumulative vertical drop > 2.0 m from arming P₀ | LOGGING | Drain begins, LED=red chase (F04, F05, F41). Single-mode: drop only (speed removed v2.2 — BMP390 quantization noise caused false triggers) |
 | ARMED | 30 s no descent | SLEEP | R02 |
 | LOGGING | Descent < 2 m over last 5 s (0.5 Hz sampling) | POST_RUN | Close file, write CRC32 (F06). Altitude-adaptive PA_PER_M. Ignores ascent (dp < 0) |

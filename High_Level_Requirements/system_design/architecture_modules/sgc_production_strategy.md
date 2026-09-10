@@ -1,4 +1,6 @@
-# SGC — Production Strategy (v1.5 — Pole-Mount)
+# SGC — Production Strategy (v1.6 — Pole-Mount)
+
+*2026-09-10 — v1.6 (JP): **Companion carrier PCB dropped.** No Nicla-on-carrier phase: Phase 0 uses bare Nicla Sense ME prototypes; Phase 1+ uses the standalone custom PCB with **ANNA-B402** (nRF52833 open CPU — same code as the B112/Nicla line). v1.0's "off-the-shelf Nicla + companion carrier" architecture is superseded.*
 
 *2026-08-12 — v1.5: Arming changed from magnetic reed switch (rejected — magnet de-calibrates BMM150) to a Langir 16 mm piezo pushbutton on P0.02. BOM + cost tables updated (button ~€7–12 vs reed ~€0.80).*
 *2026-08-11 — v1.4: AD-017 pole-mount pivot. Simplified mechanical — no injection molding, potting, foam padding, or strap assembly. Forearm guard deferred to v2. Cost estimates updated for pole-mount form factor.*
@@ -18,13 +20,13 @@
 | Parameter | Value |
 |-----------|-------|
 | Quantity | 5–10 units |
-| Hardware | Existing custom PCB (ANNA-B112, Nicla replica) |
+| Hardware | Nicla Sense ME prototypes (bare module + bench wiring) |
 | Assembly | Manual / in-house |
 | Cost per unit | ~€100–150 (manual labor, one-off parts) |
 | Total investment | ~€500–1,500 |
 
 **Goal:** Field validation. Put devices on real skiers, coaches, race officials.
-- Does the proximity arming work on snow?
+- Does button arming work with gloves on snow?
 - Is BLE range sufficient at race speeds?
 - Is battery life acceptable in -10°C?
 - ~~Does the beeper work through a helmet + wind noise?~~ → beeper DNP (v4.2, footprint retained)
@@ -37,7 +39,7 @@
 | Parameter | Value |
 |-----------|-------|
 | Quantity | 20–50 units |
-| Hardware | First companion carrier PCB + off-the-shelf Nicla |
+| Hardware | First standalone custom PCB (ANNA-B402, Nicla replica peripherals) |
 | Assembly | Small EMS batch OR hand-assembled with carrier PCB from fab |
 | Cost per unit | ~€120–180 (low volume, no economies of scale) |
 | Total investment | ~€2,500–9,000 |
