@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "5.84"
+#define FW_VERSION "5.85"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
@@ -53,7 +53,7 @@ static constexpr uint32_t BLE_ZOMBIE_TIMEOUT_MS  = 30000;
 /* --- Phone-pull transfer (FW 5.76, PULL_TRANSFER_REDESIGN.md) --- */
 /* Watchdog: no console request for 2 s while connected → disconnect + re-ADV.
    Armed on first request after connect (S22 service discovery can exceed 2 s). */
-static constexpr uint32_t PULL_WDT_MS            = 2000;
+static constexpr uint32_t PULL_WDT_MS            = 8000;  /* 5.85: S22 slow-mode jitters >2s mid-stream; HW WDT covered by ISR feeder */
 /* Logical chunk per request: ≥500 B target (IR-3). 512 = 77 requests per
    39 KB run ≈ 3–10 s at 30–60 ms round trips. */
 static constexpr uint32_t PULL_CHUNK_BYTES       = 512;
