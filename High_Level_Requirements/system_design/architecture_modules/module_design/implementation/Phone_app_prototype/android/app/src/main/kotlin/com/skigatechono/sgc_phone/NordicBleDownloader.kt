@@ -93,6 +93,12 @@ class NordicBleDownloader(private val context: Context) {
 
         override fun log(priority: Int, message: String) {
             Log.println(priority, TAG, message)
+            /* 1.46: slow-mode guard - S2x leaves CI at 60 ms after system churn
+               (battery/Bose probes); 60 ms = ~13 fps. Re-assert HIGH. */
+            val ci = Regex("""interval: (\d+(?:\.\d+)?)ms""").find(message)
+            if (ci != null && ci.groupValues[1].toFloat() > 30f) {
+                try { requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH).enqueue() } catch (_: Exception) {}
+            }
         }
 
         override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
@@ -164,6 +170,8 @@ class NordicBleDownloader(private val context: Context) {
 
         fun sendRequest(line: String) {
             val c = consoleChar ?: throw Exception("console characteristic unavailable")
+            /* 1.46: re-assert HIGH before every request (post-settle = post-churn) */
+            try { requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH).enqueue() } catch (_: Exception) {}
             writeCharacteristic(c, line.toByteArray(Charsets.US_ASCII),
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
         }

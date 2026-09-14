@@ -549,4 +549,4 @@ extern "C" {
 
 /* V5.07: BLE activity tracking for zombie link detection */
 uint32_t sgc_ble_last_activity_ms() { return g_last_ble_activity_ms; }
-void sgc_ble_touch_activity()   { g_last_ble_activity_ms = millis(); ft_wdt_ticker_grace(30000); }  /* 5.86 */ }
+void sgc_ble_touch_activity()   { g_last_ble_activity_ms = millis(); ft_wdt_ticker_grace(30000); }  /* 5.86 */
