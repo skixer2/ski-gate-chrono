@@ -57,7 +57,8 @@ static bool      g_job_stream = false;  /* V2: 's' command → binary stream */
 static char      g_tail[24];         /* "OK <n>" or "E <n>" */
 static bool      g_job_err = false;
 
-static uint8_t   g_frame[PULL_STREAM_PAYLOAD];   /* V2: sized for stream */
+static uint8_t   g_frame[PULL_STREAM_PAYLOAD];
+static uint32_t  g_job_start_ms = 0;   /* 5.87: hard job deadline clock */   /* V2: sized for stream */
 
 /* ── Watchdog ──────────────────────────────────────────────────────── */
 static bool      g_wdt_armed = false;
@@ -190,7 +191,8 @@ static void parse_request()
         if ((uint32_t)len > remain) len = (long)remain;
         /* V2: no clamp to PULL_CHUNK_BYTES — stream the whole rest */
         start_chunk((uint16_t)id, (uint32_t)off, (uint32_t)len, true);
-        ft_wdt_ticker_start();   /* 5.82 */
+        g_job_start_ms = millis();   /* 5.87 */
+ft_wdt_ticker_start();   /* 5.82 */
         return;
     }
 
@@ -375,7 +377,25 @@ void sgc_pull_poll()
     }
     tx_poll();
 
-    /* Request watchdog (FWR-3): armed after the first request, fed by any
+    /* 5.87: HARD JOB DEADLINE (JP spec): a stream run must finish in 10 s.
+       Healthy = 3-5 s; slow start or slow drain is failure, not something
+       to nurse. On expiry: abort + FULL BLE stack restart (radio_restart,
+       no reboot) + re-ADV. Target fire rate ~1/100 transfers. */
+    if (g_tx == TxState::FRAME && g_job_stream &&
+        (millis() - g_job_start_ms) > PULL_JOB_DEADLINE_MS) {
+        json_begin();
+        json_kv("ev", "pull_deadline");
+        Serial.print(','); json_kv("ms", (long)(millis() - g_job_start_ms));
+        Serial.print(','); json_kv("sent", (long)(g_job_off + g_job_sent));
+        Serial.print(','); json_kv("total", (long)(g_job_off + g_job_len));
+        json_end();
+        g_tx = TxState::IDLE;
+        g_wdt_armed = false;
+        request_ble_radio_restart("pull_deadline");
+        return;
+    }
+
+/* Request watchdog (FWR-3): armed after the first request, fed by any
        request. Silence > PULL_WDT_MS while connected → disconnect + re-ADV. */
     if (g_wdt_armed && sgc_ble_central_connected() &&
         (millis() - g_last_req_ms) > PULL_WDT_MS) {

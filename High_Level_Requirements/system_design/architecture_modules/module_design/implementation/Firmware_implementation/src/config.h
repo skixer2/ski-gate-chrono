@@ -7,7 +7,7 @@
 
 #include <stdint.h>
 
-#define FW_VERSION "5.86"
+#define FW_VERSION "5.87"
 
 /* --- SK6812 strip / bench (strip hardware NOT required) ---
  * LED_STRIP_COUNT 0   = onboard Nicla RGB only
@@ -74,6 +74,7 @@ static constexpr uint8_t  STREAM_FRAMES_PER_LOOP = 2;
 static constexpr uint16_t PULL_STREAM_GAP_MS     = 25;   /* 5.81: match 40 fps drain equilibrium */
 static constexpr uint16_t PULL_PROG_EVERY       = 40;  /* 5.79: pull_prog every N frames */
 static constexpr uint32_t SILENT_CENTRAL_TIMEOUT_MS = 30000;  /* 5.83: live-but-silent ghost drop */
+static constexpr uint32_t PULL_JOB_DEADLINE_MS     = 10000;  /* 5.87: stream must finish in 10 s or radio restart */
 
 /* --- Detector thresholds (per design spec) --- */
 static constexpr float    SPEED_THRESHOLD_MPS     = 1.5f;    /* m/s for 200ms window */
