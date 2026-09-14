@@ -272,7 +272,7 @@ static void tx_poll()
                 json_kv("why", "disc");
                 json_end();
                 g_tx = TxState::IDLE;
-                g_wdt_armed = false; ft_wdt_ticker_stop();
+                g_wdt_armed = false; ft_wdt_ticker_grace(10000);  /* 5.84: keep feeding through the reconnect boundary */
                 return;
             }
             g_tx_last_ms = now;
@@ -283,7 +283,7 @@ static void tx_poll()
                     uint8_t end[3] = {0xFF, 0xFF, 0};
                     emit_bin(end, 3);
                     g_tx = TxState::IDLE;
-                    g_wdt_armed = false; ft_wdt_ticker_stop();   /* 5.78: job done, disarm (FWR-3) */
+                    g_wdt_armed = false; ft_wdt_ticker_grace(10000);  /* 5.84: keep feeding through the reconnect boundary */   /* 5.78: job done, disarm (FWR-3) */
                     return;
                 }
                 uint32_t take = (remain > PULL_STREAM_PAYLOAD) ? PULL_STREAM_PAYLOAD : remain;
@@ -358,7 +358,7 @@ static void tx_poll()
         g_tx_last_ms = now;
         emit_line(g_tail);
         g_tx = TxState::IDLE;
-        g_wdt_armed = false; ft_wdt_ticker_stop();   /* 5.78: tail sent, job terminal */
+        g_wdt_armed = false; ft_wdt_ticker_grace(10000);  /* 5.84: keep feeding through the reconnect boundary */   /* 5.78: tail sent, job terminal */
     }
 }
 
