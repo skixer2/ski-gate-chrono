@@ -1364,3 +1364,82 @@ At 2 s clean transfer, wedge probability per attempt ≈ 8× lower than at 16 s.
 If it fails → reconnect → `s <id> 0 <total>` again. No partial buffers,
 no offset tracking, no resume code. The simplest possible protocol:
 phone says "give me run N", device streams, phone CRCs, retry if bad.
+
+### 2026-09-14 10:55–16:30 UTC — THE V2 BENCH MARATHON: FW 5.77→5.86, App 1.44→1.46 (nine firmware versions, one day)
+
+**Context:** bench day for V2 streaming pull (FW 5.77/App 1.44, `75be1da`).
+JP-PC node reconnected at 11:22; flash+install+pm clear via adb from gateway.
+
+**Version ladder (each = a failure observed and fixed):**
+- **5.78** — pull watchdog (FWR-3, 2 s) fired mid-settle of run #1: app reconnects
+  39 ms after DONE without disconnecting (Android link reuse) → armed state
+  survives → terminate+radio restart → 147 storm. Fix: disarm at every job
+  terminal (d_end, end marker, tail), re-arm on next request.
+- **5.79** — SPEED ROOT CAUSE: emit_bin's per-frame USB serial mirror =
+  21 ms/frame baud cap = 5 KB/s ("exactly the old version"). Mirror removed
+  (pull_prog every 40 frames), 4 frames/loop. Result: 40 fps bursts, full runs
+  in 3-5 s — but flooding wedged the S22 4/4 (rr:2 via writeValue block).
+- **5.80** — pacing 15 ms/1 frame per pass. Still rr:2 (offer 66 > drain 40).
+- **5.81** — pacing 25 ms (= measured 40 fps drain equilibrium) + connected-
+  gate before writes. Gate ineffective (stale state inside frozen loop).
+- **5.82** — ISR WDT feeder (push-era ft_wdt_ticker de-static'd): feeds HW WDT
+  from interrupt context, re-armed per frame, 6 s grace. Controlled rr:2 only.
+- **5.83** — silent-ghost detector: live-but-silent central >30 s → disconnect
+  + re-ADV (the 17:59 zombie slot: phone's failed-CCCD race, 20+ min hold,
+  untouchable by force-stop or BT toggle).
+- **5.84** — feeder grace 10 s past stream completion (boundary churn between
+  runs was still rebooting).
+- **5.85** — pull watchdog 2 s → 8 s (S22 slow mode = 60 ms CI = 13 fps with
+  >2 s mid-stream jitters; the 2 s wdt executed every slow run, 8 attempts on
+  run #2, app gave up).
+- **5.86** — JP DIRECTIVE "absolutely avoid rebooting": ISR feeder now runs
+  the ENTIRE time a central is connected; any activity re-arms a 30 s budget.
+  Hardware reboot now requires a 30 s total wedge; all faster paths are
+  non-reboot recoveries.
+
+**App ladder:**
+- **1.45** — both download buttons → native V2 (legacy FBP button still ran
+  V1.21 resume + push protocol = the "resume" JP saw; killed per JP order).
+- **1.46** — SLOW-MODE GUARD: re-assert CONNECTION_PRIORITY_HIGH on any
+  conn-param update >30 ms (parsed from Nordic logs) + before every console
+  request. Slow mode = S2x system churn (BatteryManager/Bose probes) leaving
+  CI at 60 ms.
+
+**Phone-side findings (TC-2026-08-26-001 additions):**
+- Slow mode root: CI 60 ms vs 15 ms (1 notification/event ≈ 13 fps — matches
+  every measurement). Central-side parameter; app re-asserts.
+- System services (BluetoothDeviceBatteryManager, BoseMobile, D_FMM) probe
+  the SGC around every connect/disconnect — churn source.
+- Failed-CCCD races can leave ghost slots that survive force-stop + BT toggle.
+
+**State at wrap (16:30 UTC):** FW 5.86 flashed+booted. App 1.46 APK BUILT,
+NOT installed (phone left with JP — `adb install -r` when back on USB).
+2 of 5 runs on phone; 3 missing. Transport lesson: vault→git→node relay is
+the reliable channel (canvas ship flaked; b64 hand-copy corrupted 4×).
+
+### 2026-09-14 19:30–20:19 UTC — Evening session: cache-133 saga, deadline VERIFIED, 5.88 closes the reboot escalation
+
+- JP's 15-min window stretched to an hour. Phone wedge per run (evening mood, worst of the day).
+- **133-after-reboot = cached GATT database**: fixed via `pm clear com.android.bluetooth`
+  (wipes BT stack cache; nothing paired, nothing lost) + `pm clear` of the app. Run 1 then OK.
+- **App 1.46 installed + live** (CI re-assert guard). Phone restarted once.
+- **pull_deadline (5.87) VERIFIED in production**: 6+ firings, all on spec (10-14 s, partial
+  bytes logged: 2880/5520/7680/18720/18960/27120 B of 39044-39668).
+- **5.87 BUG: deadline → radio restart → begin() ok:0 → NVIC reboot escalation** (6 reboots,
+  "ble_radio ok:0 retry:1 reboot:1" each time). Root: restart tore down after only 3 polls
+  while the trickling link still lived (5.69 lesson resurfaced via the new path).
+- **FW 5.88**: radio restart now disconnects and waits (2 s bounded, ISR feeder covering)
+  for link teardown before end/begin; settle 100→300 ms. Booted 22:18 local. UNTESTED —
+  first bench tomorrow verifies deadline→ok:1→re-ADV with no reboot.
+- HCI snoop pipeline BUILT and proven (bugreport → extract FS/data/log/bt/btsnoop_hci.log →
+  scp via vps → python parser). Ring buffer ≈13 min — pull bugreport IMMEDIATELY after the
+  next bench window. DLE (Data Length Change event) still unconfirmed — snoop never covered
+  a connection setup yet.
+- JP's MTU question: app requests 517; device caps 247 (ArduinoBLE/Cordio config). 5.88+
+  idea: device MTU 511 → 508 B frames → halves notifications/KB, doubles slow-mode throughput
+  (~8 KB/s at 60 ms CI). Spec'd, not built.
+- **Tomorrow's resume checklist**: power-cycle device → clean 5-run sync on 5.88/1.46 →
+  verify deadline recovery has no reboots → bugreport right after → parse snoop for DLE +
+  wedge signature. Phone settings pending: Never Sleeping Apps + unrestricted battery.
+  App 1.47 backlog: scan-rate cap (5/30 s), surgical connection priority (HIGH only during
+  stream), device MTU 511.
