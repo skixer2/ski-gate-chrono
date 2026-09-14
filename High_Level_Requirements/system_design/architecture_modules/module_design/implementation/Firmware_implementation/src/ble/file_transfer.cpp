@@ -294,21 +294,21 @@ static void ft_wdt_ticker_stop_isr()
     g_ft_wdt_ticker_on = false;
     g_ft_wdt_cp[0] = 0;  /* V5.72: grace survived — no post-FT death to report */
 }
-static void ft_wdt_ticker_start()
+void ft_wdt_ticker_start()
 {
     g_ft_wdt_stop_timeout.detach();
     if (g_ft_wdt_ticker_on) return;
     g_ft_wdt_ticker.attach_us(ft_wdt_feed_isr, 500000);  /* 500 ms << 5 s WDT */
     g_ft_wdt_ticker_on = true;
 }
-static void ft_wdt_ticker_stop()
+void ft_wdt_ticker_stop()
 {
     g_ft_wdt_stop_timeout.detach();
     if (!g_ft_wdt_ticker_on) return;
     g_ft_wdt_ticker.detach();
     g_ft_wdt_ticker_on = false;
 }
-static void ft_wdt_ticker_grace(uint32_t grace_ms)
+void ft_wdt_ticker_grace(uint32_t grace_ms)
 {
     if (!g_ft_wdt_ticker_on) return;
     g_ft_wdt_stop_timeout.attach_us(ft_wdt_ticker_stop_isr, grace_ms * 1000);

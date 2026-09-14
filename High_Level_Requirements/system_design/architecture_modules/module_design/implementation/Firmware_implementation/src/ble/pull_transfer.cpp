@@ -26,6 +26,14 @@ extern RawRunStore g_runs;
 
 extern "C" BLECharacteristic* sgc_ble_console_char();
 
+/* 5.82: ISR WDT feeder (push-era ft_wdt_ticker) reused for pull streams.
+   Feeds the HW watchdog from interrupt context while frames flow, so a
+   writeValue() block on a dead link ends in a CONTROLLED rr:2 after the
+   grace window instead of freezing both watchdogs. */
+void ft_wdt_ticker_start();
+void ft_wdt_ticker_stop();
+void ft_wdt_ticker_grace(uint32_t grace_ms);
+
 /* ── Request capture (filled by BLE handler / serial, consumed by poll) ── */
 static char           g_req[80];
 static volatile bool  g_req_pending = false;
@@ -73,6 +81,7 @@ void sgc_pull_link_reset()
     g_wdt_armed = false;
     g_req_pending = false;
     g_tx = TxState::IDLE;
+    ft_wdt_ticker_stop();   /* 5.82: link gone, feeder no longer needed */
 }
 
 /* ── Output: same text to console char (notify) or USB serial ─────── */
@@ -95,6 +104,7 @@ static void emit_bin(const uint8_t* d, size_t n)
     /* 5.79: NO per-frame USB mirror (21ms/frame baud cap + rr:2 when reader dies).
        5.80: forensics via pull_prog line every PULL_PROG_EVERY frames. */
     sgc_pull_touch();     /* every emitted frame feeds the watchdog */
+    ft_wdt_ticker_grace(6000);  /* 5.82: progress re-arms ISR feeder, 6 s grace */
 }
 
 /* 5.79: stream progress forensics */
@@ -179,6 +189,7 @@ static void parse_request()
         if ((uint32_t)len > remain) len = (long)remain;
         /* V2: no clamp to PULL_CHUNK_BYTES — stream the whole rest */
         start_chunk((uint16_t)id, (uint32_t)off, (uint32_t)len, true);
+        ft_wdt_ticker_start();   /* 5.82 */
         return;
     }
 
@@ -260,7 +271,7 @@ static void tx_poll()
                 json_kv("why", "disc");
                 json_end();
                 g_tx = TxState::IDLE;
-                g_wdt_armed = false;
+                g_wdt_armed = false; ft_wdt_ticker_stop();
                 return;
             }
             g_tx_last_ms = now;
@@ -271,7 +282,7 @@ static void tx_poll()
                     uint8_t end[3] = {0xFF, 0xFF, 0};
                     emit_bin(end, 3);
                     g_tx = TxState::IDLE;
-                    g_wdt_armed = false;   /* 5.78: job done, disarm (FWR-3) */
+                    g_wdt_armed = false; ft_wdt_ticker_stop();   /* 5.78: job done, disarm (FWR-3) */
                     return;
                 }
                 uint32_t take = (remain > PULL_STREAM_PAYLOAD) ? PULL_STREAM_PAYLOAD : remain;
@@ -346,7 +357,7 @@ static void tx_poll()
         g_tx_last_ms = now;
         emit_line(g_tail);
         g_tx = TxState::IDLE;
-        g_wdt_armed = false;   /* 5.78: tail sent, job terminal */
+        g_wdt_armed = false; ft_wdt_ticker_stop();   /* 5.78: tail sent, job terminal */
     }
 }
 
