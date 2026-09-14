@@ -12,7 +12,7 @@
 #   SGC_RESULTS_HOST / SGC_RESULTS_PORT / SGC_RESULTS_USER / SGC_RESULTS_PATH / SGC_RESULTS_KEY
 #
 # Hostinger note: OpenClaw runs in Docker. On the VPS HOST the workspace is under
-# /root/.openclaw/workspace/... (bind-mounted to /home/node/.openclaw inside the container).
+# /home/node/.openclaw/ipcra_ws/... (bind-mounted to /home/node/.openclaw inside the container).
 # Default user/path below target that host layout. Override with env if needed.
 param(
   [string]$RunId        = "",
@@ -42,7 +42,7 @@ if (-not $RemoteUser) {
 if (-not $RemotePath) {
   if ($env:SGC_RESULTS_PATH) { $RemotePath = $env:SGC_RESULTS_PATH }
   else {
-    $RemotePath = "/root/.openclaw/workspace/ski_gate_chrono/High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/tmp_test_results"
+    $RemotePath = "/home/node/.openclaw/ipcra_ws/1_Projects/ski_gate_chrono/High_Level_Requirements/system_design/architecture_modules/module_design/unit_tests/tmp_test_results"
   }
 }
 if (-not $IdentityFile) {

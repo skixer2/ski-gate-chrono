@@ -1313,3 +1313,54 @@ the S22 without manual recovery — is MET by the phone-pull architecture
 **Remaining tuning (non-blocking):** wedge cost 30–40 s (backoff+ADV+settle);
 settle can return to 4–6 s (no protective effect measured); possible: request
 pacing 30 ms, WRITE_TYPE_NO_RESPONSE (kills echo), phone-BT-state hygiene.
+
+### 2026-09-10 12:57 — JP VERDICT on pull bench (binding for next session)
+
+**"Frankly, I am deceived. We still have continuous disconnections and
+1 minute to download a run. Even without interruptions the process is
+SLOWER than the previous strategy. The 12 s settling doesn't help — it's
+NOT harmless: it's a user thinking he bought crap. I often see
+'Unexpected line...' on the phone."**
+
+Honest product assessment (agreed by coordinator):
+1. **Speed regression vs push:** clean pull run ≈ 16 s (2.4 KB/s) vs clean
+   push run ≈ 8 s (~5 KB/s). Causes: hex doubling on air, 512 B/req,
+   20 ms×5 frame pacing, write-with-response round trips, request echo
+   duplicating traffic. With wedges (3-4/run × 30-40 s recovery) → ~60 s/run.
+2. **12 s settle: harmful, zero measured benefit** → revert to 4 s.
+3. **"Unexpected line" = request echo shown in UI log** → filter/silent.
+4. Wedges: unchanged, stochastic phone-side (proven). Pull didn't cause
+   them; pull also didn't reduce them. What pull DID deliver: zero data
+   loss, unattended completion, clean recovery semantics.
+
+**Next-session agenda (JP: "continue another day"):**
+a) Speed: chunk 512→2048 B/req, kill 20 ms pacing (TX-pressure theory dead),
+   WRITE_TYPE_NO_RESPONSE (halves RT), consider base64 or binary frames
+   (hex = 2× air bytes) — target clean run ≤ 8 s.
+b) UX: silence echo lines, settle → 4 s, hide retry churn behind progress.
+c) Open question for JP: pure-pull-optimized vs hybrid (fast push transfer +
+   pull-style stateless resume for recovery) — push clean runs were faster.
+**Restart state:** FW 5.76 flashed (`d2b4a1d`…`d85b007`), App 1.43 on S22,
+5 runs on phone (CRC ✓), docs v6.0, serial logger live on JP-PC COM3.
+
+### 2026-09-10 15:43 — DECISION (JP, pre-code): V2 streaming pull (FW 5.77 + App 1.44)
+
+JP accepted research direction; bench in ~2 days. Docs-first rule honored:
+PULL_TRANSFER_REDESIGN.md V2 addendum written BEFORE this code entry.
+- Data path = one-way binary notification stream paced by queue capacity
+  (≤2 frames/loop, no timer): `s <id> <off> <len>` → [seq16][len8][≤240B]*
+  → [0xFFFF] end marker; resume stateless from bytesReceived; phone-side
+  trailer CRC verify unchanged. `r` ASCII path kept for debug.
+- Watchdog fed by TX progress (frame emitted = alive).
+- Echo silenced; settle 12→4 s; request LE 2M PHY; DLE verified via HCI
+  snoop on bench day. Old push slowness root-caused (manual 30–60 ms
+  cadence + single-in-flight + unverified DLE) — not the stream's fault.
+- Target: 39 KB clean ≤ 3 s. FW flash deferred to bench day (DAP power-cycle
+  rule); app installed via adb now.
+
+### 2026-09-10 15:51 — JP simplification: NO RESUME in V2 (restart from scratch)
+
+At 2 s clean transfer, wedge probability per attempt ≈ 8× lower than at 16 s.
+If it fails → reconnect → `s <id> 0 <total>` again. No partial buffers,
+no offset tracking, no resume code. The simplest possible protocol:
+phone says "give me run N", device streams, phone CRCs, retry if bad.
