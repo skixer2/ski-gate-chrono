@@ -105,6 +105,7 @@ static void emit_bin(const uint8_t* d, size_t n)
        5.80: forensics via pull_prog line every PULL_PROG_EVERY frames. */
     sgc_pull_touch();     /* every emitted frame feeds the watchdog */
     ft_wdt_ticker_grace(6000);  /* 5.82: progress re-arms ISR feeder, 6 s grace */
+    sgc_ble_touch_activity();   /* 5.83: TX counts as link life for ghost detector */
 }
 
 /* 5.79: stream progress forensics */
@@ -359,6 +360,11 @@ static void tx_poll()
         g_tx = TxState::IDLE;
         g_wdt_armed = false; ft_wdt_ticker_stop();   /* 5.78: tail sent, job terminal */
     }
+}
+
+bool sgc_pull_job_active()
+{
+    return g_tx != TxState::IDLE || g_req_pending;
 }
 
 void sgc_pull_poll()

@@ -41,6 +41,7 @@ void sgc_pull_init();
 void sgc_pull_handle_line(const char* line, bool via_ble);
 /** Main-loop poll: paced frame TX + request watchdog. Never blocks. */
 void sgc_pull_poll();
+bool sgc_pull_job_active();   /* 5.83 */
 /** Feed the watchdog: call on ANY console characteristic write. */
 void sgc_pull_touch();
 /** Called on BLE connect/disconnect — clears session + watchdog state. */

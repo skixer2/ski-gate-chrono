@@ -1501,6 +1501,23 @@ void loop()
                 request_ble_radio_restart("zombie");
             }
         }
+        /* 5.83: SILENT GHOST — controller holds a live link but no GATT
+           activity for SILENT_CENTRAL_MS and no transfer is running. The app
+           always talks within ~15 s of connecting; this class of ghost comes
+           from failed-CCCD races (S22 17:59 bench: slot held 20+ min, phone
+           147s forever). Soft disconnect + re-ADV; radio restart only if the
+           desync/zombie path later proves it stuck. */
+        if (sgc_ble_central_connected() && BLE.connected() && !sgc_ble_ft_active() &&
+            !sgc_pull_job_active()) {
+            uint32_t idle = millis() - sgc_ble_last_activity_ms();
+            if (idle > SILENT_CENTRAL_TIMEOUT_MS) {
+                json_begin();
+                json_kv("ev", "silent_ghost");
+                Serial.print(','); json_kv("idle_ms", (long)idle);
+                json_end();
+                sgc_ble_force_recover("silent_ghost");
+            }
+        }
         /* V5.00: refresh hold from live link + FT (covers event miss / stall abort). */
         g_sm.set_hold_sleep(sgc_ble_central_connected() || BLE.connected() || sgc_ble_ft_active());
         g_led.update(); fcp(0x23);
