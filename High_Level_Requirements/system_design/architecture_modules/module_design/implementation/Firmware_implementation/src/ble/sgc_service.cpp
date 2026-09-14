@@ -376,8 +376,16 @@ bool sgc_ble_radio_restart(const char* why)
     BLE.stopAdvertise(); g_advertising = false;
     if (BLE.connected()) {
         BLE.disconnect();
-        /* A few short polls let Cordio finish link teardown. */
-        for (int i = 0; i < 3 && BLE.connected(); i++) BLE.poll();
+        /* 5.88: a trickling link takes up to seconds to tear down (LL
+           terminate + controller cleanup). 3 polls left BLE.end() racing
+           the controller -> begin() ok:0 -> NVIC reboot escalation
+           (22:06 bench: every pull_deadline ended in reboot). Wait it out
+           properly; the ISR feeder keeps the HW WDT fed meanwhile. */
+        uint32_t tdis = millis();
+        while (BLE.connected() && (int32_t)(millis() - tdis) < 2000) {
+            delay(5);
+            BLE.poll();
+        }
     }
     g_central_connected = false;
     g_sm.set_hold_sleep(false);
@@ -386,7 +394,7 @@ bool sgc_ble_radio_restart(const char* why)
 
     /* V5.15 T-008b: longer settle after heavy FT (244 B chunks); one retry. */
     uint32_t settle = millis();
-    while ((int32_t)(millis() - settle) < 100) {
+    while ((int32_t)(millis() - settle) < 300) {  /* 5.88 */
         delay(1);
     }
 
