@@ -92,9 +92,19 @@ static void emit_bin(const uint8_t* d, size_t n)
         BLECharacteristic* c = sgc_ble_console_char();
         if (c) c->writeValue(d, n);
     }
-    Serial.write(d, n);   /* USB mirror for forensics */
-    Serial.println();
-    sgc_pull_touch();     /* V2: every emitted frame feeds the watchdog */
+    /* 5.79: NO per-frame USB mirror (21ms/frame baud cap + rr:2 when reader dies).
+       5.80: forensics via pull_prog line every PULL_PROG_EVERY frames. */
+    sgc_pull_touch();     /* every emitted frame feeds the watchdog */
+}
+
+/* 5.79: stream progress forensics */
+static void emit_progress()
+{
+    Serial.print("{\"ev\":\"pull_prog\",\"seq\":");
+    Serial.print(g_job_seq);
+    Serial.print(",\"off\":");
+    Serial.print((unsigned long)(g_job_off + g_job_sent));
+    Serial.println("}");
 }
 
 static const char* HEXD = "0123456789ABCDEF";
@@ -231,21 +241,37 @@ static void tx_poll()
             snprintf(line, sizeof(line), "{\"d_end\":%u}", g_runs.run_count());
             emit_line(line);
             g_tx = TxState::IDLE;
+            g_wdt_armed = false;   /* 5.78: dir done, disarm */
         }
         return;
     }
 
     if (g_tx == TxState::FRAME) {
         if (g_job_stream) {
-            /* V2 stream: send up to STREAM_FRAMES_PER_LOOP binary frames,
-               no timer gap — queue capacity paces us. */
-            for (uint8_t i = 0; i < STREAM_FRAMES_PER_LOOP; i++) {
+            /* 5.80: pace 1 frame per PULL_STREAM_GAP_MS. Flooding wedged the
+               S22 4/4 (deep LL queue -> writeValue blocks -> HW WDT rr:2).
+               Shallow queue: ~66 fps, wedges degrade to pull_wdt instead. */
+            if (now - g_tx_last_ms < PULL_STREAM_GAP_MS) return;
+            /* 5.81: never write into a dead link — writeValue blocks forever
+               when nobody drains the queue (rr:2 root cause). Abort clean. */
+            if (!sgc_ble_central_connected()) {
+                json_begin();
+                json_kv("ev", "pull_abort");
+                json_kv("why", "disc");
+                json_end();
+                g_tx = TxState::IDLE;
+                g_wdt_armed = false;
+                return;
+            }
+            g_tx_last_ms = now;
+            for (uint8_t i = 0; i < 1; i++) {
                 uint32_t remain = g_job_len - g_job_sent;
                 if (remain == 0) {
                     /* End marker: seq=0xFFFF, len=0 */
                     uint8_t end[3] = {0xFF, 0xFF, 0};
                     emit_bin(end, 3);
                     g_tx = TxState::IDLE;
+                    g_wdt_armed = false;   /* 5.78: job done, disarm (FWR-3) */
                     return;
                 }
                 uint32_t take = (remain > PULL_STREAM_PAYLOAD) ? PULL_STREAM_PAYLOAD : remain;
@@ -282,6 +308,7 @@ static void tx_poll()
                 }
                 g_job_sent += take;
                 g_job_seq++;
+                if ((g_job_seq % PULL_PROG_EVERY) == 0) emit_progress();
             }
             return;   /* more frames next loop pass */
         }
@@ -319,6 +346,7 @@ static void tx_poll()
         g_tx_last_ms = now;
         emit_line(g_tail);
         g_tx = TxState::IDLE;
+        g_wdt_armed = false;   /* 5.78: tail sent, job terminal */
     }
 }
 

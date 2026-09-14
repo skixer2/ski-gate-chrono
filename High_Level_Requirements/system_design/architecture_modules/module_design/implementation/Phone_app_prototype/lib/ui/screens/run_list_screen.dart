@@ -719,7 +719,9 @@ class _RunListScreenState extends State<RunListScreen> {
                   )
                 : Text('${_deviceRuns.length} on device · ${_missingRuns.length} not downloaded'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
+            // onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
+            onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRunsNative : null,
+
           ),
         ),
         const SizedBox(height: 12),
