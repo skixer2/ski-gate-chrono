@@ -104,7 +104,7 @@ static void emit_bin(const uint8_t* d, size_t n)
     /* 5.79: NO per-frame USB mirror (21ms/frame baud cap + rr:2 when reader dies).
        5.80: forensics via pull_prog line every PULL_PROG_EVERY frames. */
     sgc_pull_touch();     /* every emitted frame feeds the watchdog */
-    ft_wdt_ticker_grace(6000);  /* 5.82: progress re-arms ISR feeder, 6 s grace */
+    ft_wdt_ticker_grace(30000);  /* 5.86: uniform 30 s activity budget while connected */
     sgc_ble_touch_activity();   /* 5.83: TX counts as link life for ghost detector */
 }
 
@@ -272,7 +272,7 @@ static void tx_poll()
                 json_kv("why", "disc");
                 json_end();
                 g_tx = TxState::IDLE;
-                g_wdt_armed = false; ft_wdt_ticker_grace(10000);  /* 5.84: keep feeding through the reconnect boundary */
+                g_wdt_armed = false;   /* 5.86: feeder lives while connected; stop() only on disconnect */
                 return;
             }
             g_tx_last_ms = now;
@@ -283,7 +283,7 @@ static void tx_poll()
                     uint8_t end[3] = {0xFF, 0xFF, 0};
                     emit_bin(end, 3);
                     g_tx = TxState::IDLE;
-                    g_wdt_armed = false; ft_wdt_ticker_grace(10000);  /* 5.84: keep feeding through the reconnect boundary */   /* 5.78: job done, disarm (FWR-3) */
+                    g_wdt_armed = false;   /* 5.86: feeder lives while connected; stop() only on disconnect */   /* 5.78: job done, disarm (FWR-3) */
                     return;
                 }
                 uint32_t take = (remain > PULL_STREAM_PAYLOAD) ? PULL_STREAM_PAYLOAD : remain;
@@ -358,7 +358,7 @@ static void tx_poll()
         g_tx_last_ms = now;
         emit_line(g_tail);
         g_tx = TxState::IDLE;
-        g_wdt_armed = false; ft_wdt_ticker_grace(10000);  /* 5.84: keep feeding through the reconnect boundary */   /* 5.78: tail sent, job terminal */
+        g_wdt_armed = false;   /* 5.86: feeder lives while connected; stop() only on disconnect */   /* 5.78: tail sent, job terminal */
     }
 }
 

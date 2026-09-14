@@ -231,6 +231,10 @@ void sgc_ble_force_recover(const char* why)
     json_end();
 }
 
+void ft_wdt_ticker_start();
+void ft_wdt_ticker_grace(uint32_t grace_ms);
+void ft_wdt_ticker_stop();
+
 bool sgc_ble_central_connected() { return g_central_connected; }
 bool sgc_ble_advertising() { return g_advertising; }   /* 5.76 FWR-4 */
 
@@ -240,6 +244,12 @@ static void on_ble_connected(BLEDevice central)
     g_sm.set_hold_sleep(true);
     g_last_ble_activity_ms = millis();  // V5.07
     sgc_ble_ft_link_ready();  // V5.72: fresh link = clean controller TX queue
+    /* 5.86: ISR WDT feeder runs the WHOLE time a central is connected
+       (JP directive: no more frequent reboots). Any BLE activity re-arms a
+       30 s budget; a hardware reboot now requires a total 30 s wedge with
+       all faster recoveries (pull_wdt, ghost, desync) already exhausted. */
+    ft_wdt_ticker_start();
+    ft_wdt_ticker_grace(30000);
     /* 5.76 bench fix: do NOT arm the pull watchdog at connect — S22 service
        discovery can exceed 2 s. It arms on the first console request only
        (on_ft_request). Arming here killed every connect at exactly 2 s. */
@@ -539,4 +549,4 @@ extern "C" {
 
 /* V5.07: BLE activity tracking for zombie link detection */
 uint32_t sgc_ble_last_activity_ms() { return g_last_ble_activity_ms; }
-void     sgc_ble_touch_activity()   { g_last_ble_activity_ms = millis(); }
+void sgc_ble_touch_activity()   { g_last_ble_activity_ms = millis(); ft_wdt_ticker_grace(30000); }  /* 5.86 */ }
