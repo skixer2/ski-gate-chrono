@@ -1443,3 +1443,27 @@ the reliable channel (canvas ship flaked; b64 hand-copy corrupted 4×).
   wedge signature. Phone settings pending: Never Sleeping Apps + unrestricted battery.
   App 1.47 backlog: scan-rate cap (5/30 s), surgical connection priority (HIGH only during
   stream), device MTU 511.
+
+### 2026-09-15 11:58 UTC — BINDING ARCHITECTURE DECISION: firmware platform switches to Zephyr + nRF Connect SDK
+
+JP verdict after two bench days: Arduino + mbed-Cordio BLE is UNUSABLE for the product bar
+("athlete at -10°C, trainer waiting" — data must be visible in seconds, not minutes).
+Final bench on 5.89/1.46 (BT system app unrestricted): run 1 directory timeout, 5 failed
+attempts. Every recovery path worked as designed but the frequency of phone-stack
+failures + Cordio's API ceiling (begin-after-end impossible, blocking writeValue, no
+backpressure) = no path to "passably well" on this stack.
+
+DECISION (JP): port firmware to Nordic SoftDevice controller + nRF Connect SDK (Zephyr).
+Rationale: (a) same nRF52833 silicon in the Nicla's ANNA-B112 and the production
+ANNA-B402 — the port lands on production hardware unchanged; (b) qualified controller,
+no ArduinoBLE failure classes; (c) JP will not fund PCB development without a
+passably-working prototype in hand.
+
+Carries over VERBATIM: BLE protocol (D/s commands, binary frames, FFFF end marker,
+CRC trailer) → the phone app is UNCHANGED and remains the validation loop.
+Port order: M0 board bring-up (Zephyr def for B112/Nicla) → M1 GATT+pull+CRC benched
+against existing app (decision validation gate) → M2 RawRunStore on Zephyr flash API →
+M3 BHI260 via Bosch C API (long pole) → M4 state machine + full bench.
+ArduinoFW 5.89 = FINAL Arduino build (kept for reference/comparison benches).
+App 1.46 remains current. All watchdog/deadline knowledge documents the failure
+taxonomy; most becomes unnecessary on a real stack.
