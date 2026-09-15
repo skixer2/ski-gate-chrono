@@ -386,6 +386,19 @@ bool sgc_ble_radio_restart(const char* why)
             delay(5);
             BLE.poll();
         }
+        /* 5.89: zombie link still alive after the bounded wait -> begin()
+           after end() cannot succeed on this stack while a connection
+           exists (22:18-22:19 bench: ok:0 twice even with the wait).
+           Honest fast path: reset now instead of a doomed end/begin dance. */
+        if (BLE.connected()) {
+            json_begin();
+            json_kv("ev", "ble_radio_zombie");
+            Serial.print(','); json_kv("why", reason);
+            json_end();
+            Serial.flush();
+            delay(50);
+            NVIC_SystemReset();
+        }
     }
     g_central_connected = false;
     g_sm.set_hold_sleep(false);
