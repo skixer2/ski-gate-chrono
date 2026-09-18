@@ -65,14 +65,14 @@ static int setup_button(void)
 	}
 
 	gpio_init_callback(&button_cb, button_pressed, BIT(button.pin));
-	return gpio_add_callback(button.port, &button_cb, BIT(button.pin));
+	return gpio_add_callback(button.port, &button_cb);
 }
 
 int main(void)
 {
 	printk("SGC app-01 button_led v%s\n", APP_VERSION);
-	printk("Zephyr %s on %s\n", KERNEL_VERSION_STRING,
-	       CONFIG_BOARD_TARGET);
+	printk("Zephyr %d.%d.%d on %s\n", KERNEL_VERSION_MAJOR,
+	       KERNEL_VERSION_MINOR, KERNEL_PATCHLEVEL, CONFIG_BOARD);
 
 	if (!device_is_ready(led)) {
 		printk("ERROR: LED device not ready\n");
