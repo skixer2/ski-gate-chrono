@@ -27,7 +27,10 @@
  * DT_ALIAS(sw0)  is the button, declared by the board file (P0.21).
  * These macros expand to compile-time constants, not string lookups.
  */
-static const struct device *led  = DEVICE_DT_GET(DT_ALIAS(led0));
+/* DT_PARENT walk: led0 (from app.overlay) points at the "led_rgb" CHILD
+ * node (channel group metadata); the DRIVER device belongs to its PARENT,
+ * the IS31FL3194 chip itself. One device per chip, channels inside it. */
+static const struct device *led  = DEVICE_DT_GET(DT_PARENT(DT_ALIAS(led0)));
 static const struct gpio_dt_spec button =
 	GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 
