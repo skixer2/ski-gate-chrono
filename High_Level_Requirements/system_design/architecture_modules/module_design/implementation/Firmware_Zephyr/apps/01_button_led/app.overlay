@@ -1,0 +1,11 @@
+/*
+ * Devicetree patch for THIS app only (board files stay untouched).
+ * The Nicla has no plain GPIO LED: its RGB LED hangs on the IS31FL3194
+ * I2C chip, which the board file already declares. We just give it the
+ * standard alias "led0" so our code can request it by name.
+ */
+/ {
+	aliases {
+		led0 = &led_rgb;
+	};
+};

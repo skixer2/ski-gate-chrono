@@ -15,14 +15,15 @@ set "ZEPHYR_TOOLCHAIN_VARIANT=zephyr/gnu"
 set "ZEPHYR_SDK_INSTALL_DIR=%TC%\opt\zephyr-sdk"
 set "PYTHONPATH=%TC%\opt\bin;%TC%\opt\bin\Lib;%TC%\opt\bin\Lib\site-packages"
 set "NRFUTIL_HOME=%TC%\nrfutil\home"
-set "SRC=%1"
+set "SRC=%~f1"
 set "BRD=%2"
-set "BLD=%3"
-cd /d %SRC%
+set "BLD=%~f3"
+rem Run west FROM the SDK workspace (apps may live anywhere, e.g. the repo)
+cd /d %NCSROOT%
 if exist %BLD% rmdir /s /q %BLD%
 if "%4"=="" goto plain
-west build -b %BRD% -d %BLD% -- -DEXTRA_DTC_OVERLAY=%4
+west build -b %BRD% -d %BLD% %SRC% -- -DEXTRA_DTC_OVERLAY=%4
 goto end
 :plain
-west build -b %BRD% -d %BLD%
+west build -b %BRD% -d %BLD% %SRC%
 :end
