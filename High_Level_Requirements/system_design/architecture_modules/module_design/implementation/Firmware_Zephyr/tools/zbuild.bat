@@ -1,7 +1,15 @@
 @echo off
 rem SGC Zephyr build: zbuild.bat <sample-or-app-dir> <board> <build-dir> [overlay]
-rem Requires: nRF Connect SDK v3.4.0 (C:\ncs) installed via VS Code Toolchain Manager
-set "TC=C:\ncs\toolchains\dcbdc366a1"
+rem Requires: nRF Connect SDK (default C:\ncs) installed via VS Code Toolchain Manager
+rem Override SDK root with NCS_DIR env var if installed elsewhere.
+set "NCSROOT=%NCS_DIR%"
+if "%NCSROOT%"=="" set "NCSROOT=C:\ncs"
+set "TC="
+for /d %%D in ("%NCSROOT%\toolchains\*") do if exist "%%D\environment.json" set "TC=%%D"
+if "%TC%"=="" (
+echo [zbuild] ERROR: no NCS toolchain found under %NCSROOT%\toolchains
+goto end
+)
 set "PATH=%TC%\mingw64\bin;%TC%\bin;%TC%\opt\bin;%TC%\opt\bin\Scripts;%TC%\nrfutil\bin;%TC%\opt\zephyr-sdk\gnu\arm-zephyr-eabi\bin;C:\Windows\System32;C:\Windows"
 set "ZEPHYR_TOOLCHAIN_VARIANT=zephyr/gnu"
 set "ZEPHYR_SDK_INSTALL_DIR=%TC%\opt\zephyr-sdk"

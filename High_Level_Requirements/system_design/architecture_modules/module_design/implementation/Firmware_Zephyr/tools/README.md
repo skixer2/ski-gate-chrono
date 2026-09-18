@@ -6,12 +6,17 @@ Target: Arduino Nicla Sense ME (nRF52832), flashed via on-board CMSIS-DAP (SWD).
 
 ## The toolchain (VS Code-managed — do not self-install)
 
-| Piece | Location |
+The tools are **PC-independent**: paths are auto-discovered, not hardcoded.
+
+| Piece | Discovery order (zbuild/zflash/zserial) |
 |---|---|
-| SDK (west workspace) | `C:\ncs\v3.4.0` |
-| Toolchain env | `C:\ncs\toolchains\dcbdc366a1` (python, west, cmake, ninja, arm-gcc, dtc) |
-| OpenOCD (flash/SWD) | PlatformIO's xPack 0.12.0 at `C:\Users\v17ni\.platformio\packages\tool-openocd` |
-| VS Code extension | nRF Connect pack (bundles nrfutil-device; sees the Nicla on COM3) |
+| SDK + toolchain | `%NCS_DIR%` env var, else `C:\ncs` — any version dir under `toolchains\` with `environment.json` |
+| OpenOCD | `%USERPROFILE%\.platformio\packages\tool-openocd` first, then `openocd` on PATH |
+| Serial port | arg to `zserial.py` (default COM3) |
+| VS Code extension | nRF Connect pack (bundles nrfutil-device; sees the Nicla) |
+
+Current JP-PC layout (for reference): SDK `C:\ncs\v3.4.0`, toolchain `dcbdc366a1`,
+OpenOCD = PlatformIO xPack 0.12.0.
 
 ## Daily loop
 
