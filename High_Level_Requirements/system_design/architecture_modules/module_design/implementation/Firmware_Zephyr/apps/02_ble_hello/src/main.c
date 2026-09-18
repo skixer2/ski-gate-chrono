@@ -15,6 +15,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <string.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/led.h>
 #include <zephyr/bluetooth/bluetooth.h>
@@ -49,13 +50,20 @@ static const struct gpio_dt_spec button =
 static uint32_t counter;                 /* the value the phone reads   */
 static bool     notify_enabled;          /* phone subscribed? (CCC bit) */
 
-/* Called when the phone (re)connects and reads the characteristic */
+/* Called when the phone reads the characteristic. Manual implementation:
+ * honor offset/len (BLE reads can be fragmented) and copy out the value.
+ * (The bt_gatt_attr_read() helper is Kconfig-gated out in this build.) */
 static ssize_t read_counter(struct bt_conn *conn,
 			    const struct bt_gatt_attr *attr,
 			    void *buf, uint16_t len, uint16_t offset)
 {
-	return bt_gatt_attr_read(conn, attr, buf, len, offset,
-				 &counter, sizeof(counter));
+	if (offset > sizeof(counter)) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	uint16_t frag = MIN(len, sizeof(counter) - offset);
+
+	memcpy(buf, (const uint8_t *)&counter + offset, frag);
+	return frag;
 }
 
 /* Called when the phone writes the Client Characteristic Configuration
