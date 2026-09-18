@@ -11,6 +11,7 @@
  */
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/kernel_version.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/led.h>
 
@@ -71,8 +72,11 @@ static int setup_button(void)
 int main(void)
 {
 	printk("SGC app-01 button_led v%s\n", APP_VERSION);
-	printk("Zephyr %d.%d.%d on %s\n", SYS_KERNEL_VER_MAJOR,
-	       SYS_KERNEL_VER_MINOR, SYS_KERNEL_VER_PATCHLEVEL,
+	/* Packed version: bits 31-24 major, 23-16 minor, 15-8 patch */
+	uint32_t kv = sys_kernel_version_get();
+
+	printk("Zephyr %u.%u.%u on %s\n",
+	       (kv >> 24) & 0xFF, (kv >> 16) & 0xFF, (kv >> 8) & 0xFF,
 	       CONFIG_BOARD);
 
 	if (!device_is_ready(led)) {
