@@ -1,11 +1,18 @@
 /*
  * Devicetree patch for THIS app only (board files stay untouched).
+ *
  * The Nicla has no plain GPIO LED: its RGB LED hangs on the IS31FL3194
- * I2C chip, which the board file already declares. We just give it the
- * standard alias "led0" so our code can request it by name.
+ * I2C chip at address 0x53 on I2C0 (TWIM0 @ 0x40003000), which the
+ * board file already declares as a node named "led_rgb" — but WITHOUT
+ * a devicetree label, so &led_rgb cannot be used. We therefore point
+ * the standard alias "led0" at the node by full path.
+ *
+ * Our code then requests the LED with DT_ALIAS(led0), which is the
+ * canonical Zephyr pattern and stays stable even if we later swap
+ * boards (the overlay, not the code, absorbs the hardware detail).
  */
 / {
 	aliases {
-		led0 = &led_rgb;
+		led0 = &{/soc/i2c@40003000/is31fl3194@53/led_rgb};
 	};
 };
