@@ -11,7 +11,7 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/sys/kernel_version.h>
+#include <zephyr/kernel_version.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/led.h>
 
