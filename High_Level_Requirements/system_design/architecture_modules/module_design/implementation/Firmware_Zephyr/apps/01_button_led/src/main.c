@@ -15,7 +15,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/led.h>
 
-#define APP_VERSION "0.1.0"
+#define APP_VERSION "0.1.1"
 
 /* Heartbeat timing: LED on 100 ms, off 1900 ms = one "beat" every 2 s. */
 #define HB_ON_MS  100
@@ -94,10 +94,27 @@ int main(void)
 
 	uint32_t beats = 0;
 
+	/*
+	 * The is31fl319x driver implements ONLY set_color / write_channels /
+	 * get_info — NOT led_on/led_off (v0.1.0 lesson: unchecked -ENOTSUP
+	 * means "compiles fine, stays dark"). LED index 0 = the RGB group,
+	 * 3 channels. All-0xFF = white, all-0x00 = off.
+	 */
+	const uint8_t rgb_on[3]  = { 0xFF, 0xFF, 0xFF };
+	const uint8_t rgb_off[3] = { 0x00, 0x00, 0x00 };
+
 	while (1) {
-		led_on(led, 0);		/* LED index 0 = the RGB unit, all channels */
+		int ret = led_set_color(led, 0, 3, rgb_on);
+		if (ret != 0) {
+			printk("ERROR: led_set_color(on) -> %d\n", ret);
+			return 0;
+		}
 		k_msleep(HB_ON_MS);
-		led_off(led, 0);
+		ret = led_set_color(led, 0, 3, rgb_off);
+		if (ret != 0) {
+			printk("ERROR: led_set_color(off) -> %d\n", ret);
+			return 0;
+		}
 		k_msleep(HB_OFF_MS);
 
 		beats++;
