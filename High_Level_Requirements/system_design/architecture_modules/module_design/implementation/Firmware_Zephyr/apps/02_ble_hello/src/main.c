@@ -29,13 +29,13 @@
  *   0001  service (this app), 0002 counter characteristic
  * The real pull-protocol characteristics will continue this family.
  * ------------------------------------------------------------------ */
-#define SGC_SVC_UUID_VAL      8d5a0001, 84a4, 4c5e, 8e4f, 1c2b3d4f5a6c
-#define SGC_COUNTER_UUID_VAL  8d5a0002, 84a4, 4c5e, 8e4f, 1c2b3d4f5a6c
-
+/* Note: values inlined (a #define would collapse the macro's 5 args into 1) */
 static struct bt_uuid_128 sgc_svc_uuid =
-	BT_UUID_INIT_128(BT_UUID_128_ENCODE(SGC_SVC_UUID_VAL));
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x8d5a0001, 0x84a4, 0x4c5e,
+					   0x8e4f, 0x1c2b3d4f5a6c));
 static struct bt_uuid_128 sgc_counter_uuid =
-	BT_UUID_INIT_128(BT_UUID_128_ENCODE(SGC_COUNTER_UUID_VAL));
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x8d5a0002, 0x84a4, 0x4c5e,
+					   0x8e4f, 0x1c2b3d4f5a6c));
 
 /* Devicetree lookups (same pattern as app 01) */
 static const struct device *led  = DEVICE_DT_GET(DT_PARENT(DT_ALIAS(led0)));
@@ -156,7 +156,7 @@ static void bt_ready(int err)
 	}
 	printk("Bluetooth initialized\n");
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad),
+	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
 			      sd, ARRAY_SIZE(sd));
 	if (err) {
 		printk("ERROR: adv start -> %d\n", err);
