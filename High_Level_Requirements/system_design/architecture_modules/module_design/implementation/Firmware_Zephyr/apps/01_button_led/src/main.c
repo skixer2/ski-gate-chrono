@@ -71,8 +71,9 @@ static int setup_button(void)
 int main(void)
 {
 	printk("SGC app-01 button_led v%s\n", APP_VERSION);
-	printk("Zephyr %d.%d.%d on %s\n", KERNEL_VERSION_MAJOR,
-	       KERNEL_VERSION_MINOR, KERNEL_PATCHLEVEL, CONFIG_BOARD);
+	printk("Zephyr %d.%d.%d on %s\n", SYS_KERNEL_VER_MAJOR,
+	       SYS_KERNEL_VER_MINOR, SYS_KERNEL_VER_PATCHLEVEL,
+	       CONFIG_BOARD);
 
 	if (!device_is_ready(led)) {
 		printk("ERROR: LED device not ready\n");
