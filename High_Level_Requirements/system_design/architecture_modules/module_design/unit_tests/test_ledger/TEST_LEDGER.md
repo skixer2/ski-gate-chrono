@@ -1467,3 +1467,60 @@ M3 BHI260 via Bosch C API (long pole) → M4 state machine + full bench.
 ArduinoFW 5.89 = FINAL Arduino build (kept for reference/comparison benches).
 App 1.46 remains current. All watchdog/deadline knowledge documents the failure
 taxonomy; most becomes unnecessary on a real stack.
+
+### 2026-09-18 — ZEPHYR M0 CLOSED + M1 STEPS 1-2 (all on JP-PC, VS Code-managed SDK)
+
+**Environment (JP-installed, binding):** SDK `C:\ncs\v3.4.0` (west workspace) +
+toolchain `dcbdc366a1`, installed via VS Code Toolchain Manager. ZioClaw installs
+NOTHING on JP-PC (JP rule 09-18). SEGGER J-Link V9.24a present (unused for Nicla).
+Flash path: xPack OpenOCD (pio package) + on-board CMSIS-DAP (`0AFB5B3B`, COM3).
+
+**M0 ACCEPTED (JP-verified):**
+- Stock board `arduino_nicla_sense_me` (Zephyr 4.4, no custom board needed).
+  Pins match SGC hardware: button P0.21, IS31FL3194 LED bus (TWIM0), sensor bus
+  P0.22/23, UART console TX P0.20/RX P0.9 @115200.
+- hello_world: flashed SWD @0x0 (Arduino bootloader overwritten — recoverable via
+  bootloader hex if ever needed), boot banner verified on COM3.
+- BLE beacon sample: SoftDevice Controller init + advertising, JP phone-verified.
+- IS31FL319x LED sample: R/G/B fade sequence JP-verified. NOTE: driver implements
+  set_color/write_channels/get_info ONLY — led_on/led_off = silent -ENOTSUP.
+- UICR measured: hw reset pin = P0.00 (PSELRESET=0), button P0.21 = plain GPIO.
+
+**M1 STEP 1 — app 01_button_led v0.1.1 (working, JP-verified "It beats"):**
+DT alias via node path (board has no led_rgb label), DT_PARENT walk to chip device,
+button GPIO IRQ callback, LED heartbeat via led_set_color (checked returns).
+
+**M1 STEP 2 — app 02_ble_hello v0.2.0 (working, phone demo pending JP Monday):**
+- SGC UUID family FIXED: `8d5aXXXX-84a4-4c5e-8e4f-1c2b3d4f5a6c`
+  (0001 service, 0002 counter). Do not regenerate, ever.
+- GATT: 1 service + READ|NOTIFY u32 counter, manual read cb (helper not linked),
+  CCC subscribe tracking. Connectable adv as "SGC-Dev" (BT_LE_ADV_CONN_FAST_1).
+- Concurrency: k_timer(1Hz) -> k_work -> notify/LED; button ISR -> k_work -> notify;
+  main() idles K_FOREVER. This is the SGC pattern from here on.
+- Serial boot log verified: "Bluetooth initialized / Advertising as SGC-Dev".
+- Phone verification (nRF Connect subscribe + counter tick + button notify) PENDING.
+
+**Zephyr 4.4 API lessons (all cost compile iterations today, now documented):**
+BT_LE_ADV_CONN renamed FAST_1 · BT_UUID_128_ENCODE args must be inlined (comma-macro
+trap) · CONFIG_BT_PERIPHERAL=y REQUIRED for GATT server (beacon didn't need it) ·
+bt_gatt_attr_read helper Kconfig-gated out → manual offset-aware read ·
+gpio_add_callback = 2 args · sys_kernel_version_get() + manual unpack (macros gone) ·
+is31fl319x: no led_on/off ops.
+
+**Toolchain/dev-env decisions:**
+- Tools LIVE IN REPO: `Firmware_Zephyr/tools/` (zbuild/zflash/zreset/zserial(.bat)/
+  zpeek + _oocd_common + README). PC-independent (discovery: NCS_DIR→C:\ncs,
+  %USERPROFILE%\.platformio→PATH openocd). On JP user PATH; zserial.bat wrapper
+  because py ignores PATH for script args.
+- `C:\sgc` junction → deep Firmware_Zephyr path (V-model tree kept per JP);
+  self-documented via JUNCTION.md. VS Code builds MUST go via C:\sgc (Win 260-char
+  limit crashes CMake at 250 otherwise).
+- VS Code flow proven by JP: trust folder → nRF Connect → Add Build Configuration →
+  board arduino_nicla_sense_me → F12 IntelliSense after first build.
+- Relay model PROVEN: VPS commit → PC fetch (ssh://vps/... via id_ed25519_sgc) →
+  cherry-pick → push GitHub. Host needed git safe.directory exception (done).
+  NEVER `git add -A` in mirror (release_tests_v4.90/ stays untracked).
+
+**NEXT (Monday):** JP verifies app-02 phone demo + reads code; then step 3 =
+pull-protocol characteristics (D/s commands, binary frames, FFFF end, CRC trailer —
+protocol verbatim from ArduinoFW, benched against UNCHANGED App 1.46).
