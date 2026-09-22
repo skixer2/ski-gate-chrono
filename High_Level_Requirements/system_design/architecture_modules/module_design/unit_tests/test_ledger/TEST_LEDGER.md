@@ -1755,3 +1755,20 @@ Split (behavior-preserving, bench = one app round tomorrow):
 Future: flash port implements store.h, swaps one CMake line (store_fake→
 store_flash). Also: prj.conf BT_CONN_TX_MAX (deprecated) → BT_BUF_ACL_TX_COUNT
 if symbol verified in 4.4.
+
+### 2026-09-22 — M1 STEP 3c SHIPPED (evening run, JP away): v0.5.0 modular
+
+Built clean (216 targets, 0 warnings, FLASH 21.6% / RAM 47.4%) + flashed
+by ZioClaw. Board runs v0.5.0 overnight; JP's morning bench = one
+App-1.46 round (D + both runs + CRC) = 3c equivalence proof.
+Split: store.h/store_fake.c · led_state.c (own 1 Hz timer — decoupled
+from demo counter, visual identical) · ble_lifecycle.c (adv/restart/
+conn cbs) · pull_proto.c (0x5347 svc + D/s engine + ad payloads) ·
+demo_svc.c · main.c = wiring only (34 lines).
+Deltas (both deliberate, both documented in-code):
+  - LED render moved to its own timer (ownership; same visuals)
+  - BT_CONN_TX_MAX [deprecated] → BT_BUF_ACL_TX_COUNT=10; Zephyr static
+    assert then REQUIRED BT_BUF_EVT_RX_COUNT(12) > ACL_TX(10) — pool
+    depth is a family affair, enforced at compile time (gcc.h:87).
+    Interesting: the deprecated symbol never triggered the assert —
+    further proof it wasn't the real pool.
