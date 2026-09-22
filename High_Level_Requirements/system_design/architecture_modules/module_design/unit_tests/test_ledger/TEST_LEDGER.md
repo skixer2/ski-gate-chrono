@@ -1736,3 +1736,22 @@ stream abort) — silent TX failures are extinct.
 lines; split into led_state / ble_lifecycle / pull_proto / fake_store,
 CMake target_sources) — then the real storage port (SPI flash
 RawRunStore), which turns fake_runs into real runs.
+
+### 2026-09-22 — M1 STEP 3c REQUIREMENT: module refactor (JP-authorized evening run)
+
+Language decision (JP re-asked, settled 09-22): firmware stays **C** —
+modules-as-statics give the boundaries; C++ costs (no-exceptions/RTTI,
+static-init order, ecosystem divergence, port fidelity) outweigh gains
+for singleton modules. Door open for host-side C++ tests later.
+Split (behavior-preserving, bench = one app round tomorrow):
+  store.h (interface) + store_fake.c   — fake runs, blob_read, CRC, sizes
+  led_state.c                           — LED-as-link-state (own 1 Hz timer,
+                                          decoupled from demo counter — visual
+                                          behavior identical, documented)
+  ble_lifecycle.c                       — adv/restart/conn cbs/connected flag
+  pull_proto.c                          — product GATT (ABC8/9/A) + D/s engine
+  demo_svc.c                            — 8d5a counter/button demo
+  main.c                                — wiring only, APP_VERSION 0.5.0
+Future: flash port implements store.h, swaps one CMake line (store_fake→
+store_flash). Also: prj.conf BT_CONN_TX_MAX (deprecated) → BT_BUF_ACL_TX_COUNT
+if symbol verified in 4.4.
