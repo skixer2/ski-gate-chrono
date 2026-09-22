@@ -1704,3 +1704,9 @@ decision gate.** (Storage port = its own later step.)
   v0.4.3: CONFIG_BT_L2CAP_RX_MTU=247 + notify return checked & logged.
   LESSON: never ignore bt_gatt_notify rc — a size-rejected notify is
   invisible without it.
+- 3b root cause #3: notify -12 (ENOMEM) on d_end after MTU fix — run lines
+  now FIT (41 B @ 247) and drained the default TX pool (~3 bufs/contexts);
+  3rd back-to-back notify found none. Fix v0.4.4: BT_CONN_TX_MAX=10 +
+  BT_L2CAP_TX_BUF_COUNT=10; console_emit_bin gains rc check → clean stream
+  ABORT on failed data frame (integrity: no silent corruption possible).
+  Forensics line proved itself (caught the failure the bench hid).
