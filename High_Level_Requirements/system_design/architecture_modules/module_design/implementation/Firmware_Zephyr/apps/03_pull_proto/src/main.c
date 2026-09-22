@@ -72,7 +72,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.4.2"
+#define APP_VERSION "0.4.3"
 
 /* ------------------------------------------------------------------ */
 /* Demo service (unchanged from app-02) — 8d5a family                  */
@@ -344,8 +344,15 @@ static void console_emit(const char *s)
 {
 	printk("<phone %s\n", s);
 	if (console_subscribed) {
-		bt_gatt_notify(NULL, &product_svc.attrs[5],
-			       s, strlen(s));
+		int err = bt_gatt_notify(NULL, &product_svc.attrs[5],
+					 s, strlen(s));
+
+		if (err) {
+			/* v0.4.3: a failed notify is a forensic event — at
+			 * MTU 23 this fires for any line > 20 B and was
+			 * previously invisible (empty-dir bench bug). */
+			printk("ERROR: notify \"%s\" -> %d (MTU?)\n", s, err);
+		}
 	}
 }
 
