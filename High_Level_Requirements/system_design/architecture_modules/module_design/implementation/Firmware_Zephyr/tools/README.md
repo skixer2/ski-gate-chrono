@@ -22,7 +22,7 @@ OpenOCD = PlatformIO xPack 0.12.0.
 
 ```
 edit -> Build in VS Code (nRF Connect: F7)  OR  zbuild.bat
-     -> zflash.bat <build>\zephyr\zephyr.hex
+     -> zflash.bat C:/sgc/build/02_ble_hello   (hex auto-found in sysbuild layout)
      -> zserial.py COM3 10        (optional: watch boot log)
 ```
 
@@ -32,7 +32,7 @@ edit -> Build in VS Code (nRF Connect: F7)  OR  zbuild.bat
 |---|---|
 | `zbuild.bat <src> <board> <builddir> [overlay]` | west build with full NCS env (e.g. board `arduino_nicla_sense_me`) |
 | `zpull.bat` | Relay pull: fetch VPS mirror + merge (NOT GitHub origin — origin is always behind; relay is VPS→PC→GitHub) |
-| `zflash.bat <hex>` | SWD flash + verify + reset run. Bootloader-independent. |
+| `zflash.bat <build-dir or hex>` | SWD flash + verify + reset run. Bootloader-independent. NCS 3.4 sysbuild nests the app: hex at `<build>\<app>\zephyr\zephyr.hex` — passing the build dir is enough (first zephyr.hex found wins). |
 | `zreset.bat` | Hard reset via SWD — works even if firmware is wedged. No serial port needed. |
 | `zserial.py [port] [secs]` | SWD reset + capture console output (default COM3, 5 s). |
 | (live console) `pio device monitor -b 115200 COM3` | PlatformIO monitor = plain live terminal for the same port. Ctrl+C quits. Close it before zserial (COM3 is exclusive); zflash is unaffected (SWD, not COM). |
