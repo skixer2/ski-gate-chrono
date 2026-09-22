@@ -72,7 +72,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.4.1"
+#define APP_VERSION "0.4.2"
 
 /* ------------------------------------------------------------------ */
 /* Demo service (unchanged from app-02) — 8d5a family                  */
@@ -127,12 +127,24 @@ BT_GATT_SERVICE_DEFINE(demo_svc,
 /* Product service — 0x5347 / console 0xABCA (ArduinoFW wire format)   */
 /* ------------------------------------------------------------------ */
 
-/* 16-bit UUIDs on the Bluetooth base — exactly what the SGC_UUID macro
- * in ArduinoFW builds: "5347" ABCA "-0000-1000-8000-00805F9B34FB". */
-static struct bt_uuid_16 product_svc_uuid = BT_UUID_INIT_16(0x5347);
-static struct bt_uuid_16 console_uuid     = BT_UUID_INIT_16(0xABCA);
-static struct bt_uuid_16 run_info_uuid     = BT_UUID_INIT_16(0xABC8);
-static struct bt_uuid_16 run_list_uuid     = BT_UUID_INIT_16(0xABC9);
+/* Full 128-bit UUIDs, byte-identical to ArduinoFW's SGC_UUID() strings
+ * ("5347" ABCX "-0000-1000-8000-00805F9B34FB"). Do NOT use BT_UUID_INIT_16
+ * here: 16-bit 0xABCX means 0000ABCX-0000-1000-8000-00805F9B34FB — a
+ * DIFFERENT UUID (the SIG base). The app resolves by full UUID string,
+ * so the namespace must match exactly (bench lesson 09-22: nRF works by
+ * handle and hides the mismatch; the app reads nothing). */
+static struct bt_uuid_128 product_svc_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x53470000, 0x0000, 0x1000,
+					  0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 run_info_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC8, 0x0000, 0x1000,
+					  0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 run_list_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC9, 0x0000, 0x1000,
+					  0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 console_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCA, 0x0000, 0x1000,
+					  0x8000, 0x00805F9B34FB));
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
@@ -549,9 +561,13 @@ static void button_isr(const struct device *port,
 /* Bluetooth bring-up + connection lifecycle (unchanged from v0.2.2)   */
 /* ------------------------------------------------------------------ */
 
+/* Advertisement: flags + 128-bit service UUID in the ADV packet
+ * (setAdvertisedService parity — 18 of 31 bytes), name in scan response. */
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS,
 		      (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA(BT_DATA_UUID128_ALL, &product_svc_uuid.val,
+		sizeof(product_svc_uuid.val)),
 };
 
 static const struct bt_data sd[] = {
