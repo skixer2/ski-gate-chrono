@@ -1566,3 +1566,7 @@ Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
   origin is always behind; relay VPS→PC→GitHub). TortoiseGit equivalent
   documented in session: add remote `vps` = ssh://vps/root/.openclaw/workspace/
   ski_gate_chrono, SSH client must be Git's ssh.exe (not TortoisePlink).
+- Dev-env: NCS 3.4 **sysbuild** nests the app domain in the build dir → hex at
+  `<build>\<app>\zephyr\zephyr.hex` (JP hit it: C:/sgc/build/02_ble_hello/
+  02_ble_hello/zephyr/zephyr.hex). zflash.bat now accepts the build dir and
+  finds zephyr.hex itself; README fixed.
