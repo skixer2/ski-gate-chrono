@@ -1605,3 +1605,18 @@ ENOMEM → device never advertises again.
 handler restarts adv from sysworkq + retry (10x100ms) on error. Boot path
 (bt_ready) stays direct (no teardown pending). Lesson added to the 4.4 API
 list: connection lifecycle work must be DEFERRED, never inline in conn cbs.
+
+### 2026-09-22 — M1 STEP 2.1 CLOSED: v0.2.2 FULL LIFECYCLE PASS ✓
+
+Bench (JP, serial-attached): connect -> solid green -> subscribe -> 1 Hz
+notify -> unsubscribe -> disconnect (0x13) -> **advertising up (no ERROR)**
+-> **reconnect on new phone addr** -> second cycle clean. Deferred k_work
+restart + retry logic proven. Self-recovering peripheral complete.
+Clarifications benched: (a) button notify only transmits while subscribed
+(BLE rule; presses while unsubscribed = printk only — misleading print,
+polish pending); (b) Read = instant snapshot of the u32, no queue —
+climbing values on repeated reads are 1 Hz ticks + nRF display history.
+**NEXT = M1 STEP 3: pull-protocol characteristics** (D/s commands, binary
+frames, FFFF end, CRC — verbatim from ArduinoFW) benched against
+UNCHANGED App 1.46 = M1 decision gate. Proposed split: 3a = characteristic
+skeleton + subscribe-gated loopback frames; 3b = full protocol + CRC.
