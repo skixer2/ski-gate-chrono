@@ -1715,3 +1715,24 @@ decision gate.** (Storage port = its own later step.)
   over ATT". Connect burst = MTU rsp + CCC writes + 3 dir notifies > 3.
   v0.4.5: BT_ATT_TX_COUNT=10. (CONN_TX_MAX/L2CAP_TX_BUF_COUNT were the
   wrong pools; kept at 10 as harmless depth.)
+
+### 2026-09-22 — M1 STEP 3b CLOSED: **M1 DECISION GATE PASSED** ✓✓
+
+Bench (JP, 14:34 UTC, unchanged App 1.46 on S22): connect → subscribe →
+D (3 lines, clean) → run 0: 9 frames, s_done 253 ms → run 1 (classic
+39372 B): 165 frames, s_done 4621 ms (8.5 KB/s). Both runs accepted by
+the app's own validation → downloads completed without retry. The
+Zephyr platform speaks native product protocol end-to-end.
+
+**The four-layer debugging saga (all fixed today, all documented):**
+1. UUID namespace: 16-bit vs full 128-bit (app resolves by string)
+2. ATT MTU 23 cap → 247 (L2CAP_TX_MTU + ACL_RX_SIZE 251)
+3. Wrong pools guessed (CONN_TX_MAX / L2CAP_TX_BUF_COUNT — kept, harmless)
+4. THE pool: att_pool = BT_ATT_TX_COUNT default 3 → 10 (att.c:356)
+Plus: notify rc now checked everywhere (text = log, data frame = clean
+stream abort) — silent TX failures are extinct.
+
+**NEXT: 3c = module refactor** (JP-requested: main.c is dense at ~700
+lines; split into led_state / ble_lifecycle / pull_proto / fake_store,
+CMake target_sources) — then the real storage port (SPI flash
+RawRunStore), which turns fake_runs into real runs.
