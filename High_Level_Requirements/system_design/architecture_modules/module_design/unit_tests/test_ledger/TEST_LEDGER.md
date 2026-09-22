@@ -1570,3 +1570,11 @@ Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
   `<build>\<app>\zephyr\zephyr.hex` (JP hit it: C:/sgc/build/02_ble_hello/
   02_ble_hello/zephyr/zephyr.hex). zflash.bat now accepts the build dir and
   finds zephyr.hex itself; README fixed.
+- Dev-env: JP-PC **user PATH clobbered** — HKCU\Environment\Path = literal
+  `%PATH%;C:\msys64\ucrt64\bin` (bad setx; per-user entries lost in fresh
+  shells: py launcher, WindowsApps, Python313\Scripts, flutter, npm, adb).
+  Node-host process still runs with the old rich PATH (why remote probes saw
+  `py` while JP's PS did not). zserial.bat hardened: resolves py via
+  %LOCALAPPDATA%\Programs\Python\Launcher\py.exe, PATH-independent.
+  Registry repair offered to JP (pending his go). Node exec lesson: quoted
+  args leak as \" through the wrapper — quote-free commands or bat files only.
