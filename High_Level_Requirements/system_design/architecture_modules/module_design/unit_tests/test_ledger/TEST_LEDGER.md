@@ -1620,3 +1620,20 @@ climbing values on repeated reads are 1 Hz ticks + nRF display history.
 frames, FFFF end, CRC — verbatim from ArduinoFW) benched against
 UNCHANGED App 1.46 = M1 decision gate. Proposed split: 3a = characteristic
 skeleton + subscribe-gated loopback frames; 3b = full protocol + CRC.
+
+### 2026-09-22 — M1 STEP 3a REQUIREMENT: pull-protocol skeleton (app 03, loopback)
+
+Spec (verbatim from ArduinoFW 5.89 pull_transfer.* — extracted 09-22):
+- UUIDs (ArduinoFW SGC_UUID macro): service **0x5347** ("SG") on the BT base
+  UUID 0000-1000-8000-00805F9B34FB; console char **0xABCA** (write+notify, 247).
+  NOTE: this is the family App 1.46 speaks — 8d5a stays as demo-service only.
+- Commands (ASCII line per write): `D` → one `{"run":id,"ts":..,"sz":..,"side":..}`
+  line per run + `{"d_end":n}` · `s <id> <off> <len>` → binary stream ·
+  errors: E1 bad run · E2 bad off/len · E3 malformed · E4 unknown cmd.
+- Stream frames: [seq:2B LE][len:1B][payload ≤ 240 B], paced 25 ms/frame,
+  END marker FF FF 00. Stateless (id,off,len carried per request).
+- Capture-only write handlers (V5.16 lesson); stateless abort on disconnect.
+3a SCOPE: new app `03_pull_proto` v0.3.0 = app-02 base (demo svc, LED state,
+deferred adv) + 0x5347/ABCA console + D/s commands served from a **RAM ramp
+pattern** (2048 B, byte = offset&0xFF) — no flash, no CRC yet. Honest button
+print folded in. 3b = flash blobs + CRC trailer + real dir + App 1.46 bench.
