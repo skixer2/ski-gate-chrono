@@ -28,13 +28,22 @@
  * Stateless by design: every request carries (id, off, len). A disconnect
  * costs one reconnect, not a session (SR-2 in the redesign doc).
  *
- * ── What is FAKE in 3a (the 3b upgrade list) ─────────────────────────
+ * ── What is FAKE in 3b (the upgrade list) ─────────────────────
  *
- *   - run data = a RAM ramp pattern (byte = offset & 0xFF), 2 fake dir
- *     entries — so you can EYEBALL frames in nRF Connect. 3b reads real
- *     flash blobs (16 B header + payload + CRC32 trailer — the CRC the
- *     app verifies lives IN the blob, not computed on air).
+ *   - run data = synthesized ramp payload (byte = offset & 0xFF) with
+ *     byte-exact blob composition: 16 B RunHeader (v2 fields) + payload
+ *     + 6 B CRC32 trailer (magic C3 32 + CRC LE). CRC = ArduinoFW exact:
+ *     init 0xFFFFFFFF, PAYLOAD ONLY (header never CRC'd), final xor
+ *     0xFFFFFFFF — the unchanged app's verification must pass.
+ *   - two fake runs: 0 → 2048 B payload (sz 2070), 1 → 39350 B payload
+ *     (sz 39372 — the classic bench-run size). Payload bytes are
+ *     GENERATED, not stored: 64 KB RAM has no room for real blobs; the
+ *     generator is deterministic, so CRC-at-boot covers it for free.
+ *   - storage port (real SPI flash RawRunStore) = its own later step.
  *   - no stream deadline / ghost-link watchdogs yet (5.83/5.87 lessons).
+ *
+ * v0.4.0: real directory walk, blob-read streaming, s_done elapsed ms
+ * via k_uptime_get_32() (JP request, 09-22).
  *
  * ── Engineering rules carried over from the Arduino bench era ────────
  *
@@ -63,7 +72,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.3.0"
+#define APP_VERSION "0.4.0"
 
 /* ------------------------------------------------------------------ */
 /* Demo service (unchanged from app-02) — 8d5a family                  */
@@ -124,9 +133,82 @@ static struct bt_uuid_16 product_svc_uuid = BT_UUID_INIT_16(0x5347);
 static struct bt_uuid_16 console_uuid     = BT_UUID_INIT_16(0xABCA);
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
-#define PATTERN_SIZE    2048    /* fake run blob size (3a loopback)  */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
 #define STREAM_GAP_MS   25      /* PULL_STREAM_GAP_MS (5.81 pacing)  */
+#define N_FAKE_RUNS     2
+
+/* ── Fake store: byte-exact blobs, zero RAM for payload ─────────────
+ *
+ * Layout per run (verbatim ArduinoFW):
+ *   [0..15]   RunHeader (packed, v2: data_size/frame_count = 0 on disk)
+ *   [16..]    payload (ramp: byte = offset & 0xFF — eyeball-friendly)
+ *   [last 6]  CRC32 trailer: C3 32 magic + crc32 LE — CRC over PAYLOAD
+ *             only, init 0xFFFFFFFF, final xor 0xFFFFFFFF.
+ */
+struct __attribute__((packed)) fake_hdr {
+	uint8_t  format_ver;
+	uint8_t  arm_side;
+	uint32_t ts_utc;
+	int16_t  baro_temp;
+	uint32_t data_size;
+	uint16_t frame_count;
+	uint8_t  cal_accuracy;
+	uint8_t  _pad;
+};
+
+struct fake_run {
+	struct fake_hdr hdr;
+	uint32_t payload_len;
+	uint32_t crc;          /* over payload only, computed at boot */
+};
+
+static struct fake_run fake_runs[N_FAKE_RUNS] = {
+	{ .hdr = { .format_ver = 2, .arm_side = 0, .ts_utc = 1758500000,
+		   .baro_temp = 125, .data_size = 0, .frame_count = 0,
+		   .cal_accuracy = 3, ._pad = 0 },
+	  .payload_len = 2048 },
+	{ .hdr = { .format_ver = 2, .arm_side = 1, .ts_utc = 1758510000,
+		   .baro_temp = 87, .data_size = 0, .frame_count = 0,
+		   .cal_accuracy = 2, ._pad = 0 },
+	  .payload_len = 39350 },   /* sz 39372 = the classic bench run */
+};
+
+static uint32_t fake_run_total(const struct fake_run *r)
+{
+	return sizeof(r->hdr) + r->payload_len + 6;
+}
+
+/* Standard reflected CRC-32 (bitwise, same polynomial as the RawRunStore
+ * table) — small enough to need no table in our RAM budget. */
+static uint32_t crc32_byte(uint32_t crc, uint8_t b)
+{
+	crc ^= b;
+	for (uint8_t i = 0; i < 8; i++) {
+		crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+	}
+	return crc;
+}
+
+/* Synthesize blob bytes: header fields, ramp payload, or trailer. */
+static void blob_read(uint8_t run, uint32_t off, uint8_t *dst, uint32_t n)
+{
+	const struct fake_run *r = &fake_runs[run];
+	uint32_t hdr_len = sizeof(r->hdr);
+	uint32_t payload_len = r->payload_len;
+
+	for (uint32_t i = 0; i < n; i++, off++) {
+		if (off < hdr_len) {
+			dst[i] = ((const uint8_t *)&r->hdr)[off];
+		} else if (off < hdr_len + payload_len) {
+			dst[i] = (uint8_t)(off - hdr_len);   /* ramp */
+		} else {
+			uint32_t t = off - hdr_len - payload_len;
+			if (t == 0)      dst[i] = 0xC3;          /* magic hi */
+			else if (t == 1) dst[i] = 0x32;          /* magic lo */
+			else              dst[i] = (uint8_t)(r->crc >> (8 * (t - 2))); /* LE */
+		}
+	}
+}
 
 static bool console_subscribed;
 
@@ -223,21 +305,17 @@ static volatile bool connected;
 
 /* Job state (3a: one job at a time — the single-slot req queue enforces
  * "phone waits for the reply" already). */
-static uint32_t job_off;    /* next byte of the pattern to send */
+static uint32_t job_off;    /* next blob byte to send            */
 static uint32_t job_end;    /* off + len                         */
 static uint16_t job_seq;
+static uint8_t  job_run;
 static bool     job_active;
+static uint32_t job_t0;     /* k_uptime_get_32() at stream start */
 
 static uint8_t frame[3 + STREAM_PAYLOAD];
 
-/* The fake run blob: byte at offset o = o & 0xFF. In 3b this becomes
- * RawRunStore read_run_data(id, off, buf, take) — same shape. */
-static void pattern_read(uint32_t off, uint8_t *dst, uint32_t n)
-{
-	for (uint32_t i = 0; i < n; i++) {
-		dst[i] = (uint8_t)(off + i);
-	}
-}
+/* blob_read() is the fake store; the real port swaps it for
+ * RawRunStore::read_run_data() — same signature shape, same callers. */
 
 static void stream_work_handler(struct k_work *w)
 {
@@ -255,7 +333,8 @@ static void stream_work_handler(struct k_work *w)
 		/* END marker: seq=0xFFFF, len=0 */
 		uint8_t end[3] = { 0xFF, 0xFF, 0x00 };
 		console_emit_bin(end, 3);
-		printk("{\"ev\":\"s_done\",\"seq\":%u}\n", job_seq);
+		printk("{\"ev\":\"s_done\",\"seq\":%u,\"ms\":%u}\n",
+		       job_seq, k_uptime_get_32() - job_t0);
 		job_active = false;
 		return;
 	}
@@ -265,7 +344,7 @@ static void stream_work_handler(struct k_work *w)
 	frame[0] = (uint8_t)(job_seq & 0xFF);       /* seq: 2 B little-endian */
 	frame[1] = (uint8_t)(job_seq >> 8);
 	frame[2] = (uint8_t)take;                   /* len: 1 B               */
-	pattern_read(job_off, &frame[3], take);
+	blob_read(job_run, job_off, &frame[3], take);
 
 	console_emit_bin(frame, 3 + take);
 	printk("frame seq=%u len=%lu off=%lu\n",
@@ -303,32 +382,48 @@ static void cmd_work_handler(struct k_work *w)
 	char cmd = req[0];
 
 	if (cmd == 'D') {
-		/* Fake directory — 2 runs, same sizes as the pattern blob.
-		 * 3b: real RunEntry walk, sz = header+payload+CRC trailer. */
-		console_emit("{\"run\":0,\"ts\":1758500000,\"sz\":2070,\"side\":0}");
-		console_emit("{\"run\":1,\"ts\":1758510000,\"sz\":2070,\"side\":1}");
-		console_emit("{\"d_end\":2}");
+		/* Real directory walk of the fake store — same line format as
+		 * ArduinoFW start_dir(): {"run":id,"ts":..,"sz":..,"side":..} */
+		for (uint8_t i = 0; i < N_FAKE_RUNS; i++) {
+			char line[96];
+
+			snprintf(line, sizeof(line),
+				 "{\"run\":%u,\"ts\":%lu,\"sz\":%lu,\"side\":%u}",
+				 i, (unsigned long)fake_runs[i].hdr.ts_utc,
+				 (unsigned long)fake_run_total(&fake_runs[i]),
+				 fake_runs[i].hdr.arm_side);
+			console_emit(line);
+		}
+		char tail_line[24];
+
+		snprintf(tail_line, sizeof(tail_line),
+			 "{\"d_end\":%u}", N_FAKE_RUNS);
+		console_emit(tail_line);
 	} else if (cmd == 's') {
 		long id, off, len;
 
 		if (parse_three_ul(&req[1], &id, &off, &len) != 0 ||
 		    id < 0 || off < 0 || len <= 0) {
 			console_emit("E 3");            /* malformed */
-		} else if (id > 1) {
+		} else if (id >= N_FAKE_RUNS) {
 			console_emit("E 1");            /* bad run */
-		} else if ((uint32_t)off >= PATTERN_SIZE) {
+		} else if ((uint32_t)off >= fake_run_total(&fake_runs[id])) {
 			console_emit("E 2");            /* bad off/len */
 		} else if (job_active) {
 			/* one stream at a time; the phone protocol never does this */
 			console_emit("E 4");
 		} else {
-			uint32_t remain = PATTERN_SIZE - (uint32_t)off;
+			uint32_t total = fake_run_total(&fake_runs[id]);
+			uint32_t remain = total - (uint32_t)off;
+
 			if ((uint32_t)len > remain) {
 				len = remain;           /* clamp, as ArduinoFW */
 			}
+			job_run = (uint8_t)id;
 			job_off = (uint32_t)off;
 			job_end = job_off + (uint32_t)len;
 			job_seq = 0;
+			job_t0 = k_uptime_get_32();
 			job_active = true;
 			printk("stream start id=%ld off=%ld len=%ld\n",
 			       id, off, len);
@@ -498,6 +593,21 @@ static void bt_ready(int err)
 int main(void)
 {
 	printk("SGC app-03 pull_proto v%s\n", APP_VERSION);
+
+	/* Precompute the fake-run CRCs at boot (payload only, ArduinoFW
+	 * exact). Deterministic generator = cheap to hash on the fly. */
+	for (uint8_t i = 0; i < N_FAKE_RUNS; i++) {
+		uint32_t crc = 0xFFFFFFFFu;
+
+		for (uint32_t o = 0; o < fake_runs[i].payload_len; o++) {
+			crc = crc32_byte(crc, (uint8_t)o);   /* ramp payload */
+		}
+		fake_runs[i].crc = crc ^ 0xFFFFFFFFu;
+		printk("run %u: payload=%lu sz=%lu crc=0x%08lx\n", i,
+		       (unsigned long)fake_runs[i].payload_len,
+		       (unsigned long)fake_run_total(&fake_runs[i]),
+		       (unsigned long)fake_runs[i].crc);
+	}
 
 	if (!device_is_ready(led)) {
 		printk("ERROR: LED device not ready\n");
