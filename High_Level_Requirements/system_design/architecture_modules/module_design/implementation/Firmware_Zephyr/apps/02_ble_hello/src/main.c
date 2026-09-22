@@ -9,9 +9,22 @@
  *          k_timer (ISR ctx)  ->  k_work_submit  ->  work handler (thread ctx)
  *      Nothing blocks. main() just inits and sleeps forever.
  *
+ * v0.2.1 adds the connection lifecycle:
+ *
+ *   4. bt_conn_cb callbacks (connected / disconnected) — the stack calls
+ *      us from its RX thread, exactly like an interrupt for the link.
+ *   5. LED now shows STATE, not liveness: blue blink = advertising,
+ *      solid green = phone connected. (Real SGC UX will follow this.)
+ *   6. Self-recovery: after any disconnect we re-advertise on our own —
+ *      no reboot, no user action. The device must ALWAYS be findable
+ *      again; the pull protocol (step 3) depends on this pattern.
+ *
  * Demo on the phone (nRF Connect app):
- *   scan -> connect "SGC-Dev" -> service 8d5a0001-... -> subscribe
- *   counter ticks every second; pressing the button notifies immediately.
+ *   scan -> connect "SGC-Dev"  (LED: blue blink -> solid green)
+ *   -> service 8d5a0001-... -> subscribe: counter ticks every second
+ *   -> press the button: immediate extra notification
+ *   -> disconnect: LED blinks blue again, "SGC-Dev" re-appears in the
+ *      scanner on its own.
  */
 
 #include <zephyr/kernel.h>
@@ -19,10 +32,11 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/led.h>
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.2.0"
+#define APP_VERSION "0.2.1"
 
 /* ------------------------------------------------------------------
  * SGC UUID family — FIXED FOREVER (do not regenerate, ever):
@@ -67,7 +81,10 @@ static ssize_t read_counter(struct bt_conn *conn,
 }
 
 /* Called when the phone writes the Client Characteristic Configuration
- * (the "subscribe to notifications" switch in nRF Connect) */
+ * (the "subscribe to notifications" switch in nRF Connect).
+ * Note: also fires with value 0 when the phone DISCONNECTS — the stack
+ * clears subscriptions when the link drops, so notify_enabled always
+ * reflects reality without extra bookkeeping in the disconnect path. */
 static void counter_ccc_changed(const struct bt_gatt_attr *attr,
 				uint16_t value)
 {
@@ -95,6 +112,13 @@ static struct k_work  tick_work;         /* 1 Hz: counter + LED + notify */
 static struct k_work  button_work;       /* button press -> notify       */
 static struct k_timer tick_timer;
 
+/* Link state. Written from the BT stack's RX thread (callbacks below),
+ * read from the sysworkq thread (tick_work_handler). One byte with a
+ * single writer — plain volatile is honest here. The day state grows to
+ * multiple fields, switch to atomics or a mutex (two volatiles can be
+ * torn against each other). */
+static volatile bool connected;
+
 static void notify_counter(void)
 {
 	/* NULL conn = notify every subscriber (we allow 1 anyway) */
@@ -109,11 +133,21 @@ static void tick_work_handler(struct k_work *w)
 	counter++;
 	notify_counter();
 
-	/* LED heartbeat: on 1 of every 2 ticks (0.5 Hz blink) */
-	static bool on;
-	uint8_t rgb[3] = { on ? 0xFF : 0x00, 0, 0 };   /* red blink */
-	led_set_color(led, 0, 3, rgb);
-	on = !on;
+	/* LED = link state (was a dumb heartbeat in v0.2.0):
+	 *   connected   -> solid green
+	 *   advertising -> blue blink (toggle each 1 s tick = 0.5 Hz)
+	 * Nicla color quirk: this board's DTS maps the IS31FL3194's three
+	 * channels as <B,G,R>, and the driver writes our array to the
+	 * channels AS-IS — index 0 = blue die, 2 = red die. */
+	if (connected) {
+		const uint8_t green[3] = { 0x00, 0xFF, 0x00 };
+		led_set_color(led, 0, 3, green);
+	} else {
+		static bool on;
+		const uint8_t blue[3] = { on ? 0xFF : 0x00, 0x00, 0x00 };
+		led_set_color(led, 0, 3, blue);
+		on = !on;
+	}
 
 	if ((counter % 30) == 0) {
 		printk("alive, counter=%u\n", counter);
@@ -143,7 +177,7 @@ static void button_isr(const struct device *port,
 }
 
 /* ------------------------------------------------------------------ */
-/* Bluetooth bring-up                                                 */
+/* Bluetooth bring-up + connection lifecycle                          */
 /* ------------------------------------------------------------------ */
 
 static const struct bt_data ad[] = {
@@ -156,6 +190,67 @@ static const struct bt_data sd[] = {
 		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+/* One helper, three callers (bt_ready / failed connect / disconnect):
+ * (re)start connectable advertising. Legacy advertising stops by itself
+ * the moment a connection lands — so after ANY disconnect we must call
+ * this again or the device turns invisible until reboot. -EALREADY just
+ * means "already advertising" — fine. */
+static void start_advertising(void)
+{
+	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+				  ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	if (err && err != -EALREADY) {
+		printk("ERROR: adv start -> %d\n", err);
+	}
+}
+
+/* Connection callbacks run in the BT stack's RX thread — treat like an
+ * ISR: keep it short, only set flags / printk / start advertising. */
+static void connected_cb(struct bt_conn *conn, uint8_t err)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	if (err) {
+		/* Rare: the link failed while forming. Recover by
+		 * advertising again — never get stuck invisible. */
+		printk("connect FAILED from %s (err %u), re-advertising\n",
+		       addr, err);
+		start_advertising();
+		return;
+	}
+
+	connected = true;
+	printk("connected: %s (LED -> solid green)\n", addr);
+}
+
+static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	connected = false;
+
+	/* reason codes worth recognizing (same numbers nRF Connect shows):
+	 *   0x13 remote terminated connection  — phone hung up cleanly
+	 *   0x08 connection supervision timeout — link died, our old
+	 *        S22 "wedge" friend from the Arduino bench sessions */
+	printk("disconnected: %s (reason 0x%02x), re-advertising\n",
+	       addr, reason);
+
+	start_advertising();
+}
+
+/* Compile-time registration: this macro places the struct in a linker
+ * section the BT stack walks at boot — no bt_conn_cb_register() call
+ * needed. (The runtime variant exists if callbacks must be dynamic.) */
+BT_CONN_CB_DEFINE(conn_callbacks) = {
+	.connected    = connected_cb,
+	.disconnected = disconnected_cb,
+};
+
 static void bt_ready(int err)
 {
 	if (err) {
@@ -164,12 +259,7 @@ static void bt_ready(int err)
 	}
 	printk("Bluetooth initialized\n");
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1, ad, ARRAY_SIZE(ad),
-			      sd, ARRAY_SIZE(sd));
-	if (err) {
-		printk("ERROR: adv start -> %d\n", err);
-		return;
-	}
+	start_advertising();
 	printk("Advertising as %s\n", CONFIG_BT_DEVICE_NAME);
 }
 
