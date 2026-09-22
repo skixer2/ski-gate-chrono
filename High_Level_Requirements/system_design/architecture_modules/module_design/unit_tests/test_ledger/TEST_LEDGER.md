@@ -1583,3 +1583,10 @@ Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
   flutter\bin; Python\Launcher; WindowsApps; Python313\Scripts; Roaming\npm;
   msys64\ucrt64\bin (backup at C:\Users\v17ni\path-backup_20260922_091938.txt).
   Fresh shells get py/flutter/npm back. zserial stays LOCALAPPDATA-hardened anyway.
+- DEFERRED: flutter upgrade (3.47.1 → stable). Not during Zephyr port; App 1.46
+  baseline stays on 3.47.1. Do it deliberately at next app-side milestone:
+  upgrade -> doctor -> rebuild+smoke App 1.46 -> proceed.
+- Dev-env: SAC (Smart App Control) auto-flipped evaluation→enforcement 09-22,
+  blocked dart.exe (and would block openocd/msys2). JP turned it OFF (one-way)
+  via Windows Security -> App & browser control. Root cause of "Device Guard"
+  error text. Flutter verified working after.
