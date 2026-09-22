@@ -272,6 +272,15 @@ static ssize_t read_run_list(struct bt_conn *conn,
 static struct k_work          cmd_work;      /* command interpreter   */
 static struct k_work_delayable stream_work; /* frame pacer           */
 
+/* Job state (3a: one job at a time — the single-slot req queue enforces
+ * "phone waits for the reply" already). */
+static uint32_t job_off;    /* next blob byte to send            */
+static uint32_t job_end;    /* off + len                         */
+static uint16_t job_seq;
+static uint8_t  job_run;
+static bool     job_active;
+static uint32_t job_t0;     /* k_uptime_get_32() at stream start */
+
 /* ── Request capture: single slot, drop-if-busy (V5.16 + parity with
  * the "phone must wait for the reply" rule). Write callbacks run in BT
  * RX context: copy out, set pending, return. Never work here. ────── */
@@ -384,14 +393,6 @@ static struct k_timer  tick_timer;
 
 static volatile bool connected;
 
-/* Job state (3a: one job at a time — the single-slot req queue enforces
- * "phone waits for the reply" already). */
-static uint32_t job_off;    /* next blob byte to send            */
-static uint32_t job_end;    /* off + len                         */
-static uint16_t job_seq;
-static uint8_t  job_run;
-static bool     job_active;
-static uint32_t job_t0;     /* k_uptime_get_32() at stream start */
 
 static uint8_t frame[3 + STREAM_PAYLOAD];
 
