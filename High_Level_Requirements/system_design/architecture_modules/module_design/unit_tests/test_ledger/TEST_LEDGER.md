@@ -1637,3 +1637,18 @@ Spec (verbatim from ArduinoFW 5.89 pull_transfer.* — extracted 09-22):
 deferred adv) + 0x5347/ABCA console + D/s commands served from a **RAM ramp
 pattern** (2048 B, byte = offset&0xFF) — no flash, no CRC yet. Honest button
 print folded in. 3b = flash blobs + CRC trailer + real dir + App 1.46 bench.
+
+### 2026-09-22 — M1 STEP 3a CLOSED: app-03 v0.3.0 pull skeleton PASS ✓
+
+Bench (JP, nRF Connect + serial, 09:50 UTC): connect (LED green) →
+subscribe ABCA → "D" → 2 run lines + d_end ✓ → "s 1 0 2048" → frames
+seq 0-7 @240B + seq 8 @128B + FFFF end, {"ev":"s_done","seq":9} ✓,
+~225 ms total, zero errors. Demo svc (counter/CCC) co-exists ✓.
+Not explicitly exercised (deferred to 3b bench): E1/E2/E4 paths,
+mid-stream disconnect abort, eyeball-confirm of FF FF 00 on phone.
+Build: remote-compiled by ZioClaw (start /b detach + log — new proven
+pattern), zero warnings, FLASH 21% / RAM 31.5%.
+**NEXT = 3b: byte-exact blob format (16B RunHeader + payload + 6B CRC32
+trailer, RAM-backed fake store), real directory walk, adv name + 0x5347
+UUIDs for App 1.46 discovery, CRC verified by the UNCHANGED app = M1
+decision gate.** (Storage port = its own later step.)
