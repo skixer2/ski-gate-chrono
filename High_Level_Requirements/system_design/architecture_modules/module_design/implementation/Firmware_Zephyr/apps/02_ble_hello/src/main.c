@@ -19,6 +19,15 @@
  *      no reboot, no user action. The device must ALWAYS be findable
  *      again; the pull protocol (step 3) depends on this pattern.
  *
+ * v0.2.2 fixes the re-advertise leg (bench evidence 09-22):
+ *
+ *   7. bt_le_adv_start() must NOT be called inside the disconnected
+ *      callback: the controller still holds the old advertising set
+ *      there (it is released only AFTER the callback returns) → the
+ *      call fails with -ENOMEM and the device never advertises again.
+ *      So the callback only SCHEDULES a k_work item (SGC pattern), and
+ *      the restart runs moments later from the work queue.
+ *
  * Demo on the phone (nRF Connect app):
  *   scan -> connect "SGC-Dev"  (LED: blue blink -> solid green)
  *   -> service 8d5a0001-... -> subscribe: counter ticks every second
@@ -36,7 +45,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.2.1"
+#define APP_VERSION "0.2.2"
 
 /* ------------------------------------------------------------------
  * SGC UUID family — FIXED FOREVER (do not regenerate, ever):
@@ -190,17 +199,45 @@ static const struct bt_data sd[] = {
 		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
-/* One helper, three callers (bt_ready / failed connect / disconnect):
- * (re)start connectable advertising. Legacy advertising stops by itself
- * the moment a connection lands — so after ANY disconnect we must call
- * this again or the device turns invisible until reboot. -EALREADY just
- * means "already advertising" — fine. */
+/* One helper for the BOOT path only: start connectable advertising.
+ * Legacy advertising stops by itself the moment a connection lands — so
+ * after any disconnect we must restart it or the device turns invisible
+ * until reboot. NOTE: only safe where no teardown is in progress (boot).
+ * Post-disconnect restarts go through the deferred adv_work below. */
 static void start_advertising(void)
 {
 	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
 				  ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
 	if (err && err != -EALREADY) {
 		printk("ERROR: adv start -> %d\n", err);
+	}
+}
+
+/* Deferred advertising restart (v0.2.2, bench-evidenced):
+ * calling bt_le_adv_start() directly in the disconnected callback fails
+ * with -ENOMEM — the old adv set is freed only after that callback
+ * returns. The callback schedules this work item instead; it runs from
+ * the sysworkq once teardown has finished. Retries cover the case where
+ * even that moment is still too early. */
+static struct k_work_delayable adv_work;
+
+static void adv_work_handler(struct k_work *w)
+{
+	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+				  ad, ARRAY_SIZE(ad), sd, ARRAY_SIZE(sd));
+	static uint8_t attempt;
+
+	if (err == 0 || err == -EALREADY) {
+		attempt = 0;
+		printk("advertising up\n");
+		return;
+	}
+	if (++attempt < 10) {
+		printk("adv start -> %d, retry %u/10\n", err, attempt);
+		k_work_schedule(&adv_work, K_MSEC(100));
+	} else {
+		printk("ERROR: adv start -> %d, giving up after retries\n", err);
+		attempt = 0;
 	}
 }
 
@@ -214,10 +251,10 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 
 	if (err) {
 		/* Rare: the link failed while forming. Recover by
-		 * advertising again — never get stuck invisible. */
+		 * advertising again (deferred — same rule as below). */
 		printk("connect FAILED from %s (err %u), re-advertising\n",
 		       addr, err);
-		start_advertising();
+		k_work_schedule(&adv_work, K_NO_WAIT);
 		return;
 	}
 
@@ -240,7 +277,10 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	printk("disconnected: %s (reason 0x%02x), re-advertising\n",
 	       addr, reason);
 
-	start_advertising();
+	/* NEVER call bt_le_adv_start() here: -ENOMEM while the old adv set
+	 * is still held (freed only after this callback returns). Schedule
+	 * the deferred restart instead — the SGC pattern wins again. */
+	k_work_schedule(&adv_work, K_NO_WAIT);
 }
 
 /* Compile-time registration: this macro places the struct in a linker
@@ -290,6 +330,7 @@ int main(void)
 	/* Wire the timer->work chain and start it */
 	k_work_init(&tick_work, tick_work_handler);
 	k_work_init(&button_work, button_work_handler);
+	k_work_init_delayable(&adv_work, adv_work_handler);
 	k_timer_init(&tick_timer, tick_timer_expiry, NULL);
 	k_timer_start(&tick_timer, K_SECONDS(1), K_SECONDS(1));
 
