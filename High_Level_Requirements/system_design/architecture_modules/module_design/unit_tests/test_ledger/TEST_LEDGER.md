@@ -1652,3 +1652,23 @@ pattern), zero warnings, FLASH 21% / RAM 31.5%.
 trailer, RAM-backed fake store), real directory walk, adv name + 0x5347
 UUIDs for App 1.46 discovery, CRC verified by the UNCHANGED app = M1
 decision gate.** (Storage port = its own later step.)
+
+### 2026-09-22 — M1 STEP 3b SPEC (extracted verbatim, app-side verified)
+
+- **RunHeader 16 B packed** (littlefs_storage.h): format_ver(1)=2 · arm_side(1)
+  · ts_utc(4) · baro_temp(2, tenths °C) · data_size(4)=0 (v2 on-disk) ·
+  frame_count(2)=0 (v2) · cal_accuracy(1) · _pad(1).
+- **CRC32: PAYLOAD ONLY** (raw_run_store.cpp: init 0xFFFFFFFF at create_run,
+  updated in append_data only — header bytes NEVER CRC'd; finalize = xor
+  0xFFFFFFFF; standard reflected table). **Trailer 6 B** = C3 32 magic +
+  crc32 LE(4). Blob = 16B hdr + payload + 6B trailer.
+- **App 1.46 discovery (Phone_app_prototype/lib/ble)**: FlutterBluePlus
+  GENERIC scan (no UUID/name filter — device picked by name in UI);
+  `_findChar` null = tolerated (best-effort read/write) → ABCA-only device
+  is benchable. Download path = ABCA console (native downloader).
+- **3b impl (app-03 v0.4.0)**: RAM fake store, 2 runs (payload 2048 B →
+  sz 2070; payload 39350 B → sz 39372 = classic bench run), payload =
+  ramp byte (off&0xFF) synthesized on the fly (no RAM buffer — 64 KB
+  budget), CRC precomputed at boot; real dir walk; s_done gains
+  k_uptime_get_32() elapsed (JP request). E1/E2/E4 + mid-stream abort to
+  be benched this round. Gate: unchanged App 1.46 downloads run + CRC OK.
