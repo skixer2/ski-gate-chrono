@@ -1590,3 +1590,18 @@ Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
   blocked dart.exe (and would block openocd/msys2). JP turned it OFF (one-way)
   via Windows Security -> App & browser control. Root cause of "Device Guard"
   error text. Flutter verified working after.
+
+### 2026-09-22 — M1 STEP 2.1 BENCH: 4.5/5 PASS + adv-restart bug caught (v0.2.2)
+
+**Bench (JP, serial-attached, SDK v3.4.1 / Zephyr 4.4.2 build):**
+connect->solid green ✓, button->notify ✓ (first bench), subscribe->1 Hz
+notify ✓, disconnect->blue ✓, `phone unsubscribed` auto-fires ✓.
+**BUG:** after disconnect, SGC-Dev NOT visible in scans. Serial evidence:
+`disconnected ... re-advertising` then `ERROR: adv start -> -12` (-ENOMEM).
+**Root cause:** bt_le_adv_start() called INSIDE disconnected_cb → controller
+still holds the old adv set (released only AFTER the callback returns) →
+ENOMEM → device never advertises again.
+**Fix (v0.2.2):** deferred restart — callback submits k_work_delayable;
+handler restarts adv from sysworkq + retry (10x100ms) on error. Boot path
+(bt_ready) stays direct (no teardown pending). Lesson added to the 4.4 API
+list: connection lifecycle work must be DEFERRED, never inline in conn cbs.
