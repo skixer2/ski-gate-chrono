@@ -1687,3 +1687,13 @@ decision gate.** (Storage port = its own later step.)
   [{"id":N,"ts":N,"size":PAYLOAD_ONLY,"side":"left|right"}] (size =
   compressed_size = payload, NOT blob total — differs from D's sz!).
   v0.4.1 adds both chars (read cbs, offset-aware, built from fake store).
+- 3b ROOT CAUSE (app 0 missing, nRF clean): Zephyr chars declared as 16-bit
+  UUIDs (0xABC8/9/A = 0000ABCX-0000-1000-8000-00805F9B34FB) but ArduinoFW
+  SGC_UUID() emits FULL 128-bit 5347ABCX-0000-1000-8000-8000? no —
+  5347ABCX-0000-1000-8000-00805F9B34FB. Same digits, DIFFERENT namespace.
+  nRF interacts by handle (worked); App 1.46 resolves by UUID string
+  (_toFullUuid compare) → null → silent empty reads → "no saved runs".
+  v0.4.2: all four product UUIDs as BT_UUID_INIT_128 (byte-identical to
+  ArduinoFW), service UUID added to advertisement (setAdvertisedService
+  parity). LESSON: 16-bit-vs-128-bit UUID trap — must match the FULL form
+  the legacy stack transmitted.
