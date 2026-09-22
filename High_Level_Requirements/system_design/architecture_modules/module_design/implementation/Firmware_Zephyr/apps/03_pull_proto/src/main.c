@@ -72,7 +72,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.4.3"
+#define APP_VERSION "0.4.4"
 
 /* ------------------------------------------------------------------ */
 /* Demo service (unchanged from app-02) — 8d5a family                  */
@@ -361,7 +361,16 @@ static void console_emit(const char *s)
 static void console_emit_bin(const uint8_t *d, size_t n)
 {
 	if (console_subscribed) {
-		bt_gatt_notify(NULL, &product_svc.attrs[5], d, n);
+		int err = bt_gatt_notify(NULL, &product_svc.attrs[5], d, n);
+
+		if (err) {
+			/* A failed DATA frame = potential silent corruption —
+			 * abort the stream instead (stateless: the phone just
+			 * re-requests). Must be seen, never swallowed. */
+			printk("ERROR: frame notify -> %d, ABORT stream seq=%u\n",
+			       err, job_seq);
+			job_active = false;
+		}
 	}
 }
 
