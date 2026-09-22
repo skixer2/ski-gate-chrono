@@ -72,7 +72,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 
-#define APP_VERSION "0.4.0"
+#define APP_VERSION "0.4.1"
 
 /* ------------------------------------------------------------------ */
 /* Demo service (unchanged from app-02) — 8d5a family                  */
@@ -131,6 +131,8 @@ BT_GATT_SERVICE_DEFINE(demo_svc,
  * in ArduinoFW builds: "5347" ABCA "-0000-1000-8000-00805F9B34FB". */
 static struct bt_uuid_16 product_svc_uuid = BT_UUID_INIT_16(0x5347);
 static struct bt_uuid_16 console_uuid     = BT_UUID_INIT_16(0xABCA);
+static struct bt_uuid_16 run_info_uuid     = BT_UUID_INIT_16(0xABC8);
+static struct bt_uuid_16 run_list_uuid     = BT_UUID_INIT_16(0xABC9);
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
@@ -212,6 +214,47 @@ static void blob_read(uint8_t run, uint32_t off, uint8_t *dst, uint32_t n)
 
 static bool console_subscribed;
 
+/* ── Listing surface (App 1.46 reads these at connect) ───────────────
+ *
+ * The app's run-list screen: getRunCount() reads ABC8 = count[2 LE]
+ * + age[4], then getRunListJson() reads ABC9 = build_run_list() JSON:
+ *   [{"id":N,"ts":N,"size":PAYLOAD_ONLY,"side":"left|right"},...]
+ * NOTE the size semantics: compressed_size = payload bytes, WITHOUT the
+ * 16 B header and 6 B trailer — different from the `D` command's sz
+ * (which is the full blob). Both formats verbatim ArduinoFW.
+ * The download button (_downloadRunsNative) then uses the pull console. */
+static uint8_t run_info_buf[6];    /* count LE + age LE (age=0: no RTC
+					   until epoch-sync port) */
+static char run_list_json[160];    /* built at boot from fake store */
+
+/* Offset-aware read helper (same manual pattern as read_counter —
+ * the bt_gatt_attr_read helper stays Kconfig-gated out). */
+static ssize_t read_buf(const void *data, uint16_t data_len,
+			void *buf, uint16_t len, uint16_t offset)
+{
+	if (offset > data_len) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	uint16_t frag = MIN(len, data_len - offset);
+
+	memcpy(buf, (const uint8_t *)data + offset, frag);
+	return frag;
+}
+
+static ssize_t read_run_info(struct bt_conn *conn,
+			     const struct bt_gatt_attr *attr,
+			     void *buf, uint16_t len, uint16_t offset)
+{
+	return read_buf(run_info_buf, sizeof(run_info_buf), buf, len, offset);
+}
+
+static ssize_t read_run_list(struct bt_conn *conn,
+			     const struct bt_gatt_attr *attr,
+			     void *buf, uint16_t len, uint16_t offset)
+{
+	return read_buf(run_list_json, strlen(run_list_json), buf, len, offset);
+}
+
 /* Work items (declared early: write_console submits cmd_work before the
  * handlers below are defined) */
 static struct k_work          cmd_work;      /* command interpreter   */
@@ -260,9 +303,18 @@ static void console_ccc_changed(const struct bt_gatt_attr *attr,
 	       console_subscribed ? "SUBSCRIBED" : "unsubscribed");
 }
 
-/* attrs[] indices: [0] service, [1] characteristic, [2] CCC */
+/* attrs[] indices: [0] service, [1..2] run info + CCC-less read,
+ * [3..4] run list, [5..] console. (No CCC on read-only chars.) */
 BT_GATT_SERVICE_DEFINE(product_svc,
 	BT_GATT_PRIMARY_SERVICE(&product_svc_uuid.uuid),
+	BT_GATT_CHARACTERISTIC(&run_info_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_run_info, NULL, NULL),
+	BT_GATT_CHARACTERISTIC(&run_list_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_run_list, NULL, NULL),
 	BT_GATT_CHARACTERISTIC(&console_uuid.uuid,
 			       BT_GATT_CHRC_WRITE |
 			       BT_GATT_CHRC_WRITE_WITHOUT_RESP |
@@ -275,11 +327,12 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 
 /* Text reply to the phone (notify) + serial mirror. Now that the service
  * exists we can reference its attrs. */
+/* Console char is now attrs[5] (after run info + run list chars). */
 static void console_emit(const char *s)
 {
 	printk("<phone %s\n", s);
 	if (console_subscribed) {
-		bt_gatt_notify(NULL, &product_svc.attrs[1],
+		bt_gatt_notify(NULL, &product_svc.attrs[5],
 			       s, strlen(s));
 	}
 }
@@ -289,7 +342,7 @@ static void console_emit(const char *s)
 static void console_emit_bin(const uint8_t *d, size_t n)
 {
 	if (console_subscribed) {
-		bt_gatt_notify(NULL, &product_svc.attrs[1], d, n);
+		bt_gatt_notify(NULL, &product_svc.attrs[5], d, n);
 	}
 }
 
@@ -607,6 +660,32 @@ int main(void)
 		       (unsigned long)fake_runs[i].payload_len,
 		       (unsigned long)fake_run_total(&fake_runs[i]),
 		       (unsigned long)fake_runs[i].crc);
+	}
+
+	/* App listing surface: ABC8 count+age, ABC9 run-list JSON
+	 * (verbatim build_run_list format — size = payload only). */
+	run_info_buf[0] = (uint8_t)(N_FAKE_RUNS & 0xFF);
+	run_info_buf[1] = (uint8_t)(N_FAKE_RUNS >> 8);
+	/* age[4] = 0: no RTC until the epoch-sync port (ABC0 write). */
+	memset(&run_info_buf[2], 0, 4);
+
+	{
+		size_t pos = 0;
+
+		pos += snprintf(&run_list_json[pos], sizeof(run_list_json) - pos,
+				"[");
+		for (uint8_t i = 0; i < N_FAKE_RUNS; i++) {
+			pos += snprintf(&run_list_json[pos],
+					 sizeof(run_list_json) - pos,
+					 "%s{\"id\":%u,\"ts\":%lu,\"size\":%lu,"
+					 "\"side\":\"%s\"}",
+					 (i ? "," : ""), i,
+					 (unsigned long)fake_runs[i].hdr.ts_utc,
+					 (unsigned long)fake_runs[i].payload_len,
+					 fake_runs[i].hdr.arm_side ? "right" : "left");
+		}
+		snprintf(&run_list_json[pos], sizeof(run_list_json) - pos, "]");
+		printk("run list: %s\n", run_list_json);
 	}
 
 	if (!device_is_ready(led)) {
