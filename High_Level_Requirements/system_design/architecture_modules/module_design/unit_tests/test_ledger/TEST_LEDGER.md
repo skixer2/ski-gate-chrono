@@ -1710,3 +1710,8 @@ decision gate.** (Storage port = its own later step.)
   BT_L2CAP_TX_BUF_COUNT=10; console_emit_bin gains rc check → clean stream
   ABORT on failed data frame (integrity: no silent corruption possible).
   Forensics line proved itself (caught the failure the bench hid).
+- 3b root cause #4 (the ACTUAL pool): ENOMEM came from att.c:356 `att_pool`
+  = CONFIG_BT_ATT_TX_COUNT (default 3) — "buffers used for sending anything
+  over ATT". Connect burst = MTU rsp + CCC writes + 3 dir notifies > 3.
+  v0.4.5: BT_ATT_TX_COUNT=10. (CONN_TX_MAX/L2CAP_TX_BUF_COUNT were the
+  wrong pools; kept at 10 as harmless depth.)
