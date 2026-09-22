@@ -1672,3 +1672,10 @@ decision gate.** (Storage port = its own later step.)
   budget), CRC precomputed at boot; real dir walk; s_done gains
   k_uptime_get_32() elapsed (JP request). E1/E2/E4 + mid-stream abort to
   be benched this round. Gate: unchanged App 1.46 downloads run + CRC OK.
+- 3b bench PHASE 1 (JP, nRF Connect, 10:59 UTC): run 0 → 9 frames, s_done
+  ms=252 (pacer honest: 25 ms + ~3 ms overhead/frame; phone-side slowness
+  = CI drain, confirmed). Run 1 (classic 39372 B) → 165 frames, ms=4606
+  = 8.55 KB/s device-side (vs 4 KB/s old push-FT via nRF). ABORT path
+  incidentally benched: 's' without CCC → s_abort seq=0, clean recovery.
+  Framing byte-perfect (240x164+12=39372). REMAINING FOR 3b CLOSURE:
+  App 1.46 unchanged download + app-side CRC verification.
