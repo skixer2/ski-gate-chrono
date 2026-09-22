@@ -1561,3 +1561,8 @@ bugfixes only. zbuild auto-follows (picks last version dir under
 C:\ncs with .west; toolchain hash likely unchanged for a patch — if it
 DOES install a new hash, pin NCS_DIR in tools to avoid mixing eras).
 Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
+- Dev-env: `zpull.bat` added to tools/ (relay fetch+merge from VPS mirror in one
+  command) after JP pulled from GitHub origin and saw no changes (expected:
+  origin is always behind; relay VPS→PC→GitHub). TortoiseGit equivalent
+  documented in session: add remote `vps` = ssh://vps/root/.openclaw/workspace/
+  ski_gate_chrono, SSH client must be Git's ssh.exe (not TortoisePlink).

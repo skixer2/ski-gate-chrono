@@ -31,6 +31,7 @@ edit -> Build in VS Code (nRF Connect: F7)  OR  zbuild.bat
 | Command | What it does |
 |---|---|
 | `zbuild.bat <src> <board> <builddir> [overlay]` | west build with full NCS env (e.g. board `arduino_nicla_sense_me`) |
+| `zpull.bat` | Relay pull: fetch VPS mirror + merge (NOT GitHub origin — origin is always behind; relay is VPS→PC→GitHub) |
 | `zflash.bat <hex>` | SWD flash + verify + reset run. Bootloader-independent. |
 | `zreset.bat` | Hard reset via SWD — works even if firmware is wedged. No serial port needed. |
 | `zserial.py [port] [secs]` | SWD reset + capture console output (default COM3, 5 s). |
