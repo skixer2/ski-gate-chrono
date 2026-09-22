@@ -1679,3 +1679,11 @@ decision gate.** (Storage port = its own later step.)
   incidentally benched: 's' without CCC → s_abort seq=0, clean recovery.
   Framing byte-perfect (240x164+12=39372). REMAINING FOR 3b CLOSURE:
   App 1.46 unchanged download + app-side CRC verification.
+- 3b GAP FOUND (app bench "no saved runs"): App 1.46 connect flow = syncTime
+  (ABC0, tolerated) → readConfig (tolerated) → getRunCount (ABC8) →
+  getRunList (ABC9 JSON) → native pull download (button = _downloadRunsNative,
+  VERIFIED — pull path, already implemented). Missing = ABC8/ABC9 listing chars.
+  Formats extracted: ABC8 = count[2 LE]+age[4]; ABC9 = build_run_list JSON
+  [{"id":N,"ts":N,"size":PAYLOAD_ONLY,"side":"left|right"}] (size =
+  compressed_size = payload, NOT blob total — differs from D's sz!).
+  v0.4.1 adds both chars (read cbs, offset-aware, built from fake store).
