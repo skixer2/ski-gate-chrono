@@ -1578,3 +1578,8 @@ Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
   %LOCALAPPDATA%\Programs\Python\Launcher\py.exe, PATH-independent.
   Registry repair offered to JP (pending his go). Node exec lesson: quoted
   args leak as \" through the wrapper — quote-free commands or bat files only.
+- Dev-env FIXED: JP-PC user PATH repaired (JP-approved, 09-22 07:20 UTC). Root cause:
+  JP's `setx PATH "%PATH%;C:\msys64\ucrt64\bin"` (MSYS2 for C++). New HKCU Path =
+  flutter\bin; Python\Launcher; WindowsApps; Python313\Scripts; Roaming\npm;
+  msys64\ucrt64\bin (backup at C:\Users\v17ni\path-backup_20260922_091938.txt).
+  Fresh shells get py/flutter/npm back. zserial stays LOCALAPPDATA-hardened anyway.
