@@ -1697,3 +1697,10 @@ decision gate.** (Storage port = its own later step.)
   ArduinoFW), service UUID added to advertisement (setAdvertisedService
   parity). LESSON: 16-bit-vs-128-bit UUID trap — must match the FULL form
   the legacy stack transmitted.
+- 3b root cause #2: "run#0 not in device directory" = phone at ATT MTU 23
+  (no exchange) → notify cap 20 B → 41-B dir lines FAIL SILENTLY (return
+  unchecked), 11-B d_end delivered → app parses empty dir + terminator →
+  gives up per run. nRF always requests 247 (why benches passed). Fix
+  v0.4.3: CONFIG_BT_L2CAP_RX_MTU=247 + notify return checked & logged.
+  LESSON: never ignore bt_gatt_notify rc — a size-rejected notify is
+  invisible without it.
