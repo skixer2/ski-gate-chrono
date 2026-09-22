@@ -1524,3 +1524,40 @@ is31fl319x: no led_on/off ops.
 **NEXT (Monday):** JP verifies app-02 phone demo + reads code; then step 3 =
 pull-protocol characteristics (D/s commands, binary frames, FFFF end, CRC trailer —
 protocol verbatim from ArduinoFW, benched against UNCHANGED App 1.46).
+
+### 2026-09-21/22 — M1 STEP 2 VERIFIED + STEP 2.1 (v0.2.1 LED-as-state)
+
+**App-02 v0.2.0 phone demo VERIFIED (JP bench 09-21):** scan → connect
+"SGC-Dev" → subscribe → counter ticks 1/s = CCC + notify path proven
+end-to-end. LED blink correctly unaffected by connection (heartbeat by
+design — no bt_conn_cb existed in v0.2.0). JP caught a comment bug:
+`{0xFF,0,0}` = **BLUE**, not red — stock board DTS declares
+`color-mapping = <BLUE, GREEN, RED>` and is31fl319x set_color() writes
+the array to channels as-is (no logical color remap) → index 0 = blue
+die. Verified against zephyr v4.4.0 source (board dts + driver).
+Button-notify path not exercised this bench (optional confirm).
+
+**M1 STEP 2.1 — app 02_ble_hello v0.2.1 (LED = connection state):**
+Requirement: LED communicates link state — 0.5 Hz blue blink while
+advertising, solid green while connected, and the device re-advertises
+BY ITSELF after any disconnect. Introduces the connection lifecycle
+(bt_conn_cb) + self-recovery to advertising — the exact pattern the
+step-3 pull protocol needs (device must become discoverable again after
+every download session).
+- New: `BT_CONN_CB_DEFINE` connected/disconnected callbacks printing peer
+  addr + disconnect reason (0x13 clean remote term / 0x08 supervision
+  timeout — the S22 wedge friend); shared `start_advertising()` helper
+  (bt_ready / connect-fail / disconnect, -EALREADY tolerated);
+  `volatile bool connected` (BT RX thread writes, sysworkq reads).
+- Tick handler: solid green when connected, else blue blink; color
+  comment corrected (index 0 = blue die on Nicla).
+- CCC note documented: stack clears subscription on disconnect (ccc cb
+  fires with value 0 → "phone unsubscribed" on serial).
+- Kconfig: unchanged (BT_CONN implied by BT_PERIPHERAL).
+
+**SDK (JP 09-22):** NCS v3.4.1 LTS patch offered by Toolchain Manager.
+Decision: take it — additive install (v3.4.0 dir stays), patch-level =
+bugfixes only. zbuild auto-follows (picks last version dir under
+C:\ncs with .west; toolchain hash likely unchanged for a patch — if it
+DOES install a new hash, pin NCS_DIR in tools to avoid mixing eras).
+Regression = rebuild + bench app-02 (covers BT + LED + GATT stack paths).
