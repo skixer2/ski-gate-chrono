@@ -35,6 +35,7 @@ edit -> Build in VS Code (nRF Connect: F7)  OR  zbuild.bat
 | `zflash.bat <hex>` | SWD flash + verify + reset run. Bootloader-independent. |
 | `zreset.bat` | Hard reset via SWD — works even if firmware is wedged. No serial port needed. |
 | `zserial.py [port] [secs]` | SWD reset + capture console output (default COM3, 5 s). |
+| (live console) `pio device monitor -b 115200 COM3` | PlatformIO monitor = plain live terminal for the same port. Ctrl+C quits. Close it before zserial (COM3 is exclusive); zflash is unaffected (SWD, not COM). |
 | `zpeek.bat` | Memory dump via SWD — edit the `mdw` line for your address. |
 
 ## Hardware notes (measured 2026-09-18)
