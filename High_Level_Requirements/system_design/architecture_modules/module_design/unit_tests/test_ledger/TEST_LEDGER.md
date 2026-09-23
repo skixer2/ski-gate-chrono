@@ -1788,3 +1788,13 @@ App-1.46 HIGH-priority CI (11.25-15 ms) could theoretically drain
 convert data-frame ENOMEM policy abort→retry/backoff (faster pacing
 WILL empty the ATT pool; today's abort would kill streams), (c) bench
 with S22 wedge vigilance (TC-2026-08-26-001 taxonomy applies).
+- PARKED split into TWO items (JP, 09-23 06:48 — settle ≠ stream time):
+  (a) stream pacing (25 ms policy, needs ENOMEM retry first) — see above;
+  (b) CONNECT_SETTLE_MS 4 s (NordicBleDownloader.kt:52, blind sleep
+      post-connect) → event-driven readiness: onMtuChanged + onPhyUpdate
+      + discovery + CCC flags instead of sleep. History: 12 s A/B showed
+      NO benefit (1.37); root cause was the GATT buffer clone (1.39);
+      settle survived as belt-and-braces against CORDIO's queue — SDC +
+      att_pool=10 likely tolerant (today's D-after-CCC already proves
+      immediate traffic). Quick knob A/B first (4s→1s→500ms), then the
+      event-driven fix. Also present: 500 ms inter-run sleep (:377).
