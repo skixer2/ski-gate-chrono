@@ -5,7 +5,7 @@ project(pull_proto)
 
 target_sources(app PRIVATE
   src/main.c
-  src/store_fake.c
+  src/store_flash.c
   src/led_state.c
   src/ble_lifecycle.c
   src/pull_proto.c
