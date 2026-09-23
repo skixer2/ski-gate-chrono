@@ -1798,3 +1798,21 @@ with S22 wedge vigilance (TC-2026-08-26-001 taxonomy applies).
       att_pool=10 likely tolerant (today's D-after-CCC already proves
       immediate traffic). Quick knob A/B first (4s→1s→500ms), then the
       event-driven fix. Also present: 500 ms inter-run sleep (:377).
+
+### 2026-09-23 — M1 STEP 4a REQUIREMENT: flash bring-up + read path (JP GO 10:28)
+
+Hardware fact settled (JP): bench = STOCK Nicla Sense ME with 2 MB
+MX25R1635F (stock Zephyr DTS correct, jedec c2 28 15). Custom carrier
+(8 MB MX25R6435F) deferred until system proven — M0 doctrine holds.
+Scope:
+- enable flash (overlay+Kconfig), boot smoke = size/page print
+- store_flash.c implements store.h over the Opt-A 2MB map VERBATIM
+  (pre-roll 0x0-0x13FFF, 8 slots @0x14000, config 0x1FC000, index
+  0x1FD000); READS run metadata from the index RunEntry (production
+  path), READS blob bytes from slots
+- synthetic writer: boot-if-empty writes 2 runs (2048 + 39350 payload,
+  NEW timestamps so the app sees them as missing without data-clear)
+- 4a bench: App 1.46 downloads FLASH-RESIDENT runs, CRC OK
+- store_fake.c stays in tree unused; retires at 4b (lifecycle)
+- tests start here: host-side C test of blob layout/CRC + bleak smoke
+  (first bench test pass after flash proves out)
