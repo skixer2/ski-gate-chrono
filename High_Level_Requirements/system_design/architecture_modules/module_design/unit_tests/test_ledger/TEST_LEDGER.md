@@ -1772,3 +1772,19 @@ Deltas (both deliberate, both documented in-code):
     depth is a family affair, enforced at compile time (gcc.h:87).
     Interesting: the deprecated symbol never triggered the assert —
     further proof it wasn't the real pool.
+
+### 2026-09-23 — M1 STEP 3c CLOSED: equivalence PASS ✓
+
+JP bench (06:44 UTC): app data cleared (no delete UI exists —
+LocalStorage.delete() built but never wired, app-side TODO), fresh
+download round on v0.5.0 modular: run 1 = 165 frames, s_done ms=4624
+(vs 4621 on v0.4.5 monolith) — behavior-preserving proven. 3c done.
+
+**PARKED (JP request, app-era agenda): pull throughput tuning.** The
+4.6 s for 39372 B is POLICY not physics: 165 × STREAM_GAP_MS(25 ms)
+= 4.13 s ceiling by design (5.81 S22-wedge equilibrium). MTU 247 @
+App-1.46 HIGH-priority CI (11.25-15 ms) could theoretically drain
+2×-4× faster. When tuning: (a) lower pacing toward CI, (b) FIRST
+convert data-frame ENOMEM policy abort→retry/backoff (faster pacing
+WILL empty the ATT pool; today's abort would kill streams), (c) bench
+with S22 wedge vigilance (TC-2026-08-26-001 taxonomy applies).
