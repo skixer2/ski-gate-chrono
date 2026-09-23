@@ -301,7 +301,7 @@ void store_init(void)
 
 	struct flash_pages_info info;
 
-	if (flash_get_page_info_by_off(flashdev, 0, &info) == 0) {
+	if (flash_get_page_info_by_offs(flashdev, 0, &info) == 0) {
 		size_t pages = flash_get_page_count(flashdev);
 
 		printk("flash: %u KiB, %u pages x %u B\n",
