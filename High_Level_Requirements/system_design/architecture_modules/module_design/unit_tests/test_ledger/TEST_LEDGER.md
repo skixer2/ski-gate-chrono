@@ -1844,3 +1844,20 @@ blocks) — lifecycle erase granularity must respect this (or verify SFDP
   runs" accumulate phone-side only. NOTE: ArduinoFW's own 512 B
   char_run_list silently truncated past ~9 entries — we size by
   construction instead.
+
+### 2026-09-24 — M1 STEP 4a CLOSED: legacy cross-firmware read PASS ✓✓
+
+Bench (JP, 12:47): 5/5 legacy ArduinoFW runs downloaded through the
+Zephyr store, "not a single glitch" — app CRC verification passed on
+trailers written by the OLD firmware. Read path (RRS2 index parse, slot
+addressing, blob streaming) validated against production data on real
+silicon. 4a done. (Two fixes en route: run_list_json 160→512; flash API
+name.) Boot print of full run list = standing regression check.
+
+**OPEN at 4b — slot geometry (JP challenge, valid):** 8 × 244 KiB slots
+= run-length safety (~315 s max @ ~790 B/s observed), typical 50 s run
+= 40 KB uses 1/6 of slot. Alternatives: 12×163 KiB (~3.5 min) or
+16×122 KiB (~2.6 min). Phone drains device per session → history beyond
+a ski morning has low value; oversized-run failure is catastrophic.
+DECIDE at 4b (lifecycle locks geometry). Carrier 8 MB = 32 slots same
+SLOT_SIZE regardless.
