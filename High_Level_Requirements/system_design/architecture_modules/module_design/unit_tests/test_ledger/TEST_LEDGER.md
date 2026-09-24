@@ -1899,3 +1899,13 @@ SLOT_SIZE regardless.
   is DEVICE-INTERNAL (app never sees it — only blob + D/s frozen) → 4b
   index goes log-native: page_start/page_end for real, no slot byte.
   Tiny-run edge: cap is policy not geometry (region÷min-run unbounded).
+
+### 2026-09-24 — M1 STEP 4b BUILD STARTS (solo run, JP away; "more comments" = standing policy)
+
+Scope locked (all from JP's design push): circular run log, MAX_INDEXED_RUNS=64
+policy constant, log-native device-internal index, console 'w' producer
+through real lifecycle, host tests of wrap/reclaim/sizing BEFORE silicon.
+Legacy 5 slot-runs: fresh-start accepted (on phone; erased progressively).
+Structure: src/store_layout.h = PURE arithmetic (target+host shared),
+src/store_flash.c = hardware + chunked non-blocking producer,
+tests/test_layout.c = gateway-gcc asserts (founding suite).
