@@ -1861,3 +1861,16 @@ name.) Boot print of full run list = standing regression check.
 a ski morning has low value; oversized-run failure is catastrophic.
 DECIDE at 4b (lifecycle locks geometry). Carrier 8 MB = 32 slots same
 SLOT_SIZE regardless.
+- 4b DESIGN REVISION (JP, 13:49 — product input, binding): retained history
+  is VALUABLE (forgotten/dead phone, >8-run slalom sessions) — "low value"
+  judgment retracted. JP packing insight → **circular run log** proposal:
+  variable-length runs packed sequentially, sector-padded, reclamation
+  ONLY at head of log (oldest run's extent — zero fragmentation by
+  construction), erase-ahead in POST_RUN keeps hot path program-only,
+  logical max-run cap ~244 KB (policy, not geometry). Capacity: ~45
+  typical runs on 2 MB (vs 8 today / 16 best-slot). RunEntry page_start/
+  page_end = the fields this was kept for. PRECONDITIONS to verify first:
+  (1) 4 KB sector erase through Zephyr driver (64 KB page report must be
+  resolved — SFDP/driver config; else padding 24 KB avg = math sours),
+  (2) wrap-stub at region end (bounded by run cap, explicit in index).
+  DECISION: circular log vs fixed slots — JP's verdict opens 4b.
