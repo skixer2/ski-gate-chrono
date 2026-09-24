@@ -1835,3 +1835,12 @@ blocks) — lifecycle erase granularity must respect this (or verify SFDP
   getRunList [] → "0 missing" despite empty local store. Fix: 512 B
   (ArduinoFW char_run_list parity). Boot print of the FULL list = the
   regression check.
+- 4a DIMENSIONING POLICY (JP, 12:42 — binding): every buffer sized from
+  the WORST CASE of its production domain, never from current test data;
+  each invariant becomes a host test (the 160-B bug is the archetype).
+  Capacity math: slots bound live runs — stock 2MB = 8 (JSON worst ~420 B,
+  512 buffer OK), carrier 8MB = 32 (JSON worst ~1.7 KB — bump or
+  ArduinoFW-style graceful truncation; decide at 4b/carrier). "Tens of
+  runs" accumulate phone-side only. NOTE: ArduinoFW's own 512 B
+  char_run_list silently truncated past ~9 entries — we size by
+  construction instead.
