@@ -1874,3 +1874,10 @@ SLOT_SIZE regardless.
   resolved — SFDP/driver config; else padding 24 KB avg = math sours),
   (2) wrap-stub at region end (bounded by run cap, explicit in index).
   DECISION: circular log vs fixed slots — JP's verdict opens 4b.
+- 4b PRECONDITION RESOLVED (driver source): 64 K page report =
+  CONFIG_SPI_NOR_FLASH_LAYOUT_PAGE_SIZE default 65536 (generic); driver
+  supports 4096 ("the sector size") + erase path auto-picks largest type
+  fitting the requested span. Chip MX25R1635F has 4 K SE. Fix: set
+  LAYOUT_PAGE_SIZE=4096; empirical proof = boot self-test (erase 1 sector
+  @0x1FE000 ArduinoFW self-test region, verify 0xFF, restore, report).
+  Circular log design UNBLOCKED pending bench print.
