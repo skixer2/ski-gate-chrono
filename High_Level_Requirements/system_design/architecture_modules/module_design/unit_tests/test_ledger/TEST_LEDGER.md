@@ -1881,3 +1881,13 @@ SLOT_SIZE regardless.
   LAYOUT_PAGE_SIZE=4096; empirical proof = boot self-test (erase 1 sector
   @0x1FE000 ArduinoFW self-test region, verify 0xFF, restore, report).
   Circular log design UNBLOCKED pending bench print.
+- 4b PRECONDITION CLOSED (JP bench 14:06): "flash: 2048 KiB, 512 pages
+  x 4096 B" + "selftest: 4K erase OK (layout page=4096)" — 4 KB erase
+  proven on silicon (save/erase/verify/restore @0x1FE000). Run list now
+  complete (5 entries). CIRCULAR RUN LOG GREEN-LIT.
+  4b plan: (1) host tests of wrap/reclaim arithmetic FIRST, (2) log in
+  store_flash.c (cursor+runway, sector padding, head reclamation,
+  page_start/page_end load-bearing), (3) console 'w <bytes>' = synthetic
+  run through REAL lifecycle, (4) sensors queue behind.
+  FLAGGED to JP: 4b fresh-start erases the 5 legacy slot runs (saved on
+  phone) — accepted pending his word.
