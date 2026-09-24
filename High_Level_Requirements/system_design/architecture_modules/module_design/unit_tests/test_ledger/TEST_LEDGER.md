@@ -1891,3 +1891,11 @@ SLOT_SIZE regardless.
   run through REAL lifecycle, (4) sensors queue behind.
   FLAGGED to JP: 4b fresh-start erases the 5 legacy slot runs (saved on
   phone) — accepted pending his word.
+- 4a review (JP, 14:21): run_list_json 512 = correct for SLOT domain
+  (8×~56+2 ≈ 450 B), insufficient for circular log (~45×56 ≈ 2.6 KB).
+  4b opening commit = MAX_INDEXED_RUNS=64 policy constant → JSON (~3.6K)
+  + entries cache (~2.1K) sized from it by construction + founding host
+  test "worst entry × MAX fits both". NEW insight recorded: index format
+  is DEVICE-INTERNAL (app never sees it — only blob + D/s frozen) → 4b
+  index goes log-native: page_start/page_end for real, no slot byte.
+  Tiny-run edge: cap is policy not geometry (region÷min-run unbounded).
