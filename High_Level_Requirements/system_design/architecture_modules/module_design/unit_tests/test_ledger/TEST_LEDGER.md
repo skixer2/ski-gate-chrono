@@ -1909,3 +1909,24 @@ Legacy 5 slot-runs: fresh-start accepted (on phone; erased progressively).
 Structure: src/store_layout.h = PURE arithmetic (target+host shared),
 src/store_flash.c = hardware + chunked non-blocking producer,
 tests/test_layout.c = gateway-gcc asserts (founding suite).
+
+### 2026-09-24 — M1 STEP 4b SHIPPED (solo run): v0.7.0 circular run log
+
+HOST TESTS FIRST (founding suite, tests/test_layout.c, msys64 gcc 16.2
+on JP-PC): 21 checks ALL GREEN — span padding, wrap boundary (exact-fit
+no-wrap), JSON budget (founding: MAX_INDEXED_RUNS × worst entry fits),
+erase-work bookkeeping, full fill/rotate simulation (typical: live=48 =
+region capacity; max-budget: live=8, no deadlock; tiny: pins at cap 64).
+Sim reclaim bug caught in self-review BEFORE running (virgin prep-erase
+wrongly dropped entries — rewritten to extent-intersection drops).
+
+FIRMWARE (229 targets, 0 warnings, FLASH 23.6% / RAM 61.9%): store_flash.c
+rewritten as the log — SGL1 log-native index (16B hdr + 16B entries,
+device-internal), chunked NON-BLOCKING producer (ERASING→WRITING→
+CLOSING, one sector/chunk per work pass), extent-intersection reclamation
+(mirrors the host test exactly), crash windows (a)/(b) documented,
+BUILD_EPOCH+uptime timestamps (real 2026 dates), 'w <len>' console
+producer, JSON sized from MAX_INDEXED_RUNS by construction.
+JP bench script: D(empty) → w 40960 ×N → D grows → w 249834 ×8 forces
+reclaim (watch "rec: reclaim" lines) → app download CRC → reboot
+persistence ("store: N runs, cursor…").
