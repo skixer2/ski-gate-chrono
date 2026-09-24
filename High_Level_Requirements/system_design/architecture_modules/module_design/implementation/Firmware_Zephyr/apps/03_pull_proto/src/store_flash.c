@@ -313,6 +313,38 @@ void store_init(void)
 		write_synthetic_runs();
 	}
 
+	/* 4 KB sector-erase proof (4b precondition, JP 09-24): the region
+	 * ArduinoFW reserved as "SPI self-test" (chip-0x2000) is the safe
+	 * victim — 4 KB past the index sector, no run data. Save, erase
+	 * ONE sector, verify 0xFF, restore. */
+	{
+		/* 4 KB static save buffer — 8 KB of locals would blow the
+		 * main stack; verify in small chunks instead. */
+		static uint8_t save[FLASH_SECTOR];
+		uint8_t chk[256];
+		uint32_t st = 0x1FE000u;
+		bool all_ff = true;
+
+		flash_read(flashdev, st, save, sizeof(save));
+		if (flash_erase(flashdev, st, FLASH_SECTOR) == 0) {
+			for (uint32_t o = 0; o < FLASH_SECTOR && all_ff;
+			     o += sizeof(chk)) {
+				flash_read(flashdev, st + o, chk, sizeof(chk));
+				for (uint32_t i = 0; i < sizeof(chk); i++) {
+					if (chk[i] != 0xFF) {
+						all_ff = false;
+						break;
+					}
+				}
+			}
+		} else {
+			all_ff = false;
+		}
+		printk("selftest: 4K erase %s (layout page=%u)\n",
+		       all_ff ? "OK" : "FAILED", (unsigned)info.size);
+		flash_write(flashdev, st, save, sizeof(save));
+	}
+
 	for (uint8_t i = 0; i < entry_count; i++) {
 		printk("run %u: payload=%lu sz=%lu slot=%u ts=%lu\n",
 		       i,
