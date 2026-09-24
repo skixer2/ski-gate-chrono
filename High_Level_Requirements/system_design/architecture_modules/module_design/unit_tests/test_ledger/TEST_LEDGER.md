@@ -1816,3 +1816,17 @@ Scope:
 - store_fake.c stays in tree unused; retires at 4b (lifecycle)
 - tests start here: host-side C test of blob layout/CRC + bleak smoke
   (first bench test pass after flash proves out)
+
+### 2026-09-24 — M1 STEP 4a BENCH 1: legacy store read PASS (best case)
+
+JP boot (12:26): flash 2048 KiB confirmed; RRS2 index found — written by
+ARDUINOFW itself (NOR survived all firmware changes; synthetic writer
+correctly DORMANT). 5 legacy entries parsed: real bench runs (39-40 KB,
+ts=0 x3 pre-sync era + ts≈1787654533/1787662173 ≈ Sep 21-22 recordings).
+App "0 missing" = correct: phone already holds these exact (id,ts) from
+September downloads. Read path validated against PRODUCTION data written
+by the old firmware. NEXT bench: clear app data → download all 5 → app
+CRC against ARDUINOFW-computed trailer CRCs = cross-firmware byte proof.
+NOTE for 4b: jedec,spi-nor reports 32 pages x 64 KB (uniform erase
+blocks) — lifecycle erase granularity must respect this (or verify SFDP
+4K-sector support) before slot prep code assumes 4096.
