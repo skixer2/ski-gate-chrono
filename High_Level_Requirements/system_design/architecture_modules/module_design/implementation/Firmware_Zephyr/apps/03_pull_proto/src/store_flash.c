@@ -1,87 +1,119 @@
 /*
- * store_flash.c — SPI NOR run store (step 4a)
- * =============================================
- * The real store.h implementation, over the on-board MX25R1635F (stock
- * Nicla, 2 MB — the custom carrier's 8 MB part is future hardware).
+ * store_flash.c — circular run log over SPI NOR (step 4b)
+ * =======================================================
+ * The production store. Replaces 4a's slot-based reader with the
+ * circular log validated by tests/test_layout.c — read the header
+ * essay in store_layout.h for the design rationale (short version:
+ * JP's packing insight + retained-history requirement → ~48 typical
+ * runs on the 2 MB chip instead of 8, oldest-only reclamation, hot
+ * path stays program-only).
  *
- * Flash map (Opt-A, classic 2 MB geometry — flash_layout.h VERBATIM):
- *   0x00000–0x13FFF  pre-roll (FlashRing era — untouched here, 4b+)
- *   0x14000–0x1FBFFF 8 run slots × 0x3D000 (244 KiB)
- *   0x1FC000         config (not used yet)
- *   0x1FD000         run index, RRS2 format
- *   0x1FE000+        self-test / reserved
+ * ── What lives where (flash map, top rows unchanged from 4a) ───────
  *
- * Index (raw_run_store.cpp VERBATIM): [IndexHeader 16 B]["RRS2" magic]
- * then per run: [RunEntry 32 B][slot byte] = 33 B records.
- * Run blob in slot: [RunHeader 16 B][payload][C3 32 + CRC32 LE] —
- * CRC over payload only, init/final-xor 0xFFFFFFFF.
+ *   0x00000–0x13FFF   pre-roll region (FlashRing era — untouched, the
+ *                     sensor pipeline owns it when it arrives)
+ *   0x14000–0x1FBFFF  THE LOG: packed runs, sector-padded, circular
+ *   0x1FC000          config (future: device settings persistence)
+ *   0x1FD000          INDEX (format below — device-internal, the app
+ *                     never sees it; only the blob + D/s are frozen)
+ *   0x1FE000          self-test victim sector (4 KB erase proof)
  *
- * 4a SCOPE: READ path = production (index + slots). WRITE = synthetic
- * test writer, fires ONLY when the index is absent/invalid (first ever
- * boot on fresh silicon) — it writes two ramp runs (2048 + 39350 B)
- * with NEW timestamps so a previously-benched app sees them as missing.
- * The real lifecycle (create/append/close/rotate) is 4b.
+ * ── Index format ("SGL1", ours to design — see ledger f02fdc5) ────
  *
- * NOTE: SWD flashing (zflash) writes the nRF52's INTERNAL code flash —
- * this NOR keeps its contents across firmware re-flashes. The synthetic
- * writer is a once-per-chip event unless the index sector is erased.
+ *   [16 B header][16 B entry] × entry_count   (≤ 1040 B, one sector)
+ *
+ *   header: magic "SGL1" · write_cursor · erased_end · entry_count ·
+ *           next_run_id
+ *   entry:  addr · payload_len · ts · run_id · side · cal
+ *
+ *   Entries are in AGE ORDER (oldest first) — the same order the
+ *   directory lists and reclamation consumes. No slot bytes anymore:
+ *   a log entry IS its address range.
+ *
+ * ── Concurrency & the recording producer ───────────────────────────
+ *
+ *   Recording must never block the shared system workqueue: erases
+ *   take tens of ms per sector and a 40 KB run needs ~10 of them.
+ *   So the producer is a small STATE MACHINE driven by a delayable
+ *   work item — one sector / one 4 KB chunk per pass, rescheduled
+ *   with K_MSEC(1) between passes. The future sensor pipeline will
+ *   call the same append path from its own pacing; 'w' merely feeds
+ *   it ramp bytes instead of sensor frames.
+ *
+ *   States: IDLE → ERASING (reclaim + prep, one sector/pass)
+ *                 → WRITING (header + payload chunks + CRC on the fly)
+ *                 → CLOSING (trailer, index persist, entry commit)
+ *                 → IDLE
+ *
+ * ── Crash windows (documented, accepted for the bench era) ────────
+ *
+ *   The index is persisted (a) after the erase/reclaim phase and
+ *   (b) at close. A crash between those loses the in-flight run's
+ *   entry but never corrupts the catalog of CLOSED runs; a stale
+ *   entry pointing at erased flash fails CRC at the app — loud, not
+ *   silent. Good enough until the watchdog/commit discipline of the
+ *   production state machine arrives.
  */
 #include <zephyr/kernel.h>
 #include <string.h>
 #include <zephyr/drivers/flash.h>
 #include "store.h"
+#include "store_layout.h"
 
-#define FLASH_SECTOR   4096u
-#define DATA_BASE      0x14000u
-#define SLOT_SIZE      0x3D000u     /* 244 KiB — classic geometry */
-#define SLOT_COUNT     8u
-#define CONFIG_ADDR    0x1FC000u
-#define INDEX_ADDR     0x1FD000u
-#define INDEX_MAGIC    0x52525332u  /* "RRS2" */
+/* ── Flash geometry & index placement (map above) ─────────────────── */
+#define INDEX_ADDR       0x1FD000u
+#define SELFTEST_ADDR    0x1FE000u
+#define SGL1_MAGIC       0x314C4753u   /* "SGL1" little-endian        */
 
-/* RunHeader 16 B packed — littlefs_storage.h verbatim (v2: data_size
- * and frame_count are 0 ON DISK; live totals live in the index). */
+/* Timestamps: the device has no RTC until the epoch-sync port (the
+ * phone writes ABC0). Until then, synthetic runs are stamped from the
+ * BUILD date + uptime — real dates on the phone's list, no more
+ * accidental 2025 (the fake-store lesson, ledgered 09-24). */
+#define BUILD_EPOCH      1790294400u   /* 2026-09-24 00:00 UTC        */
+
+/* ── Wire-format structures (FROZEN — app contract) ─────────────────
+ * RunHeader 16 B packed (littlefs_storage.h verbatim) and the 6 B
+ * trailer (C3 32 + CRC32 LE over payload only). DO NOT touch these:
+ * the unchanged App 1.46 parses them. */
 struct __attribute__((packed)) run_header {
-	uint8_t  format_ver;
-	uint8_t  arm_side;
+	uint8_t  format_ver;     /* 2 = append-only era                */
+	uint8_t  arm_side;       /* 0=left, 1=right                    */
 	uint32_t ts_utc;
-	int16_t  baro_temp;
-	uint32_t data_size;
-	uint16_t frame_count;
+	int16_t  baro_temp;      /* tenths of °C                       */
+	uint32_t data_size;      /* 0 on disk (v2) — totals in index   */
+	uint16_t frame_count;    /* 0 on disk (v2)                     */
 	uint8_t  cal_accuracy;
 	uint8_t  _pad;
 };
 
-/* RunEntry 32 B packed — littlefs_storage.h verbatim. */
-struct __attribute__((packed)) run_entry {
-	uint16_t run_id;
-	uint32_t page_start;     /* unused — kept for struct compat */
-	uint32_t page_end;       /* unused — kept for struct compat */
-	uint32_t timestamp;
-	uint8_t  arm_side;
-	uint8_t  format_version;
-	uint32_t compressed_size;
-	uint32_t frame_count;
-	uint8_t  _reserved[8];
-};
-
-/* IndexHeader 16 B packed — raw_run_store.h verbatim. */
-struct __attribute__((packed)) index_header {
+/* ── Index structures (device-internal — ours) ────────────────────── */
+struct __attribute__((packed)) sgl_header {
 	uint32_t magic;
-	uint16_t next_run_id;
+	uint32_t write_cursor;    /* next run starts here (sector-aligned) */
+	uint32_t erased_end;      /* [.., erased_end) is erased & ready    */
 	uint16_t entry_count;
-	uint32_t slot_used_mask;
-	uint16_t max_slots;
+	uint16_t next_run_id;
 	uint8_t  _pad[2];
 };
 
+struct __attribute__((packed)) sgl_entry {
+	uint32_t addr;            /* absolute flash address of the header   */
+	uint32_t payload_len;
+	uint32_t ts_utc;
+	uint16_t run_id;
+	uint8_t  arm_side;
+	uint8_t  cal_accuracy;
+};
+
+/* ── In-RAM store state (the index, cached) ───────────────────────── */
 static const struct device *flashdev;
-static struct run_entry entries[SLOT_COUNT];
-static uint8_t  entry_slot[SLOT_COUNT];
-static uint8_t  entry_count;
+static struct sgl_entry entries[MAX_INDEXED_RUNS];
+static uint16_t entry_count;
+static uint16_t next_run_id;
+static uint32_t write_cursor;
+static uint32_t erased_end;
 
-/* ── CRC32 (bitwise, identical math to RawRunStore's table) ──────── */
-
+/* ── CRC32 (bitwise; identical math to RawRunStore's table) ───────── */
 static uint32_t crc32_byte(uint32_t crc, uint8_t b)
 {
 	crc ^= b;
@@ -91,21 +123,26 @@ static uint32_t crc32_byte(uint32_t crc, uint8_t b)
 	return crc;
 }
 
-/* ── Store API (reads served from the in-RAM index cache) ────────── */
+/* ════════════════════════════════════════════════════════════════════
+ * READ API — called by pull_proto (D / s commands, ABC9 listings)
+ * Everything is served from the in-RAM index cache; blob reads hit
+ * flash only. Same signatures as the fake store: the protocol layer
+ * never knew 4b happened.
+ * ════════════════════════════════════════════════════════════════════ */
 
 uint8_t store_run_count(void)
 {
-	return entry_count;
+	return (uint8_t)entry_count;   /* capped at 64, fits u8 */
 }
 
 uint32_t store_run_payload_len(uint8_t id)
 {
-	return entries[id].compressed_size;
+	return entries[id].payload_len;
 }
 
 uint32_t store_run_ts(uint8_t id)
 {
-	return entries[id].timestamp;
+	return entries[id].ts_utc;
 }
 
 uint8_t store_run_side(uint8_t id)
@@ -115,190 +152,298 @@ uint8_t store_run_side(uint8_t id)
 
 uint32_t store_run_total(uint8_t id)
 {
-	return sizeof(struct run_header) +
-	       entries[id].compressed_size + 6;
+	return BLOB_OVERHEAD + entries[id].payload_len;
 }
 
 void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n)
 {
-	uint32_t addr = DATA_BASE +
-			(uint32_t)entry_slot[id] * SLOT_SIZE + off;
-	int rc = flash_read(flashdev, (off_t)addr, dst, (size_t)n);
+	/* One linear read — this is WHY runs never wrap mid-run. */
+	int rc = flash_read(flashdev, (off_t)(entries[id].addr + off),
+			    dst, (size_t)n);
 
 	if (rc != 0) {
 		printk("ERROR: flash_read @0x%lx -> %d\n",
-		       (unsigned long)addr, rc);
+		       (unsigned long)(entries[id].addr + off), rc);
 		memset(dst, 0xFF, n);
 	}
 }
 
-/* ── Index load (production read path) ───────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════
+ * INDEX PERSISTENCE
+ * One 4 KB sector at INDEX_ADDR: erase, then a single page write of
+ * header + entries. ~1 KB worst case — comfortably one sector.
+ * ════════════════════════════════════════════════════════════════════ */
+
+static void persist_index(void)
+{
+	struct sgl_header hdr = {
+		.magic = SGL1_MAGIC,
+		.write_cursor = write_cursor,
+		.erased_end = erased_end,
+		.entry_count = entry_count,
+		.next_run_id = next_run_id,
+	};
+	uint8_t page[sizeof(hdr) + sizeof(entries)];
+
+	/* (Erase is ~50–100 ms; we run in work context, never ISR.) */
+	flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE);
+	memcpy(page, &hdr, sizeof(hdr));
+	memcpy(page + sizeof(hdr), entries,
+	       entry_count * sizeof(entries[0]));
+	flash_write(flashdev, INDEX_ADDR, page,
+		    sizeof(hdr) + entry_count * sizeof(entries[0]));
+}
 
 static bool load_index(void)
 {
-	struct index_header ih;
+	struct sgl_header hdr;
 
-	if (flash_read(flashdev, INDEX_ADDR, &ih, sizeof(ih)) != 0) {
+	if (flash_read(flashdev, INDEX_ADDR, &hdr, sizeof(hdr)) != 0 ||
+	    hdr.magic != SGL1_MAGIC ||
+	    hdr.entry_count > MAX_INDEXED_RUNS) {
 		return false;
 	}
-	if (ih.magic != INDEX_MAGIC ||
-	    ih.entry_count == 0 || ih.entry_count > SLOT_COUNT) {
+	if (hdr.entry_count > 0 &&
+	    flash_read(flashdev, INDEX_ADDR + sizeof(hdr),
+		       entries, hdr.entry_count * sizeof(entries[0])) != 0) {
 		return false;
 	}
 
-	for (uint8_t i = 0; i < ih.entry_count; i++) {
-		uint8_t rec[sizeof(struct run_entry) + 1];
-
-		if (flash_read(flashdev,
-			       (off_t)(INDEX_ADDR + sizeof(ih) +
-				       (uint32_t)i * sizeof(rec)),
-			       rec, sizeof(rec)) != 0) {
-			return false;
-		}
-		memcpy(&entries[i], rec, sizeof(struct run_entry));
-		entry_slot[i] = rec[sizeof(struct run_entry)];
-		if (entry_slot[i] >= SLOT_COUNT) {
-			return false;
-		}
+	/* Cursor sanity: a corrupt cursor would poison every future
+	 * write, so we validate against the region and the last entry. */
+	if (hdr.write_cursor < LOG_START || hdr.write_cursor > LOG_END ||
+	    hdr.erased_end < LOG_START || hdr.erased_end > LOG_END) {
+		return false;
 	}
-	entry_count = ih.entry_count;
+
+	entry_count = hdr.entry_count;
+	next_run_id = hdr.next_run_id;
+	write_cursor = hdr.write_cursor;
+	erased_end = hdr.erased_end;
 	return true;
 }
 
-/* ── Synthetic writer (4a only — replaced by lifecycle in 4b) ────── */
+/* ════════════════════════════════════════════════════════════════════
+ * RECORDING PRODUCER — the real lifecycle, chunked & non-blocking
+ *
+ * store_record_start(len) validates, plans (address, erase range,
+ * reclaims), and kicks the state machine. Each work pass does ONE
+ * bounded piece of work (one sector erase OR one 4 KB payload chunk)
+ * and reschedules — the sysworkq is never held for more than a few
+ * ms of flash time per pass.
+ * ════════════════════════════════════════════════════════════════════ */
 
-static bool program_run(uint8_t slot, uint8_t side, uint32_t ts,
-			uint32_t payload_len, uint8_t cal)
+enum rec_state { REC_IDLE, REC_ERASING, REC_WRITING, REC_CLOSING };
+
+static struct k_work_delayable rec_work;
+static enum rec_state rec_state = REC_IDLE;
+
+/* Plan, filled by store_record_start: */
+static struct {
+	uint32_t addr;         /* where this run's header goes          */
+	uint32_t span;         /* sector-padded total occupancy         */
+	uint32_t payload_len;
+	uint32_t written;      /* payload bytes emitted so far          */
+	uint32_t crc;          /* running CRC (payload only!)           */
+	uint32_t erase_from;   /* erase sweep cursor                    */
+	uint32_t erase_to;     /* inclusive end of erase range          */
+	bool     wrapped;      /* true → erase range includes the stub  */
+	uint32_t ts;
+	uint8_t  side;
+} rec;
+
+bool store_busy(void)
 {
-	uint32_t base = DATA_BASE + (uint32_t)slot * SLOT_SIZE;
-	uint32_t need = sizeof(struct run_header) + payload_len + 6;
-	uint32_t sectors = (need + FLASH_SECTOR - 1) / FLASH_SECTOR;
-
-	/* Erase only what we use (lazy sectors, ensure_erased style) —
-	 * full-slot erase is 4b's job at POST_RUN/boot. */
-	if (flash_erase(flashdev, (off_t)base,
-			sectors * FLASH_SECTOR) != 0) {
-		printk("ERROR: slot %u erase\n", slot);
-		return false;
-	}
-
-	struct run_header hdr = {
-		.format_ver = 2, .arm_side = side, .ts_utc = ts,
-		.baro_temp = 125, .data_size = 0, .frame_count = 0,
-		.cal_accuracy = cal, ._pad = 0,
-	};
-
-	if (flash_write(flashdev, (off_t)base, &hdr, sizeof(hdr)) != 0) {
-		return false;
-	}
-
-	/* Ramp payload, generated in 4 KB chunks (no big RAM buffer) —
-	 * the 39 KB classic run fits comfortably through a window this
-	 * small; identical math to the fake store. */
-	uint8_t buf[FLASH_SECTOR];
-	uint32_t crc = 0xFFFFFFFFu;
-	uint32_t done = 0;
-
-	while (done < payload_len) {
-		uint32_t take = MIN(FLASH_SECTOR, payload_len - done);
-
-		for (uint32_t i = 0; i < take; i++) {
-			buf[i] = (uint8_t)(done + i);
-			crc = crc32_byte(crc, buf[i]);
-		}
-		if (flash_write(flashdev,
-				(off_t)(base + sizeof(hdr) + done),
-				buf, take) != 0) {
-			return false;
-		}
-		done += take;
-	}
-
-	crc ^= 0xFFFFFFFFu;
-	uint8_t trailer[6] = { 0xC3, 0x32,
-			       (uint8_t)crc, (uint8_t)(crc >> 8),
-			       (uint8_t)(crc >> 16), (uint8_t)(crc >> 24) };
-
-	if (flash_write(flashdev, (off_t)(base + sizeof(hdr) + payload_len),
-			trailer, sizeof(trailer)) != 0) {
-		return false;
-	}
-	return true;
+	return rec_state != REC_IDLE;
 }
 
-static bool persist_index(void)
+/* Does [a1,a2) intersect [b1,b2)? (Mirror of the host-test helper.) */
+static bool overlaps(uint32_t a1, uint32_t a2, uint32_t b1, uint32_t b2)
 {
-	if (flash_erase(flashdev, INDEX_ADDR, FLASH_SECTOR) != 0) {
-		return false;
-	}
-
-	uint8_t page[256];
-
-	memset(page, 0xFF, sizeof(page));
-	struct index_header ih = {
-		.magic = INDEX_MAGIC,
-		.next_run_id = entry_count,
-		.entry_count = entry_count,
-		.slot_used_mask = 0x00000003u,   /* slots 0+1 */
-		.max_slots = SLOT_COUNT,
-	};
-	memcpy(page, &ih, sizeof(ih));
-
-	size_t off = sizeof(ih);
-
-	for (uint8_t i = 0; i < entry_count; i++) {
-		memcpy(page + off, &entries[i], sizeof(entries[i]));
-		off += sizeof(entries[i]);
-		page[off++] = entry_slot[i];
-	}
-	return flash_write(flashdev, INDEX_ADDR, page, sizeof(page)) == 0;
+	return a1 < b2 && b1 < a2;
 }
 
-static void write_synthetic_runs(void)
+static void rec_work_handler(struct k_work *w)
 {
-	printk("flash: empty index — writing synthetic runs (once)\n");
+	switch (rec_state) {
+	case REC_ERASING: {
+		/* One sector per pass. The sweep covers [addr, addr+span)
+		 * plus the wrap stub when we circled — and it may have
+		 * required reclaiming the oldest entries (done at plan
+		 * time; their extents are inside this same sweep). */
+		uint32_t from = rec.erase_from;
 
-	/* New timestamps (≠ fake-store era) so a benched app sees these
-	 * as missing runs without clearing its data. */
-	const uint32_t lens[2]  = { 2048, 39350 };
-	const uint32_t tss[2]   = { 1758584000u, 1758593000u };
-	const uint8_t  sides[2] = { 0, 1 };
-
-	for (uint8_t i = 0; i < 2; i++) {
-		if (!program_run(i, sides[i], tss[i], lens[i], 3)) {
-			printk("ERROR: synthetic run %u failed\n", i);
-			entry_count = 0;
+		if (from < rec.erase_to) {
+			flash_erase(flashdev, from, LOG_SECTOR_SIZE);
+			rec.erase_from = from + LOG_SECTOR_SIZE;
+			if (erased_end < from + LOG_SECTOR_SIZE) {
+				erased_end = from + LOG_SECTOR_SIZE;
+			}
+			k_work_schedule(&rec_work, K_MSEC(1));
 			return;
 		}
-		memset(&entries[i], 0, sizeof(entries[i]));
-		entries[i].run_id = i;
-		entries[i].timestamp = tss[i];
-		entries[i].arm_side = sides[i];
-		entries[i].format_version = 2;
-		entries[i].compressed_size = lens[i];
-		entries[i].frame_count =
-			(uint32_t)((lens[i] + 239) / 240);
-		entry_slot[i] = i;
-	}
-	entry_count = 2;
 
-	if (!persist_index()) {
-		printk("ERROR: index persist\n");
-		entry_count = 0;
+		/* Erase phase done → persist (crash window (a), see file
+		 * header) and write the run header. */
+		persist_index();
+
+		struct run_header hdr = {
+			.format_ver = 2, .arm_side = rec.side,
+			.ts_utc = rec.ts, .baro_temp = 125,
+			.data_size = 0, .frame_count = 0,
+			.cal_accuracy = 3, ._pad = 0,
+		};
+
+		flash_write(flashdev, (off_t)rec.addr, &hdr, sizeof(hdr));
+		printk("rec: writing %lu B at 0x%lx\n",
+		       (unsigned long)rec.payload_len,
+		       (unsigned long)rec.addr);
+		rec_state = REC_WRITING;
+		k_work_schedule(&rec_work, K_MSEC(1));
+		return;
+	}
+
+	case REC_WRITING: {
+		/* One 4 KB chunk per pass. The payload is the ramp
+		 * generator (bench producer); the sensor pipeline will
+		 * replace just this loop's data source, nothing else. */
+		uint8_t buf[LOG_SECTOR_SIZE];
+		uint32_t remain = rec.payload_len - rec.written;
+		uint32_t take = MIN(sizeof(buf), remain);
+
+		for (uint32_t i = 0; i < take; i++) {
+			buf[i] = (uint8_t)(rec.written + i);
+			rec.crc = crc32_byte(rec.crc, buf[i]);
+		}
+		flash_write(flashdev,
+			    (off_t)(rec.addr + BLOB_OVERHEAD + rec.written),
+			    buf, take);
+		rec.written += take;
+
+		if (rec.written < rec.payload_len) {
+			k_work_schedule(&rec_work, K_MSEC(1));
+			return;
+		}
+		rec_state = REC_CLOSING;
+		k_work_schedule(&rec_work, K_MSEC(1));
+		return;
+	}
+
+	case REC_CLOSING: {
+		/* Trailer: C3 32 + CRC32 LE (payload only, init/final-xor
+		 * 0xFFFFFFFF — the frozen wire format). */
+		uint32_t crc = rec.crc ^ 0xFFFFFFFFu;
+		uint8_t trailer[6] = { 0xC3, 0x32,
+				       (uint8_t)crc, (uint8_t)(crc >> 8),
+				       (uint8_t)(crc >> 16),
+				       (uint8_t)(crc >> 24) };
+
+		flash_write(flashdev,
+			    (off_t)(rec.addr + BLOB_OVERHEAD + rec.payload_len),
+			    trailer, sizeof(trailer));
+
+		/* Commit the entry (append at the age-ordered tail) and
+		 * advance the cursor to the next sector boundary. */
+		if (entry_count == MAX_INDEXED_RUNS) {
+			/* Tiny-run edge: index full → drop the OLDEST
+			 * entry (its flash joins future reclamation). */
+			memmove(&entries[0], &entries[1],
+				(entry_count - 1) * sizeof(entries[0]));
+			entry_count--;
+		}
+		entries[entry_count] = (struct sgl_entry){
+			.addr = rec.addr,
+			.payload_len = rec.payload_len,
+			.ts_utc = rec.ts,
+			.run_id = next_run_id++,
+			.arm_side = rec.side,
+			.cal_accuracy = 3,
+		};
+		entry_count++;
+		write_cursor = rec.addr + rec.span;
+
+		persist_index();          /* crash window (b) closed */
+		printk("rec: done id=%u payload=%lu total=%lu runs=%u\n",
+		       (unsigned)(next_run_id - 1),
+		       (unsigned long)rec.payload_len,
+		       (unsigned long)(BLOB_OVERHEAD + rec.payload_len),
+		       entry_count);
+		rec_state = REC_IDLE;
+		return;
+	}
+
+	default:
+		return;
 	}
 }
 
-/* ── Boot ─────────────────────────────────────────────────────────── */
+bool store_record_start(uint32_t payload_len)
+{
+	if (store_busy()) {
+		return false;
+	}
+	if (payload_len == 0 ||
+	    payload_len + BLOB_OVERHEAD > MAX_RUN_BUDGET) {
+		return false;
+	}
+
+	uint32_t span = run_span(payload_len);
+
+	/* Plan the address (wrap rule: never straddle LOG_END). */
+	rec.addr = next_run_addr(write_cursor, span, &rec.wrapped);
+	rec.span = span;
+	rec.payload_len = payload_len;
+	rec.written = 0;
+	rec.crc = 0xFFFFFFFFu;
+	rec.ts = BUILD_EPOCH + k_uptime_get_32() / 1000;
+	rec.side = (uint8_t)(next_run_id & 1);   /* alternate L/R for bench */
+
+	/* Erase sweep = the run's extent (+ stub if wrapped), starting
+	 * from wherever the erased runway currently ends. */
+	rec.erase_from = (rec.addr > erased_end) ? rec.addr : erased_end;
+	rec.erase_to = rec.addr + span;
+	if (rec.wrapped) {
+		rec.erase_to += (LOG_END - write_cursor);
+	}
+
+	/* RECLAMATION: drop oldest entries whose extents intersect the
+	 * sweep — the entire garbage policy, mirroring the host test. */
+	while (entry_count > 0 &&
+	       overlaps(entries[0].addr,
+			entries[0].addr + run_span(entries[0].payload_len),
+			rec.erase_from, rec.erase_to)) {
+		printk("rec: reclaim id=%u (%lu B, oldest)\n",
+		       entries[0].run_id,
+		       (unsigned long)entries[0].payload_len);
+		memmove(&entries[0], &entries[1],
+			(entry_count - 1) * sizeof(entries[0]));
+		entry_count--;
+	}
+
+	printk("rec: start %lu B%s at 0x%lx (erase %lu B)\n",
+	       (unsigned long)payload_len, rec.wrapped ? " [wrap]" : "",
+	       (unsigned long)rec.addr,
+	       (unsigned long)(rec.erase_to - rec.erase_from));
+
+	rec_state = REC_ERASING;
+	k_work_schedule(&rec_work, K_NO_WAIT);
+	return true;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * BOOT
+ * ════════════════════════════════════════════════════════════════════ */
 
 void store_init(void)
 {
 	flashdev = DEVICE_DT_GET(DT_NODELABEL(mx25r1635f));
 	if (!device_is_ready(flashdev)) {
 		printk("ERROR: flash device not ready\n");
-		entry_count = 0;
 		return;
 	}
 
+	/* Page report doubles as the layout sanity check: we REQUIRE the
+	 * 4 KiB granularity the log is built on (see self-test below). */
 	struct flash_pages_info info;
 
 	if (flash_get_page_info_by_offs(flashdev, 0, &info) == 0) {
@@ -309,27 +454,22 @@ void store_init(void)
 		       (unsigned)pages, (unsigned)info.size);
 	}
 
-	if (!load_index()) {
-		write_synthetic_runs();
-	}
-
-	/* 4 KB sector-erase proof (4b precondition, JP 09-24): the region
-	 * ArduinoFW reserved as "SPI self-test" (chip-0x2000) is the safe
-	 * victim — 4 KB past the index sector, no run data. Save, erase
-	 * ONE sector, verify 0xFF, restore. */
+	/* 4 KB sector-erase proof (4b precondition, benched 09-24):
+	 * victim = the self-test sector, 4 KB past the index. Save,
+	 * erase ONE sector, verify 0xFF in chunks, restore. Static
+	 * buffer — 8 KB of locals would blow the main stack. */
 	{
-		/* 4 KB static save buffer — 8 KB of locals would blow the
-		 * main stack; verify in small chunks instead. */
-		static uint8_t save[FLASH_SECTOR];
+		static uint8_t save[LOG_SECTOR_SIZE];
 		uint8_t chk[256];
-		uint32_t st = 0x1FE000u;
 		bool all_ff = true;
 
-		flash_read(flashdev, st, save, sizeof(save));
-		if (flash_erase(flashdev, st, FLASH_SECTOR) == 0) {
-			for (uint32_t o = 0; o < FLASH_SECTOR && all_ff;
+		flash_read(flashdev, SELFTEST_ADDR, save, sizeof(save));
+		if (flash_erase(flashdev, SELFTEST_ADDR,
+				LOG_SECTOR_SIZE) == 0) {
+			for (uint32_t o = 0; o < LOG_SECTOR_SIZE && all_ff;
 			     o += sizeof(chk)) {
-				flash_read(flashdev, st + o, chk, sizeof(chk));
+				flash_read(flashdev, SELFTEST_ADDR + o,
+					   chk, sizeof(chk));
 				for (uint32_t i = 0; i < sizeof(chk); i++) {
 					if (chk[i] != 0xFF) {
 						all_ff = false;
@@ -342,15 +482,36 @@ void store_init(void)
 		}
 		printk("selftest: 4K erase %s (layout page=%u)\n",
 		       all_ff ? "OK" : "FAILED", (unsigned)info.size);
-		flash_write(flashdev, st, save, sizeof(save));
+		flash_write(flashdev, SELFTEST_ADDR, save, sizeof(save));
 	}
 
-	for (uint8_t i = 0; i < entry_count; i++) {
-		printk("run %u: payload=%lu sz=%lu slot=%u ts=%lu\n",
-		       i,
-		       (unsigned long)entries[i].compressed_size,
-		       (unsigned long)store_run_total(i),
-		       entry_slot[i],
-		       (unsigned long)entries[i].timestamp);
+	/* Load the log index — or start fresh. Fresh means: cursor at
+	 * LOG_START, NOTHING erased yet, zero entries; the first 'w'
+	 * erases exactly what it needs. Legacy slot-era data (5 runs,
+	 * safe on the phone since 09-24) is consumed by reclamation as
+	 * the log grows — no bulk erase, no boot delay. */
+	if (!load_index()) {
+		write_cursor = LOG_START;
+		erased_end = LOG_START;
+		entry_count = 0;
+		next_run_id = 0;
+		printk("store: fresh log (legacy slot data reclaims lazily)\n");
+		persist_index();
+	} else {
+		printk("store: %u runs, cursor 0x%lx, erased to 0x%lx\n",
+		       entry_count, (unsigned long)write_cursor,
+		       (unsigned long)erased_end);
 	}
+
+	for (uint8_t i = 0; i < entry_count && i < 8; i++) {
+		printk("run %u: payload=%lu sz=%lu id=%u ts=%lu\n",
+		       i, (unsigned long)entries[i].payload_len,
+		       (unsigned long)(BLOB_OVERHEAD + entries[i].payload_len),
+		       entries[i].run_id, (unsigned long)entries[i].ts_utc);
+	}
+	if (entry_count > 8) {
+		printk("… +%u more\n", entry_count - 8);
+	}
+
+	k_work_init_delayable(&rec_work, rec_work_handler);
 }

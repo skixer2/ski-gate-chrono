@@ -39,4 +39,13 @@ uint8_t  store_run_side(uint8_t id);          /* 0=left 1=right */
  * validated against store_run_total() before scheduling. */
 void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n);
 
+/* ── Recording producer (4b: real lifecycle) ──────────────────────
+ * Starts recording a run of payload_len bytes. The producer runs as
+ * a chunked state machine (erase → write → close), non-blocking, and
+ * feeds ramp bytes for now — the sensor pipeline later calls the same
+ * path with real frames. Returns false if busy or length out of
+ * policy (0 < payload_len <= MAX_RUN_BUDGET - 22). */
+bool store_record_start(uint32_t payload_len);
+bool store_busy(void);
+
 #endif /* SGC_STORE_H */

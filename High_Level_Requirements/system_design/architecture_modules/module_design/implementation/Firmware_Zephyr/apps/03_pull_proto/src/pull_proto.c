@@ -39,6 +39,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include "pull_proto.h"
 #include "store.h"
+#include "store_layout.h"
 #include "ble_lifecycle.h"
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
@@ -66,7 +67,7 @@ static bool console_subscribed;
 
 static uint8_t run_info_buf[6];    /* count LE + age LE (age=0: no RTC
 				      until the epoch-sync port, ABC0) */
-static char run_list_json[512];   /* ArduinoFW char_run_list budget (5 real runs ~260 B) */
+static char run_list_json[RUN_LIST_JSON_SIZE];   /* sized from MAX_INDEXED_RUNS by construction (founding test) */
 
 static ssize_t read_buf(const void *data, uint16_t data_len,
 			void *buf, uint16_t len, uint16_t offset)
@@ -310,6 +311,21 @@ static void cmd_work_handler(struct k_work *w)
 			printk("stream start id=%ld off=%ld len=%ld\n",
 			       id, off, len);
 			k_work_schedule(&stream_work, K_NO_WAIT);
+		}
+	} else if (cmd == 'w') {
+		/* 4b bench producer: record a synthetic run through the REAL
+		 * lifecycle (erase → write → close → index). nRF Connect:
+		 *   write "w 40960"   → one typical training run
+		 *   write "w 249834"  → one max-budget run (forces rotation)
+		 * Progress and the done-line arrive on serial; D updates. */
+		long len = strtol(&req[1], NULL, 10);
+
+		if (len <= 0) {
+			console_emit("E 3");            /* malformed */
+		} else if (!store_record_start((uint32_t)len)) {
+			console_emit("E 5");            /* busy or out of policy */
+		} else {
+			printk("w: accepted %ld B\n", len);
 		}
 	} else {
 		console_emit("E 4");                    /* unknown command */
