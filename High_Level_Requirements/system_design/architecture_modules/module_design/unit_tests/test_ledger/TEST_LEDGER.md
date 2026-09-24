@@ -1830,3 +1830,8 @@ CRC against ARDUINOFW-computed trailer CRCs = cross-firmware byte proof.
 NOTE for 4b: jedec,spi-nor reports 32 pages x 64 KB (uniform erase
 blocks) — lifecycle erase granularity must respect this (or verify SFDP
 4K-sector support) before slot prep code assumes 4096.
+- 4a rc1: run_list_json[160] truncated 5-entry legacy JSON (sized for
+  2 fake entries; boot log shows cut mid-{"id":3). App jsonDecode threw →
+  getRunList [] → "0 missing" despite empty local store. Fix: 512 B
+  (ArduinoFW char_run_list parity). Boot print of the FULL list = the
+  regression check.

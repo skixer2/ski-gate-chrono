@@ -66,7 +66,7 @@ static bool console_subscribed;
 
 static uint8_t run_info_buf[6];    /* count LE + age LE (age=0: no RTC
 				      until the epoch-sync port, ABC0) */
-static char run_list_json[160];
+static char run_list_json[512];   /* ArduinoFW char_run_list budget (5 real runs ~260 B) */
 
 static ssize_t read_buf(const void *data, uint16_t data_len,
 			void *buf, uint16_t len, uint16_t offset)
