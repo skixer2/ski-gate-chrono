@@ -1943,3 +1943,12 @@ loop without phone/radio.
 (scan/connect/ABCA/D/s/reassemble/CRC-verify in Python).
 FUTURE (JP note): final tests = ZioClaw controlling the PHONE — ADB path
 (S22 via USB), or dedicated bench phone purchase.
+- REMOTE BENCH INFRA (JP 08:46, agreed): node connection BULLETPROOF —
+  watchdog script checking status + acting (JP's proposal). KIT STAGED
+  (tools/): node-watchdog.ps1 (FUNCTIONAL tunnel probe via TCP to
+  127.0.0.1:18789 — not just process-alive, the 09-25 failure mode;
+  kill-stale + respawn with 15s keepalives; log + rotation; node-host
+  restart hook noted) + register-watchdog.bat (logon Task Scheduler,
+  no admin). LIMITATION documented: no boot-without-logon (true service
+  = admin, decide if bench ever runs headless). Install = one bat run
+  when node returns.
