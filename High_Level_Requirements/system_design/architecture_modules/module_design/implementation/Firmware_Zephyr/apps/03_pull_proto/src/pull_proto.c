@@ -37,6 +37,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
+#include <zephyr/console/console.h>   /* serial command input (JP 09-25) */
 #include "pull_proto.h"
 #include "store.h"
 #include "store_layout.h"
@@ -99,6 +100,10 @@ static ssize_t read_run_list(struct bt_conn *conn,
 
 static char           req_buf[REQ_MAX];
 static volatile bool  req_pending;
+/* Which transport captured the pending request? Replies route back the
+ * same way (ArduinoFW g_req_via_ble parity): BLE replies go out as
+ * notifications, serial replies echo as text/hex lines. */
+static bool           req_via_ble;
 
 static struct k_work          cmd_work;
 static struct k_work_delayable stream_work;
@@ -126,6 +131,7 @@ static ssize_t write_console(struct bt_conn *conn,
 	uint16_t n = MIN(len, REQ_MAX - 1);
 	memcpy(req_buf, data, n);
 	req_buf[n] = '\0';
+	req_via_ble = true;
 	req_pending = true;
 	k_work_submit(&cmd_work);
 
@@ -170,6 +176,8 @@ static uint16_t job_seq;
 static uint8_t  job_run;
 static bool     job_active;
 static uint32_t job_t0;     /* k_uptime_get_32() at stream start */
+static bool     job_via_ble;  /* stream origin: serial streams must not
+			       * depend on the radio link at all */
 
 static uint8_t frame[3 + STREAM_PAYLOAD];
 
@@ -177,8 +185,12 @@ static uint8_t frame[3 + STREAM_PAYLOAD];
 
 static void console_emit(const char *s)
 {
-	printk("<phone %s\n", s);
-	if (console_subscribed) {
+	if (req_via_ble) {
+		printk("<phone %s\n", s);
+	} else {
+		printk("%s\n", s);       /* serial origin: plain echo */
+	}
+	if (req_via_ble && console_subscribed) {
 		int err = bt_gatt_notify(NULL, &product_svc.attrs[5],
 					 s, strlen(s));
 
@@ -190,6 +202,21 @@ static void console_emit(const char *s)
 
 static void console_emit_bin(const uint8_t *d, size_t n)
 {
+	if (!req_via_ble) {
+		/* Serial origin: human-readable hex, ArduinoFW style:
+		 * [seq n HEX…] — lets a terminal (or zcmd) eyeball/verify
+		 * the stream without any radio. END marker special-cased. */
+		if (n == 3 && d[0] == 0xFF && d[1] == 0xFF) {
+			printk("[FFFF end]\n");
+			return;
+		}
+		printk("[%u %u ", d[0] | (d[1] << 8), d[2]);
+		for (size_t i = 3; i < n; i++) {
+			printk("%02X", d[i]);
+		}
+		printk("]\n");
+		return;
+	}
 	if (console_subscribed) {
 		int err = bt_gatt_notify(NULL, &product_svc.attrs[5], d, n);
 
@@ -206,7 +233,10 @@ static void console_emit_bin(const uint8_t *d, size_t n)
 
 static void stream_work_handler(struct k_work *w)
 {
-	if (!ble_lifecycle_connected() || !console_subscribed) {
+	/* Abort rule is transport-aware: BLE streams die with the link or
+	 * the subscription; serial streams have no such dependency. */
+	if (job_via_ble &&
+	    (!ble_lifecycle_connected() || !console_subscribed)) {
 		printk("{\"ev\":\"s_abort\",\"seq\":%u}\n", job_seq);
 		job_active = false;
 		return;
@@ -307,6 +337,7 @@ static void cmd_work_handler(struct k_work *w)
 			job_end = job_off + (uint32_t)len;
 			job_seq = 0;
 			job_t0 = k_uptime_get_32();
+			job_via_ble = req_via_ble;
 			job_active = true;
 			printk("stream start id=%ld off=%ld len=%ld\n",
 			       id, off, len);
@@ -331,6 +362,40 @@ static void cmd_work_handler(struct k_work *w)
 		console_emit("E 4");                    /* unknown command */
 	}
 }
+
+/* ── Serial transport (JP directive 09-25: "different data sources,
+ *    1 data treatment path" — the ArduinoFW FWR-1/SR-5 doctrine) ────
+ * A tiny thread blocks on console_getline() (UART RX P0.9, DAPLink
+ * bridge). Each line goes through the SAME single-slot capture and the
+ * SAME cmd_work as BLE writes — one parser, two transports, zero
+ * protocol drift between them. Replies echo back as text / hex. */
+static void serial_rx_thread(void)
+{
+	for (;;) {
+		char *line = console_getline();
+
+		if (line == NULL || line[0] == '\0') {
+			continue;
+		}
+		/* Same filters as the BLE write callback. */
+		if ((uint8_t)line[0] < 0x20 || (uint8_t)line[0] > 0x7E) {
+			continue;
+		}
+		if (req_pending) {
+			printk("req dropped (busy)\n");
+			continue;
+		}
+		strncpy(req_buf, line, REQ_MAX - 1);
+		req_buf[REQ_MAX - 1] = '\0';
+		req_via_ble = false;
+		req_pending = true;
+		k_work_submit(&cmd_work);
+	}
+}
+
+/* Auto-starts at boot; blocks harmlessly until a line arrives. */
+K_THREAD_DEFINE(serial_rx_tid, 1200, serial_rx_thread, NULL, NULL, NULL,
+		7, 0, 0);
 
 /* ── Advertisement payloads (product service UUID lives here) ───── */
 
