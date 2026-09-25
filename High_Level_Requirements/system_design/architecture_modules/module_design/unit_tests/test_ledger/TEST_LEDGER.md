@@ -1930,3 +1930,16 @@ producer, JSON sized from MAX_INDEXED_RUNS by construction.
 JP bench script: D(empty) → w 40960 ×N → D grows → w 249834 ×8 forces
 reclaim (watch "rec: reclaim" lines) → app download CRC → reboot
 persistence ("store: N runs, cursor…").
+
+### 2026-09-25 — REMOTE BENCH INFRA (JP directive 08:31): dual transport + bleak
+
+JP (away): advance without his presence. DECIDED — do BOTH:
+(a) SERIAL command input, ArduinoFW parity: one parse path (the existing
+cmd_work single-slot capture), two transports; serial-originated replies
+echo to serial, 's' frames as hex lines (ArduinoFW emit format); ZioClaw
+drives the device via pyserial over COM3 (zcmd.py tool) — full protocol
+loop without phone/radio.
+(b) BLE from PC via bleak (UM790 has BT): zble.py = automated bench seed
+(scan/connect/ABCA/D/s/reassemble/CRC-verify in Python).
+FUTURE (JP note): final tests = ZioClaw controlling the PHONE — ADB path
+(S22 via USB), or dedicated bench phone purchase.
