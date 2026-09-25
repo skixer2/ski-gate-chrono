@@ -48,7 +48,7 @@ async def main():
             print('VERDICT: FAIL (no end marker)')
             return 1
         trailer = blob[-6:]
-        payload = blob[:-6]
+        payload = blob[16:-6]   # skip the 16 B header — CRC is payload-ONLY
         ok = (trailer[0] == 0xC3 and trailer[1] == 0x32 and
               int.from_bytes(trailer[2:], 'little') ==
               (zlib.crc32(payload) & 0xFFFFFFFF))
