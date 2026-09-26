@@ -14,7 +14,12 @@ import sys, time, serial
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else 'COM3'
 SECS = float(sys.argv[2]) if len(sys.argv) > 2 else 5.0
-CMD  = sys.argv[3] if len(sys.argv) > 3 else 'D'
+# Command: args joined; if no spaces came through (node-exec wrapper
+# mangles quotes -> spaced args arrive broken), '_' becomes ' '.
+# So remote usage is space-free:  py zcmd.py COM3 12 w_40960
+CMD = ' '.join(sys.argv[3:]) if len(sys.argv) > 3 else 'D'
+if ' ' not in CMD:
+    CMD = CMD.replace('_', ' ')
 
 s = serial.Serial(PORT, 115200, timeout=1)
 s.reset_input_buffer()
