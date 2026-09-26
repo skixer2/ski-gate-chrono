@@ -371,8 +371,46 @@ static void cmd_work_handler(struct k_work *w)
  * protocol drift between them. Replies echo back as text / hex. */
 static void serial_rx_thread(void)
 {
+	/* DEBUG 09-26: per-char echo to prove where RX dies. Once the
+	 * transport works, revert to console_getline() below. */
+	printk("serial: thread up\n");
 	for (;;) {
-		char *line = console_getline();
+		int c = console_getchar();
+
+		printk("serial: char 0x%02x\n", c);
+		char *line = NULL;
+		if (0) {
+			line = console_getline();
+		}
+		if (c < 0) {
+			continue;
+		}
+
+		{
+			static char lbuf[REQ_MAX];
+			static uint16_t li;
+
+			if (c == '\n' || c == '\r') {
+				lbuf[li] = '\0';
+				if (li > 0) {
+					if ((uint8_t)lbuf[0] >= 0x20 &&
+					    (uint8_t)lbuf[0] <= 0x7E &&
+					    !req_pending) {
+						strncpy(req_buf, lbuf, REQ_MAX - 1);
+						req_buf[REQ_MAX - 1] = '\0';
+						req_via_ble = false;
+						req_pending = true;
+						k_work_submit(&cmd_work);
+					}
+					li = 0;
+				}
+				continue;
+			}
+			if (li < REQ_MAX - 1) {
+				lbuf[li++] = (char)c;
+			}
+		}
+		continue;
 
 		if (line == NULL || line[0] == '\0') {
 			continue;
