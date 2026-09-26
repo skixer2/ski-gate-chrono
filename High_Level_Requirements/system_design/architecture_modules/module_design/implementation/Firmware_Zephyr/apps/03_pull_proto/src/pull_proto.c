@@ -393,9 +393,10 @@ static void serial_rx_thread(void)
 	}
 }
 
-/* Auto-starts at boot; blocks harmlessly until a line arrives. */
-K_THREAD_DEFINE(serial_rx_tid, 1200, serial_rx_thread, NULL, NULL, NULL,
-		7, 0, 0);
+/* BISECT 09-26: disabled — boot fault hunt (PC=z_idle_stacks).
+ * Re-enable after the culprit is isolated. */
+/* K_THREAD_DEFINE(serial_rx_tid, 1200, serial_rx_thread, NULL, NULL, NULL,
+		7, 0, 0); */
 
 /* ── Advertisement payloads (product service UUID lives here) ───── */
 
