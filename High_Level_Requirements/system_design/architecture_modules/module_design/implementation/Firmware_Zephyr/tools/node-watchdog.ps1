@@ -68,8 +68,8 @@ function Start-Tunnel {
     Start-Sleep -Seconds 3
 }
 
-Log 'watchdog: starting (loop every {0}s, fix after {1} fails)' -f `
-    $CHECK_EVERY_SEC, $FAILS_BEFORE_FIX
+Log ('watchdog: starting (loop every {0}s, fix after {1} fails)' -f `
+    $CHECK_EVERY_SEC, $FAILS_BEFORE_FIX)
 
 $fails = 0
 $beat = 0
