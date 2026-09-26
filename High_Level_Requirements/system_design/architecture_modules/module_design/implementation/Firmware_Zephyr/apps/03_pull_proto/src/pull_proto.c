@@ -37,7 +37,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
-#include <zephyr/console/console.h>   /* serial command input (JP 09-25) */
+#include <zephyr/drivers/uart.h>   /* serial command input (JP 09-25) */
 #include "pull_proto.h"
 #include "store.h"
 #include "store_layout.h"
@@ -364,78 +364,63 @@ static void cmd_work_handler(struct k_work *w)
 }
 
 /* ── Serial transport (JP directive 09-25: "different data sources,
- *    1 data treatment path" — the ArduinoFW FWR-1/SR-5 doctrine) ────
- * A tiny thread blocks on console_getline() (UART RX P0.9, DAPLink
- * bridge). Each line goes through the SAME single-slot capture and the
- * SAME cmd_work as BLE writes — one parser, two transports, zero
- * protocol drift between them. Replies echo back as text / hex. */
-static void serial_rx_thread(void)
+ *    1 data treatment path" — the ArduinoFW FWR-1/SR-5 doctrine) ──────
+ * THIRD APPROACH after the console_getline/getchar path proved broken on
+ * this nRF-UARTE (wild function-pointer jumps, three boot faults): we
+ * own the UART RX interrupt directly — the pattern Nordic's own
+ * peripheral_uart sample uses. printk TX is unaffected (poll mode).
+ *
+ * The ISR assembles lines into the SAME single-slot capture the BLE
+ * write callback uses — one parser, two transports, zero drift. */
+static const struct device *const console_uart =
+	DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+
+static uint8_t  rx_chunk[32];        /* DMA window the driver fills   */
+static uint16_t rx_line_len;         /* line under assembly           */
+
+static void serial_rx_isr(const struct device *dev, void *user_data)
 {
-	/* DEBUG 09-26: per-char echo to prove where RX dies. Once the
-	 * transport works, revert to console_getline() below. */
-	printk("serial: thread up\n");
+	ARG_UNUSED(dev);
+	ARG_UNUSED(user_data);
+
+	if (!uart_irq_update(console_uart) ||
+	    !uart_irq_rx_ready(console_uart)) {
+		return;
+	}
 	for (;;) {
-		int c = console_getchar();
+		int n = uart_fifo_read(console_uart, rx_chunk,
+				       sizeof(rx_chunk));
 
-		printk("serial: char 0x%02x\n", c);
-		char *line = NULL;
-		if (0) {
-			line = console_getline();
+		if (n <= 0) {
+			break;
 		}
-		if (c < 0) {
-			continue;
-		}
-
-		{
-			static char lbuf[REQ_MAX];
-			static uint16_t li;
+		for (int i = 0; i < n; i++) {
+			uint8_t c = rx_chunk[i];
 
 			if (c == '\n' || c == '\r') {
-				lbuf[li] = '\0';
-				if (li > 0) {
-					if ((uint8_t)lbuf[0] >= 0x20 &&
-					    (uint8_t)lbuf[0] <= 0x7E &&
-					    !req_pending) {
-						strncpy(req_buf, lbuf, REQ_MAX - 1);
-						req_buf[REQ_MAX - 1] = '\0';
-						req_via_ble = false;
-						req_pending = true;
-						k_work_submit(&cmd_work);
-					}
-					li = 0;
+				if (rx_line_len == 0) {
+					continue;
 				}
+				/* Line complete → the shared capture. */
+				if (!req_pending &&
+				    (uint8_t)req_buf[0] >= 0x20 &&
+				    (uint8_t)req_buf[0] <= 0x7E) {
+					req_buf[rx_line_len] = '\0';
+					req_via_ble = false;
+					req_pending = true;
+					k_work_submit(&cmd_work);
+				} else if (req_pending) {
+					printk("req dropped (busy)\n");
+				}
+				rx_line_len = 0;
 				continue;
 			}
-			if (li < REQ_MAX - 1) {
-				lbuf[li++] = (char)c;
+			if (rx_line_len < REQ_MAX - 1) {
+				req_buf[rx_line_len++] = (char)c;
 			}
 		}
-		continue;
-
-		if (line == NULL || line[0] == '\0') {
-			continue;
-		}
-		/* Same filters as the BLE write callback. */
-		if ((uint8_t)line[0] < 0x20 || (uint8_t)line[0] > 0x7E) {
-			continue;
-		}
-		if (req_pending) {
-			printk("req dropped (busy)\n");
-			continue;
-		}
-		strncpy(req_buf, line, REQ_MAX - 1);
-		req_buf[REQ_MAX - 1] = '\0';
-		req_via_ble = false;
-		req_pending = true;
-		k_work_submit(&cmd_work);
 	}
 }
-
-/* Auto-starts at boot; blocks harmlessly until a line arrives.
- * (Exonerated by bisect r1 — the boot fault was stack overflow in
- * store_flash.c, not this thread.) */
-K_THREAD_DEFINE(serial_rx_tid, 1200, serial_rx_thread, NULL, NULL, NULL,
-		7, 0, 0);
 
 /* ── Advertisement payloads (product service UUID lives here) ───── */
 
@@ -471,6 +456,18 @@ void pull_proto_start(void)
 {
 	k_work_init(&cmd_work, cmd_work_handler);
 	k_work_init_delayable(&stream_work, stream_work_handler);
+
+	/* Serial transport bring-up: our RX ISR replaces the console's
+	 * (single callback slot — printk TX is poll-mode, unaffected). */
+	if (device_is_ready(console_uart)) {
+		uart_irq_callback_user_data_set(console_uart,
+						serial_rx_isr, NULL);
+		uart_irq_rx_enable(console_uart, rx_chunk,
+				   sizeof(rx_chunk), 100 /* us */);
+		printk("serial: rx isr armed\n");
+	} else {
+		printk("ERROR: console uart not ready\n");
+	}
 
 	/* Listing surface from the store: ABC8 count+age, ABC9 JSON
 	 * (build_run_list format — "size" = payload ONLY, without the
