@@ -343,6 +343,12 @@ static void cmd_work_handler(struct k_work *w)
 			       id, off, len);
 			k_work_schedule(&stream_work, K_NO_WAIT);
 		}
+	} else if (cmd == 'x') {
+		/* Bench reset: wipe the index sector and reboot the log to
+		 * empty (data sectors reclaim lazily on the next writes).
+		 * The escape hatch for "the store state is garbage". */
+		store_wipe();
+		console_emit("OK wiped");
 	} else if (cmd == 'w') {
 		/* 4b bench producer: record a synthetic run through the REAL
 		 * lifecycle (erase → write → close → index). nRF Connect:

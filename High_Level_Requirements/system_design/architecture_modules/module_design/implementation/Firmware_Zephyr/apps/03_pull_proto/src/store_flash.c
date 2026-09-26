@@ -528,3 +528,16 @@ void store_init(void)
 
 	k_work_init_delayable(&rec_work, rec_work_handler);
 }
+
+void store_wipe(void)
+{
+	if (store_busy()) {
+		return;
+	}
+	flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE);
+	write_cursor = LOG_START;
+	erased_end = LOG_START;
+	entry_count = 0;
+	next_run_id = 0;
+	printk("store: wiped\n");
+}

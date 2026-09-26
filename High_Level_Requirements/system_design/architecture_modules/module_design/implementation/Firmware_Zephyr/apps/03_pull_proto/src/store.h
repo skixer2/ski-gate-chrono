@@ -49,3 +49,6 @@ bool store_record_start(uint32_t payload_len);
 bool store_busy(void);
 
 #endif /* SGC_STORE_H */
+
+/* Bench reset: erase the index, restart the log empty. */
+void store_wipe(void);
