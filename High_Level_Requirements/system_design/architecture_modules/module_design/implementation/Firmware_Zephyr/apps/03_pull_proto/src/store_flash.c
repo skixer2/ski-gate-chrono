@@ -183,7 +183,11 @@ static void persist_index(void)
 		.entry_count = entry_count,
 		.next_run_id = next_run_id,
 	};
-	uint8_t page[sizeof(hdr) + sizeof(entries)];
+	/* STATIC: 1040 B as a local overflowed the main thread's ~1 KB
+	 * stack — the boot MPU fault (PC landing in the kernel stacks below
+	 * z_main_stack). Same lesson as the self-test buffer, re-learned
+	 * 09-26. Single-writer (store ops are serialized), so shared. */
+	static uint8_t page[sizeof(struct sgl_header) + sizeof(entries)];
 
 	/* (Erase is ~50–100 ms; we run in work context, never ISR.) */
 	flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE);
@@ -306,8 +310,11 @@ static void rec_work_handler(struct k_work *w)
 	case REC_WRITING: {
 		/* One 4 KB chunk per pass. The payload is the ramp
 		 * generator (bench producer); the sensor pipeline will
-		 * replace just this loop's data source, nothing else. */
-		uint8_t buf[LOG_SECTOR_SIZE];
+		 * replace just this loop's data source, nothing else.
+		 * STATIC: 4 KB as a local would blow the sysworkq stack —
+		 * the same overflow family as persist_index (09-26). The
+		 * producer is a single state machine, so sharing is safe. */
+		static uint8_t buf[LOG_SECTOR_SIZE];
 		uint32_t remain = rec.payload_len - rec.written;
 		uint32_t take = MIN(sizeof(buf), remain);
 

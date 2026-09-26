@@ -393,10 +393,11 @@ static void serial_rx_thread(void)
 	}
 }
 
-/* BISECT 09-26: disabled — boot fault hunt (PC=z_idle_stacks).
- * Re-enable after the culprit is isolated. */
-/* K_THREAD_DEFINE(serial_rx_tid, 1200, serial_rx_thread, NULL, NULL, NULL,
-		7, 0, 0); */
+/* Auto-starts at boot; blocks harmlessly until a line arrives.
+ * (Exonerated by bisect r1 — the boot fault was stack overflow in
+ * store_flash.c, not this thread.) */
+K_THREAD_DEFINE(serial_rx_tid, 1200, serial_rx_thread, NULL, NULL, NULL,
+		7, 0, 0);
 
 /* ── Advertisement payloads (product service UUID lives here) ───── */
 
