@@ -462,8 +462,7 @@ void pull_proto_start(void)
 	if (device_is_ready(console_uart)) {
 		uart_irq_callback_user_data_set(console_uart,
 						serial_rx_isr, NULL);
-		uart_irq_rx_enable(console_uart, rx_chunk,
-				   sizeof(rx_chunk), 100 /* us */);
+		uart_irq_rx_enable(console_uart);
 		printk("serial: rx isr armed\n");
 	} else {
 		printk("ERROR: console uart not ready\n");
