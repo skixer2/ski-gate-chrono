@@ -32,6 +32,7 @@ $SSH_ARGS      = @(
     '-o', 'ServerAliveCountMax=3',
     '-o', 'ExitOnForwardFailure=yes',
     '-o', 'StrictHostKeyChecking=accept-new',
+    '-R', '9999:127.0.0.1:8080',       # reverse: gateway:9999 -> PC:8080
     'vps'                              # ~/.ssh/config alias (key auth)
 )
 $CHECK_EVERY_SEC  = 30                # watchdog cadence
