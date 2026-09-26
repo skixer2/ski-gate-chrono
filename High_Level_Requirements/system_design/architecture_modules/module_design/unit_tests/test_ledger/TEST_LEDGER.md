@@ -1952,3 +1952,30 @@ FUTURE (JP note): final tests = ZioClaw controlling the PHONE — ADB path
   no admin). LIMITATION documented: no boot-without-logon (true service
   = admin, decide if bench ever runs headless). Install = one bat run
   when node returns.
+
+### 2026-09-26 — REMOTE BENCH LOOP COMPLETE (solo run, node restored)
+
+Watchdog INSTALLED + RUNNING (functional probe every 30 s, log at
+%USERPROFILE%\node-watchdog.log; schtasks query blocked in node ctx —
+registered via bat, started directly, verified by log).
+
+**Debug saga (all remote, zserial/zcmd/zflash loop):**
+1. v0.7.0 boot MPU FAULT (never boot-tested when shipped — lesson:
+   never claim "flashed" without a boot capture). Bisect r1 (thread off)
+   + r2 (console off) BOTH still faulted → nm symbolized PCs into
+   z_idle/z_interrupt stacks below z_main_stack → ROOT CAUSE: stack
+   overflow — persist_index 1040 B + rec 4 KB chunk as LOCALS. FIX: both
+   static (the 4a lesson, re-learned). v0.7.2 boots clean.
+2. console_getchar/getline path = 3rd wild-pointer fault → ABANDONED.
+   FIX: own UART RX ISR (peripheral_uart pattern), single-slot capture
+   shared with BLE writes. v0.7.3 — zcmd D → {"d_end":0} ALIVE.
+3. zcmd spaced args mangled by node-exec quote-leak → underscore
+   convention (w_40960).
+4. Producer blob offset bug: payload at +22 (BLOB_OVERHEAD = size math)
+   instead of +16 (sizeof header) → trailer 6 B late, ramp tail where
+   trailer belongs. FIX v0.7.4: offsets use sizeof(run_header).
+**VERIFICATION (fully remote): w_40960 → lifecycle record → s tail probe
+shows C332 + 0F91F6C2 → python CRC32(ramp 40960) = 0xC2F6910F LE MATCH.**
+Runs 0/1 on flash are pre-fix malformed (noted; new runs correct).
+zble: RZ616 adapter scans near-blind (1 anon device) — Windows BLE on
+MediaTek weak; BLE bench stays on phone, serial is the remote path.
