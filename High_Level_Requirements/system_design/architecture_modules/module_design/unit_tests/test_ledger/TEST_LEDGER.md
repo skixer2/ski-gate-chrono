@@ -1979,3 +1979,27 @@ shows C332 + 0F91F6C2 → python CRC32(ramp 40960) = 0xC2F6910F LE MATCH.**
 Runs 0/1 on flash are pre-fix malformed (noted; new runs correct).
 zble: RZ616 adapter scans near-blind (1 anon device) — Windows BLE on
 MediaTek weak; BLE bench stays on phone, serial is the remote path.
+
+### 2026-09-26 — M1 STEP 4b RADIO BENCH: **APP DOWNLOAD PASS — FULLY REMOTE** ✓✓✓
+
+JP's earlier CRC error = the malformed pre-fix runs (confirmed by theory
++ wipe). After 'x' wipe + 3 fresh w_40960 (v0.7.5, serial-verified CRC
+0xC2F6910F match): APP 1.46 DOWNLOAD OF ALL 3 RUNS — Not Downloaded
+3→0, Saved Runs 5→8, runs #0/#1/#2 saved (displayed ts = BUILD_EPOCH
+compile-constant, off-by-one-day cosmetic; 22 pseudo-frames = ramp
+decompression, consistent with fake era). No errors.
+
+**THE SESSION WAS DRIVEN ENTIRELY BY ZIOCLAW:**
+- PHONE CONTROL: adb (force-stop/launch/tap/swipe) + uiautomator dump
+  (Flutter = no semantics — useless) + SCREENSHOTS analyzed by vision:
+  scan FAB (778,1697) → SGC-Dev row (400,1638) → Download (540,1123)
+  → verdict screens. The "must control the phone" capability: PROVEN.
+- FILE CHANNEL (gateway←PC): watchdog tunnel -R 9999→PC:8080 +
+  http.server (log to FILE or its dead console kills it) + docker
+  host-net curl (root) into /root/.openclaw/xfer bind-mount → vision.
+  Canvas ship still 401; this is the working replacement.
+- Watchdog PRODUCTION HEAL: killed tunnel self-recovered ~90 s.
+- schtasks create = Access denied even for JP (investigate later);
+  watchdog runs from an open PS window meanwhile (JP's window).
+- VS Code nrfutil hotplug holds COM3 (close nRF sidebar when benching).
+- register-watchdog.bat needs the direct-start fallback added (TODO).
