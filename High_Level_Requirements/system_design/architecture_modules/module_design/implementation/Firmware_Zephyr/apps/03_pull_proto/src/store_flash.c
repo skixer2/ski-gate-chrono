@@ -307,6 +307,10 @@ static void rec_work_handler(struct k_work *w)
 		return;
 	}
 
+	/* NOTE (bug 09-26, fixed v0.7.4): BLOB_OVERHEAD (22) is SIZE math
+	 * (header+trailer). Byte OFFSETS use sizeof(run_header) — the 4b
+	 * producer wrote payload at +22 instead of +16, pushing the trailer
+	 * 6 bytes past the payload end. Size vs offset: never mix them. */
 	case REC_WRITING: {
 		/* One 4 KB chunk per pass. The payload is the ramp
 		 * generator (bench producer); the sensor pipeline will
@@ -323,7 +327,8 @@ static void rec_work_handler(struct k_work *w)
 			rec.crc = crc32_byte(rec.crc, buf[i]);
 		}
 		flash_write(flashdev,
-			    (off_t)(rec.addr + BLOB_OVERHEAD + rec.written),
+			    (off_t)(rec.addr + sizeof(struct run_header) +
+				    rec.written),
 			    buf, take);
 		rec.written += take;
 
@@ -346,7 +351,8 @@ static void rec_work_handler(struct k_work *w)
 				       (uint8_t)(crc >> 24) };
 
 		flash_write(flashdev,
-			    (off_t)(rec.addr + BLOB_OVERHEAD + rec.payload_len),
+			    (off_t)(rec.addr + sizeof(struct run_header) +
+				    rec.payload_len),
 			    trailer, sizeof(trailer));
 
 		/* Commit the entry (append at the age-ordered tail) and
