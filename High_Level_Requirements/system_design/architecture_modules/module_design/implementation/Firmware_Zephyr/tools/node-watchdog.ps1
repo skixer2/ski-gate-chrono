@@ -26,6 +26,9 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 # ── Configuration ───────────────────────────────────────────────────
 $USER_DIR   = 'C:\Users\v17ni'
+$SSH_EXE    = 'C:\Windows\System32\OpenSSH\ssh.exe'
+$PY_EXE     = "$USER_DIR\AppData\Local\Programs\Python\Python313\python.exe"
+$NODE_EXE   = 'C:\Program Files\nodejs\node.exe'
 $LOG        = "$USER_DIR\node-watchdog.log"
 $TUN_PORT   = 18789
 $WEB_PORT   = 8080
@@ -67,34 +70,44 @@ function Get-TunnelSsh {
 
 # ── Daemon 1: the tunnel ────────────────────────────────────────────
 function Ensure-Tunnel {
-    if (Test-Port $TUN_PORT) { return }
-    Script:WdFails++
-    Log ("tunnel: probe FAIL #{0}" -f $WdFails)
-    if ($WdFails -ge $FAILS_BEFORE_FIX) {
+    # NOTE (bug 09-27): the counter MUST be $script:-scoped on BOTH the
+    # increment and the read — v2 incremented Script: but read the local
+    # (always 0) and never restarted the tunnel. Explicit scope only.
+    if (Test-Port $TUN_PORT) {
+        $script:TunFails = 0
+        return
+    }
+    $script:TunFails = [int]$script:TunFails + 1
+    Log ("tunnel: probe FAIL #{0}" -f $script:TunFails)
+    if ($script:TunFails -ge $FAILS_BEFORE_FIX) {
         Get-TunnelSsh | ForEach-Object {
             Log ("tunnel: killing pid {0}" -f $_.ProcessId)
             Stop-Process -Id $_.ProcessId -Force
         }
         Start-Sleep -Seconds 1
         Log 'tunnel: (re)starting ssh'
-        Start-Process ssh -ArgumentList $SSH_ARGS -WindowStyle Hidden
+        Start-Process $SSH_EXE -ArgumentList $SSH_ARGS -WindowStyle Hidden
         Start-Sleep -Seconds 3
-        $WdFails = 0
+        $script:TunFails = 0
     }
 }
 
 # ── Daemon 2: the file server ───────────────────────────────────────
 function Ensure-Web {
     if (Test-Port $WEB_PORT) { return }
-    Log 'web: starting http.server 8080'
-    # cmd /c + redirection so the server never depends on a console
-    # that might die (stdout-to-dead-handle kills every request).
+    # NOTE (bug 09-27): 'py' is NOT on the SYSTEM PATH (it lives in the
+    # user's AppData) — absolute python path or the spawn dies silently.
+    $script:WebFails = [int]$script:WebFails + 1
+    if ($script:WebFails -le 3 -or ($script:WebFails % 20) -eq 0) {
+        Log ("web: starting http.server 8080 (attempt {0})" -f $script:WebFails)
+    }
     Start-Process cmd -ArgumentList @(
-        '/c', 'py', '-m', 'http.server', '8080',
+        '/c', $PY_EXE, '-m', 'http.server', '8080',
         '--directory', $USER_DIR,
         '>', "$USER_DIR\http.log", '2>&1'
     ) -WindowStyle Hidden
     Start-Sleep -Seconds 2
+    if (Test-Port $WEB_PORT) { $script:WebFails = 0 }
 }
 
 # ── Daemon 3: the openclaw node host ────────────────────────────────
@@ -109,7 +122,7 @@ function Ensure-NodeHost {
     Start-Process cmd -ArgumentList @(
         '/c', 'set', "USERPROFILE=$USER_DIR",
         '&&', 'set', "APPDATA=$USER_DIR\AppData\Roaming",
-        '&&', '"C:\Program Files\nodejs\node.exe"',
+        '&&', $NODE_EXE,
         "$USER_DIR\AppData\Roaming\npm\node_modules\openclaw\openclaw.mjs",
         'node', 'run',
         '>', "$USER_DIR\nodehost.log", '2>&1'
@@ -118,8 +131,9 @@ function Ensure-NodeHost {
 }
 
 # ── Main loop ───────────────────────────────────────────────────────
-Log 'watchdog v2: starting (boot-proof, 3 daemons)'
-$WdFails = 0
+Log 'watchdog v2.1: starting (boot-proof, 3 daemons)'
+$script:TunFails = 0
+$script:WebFails = 0
 $Beat = 0
 while ($true) {
     Ensure-Tunnel

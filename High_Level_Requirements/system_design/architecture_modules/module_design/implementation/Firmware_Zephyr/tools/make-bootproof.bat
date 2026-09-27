@@ -28,7 +28,8 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [4/4] Starting it now (no reboot needed)...
+echo [4/4] (Re)starting it now (no reboot needed)...
+schtasks /end /tn SGC-WatchdogBoot 2>nul
 schtasks /run /tn SGC-WatchdogBoot
 timeout /t 5 >nul
 schtasks /query /tn SGC-WatchdogBoot
