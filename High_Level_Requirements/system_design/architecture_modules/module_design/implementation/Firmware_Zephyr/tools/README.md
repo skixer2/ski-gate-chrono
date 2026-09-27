@@ -4,6 +4,12 @@ Firmware platform: **Zephyr OS + nRF Connect SDK v3.4.0** (see
 [`../../ZEPHYR_PORT_PLAN.md`](../../ZEPHYR_PORT_PLAN.md)).
 Target: Arduino Nicla Sense ME (nRF52832), flashed via on-board CMSIS-DAP (SWD).
 
+> **Two kinds of tools live under `tools/` (split 2026-09-27):**
+> - `tools/` — **dev tools** (this file): you run them, they touch code/hardware.
+> - `tools/infra/` — **bench infrastructure**: keeps the VPS tunnel +
+>   OpenClaw node alive, self-running via scheduled task. See
+>   [`infra/README.md`](infra/README.md). Don't run those by hand.
+
 ## The toolchain (VS Code-managed — do not self-install)
 
 The tools are **PC-independent**: paths are auto-discovered, not hardcoded.
@@ -35,6 +41,8 @@ edit -> Build in VS Code (nRF Connect: F7)  OR  zbuild.bat
 | `zflash.bat <build-dir or hex>` | SWD flash + verify + reset run. Bootloader-independent. NCS 3.4 sysbuild nests the app: hex at `<build>\<app>\zephyr\zephyr.hex` — passing the build dir is enough (first zephyr.hex found wins). |
 | `zreset.bat` | Hard reset via SWD — works even if firmware is wedged. No serial port needed. |
 | `zserial.py [port] [secs]` | SWD reset + capture console output (default COM3, 5 s). |
+| `zble.py` | BLE scan/connect bench script (⚠ RZ616 radio scans blind on this PC — phone stays the BLE bench radio, see notes 2026-09-27). |
+| `zcmd.py` | Send serial commands to the device (helper for scripted bench runs). |
 | (live console) `pio device monitor -b 115200 COM3` | PlatformIO monitor = plain live terminal for the same port. Ctrl+C quits. Close it before zserial (COM3 is exclusive); zflash is unaffected (SWD, not COM). |
 | `zpeek.bat` | Memory dump via SWD — edit the `mdw` line for your address. |
 

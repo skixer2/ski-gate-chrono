@@ -35,18 +35,9 @@ $WEB_PORT   = 8080
 $CHECK_EVERY_SEC  = 30
 $FAILS_BEFORE_FIX = 2
 
-$SSH_ARGS = @(
-    '-N',
-    '-L', "$TUN_PORT`:127.0.0.1:$TUN_PORT",
-    '-R', '9999:127.0.0.1:8080',
-    '-o', 'ServerAliveInterval=15',
-    '-o', 'ServerAliveCountMax=3',
-    '-o', 'ExitOnForwardFailure=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-F', "$USER_DIR\.ssh\config",          # SYSTEM home would miss it
-    '-v', '-E', "$USER_DIR\ssh-watchdog.log",  # ssh's own debug+error log
-    'vps'
-)
+# v2.4: the $SSH_ARGS array was deleted — unused since v2.2 moved the
+# spawn into tunnel-run.cmd, and its -F config + alias approach is
+# exactly what failed under SYSTEM.
 
 function Log($msg) {
     $line = '{0} {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg
@@ -92,7 +83,7 @@ function Ensure-Tunnel {
         # immune to the v2.2 escape-mangling that corrupted the long
         # profile path (\a -> bell, \t -> tab — the spawn never ran).
         Start-Process cmd -ArgumentList @(
-            '/c', 'C:\sgc\tools\tunnel-run.cmd'
+            '/c', 'C:\sgc\tools\infra\tunnel-run.cmd'
         ) -WindowStyle Hidden
         Start-Sleep -Seconds 3
         $script:TunFails = 0
@@ -138,7 +129,7 @@ function Ensure-NodeHost {
 }
 
 # ── Main loop ───────────────────────────────────────────────────────
-Log 'watchdog v2.1: starting (boot-proof, 3 daemons)'
+Log 'watchdog v2.4: starting (boot-proof, 3 daemons)  [v2.4: infra path move]'
 $script:TunFails = 0
 $script:WebFails = 0
 $Beat = 0

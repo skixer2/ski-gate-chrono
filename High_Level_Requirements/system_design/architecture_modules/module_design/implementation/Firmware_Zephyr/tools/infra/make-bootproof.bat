@@ -21,7 +21,7 @@ echo [2/4] Removing the old logon task if present...
 schtasks /delete /tn SGC-NodeWatchdog /f 2>nul
 
 echo [3/4] Registering the boot task (SYSTEM, onstart)...
-schtasks /create /tn SGC-WatchdogBoot /tr "powershell -NoProfile -ExecutionPolicy Bypass -File C:\sgc\tools\node-watchdog.ps1" /sc onstart /ru SYSTEM /rl highest /f
+schtasks /create /tn SGC-WatchdogBoot /tr "powershell -NoProfile -ExecutionPolicy Bypass -File C:\sgc\tools\infra\node-watchdog.ps1" /sc onstart /ru SYSTEM /rl highest /f
 if %errorlevel% neq 0 (
     echo ERROR: task creation failed.
     pause

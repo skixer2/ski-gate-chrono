@@ -10,7 +10,7 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
-schtasks /create /tn SGC-SshDiag /tr "C:\sgc\tools\ssh-diag-run.cmd" /sc once /st 23:59 /ru SYSTEM /rl highest /f
+schtasks /create /tn SGC-SshDiag /tr "C:\sgc\tools\infra\ssh-diag-run.cmd" /sc once /st 23:59 /ru SYSTEM /rl highest /f
 schtasks /run /tn SGC-SshDiag
 timeout /t 10 >nul
 schtasks /delete /tn SGC-SshDiag /f
