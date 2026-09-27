@@ -86,8 +86,12 @@ function Ensure-Tunnel {
             Stop-Process -Id $_.ProcessId -Force
         }
         Start-Sleep -Seconds 1
-        Log 'tunnel: (re)starting ssh'
-        Start-Process $SSH_EXE -ArgumentList $SSH_ARGS -WindowStyle Hidden
+        Log 'tunnel: (re)starting via tunnel-run.cmd'
+        # v2.2: spawn through the cmd-file — the launcher pattern that
+        # WORKS under SYSTEM (Start-Process->ssh died pre-main, 09-27).
+        Start-Process cmd -ArgumentList @(
+            '/c', "$USER_DIR\Documents\projects\ski-gate-chrono\High_Level_Requirements\system_designrchitecture_modules\module_design\implementation\Firmware_Zephyr	ools	unnel-run.cmd"
+        ) -WindowStyle Hidden
         Start-Sleep -Seconds 3
         $script:TunFails = 0
     }
