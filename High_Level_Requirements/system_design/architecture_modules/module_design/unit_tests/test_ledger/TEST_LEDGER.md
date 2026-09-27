@@ -2003,3 +2003,12 @@ decompression, consistent with fake era). No errors.
   watchdog runs from an open PS window meanwhile (JP's window).
 - VS Code nrfutil hotplug holds COM3 (close nRF sidebar when benching).
 - register-watchdog.bat needs the direct-start fallback added (TODO).
+
+### 2026-09-27 — BOOT-PROOF HARNESS (JP GO 08:40)
+
+Goal: PC reboot with NOBODY logged in → full remote bench self-restores.
+Plan: (1) watchdog absorbs http.server (one script, both daemons);
+(2) schtasks /sc onstart /ru SYSTEM for watchdog (elevated one-time —
+the 09-26 access-denied was the missing admin); (3) node host at boot
+(same mechanism or openclaw service install — inspect first);
+(4) prove with real reboot test.
