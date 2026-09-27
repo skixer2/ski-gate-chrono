@@ -87,10 +87,12 @@ function Ensure-Tunnel {
         }
         Start-Sleep -Seconds 1
         Log 'tunnel: (re)starting via tunnel-run.cmd'
-        # v2.2: spawn through the cmd-file — the launcher pattern that
-        # WORKS under SYSTEM (Start-Process->ssh died pre-main, 09-27).
+        # v2.3: spawn through the cmd-file VIA THE JUNCTION. Short,
+        # SYSTEM-proven (the diag ran from C:\sgc\tools fine), and
+        # immune to the v2.2 escape-mangling that corrupted the long
+        # profile path (\a -> bell, \t -> tab — the spawn never ran).
         Start-Process cmd -ArgumentList @(
-            '/c', "$USER_DIR\Documents\projects\ski-gate-chrono\High_Level_Requirements\system_designrchitecture_modules\module_design\implementation\Firmware_Zephyr	ools	unnel-run.cmd"
+            '/c', 'C:\sgc\tools\tunnel-run.cmd'
         ) -WindowStyle Hidden
         Start-Sleep -Seconds 3
         $script:TunFails = 0
