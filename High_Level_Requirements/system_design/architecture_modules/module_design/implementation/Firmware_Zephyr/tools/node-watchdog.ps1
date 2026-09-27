@@ -44,6 +44,7 @@ $SSH_ARGS = @(
     '-o', 'ExitOnForwardFailure=yes',
     '-o', 'StrictHostKeyChecking=accept-new',
     '-F', "$USER_DIR\.ssh\config",          # SYSTEM home would miss it
+    '-v', '-E', "$USER_DIR\ssh-watchdog.log",  # ssh's own debug+error log
     'vps'
 )
 
