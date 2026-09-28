@@ -64,7 +64,42 @@ static struct bt_uuid_128 console_uuid =
 
 static bool console_subscribed;
 
-/* ── Listing surface (ABC8/ABC9, built from the store) ───────────── */
+/* ── Listing surface (ABC8/ABC9, built from the store) ─────────────
+ * BUGFIX v0.9.1 (2026-09-28, found live with the phone): these
+ * surfaces were built ONCE at boot — a run recorded after boot was
+ * invisible to the app until the next reboot (it "worked" on the
+ * bench only because flash/reset cycles preceded every listing).
+ * Now every GATT read rebuilds from the live store (skipped while
+ * the producer is mid-cycle: serve the last consistent snapshot). */
+static void rebuild_listing(bool log_it)
+{
+	size_t pos = 0;
+	uint8_t n = store_run_count();
+
+	run_info_buf[0] = (uint8_t)(n & 0xFF);
+	run_info_buf[1] = (uint8_t)(n >> 8);
+	memset(&run_info_buf[2], 0, 4);
+
+	pos += snprintf(&run_list_json[pos], sizeof(run_list_json) - pos,
+			"[");
+	for (uint8_t i = 0; i < n; i++) {
+		pos += snprintf(&run_list_json[pos],
+				sizeof(run_list_json) - pos,
+				"%s{\"id\":%u,\"ts\":%lu,\"size\":%lu,"
+				"\"side\":\"%s\"}",
+				(i ? "," : ""), i,
+				(unsigned long)store_run_ts(i),
+				(unsigned long)store_run_payload_len(i),
+				store_run_side(i) ? "right" : "left");
+	}
+	snprintf(&run_list_json[pos], sizeof(run_list_json) - pos, "]");
+
+	if (log_it) {
+		printk("run list: %s\n", run_list_json);
+	}
+}
+
+/* ── (was: listing surface comment anchor) ───────────────────────── */
 
 static uint8_t run_info_buf[6];    /* count LE + age LE (age=0: no RTC
 				      until the epoch-sync port, ABC0) */
@@ -86,6 +121,9 @@ static ssize_t read_run_info(struct bt_conn *conn,
 			     const struct bt_gatt_attr *attr,
 			     void *buf, uint16_t len, uint16_t offset)
 {
+	if (!store_busy()) {
+		rebuild_listing(false);
+	}
 	return read_buf(run_info_buf, sizeof(run_info_buf), buf, len, offset);
 }
 
@@ -93,6 +131,9 @@ static ssize_t read_run_list(struct bt_conn *conn,
 			     const struct bt_gatt_attr *attr,
 			     void *buf, uint16_t len, uint16_t offset)
 {
+	if (!store_busy()) {
+		rebuild_listing(false);
+	}
 	return read_buf(run_list_json, strlen(run_list_json), buf, len, offset);
 }
 
@@ -496,30 +537,5 @@ void pull_proto_start(void)
 		printk("ERROR: console uart not ready\n");
 	}
 
-	/* Listing surface from the store: ABC8 count+age, ABC9 JSON
-	 * (build_run_list format — "size" = payload ONLY, without the
-	 * 16 B header and 6 B trailer; D's sz is the full total). */
-	run_info_buf[0] = (uint8_t)(store_run_count() & 0xFF);
-	run_info_buf[1] = (uint8_t)(store_run_count() >> 8);
-	memset(&run_info_buf[2], 0, 4);
-
-	{
-		size_t pos = 0;
-		uint8_t n = store_run_count();
-
-		pos += snprintf(&run_list_json[pos],
-				sizeof(run_list_json) - pos, "[");
-		for (uint8_t i = 0; i < n; i++) {
-			pos += snprintf(&run_list_json[pos],
-					sizeof(run_list_json) - pos,
-					"%s{\"id\":%u,\"ts\":%lu,\"size\":%lu,"
-					"\"side\":\"%s\"}",
-					(i ? "," : ""), i,
-					(unsigned long)store_run_ts(i),
-					(unsigned long)store_run_payload_len(i),
-					store_run_side(i) ? "right" : "left");
-		}
-		snprintf(&run_list_json[pos], sizeof(run_list_json) - pos, "]");
-		printk("run list: %s\n", run_list_json);
-	}
+	rebuild_listing(true);
 }
