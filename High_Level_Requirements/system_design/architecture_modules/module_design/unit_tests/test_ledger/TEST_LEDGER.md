@@ -2116,3 +2116,22 @@ straddling rejected — read path loses single-linear-read invariant,
 two-range extents everywhere, mid-sector wrap points. Documented trade:
 8×244 KiB tiles the 2 MB log EXACTLY (dynamic wrap would fit the 8th max
 run); runway policy already supports it if ever revisited.
+
+**RESOLVED & BENCH-PROVEN (same day, v0.9.0, commit d9decff):**
+- Host: SGL3 suite ALL GREEN, full lifecycle sweep at all four discipline
+  budgets (SL 92 160 / GS-SG 122 880 / DH 153 600 / custom 614 400 B) —
+  712 records each, erase-before-program invariants hold; mixed-size live
+  set bounded BY BYTES (live+T ≤ LOG_SIZE), not count (count bound was
+  wrong for mixed sets — test fixed, lesson: assert the structural
+  invariant, not a derived number).
+- Bench v0.9.0: fresh SGL3 boot with budget 153600 (DH default) + 38-sector
+  boot topup; 'b 92160' → SL, zero-work re-top (target shrank under existing
+  coverage — clamp path exercised); w 90000 (full SL run) accepted, cursor
+  math exact (hi = cursor + 23 sectors); D listing shows {"free":19} —
+  athlete capacity estimate live (fresh 20 − 1 live = 19 ✓ formula match).
+- Build-environment addendum: SECOND freeze cause isolated — VS Code nRF
+  Kconfig extension python holds the shared zephyr/.cache lock during
+  configure; symptom = freeze right after "Found devicetree overlay".
+  Remedy: taskkill the extension python (restarts on demand) + relaunch.
+  (First cause was stdin: <NUL. Both now in the remote-build recipe.)
+- FW v0.9.0 on bench. FLASH 24.0%, RAM 70.1%.
