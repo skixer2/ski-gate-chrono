@@ -2058,3 +2058,29 @@ every programmed byte must land in an erased sector, wrap included — the
 test that would have caught the original bug), store_flash.c (states
 IDLE→WRITING→CLOSING→TOPUP→IDLE; boot/wipe top-up; header essay), FW →
 v0.8.0. Consistency audit of whole store vs intended result (JP order).
+
+**RESOLVED & HARDWARE-PROVEN (same day, v0.8.0 → v0.8.1, commits 7b82b2d/96b327d):**
+- Host: SGL2 suite ALL GREEN — runway_plan unit tests + bitmap lifecycle
+  simulation, 712 records (200 typical + 12 max + 500 seeded random w/
+  boundary hunters), asserts EVERY programmed byte lands in an erased
+  sector, wraps included. Capacity note: standing runway trades peak
+  live set (48→41 typical) for the guaranteed max-run space.
+- Remote build saga: THREE stalls at cmake/Kconfig steps — root cause
+  stdin inheritance (detached builder waits forever on the node host's
+  silent stdin). FIX: `<NUL` on the start chain. (Also: tasklist blind
+  in node exec, Get-Process/WMI fine.)
+- Bench (COM3, ZioClaw-driven): boot fresh topup 61 sectors + zero-work
+  fast path on second boot; typical run math byte-exact (cursor 0x1f000,
+  delta 11 sectors, hi = cursor+TARGET); x wipe → 61-sector post-wipe
+  topup; 8 max runs → cursor to 0x1ca000, TWO-SEGMENT topup fired
+  (111 sectors = 50 stub + 61 bottom) with reclaims id0/id1 exactly at
+  the victims; **WRAP RUN id=8 clean at LOG_START through the bottom
+  reserve** (coverage guard passed, hi:=lo transition exact); post-wrap
+  readback: header real (02/00/ts/125/…/3), payload alignment exact,
+  trailer CRC 0x28D0D0AC == locally computed ramp CRC.
+- **Regression caught & fixed by the readback itself:** v0.8.0 lost the
+  run-header write (SGL1 wrote it at erase-phase exit; the rework
+  dropped it) — stream showed 16×FF header with CRC still green (payload-
+  only). v0.8.1 writes the header on first WRITING pass. LESSON: CRC
+  green ≠ blob good; verify the header too.
+- FW v0.8.1 on bench. Flash 23.9%, RAM 70%.
