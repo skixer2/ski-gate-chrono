@@ -45,7 +45,12 @@
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
-#define STREAM_GAP_MS   25      /* PULL_STREAM_GAP_MS (5.81 pacing)  */
+/* 50 ms: the ArduinoFW 5.46-proven stable cadence. 25 ms (5.81 tuning,
+ * inherited by the port) wedges the S22 mid-stream on long runs: phone
+ * goes deaf ~84 KB while the device streams on (serial proof 2026-09-28,
+ * frames continued past the phone's death with notify()==0). Short 40 KB
+ * benches masked it; 90 KB runs die at ~93%. Halved throughput, ~4.9 KB/s. */
+#define STREAM_GAP_MS   50
 
 /* Full 128-bit UUIDs, byte-identical to ArduinoFW's SGC_UUID() strings
  * (see header warning — no 16-bit forms, ever). */
