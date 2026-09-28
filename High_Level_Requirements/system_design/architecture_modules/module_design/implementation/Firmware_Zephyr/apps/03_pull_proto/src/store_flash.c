@@ -373,6 +373,22 @@ static void rec_work_handler(struct k_work *w)
 	}
 
 	case REC_WRITING: {
+		/* First pass: the 16 B run header at the record start.
+		 * (SGL1 wrote it at the erase-phase exit; the SGL2 rework
+		 *  moved erase out of the record path and DROPPED this write
+		 *  — caught by stream readback 09-28: all-FF header, CRC still
+		 *  green because it covers payload only. Fixed in v0.8.1.) */
+		if (rec.written == 0) {
+			struct run_header hdr = {
+				.format_ver = 2, .arm_side = rec.side,
+				.ts_utc = rec.ts, .baro_temp = 125,
+				.data_size = 0, .frame_count = 0,
+				.cal_accuracy = 3, ._pad = 0,
+			};
+
+			flash_write(flashdev, (off_t)rec.addr, &hdr, sizeof(hdr));
+		}
+
 		/* One 4 KB chunk per pass. The payload is the ramp
 		 * generator (bench producer); the sensor pipeline will
 		 * replace just this loop's data source, nothing else.
