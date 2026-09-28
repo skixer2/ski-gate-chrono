@@ -61,29 +61,39 @@
 #define LOG_SIZE          (LOG_END - LOG_START)
 
 /* ── Policy constants (see header essay above) ────────────────────── */
-#define MAX_RUN_BUDGET    0x3D000u   /* 244 KiB — old slot size, now a cap */
-#define MAX_INDEXED_RUNS  64u
+/* Absolute compile-time ceiling (SGL3): the Custom discipline max,
+ * 600 s at the documented 10 B/frame ceiling = 1 KB/s. The ACTIVE
+ * budget is runtime state (sgl_header.run_budget), set per discipline
+ * by the app; the device stores BYTES, the seconds mapping is app-side.
+ * Discipline table (JP 2026-09-28): SL 90 s / GS+SG 120 s / DH 150 s /
+ * Custom 60–600 s → 90/120/150/60–600 KB at 1 KB/s. */
+#define MAX_RUN_BUDGET    0x96000u   /* 600 KiB absolute ceiling (Custom)  */
+#define RUN_BUDGET_DEFAULT 0x25800u  /* 150 KiB (DH) until the app sets one */
+#define MAX_INDEXED_RUNS  64u        /* 2 MB era; 8 MB board: raise toward
+                                      * the 254-entry sector geometry (needs
+                                      * ~+15 KB RAM — fits nRF52833/128K)   */
 
-/* ── Runway policy (SGL2, JP 2026-09-28) ──────────────────────────
+/* ── Runway policy (SGL2→SGL3, JP 2026-09-28) ─────────────────────
  * Run length is UNKNOWN at record start (an athlete's descent — or a
  * future streaming sensor producer). So we never size erase work for
  * the incoming record. Instead, right AFTER a run (and at boot/wipe)
- * we free enough space for a MAXIMUM-length run:
+ * we free enough space for a MAXIMUM-length run AT THE ACTIVE BUDGET:
  *
- *   coverage U(cursor) = [cursor, cursor+RUNWAY_TARGET)            when it fits
+ *   coverage U(cursor) = [cursor, cursor+T)            when it fits
  *                      = [cursor, LOG_END) ∪ [LOG_START,
- *                        LOG_START+RUNWAY_TARGET)                  near the end
+ *                        LOG_START+T)                  near the end
  *
- * The second, two-segment form matters: a wrapping max-run needs
- * RUNWAY_TARGET bytes clean AT THE BOTTOM — a plain ring interval of
- * TARGET from a high cursor covers less than that (counter-example:
- * remaining=100K, span=244K → interval reaches 144K past LOG_START,
- * the run needs 244K). Plain absolute math only — NO ring arithmetic
- * anywhere in this header: ring-distance ambiguity is the bug class
- * that started SGL2 (ledger 2026-09-28).
+ * where T = runway_target(run_budget) — the sector-padded span of a
+ * budget-size run. SGL3 made T runtime (discipline-driven); smaller
+ * budgets shrink both the standing reserve and the dead wrap tail
+ * proportionally (JP: production length is unknown at start, so the
+ * tail is dead up to T — the discipline budget is the lever).
+ * The two-segment form matters: a wrapping max-run needs T bytes clean
+ * AT THE BOTTOM (counter-example: remaining=100K, span=244K → a plain
+ * interval reaches 144K past LOG_START; the run needs 244K). Plain
+ * absolute math only — NO ring arithmetic anywhere in this header:
+ * ring-distance ambiguity is the bug class that started SGL2.
  */
-#define RUNWAY_TARGET     (((MAX_RUN_BUDGET) + LOG_SECTOR_SIZE - 1) \
-                           / LOG_SECTOR_SIZE * LOG_SECTOR_SIZE)   /* 244 KiB */
 
 /* ── Blob arithmetic (wire-format facts, frozen) ────────────────────
  * A stored run occupies: 16 B header + payload + 6 B CRC trailer,
@@ -97,6 +107,14 @@ static inline uint32_t run_span(uint32_t payload_len)
 	uint32_t raw = BLOB_OVERHEAD + payload_len;
 
 	return (raw + LOG_SECTOR_SIZE - 1) / LOG_SECTOR_SIZE * LOG_SECTOR_SIZE;
+}
+
+/* The ACTIVE runway target (SGL3): the sector-padded span of a run at
+ * the active budget. Discipline-driven, runtime state. */
+static inline uint32_t runway_target(uint32_t run_budget)
+{
+	return (run_budget + BLOB_OVERHEAD + LOG_SECTOR_SIZE - 1)
+	       / LOG_SECTOR_SIZE * LOG_SECTOR_SIZE;
 }
 
 /* ── Cursor movement (the heart of the log) ─────────────────────────
@@ -134,19 +152,20 @@ struct runway_plan {
 };
 
 static inline void runway_plan_topup(uint32_t cursor, uint32_t hi,
-				     uint32_t lo, struct runway_plan *p)
+				     uint32_t lo, uint32_t target,
+				     struct runway_plan *p)
 {
 	uint32_t remaining = LOG_END - cursor;
-	uint32_t target_hi = (remaining >= RUNWAY_TARGET)
-			       ? cursor + RUNWAY_TARGET : LOG_END;
+	uint32_t target_hi = (remaining >= target)
+			       ? cursor + target : LOG_END;
 
 	p->s1_from = (hi > cursor) ? hi : cursor;
 	p->s1_to = (target_hi > p->s1_from) ? target_hi : p->s1_from;
 
 	p->s2_from = p->s2_to = 0;
-	if (remaining < RUNWAY_TARGET) {
+	if (remaining < target) {
 		uint32_t from = (lo > LOG_START) ? lo : LOG_START;
-		uint32_t to = LOG_START + RUNWAY_TARGET;
+		uint32_t to = LOG_START + target;
 
 		p->s2_from = from;
 		p->s2_to = (to > from) ? to : from;

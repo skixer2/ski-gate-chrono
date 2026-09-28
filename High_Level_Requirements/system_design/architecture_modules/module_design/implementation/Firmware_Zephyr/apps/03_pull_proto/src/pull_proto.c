@@ -308,9 +308,10 @@ static void cmd_work_handler(struct k_work *w)
 				 store_run_side(i));
 			console_emit(line);
 		}
-		char tail_line[24];
+		char tail_line[48];   /* {"free":4294967295,"d_end":255} fits */
 
-		snprintf(tail_line, sizeof(tail_line), "{\"d_end\":%u}", n);
+		snprintf(tail_line, sizeof(tail_line), "{\"free\":%lu,\"d_end\":%u}",
+			 (unsigned long)store_free_full_runs(), n);
 		console_emit(tail_line);
 	} else if (cmd == 's') {
 		long id, off, len;
@@ -342,6 +343,26 @@ static void cmd_work_handler(struct k_work *w)
 			printk("stream start id=%ld off=%ld len=%ld\n",
 			       id, off, len);
 			k_work_schedule(&stream_work, K_NO_WAIT);
+		}
+	} else if (cmd == 'b') {
+		/* SGL3: set the active run budget (payload bytes). The
+		 * discipline mapping (SL 90 KB / GS-SG 120 / DH 150 /
+		 * custom 60-600) lives app-side at 1 KB/s. nRF Connect:
+		 *   write "b 92160"   -> SL (90 s)
+		 *   write "b 153600"  -> DH default (150 s)
+		 */
+		long n = strtol(&req[1], NULL, 10);
+
+		if (n <= 0) {
+			console_emit("E 3");            /* malformed */
+		} else if (!store_set_run_budget((uint32_t)n)) {
+			console_emit("E 5");            /* out of bounds */
+		} else {
+			char ok[40];
+
+			snprintf(ok, sizeof(ok), "OK budget %lu B",
+				 (unsigned long)store_run_budget());
+			console_emit(ok);
 		}
 	} else if (cmd == 'x') {
 		/* Bench reset: wipe the index sector and reboot the log to

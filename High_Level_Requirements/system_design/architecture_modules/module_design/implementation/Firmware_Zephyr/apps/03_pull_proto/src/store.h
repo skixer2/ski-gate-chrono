@@ -52,6 +52,18 @@ void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n);
 bool store_record_start(uint32_t payload_len);
 bool store_busy(void);
 
+/* ── Active run budget (SGL3, discipline-driven) ──────────────────
+ * Payload-byte ceiling for future runs; drives the runway target.
+ * App maps disciplines at 1 KB/s: SL 90 s=90 KB, GS/SG 120 s=120 KB,
+ * DH 150 s=150 KB (default), Custom 60–600 s=60–600 KB. Bounds:
+ * (4096-22) B .. MAX_RUN_BUDGET (600 KiB). Setter persists + re-tops
+ * the runway when idle. */
+bool store_set_run_budget(uint32_t payload_bytes);
+uint32_t store_run_budget(void);
+
+/* How many FULL budget runs still fit (athlete-facing estimate). */
+uint32_t store_free_full_runs(void);
+
 /* Bench reset: erase the index, restart the log empty. Re-tops the
  * runway in the background (SGL2: a wipe leaves flash dirty; the
  * top-up makes the first 244 KiB clean again). */

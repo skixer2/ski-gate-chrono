@@ -1,22 +1,24 @@
 /*
- * test_layout.c — host-side tests for the circular run log (SGL2)
+ * test_layout.c — host-side tests for the circular run log (SGL3)
  * ==================================================================
- * THE FOUNDING SUITE. Compiles on the PC (msvcrt/gcc), never touches
+ * THE FOUNDING SUITE. Compiles on the PC (gcc), never touches
  * hardware, and proves the store's arithmetic BEFORE it meets flash.
- * Each test names the bug class it prevents.
  *
- * SGL2 (2026-09-28): erase policy is TOP-UP for a max-length run
- * right after each run (run length is unknown at start — JP). The
- * flagship is test 5: a bit-level sector simulation that proves
- * EVERY programmed byte lands in an erased sector, wraps included —
- * the composed-lifecycle proof whose absence let the v0.7.x wrap bug
- * ship (erase_from > erase_to → zero sectors erased → programming
- * over first-lap data; ledger 2026-09-28).
+ * SGL2 (2026-09-28): erase policy = TOP-UP for a max-length run right
+ * after each run; flagship = the bit-level sector simulation proving
+ * every programmed byte lands in an erased sector (the composed proof
+ * whose absence shipped the v0.7.x wrap bug).
+ *
+ * SGL3 (same day, JP GO): the run budget is RUNTIME state (discipline:
+ * SL 90 s / GS-SG 120 s / DH 150 s / custom 60–600 s at 1 KB/s). The
+ * runway target derives from the ACTIVE budget — so the whole suite
+ * sweeps every discipline budget, and the capacity formula (athlete-
+ * facing free-run estimate) is asserted too.
  *
  * Build & run (from the app folder):
  *   gcc -Wall -Wextra -Isrc tests/test_layout.c -o build/test_layout
  *   ./build/test_layout
- * Exit code 0 = all green. Any failure prints the line and aborts.
+ * Exit code 0 = all green.
  */
 #include <stdio.h>
 #include <string.h>
@@ -65,9 +67,7 @@ static int test_wrap(void)
 	return 0;
 }
 
-/* ── 3. THE FOUNDING TEST: listing budgets fit the policy domain ────
- * Prevents: the 160-byte bug — buffers sized from test data instead
- * of MAX_INDEXED_RUNS × worst-case entry. */
+/* ── 3. Listing budgets + runway targets per discipline ───────────── */
 static int test_listing_budget(void)
 {
 	char worst[96];
@@ -79,55 +79,62 @@ static int test_listing_budget(void)
 	CHECK(n > 0 && n < 96, "worst entry fits the local buffer");
 	CHECK(MAX_INDEXED_RUNS * (uint32_t)n + 2 <= RUN_LIST_JSON_SIZE,
 	      "MAX_INDEXED_RUNS worst-case entries fit the JSON buffer");
-	CHECK(RUNWAY_TARGET < LOG_SIZE,
-	      "runway target fits the region (policy sanity)");
-	CHECK(RUNWAY_TARGET == 61 * LOG_SECTOR_SIZE,
-	      "runway target = 61 sectors (244 KiB)");
+
+	/* Runway targets at 1 KB/s discipline budgets (SGL3). */
+	CHECK(runway_target(92160u)   == 23  * LOG_SECTOR_SIZE,
+	      "SL 90 KiB target = 23 sectors");
+	CHECK(runway_target(122880u)  == 31  * LOG_SECTOR_SIZE,
+	      "GS/SG 120 KiB target = 31 sectors");
+	CHECK(runway_target(RUN_BUDGET_DEFAULT) == 38 * LOG_SECTOR_SIZE,
+	      "DH default 150 KiB target = 38 sectors");
+	CHECK(runway_target(614400u)  == 151 * LOG_SECTOR_SIZE,
+	      "Custom 600 KiB target = 151 sectors");
+	CHECK(runway_target(MAX_RUN_BUDGET) < LOG_SIZE,
+	      "max-budget runway target fits the 2 MB region");
 	return 0;
 }
 
-/* ── 4. Runway top-up planning ───────────────────────────────────────
+/* ── 4. Runway top-up planning (parametric target) ──────────────────
  * Prevents: the SGL1 wrap-composition bug (inverted erase ranges). */
 static int test_runway_plan(void)
 {
 	struct runway_plan p;
+	uint32_t T = 61 * LOG_SECTOR_SIZE;   /* classic 244 KiB-scale T */
 
-	/* Cold log: everything from scratch → 61 sectors, one segment. */
-	runway_plan_topup(LOG_START, LOG_START, LOG_START, &p);
-	CHECK(p.s1_from == LOG_START && p.s1_to == LOG_START + RUNWAY_TARGET,
-	      "cold: single segment [base, base+TARGET)");
+	/* Cold log: everything from scratch → T sectors, one segment. */
+	runway_plan_topup(LOG_START, LOG_START, LOG_START, T, &p);
+	CHECK(p.s1_from == LOG_START && p.s1_to == LOG_START + T,
+	      "cold: single segment [base, base+T)");
 	CHECK(p.s2_from == 0 && p.s2_to == 0, "cold: no bottom segment");
 	CHECK(p.sectors == 61, "cold: 61 sectors of work");
 
 	/* Delta: runway partially pre-erased → only the difference. */
 	runway_plan_topup(LOG_START, LOG_START + 10 * LOG_SECTOR_SIZE,
-			  LOG_START, &p);
+			  LOG_START, T, &p);
 	CHECK(p.s1_from == LOG_START + 10 * LOG_SECTOR_SIZE &&
 	      p.sectors == 51, "delta: 51 sectors after 10 pre-erased");
 
 	/* Steady state: coverage complete → zero work. */
-	runway_plan_topup(LOG_START, LOG_START + RUNWAY_TARGET,
-			  LOG_START, &p);
+	runway_plan_topup(LOG_START, LOG_START + T, LOG_START, T, &p);
 	CHECK(p.sectors == 0, "covered: zero work");
 
-	/* Exact boundary: remaining == TARGET → single segment to LOG_END. */
+	/* Exact boundary: remaining == T → single segment to LOG_END. */
 	{
-		uint32_t c = LOG_END - RUNWAY_TARGET;
+		uint32_t c = LOG_END - T;
 
-		runway_plan_topup(c, c, LOG_START, &p);
+		runway_plan_topup(c, c, LOG_START, T, &p);
 		CHECK(p.s1_to == LOG_END && p.s2_to == 0 && p.sectors == 61,
-		      "remaining==TARGET: single segment to LOG_END");
+		      "remaining==T: single segment to LOG_END");
 	}
 
-	/* One sector INSIDE the target: remaining < TARGET → two-segment. */
+	/* One sector INSIDE the target: remaining < T → two-segment. */
 	{
-		uint32_t c = LOG_END - RUNWAY_TARGET + LOG_SECTOR_SIZE;
+		uint32_t c = LOG_END - T + LOG_SECTOR_SIZE;
 
-		runway_plan_topup(c, c, LOG_START, &p);
+		runway_plan_topup(c, c, LOG_START, T, &p);
 		CHECK(p.s1_from == c && p.s1_to == LOG_END,
 		      "inside target: segment 1 sweeps the whole stub");
-		CHECK(p.s2_from == LOG_START &&
-		      p.s2_to == LOG_START + RUNWAY_TARGET,
+		CHECK(p.s2_from == LOG_START && p.s2_to == LOG_START + T,
 		      "inside target: segment 2 reserves the bottom");
 		CHECK(p.sectors == 60 + 61,
 		      "inside target: stub (60) + bottom (61)");
@@ -135,18 +142,19 @@ static int test_runway_plan(void)
 
 	/* One sector shy of the end but runway still fits → single seg. */
 	{
-		uint32_t c = LOG_END - RUNWAY_TARGET - LOG_SECTOR_SIZE;
+		uint32_t c = LOG_END - T - LOG_SECTOR_SIZE;
 
-		runway_plan_topup(c, c, LOG_START, &p);
-		CHECK(p.s1_to == c + RUNWAY_TARGET && p.s2_to == 0,
-		      "remaining>target: still single segment (no reserve)");
+		runway_plan_topup(c, c, LOG_START, T, &p);
+		CHECK(p.s1_to == c + T && p.s2_to == 0,
+		      "remaining>T: still single segment (no reserve)");
 	}
 
 	/* Bottom partially reserved: segment 2 starts at lo. */
 	{
-		uint32_t c = LOG_END - RUNWAY_TARGET + LOG_SECTOR_SIZE;
+		uint32_t c = LOG_END - T + LOG_SECTOR_SIZE;
 
-		runway_plan_topup(c, c, LOG_START + 20 * LOG_SECTOR_SIZE, &p);
+		runway_plan_topup(c, c, LOG_START + 20 * LOG_SECTOR_SIZE,
+				  T, &p);
 		CHECK(p.s2_from == LOG_START + 20 * LOG_SECTOR_SIZE &&
 		      p.sectors == 60 + 41,
 		      "partial bottom: 41 remaining + stub (60)");
@@ -156,27 +164,33 @@ static int test_runway_plan(void)
 	{
 		uint32_t c = LOG_START + 5 * LOG_SECTOR_SIZE;
 
-		runway_plan_topup(c, c + RUNWAY_TARGET, LOG_START, &p);
+		runway_plan_topup(c, c + T, LOG_START, T, &p);
 		CHECK(p.sectors == 0, "hi past target: zero, no underflow");
+	}
+
+	/* Smaller budget (SL): the plan follows the smaller target. */
+	{
+		uint32_t t23 = 23 * LOG_SECTOR_SIZE;
+
+		runway_plan_topup(LOG_START, LOG_START, LOG_START, t23, &p);
+		CHECK(p.sectors == 23, "SL budget: 23-sector cold top-up");
 	}
 	return 0;
 }
 
-/* ── 5. FULL SIMULATION: erase-before-program, wraps included ──────
- * Prevents: the v0.7.x class — composed policies that look right in
- * isolation but program unerased flash once the log rotates. This is
- * the store's DECISION LAYER, mirrored line for line: same planner,
- * same wrap rule, same reclaim rule, plus a per-sector erase bitmap
- * as ground truth. If firmware and simulation ever disagree, the bug
- * is in the translation, and this file is the reference. */
+/* ── 5. FULL SIMULATION: erase-before-program, every budget ────────
+ * The store's DECISION LAYER, mirrored: same planner, wrap rule,
+ * reclaim rule, plus a per-sector erase bitmap as ground truth. */
 #define NSECT  (LOG_SIZE / LOG_SECTOR_SIZE)
 
 struct sim_run { uint32_t addr; uint32_t span; };
 
-static uint8_t erased[NSECT];          /* ground truth per sector    */
+static uint8_t erased[NSECT];
 static struct sim_run ring[MAX_INDEXED_RUNS];
 static uint16_t count;
 static uint32_t sim_cursor, sim_hi, sim_lo;
+static uint32_t sim_budget = RUN_BUDGET_DEFAULT;
+static uint32_t sim_target;
 
 static uint32_t sec_of(uint32_t addr)
 {
@@ -190,20 +204,22 @@ static bool overlaps(uint32_t a1, uint32_t a2, uint32_t b1, uint32_t b2)
 
 static int sim_fail(const char *what, uint32_t run_no)
 {
-	printf("FAIL(sim) run %u: %s (cursor=0x%x hi=0x%x lo=0x%x)\n",
-	       run_no, what, sim_cursor, sim_hi, sim_lo);
+	printf("FAIL(sim) run %u: %s (cursor=0x%x hi=0x%x lo=0x%x T=0x%x)\n",
+	       run_no, what, sim_cursor, sim_hi, sim_lo, sim_target);
 	failures++;
 	return 1;
 }
 
-/* One full record cycle: plan → coverage guard → program → index →
- * wrap transition → top-up (reclaim + erase) → coverage targets. */
 static int sim_record(uint32_t payload, uint32_t run_no)
 {
 	uint32_t span = run_span(payload);
 	bool wrapped;
 	uint32_t addr = next_run_addr(sim_cursor, span, &wrapped);
 	struct runway_plan p;
+
+	if (payload > sim_budget) {
+		return sim_fail("payload exceeds ACTIVE budget", run_no);
+	}
 
 	/* THE guard: program only into known-erased sectors. */
 	if (!wrapped && sim_cursor + span > sim_hi) {
@@ -213,7 +229,6 @@ static int sim_record(uint32_t payload, uint32_t run_no)
 		return sim_fail("wrapped program past lo (coverage)", run_no);
 	}
 
-	/* Program the sectors — must all be erased, then dirty. */
 	for (uint32_t a = addr; a < addr + span; a += LOG_SECTOR_SIZE) {
 		if (!erased[sec_of(a)]) {
 			return sim_fail("PROGRAM INTO UNERASED SECTOR", run_no);
@@ -221,7 +236,6 @@ static int sim_record(uint32_t payload, uint32_t run_no)
 		erased[sec_of(a)] = 0;
 	}
 
-	/* Index: append at age-ordered tail; cap drops the oldest. */
 	if (count == MAX_INDEXED_RUNS) {
 		memmove(&ring[0], &ring[1], (count - 1) * sizeof(ring[0]));
 		count--;
@@ -231,14 +245,12 @@ static int sim_record(uint32_t payload, uint32_t run_no)
 	count++;
 	sim_cursor = addr + span;
 
-	/* Close: wrap transition, then the SGL2 top-up. */
 	if (wrapped) {
 		sim_hi = sim_lo;
 		sim_lo = LOG_START;
 	}
-	runway_plan_topup(sim_cursor, sim_hi, sim_lo, &p);
+	runway_plan_topup(sim_cursor, sim_hi, sim_lo, sim_target, &p);
 
-	/* Reclaim: victims intersect the erase segments (oldest first). */
 	while (count > 0 &&
 	       (overlaps(ring[0].addr, ring[0].addr + ring[0].span,
 			 p.s1_from, p.s1_to) ||
@@ -248,7 +260,6 @@ static int sim_record(uint32_t payload, uint32_t run_no)
 		count--;
 	}
 
-	/* Erase the planned sectors. */
 	for (uint32_t a = p.s1_from; a < p.s1_to; a += LOG_SECTOR_SIZE) {
 		erased[sec_of(a)] = 1;
 	}
@@ -256,17 +267,14 @@ static int sim_record(uint32_t payload, uint32_t run_no)
 		erased[sec_of(a)] = 1;
 	}
 
-	/* Coverage targets after the top-up. */
-	if (LOG_END - sim_cursor >= RUNWAY_TARGET) {
-		sim_hi = sim_cursor + RUNWAY_TARGET;
+	if (LOG_END - sim_cursor >= sim_target) {
+		sim_hi = sim_cursor + sim_target;
 	} else {
 		sim_hi = LOG_END;
-		sim_lo = LOG_START + RUNWAY_TARGET;
+		sim_lo = LOG_START + sim_target;
 	}
 
-	/* Invariants, every record:
-	 *  (a) runway coverage really is erased;
-	 *  (b) every live entry lives in programmed (dirty) sectors. */
+	/* Invariants, every record. */
 	for (uint32_t a = sim_cursor; a < sim_hi; a += LOG_SECTOR_SIZE) {
 		if (!erased[sec_of(a)]) {
 			return sim_fail("runway sector not erased", run_no);
@@ -301,88 +309,132 @@ static void sim_reset(void)
 	memset(erased, 0, sizeof(erased));
 	count = 0;
 	sim_cursor = sim_hi = sim_lo = LOG_START;
-}
+	sim_target = runway_target(sim_budget);
 
-static int test_lifecycle(void)
-{
-	uint32_t run_no = 0;
-
-	/* Cold start: the boot top-up precedes any record. */
-	sim_reset();
+	/* Boot top-up precedes any record. */
 	{
 		struct runway_plan p;
 
-		runway_plan_topup(sim_cursor, sim_hi, sim_lo, &p);
+		runway_plan_topup(sim_cursor, sim_hi, sim_lo, sim_target, &p);
 		for (uint32_t a = p.s1_from; a < p.s1_to; a += LOG_SECTOR_SIZE) {
 			erased[sec_of(a)] = 1;
 		}
 		for (uint32_t a = p.s2_from; a < p.s2_to; a += LOG_SECTOR_SIZE) {
 			erased[sec_of(a)] = 1;
 		}
-		sim_hi = sim_cursor + RUNWAY_TARGET;
+		sim_hi = sim_cursor + sim_target;
 	}
+}
 
-	/* Typical 50 s training runs, long past rotation (200 laps). */
-	for (int i = 0; i < 200; i++, run_no++) {
-		if (sim_record(39350, run_no)) { return 1; }
+/* Capacity formula — mirror of store_free_full_runs(). */
+static uint32_t sim_free_full_runs(void)
+{
+	uint32_t live = 0;
+
+	for (uint16_t i = 0; i < count; i++) {
+		live += ring[i].span;
 	}
-	printf("     typical x200: live=%u\n", count);
-	{
-		uint32_t floor_cap = (LOG_SIZE - RUNWAY_TARGET)
-				     / run_span(39350);
-
-		CHECK(count >= floor_cap - 1 && count <= floor_cap + 1,
-		      "typical-run live count == capacity minus standing runway (±1)");
+	if (live + sim_target > LOG_SIZE) {
+		return 0;
 	}
+	return (LOG_SIZE - live - sim_target) / sim_target;
+}
 
-	/* Continue with max-budget runs from mid-rotation: forces wraps
-	 * with the LEAST bottom margin — the original bug's habitat. */
-	for (int i = 0; i < 12; i++, run_no++) {
-		if (sim_record(MAX_RUN_BUDGET - BLOB_OVERHEAD, run_no)) {
-			return 1;
+static const uint32_t budgets[] = {
+	92160u,               /* SL 90 s     */
+	122880u,              /* GS/SG 120 s */
+	RUN_BUDGET_DEFAULT,   /* DH 150 s    */
+	614400u,              /* Custom 600 s */
+};
+
+static int test_lifecycle(void)
+{
+	for (size_t b = 0; b < sizeof(budgets) / sizeof(budgets[0]); b++) {
+		uint32_t run_no = 0;
+		uint32_t T;
+
+		sim_budget = budgets[b];
+		sim_reset();
+		T = sim_target;
+		printf("   -- budget %u B (target %u sectors, %u free full at fresh)\n",
+		       (unsigned)budgets[b], (unsigned)(T / LOG_SECTOR_SIZE),
+		       (unsigned)sim_free_full_runs());
+
+		CHECK(sim_free_full_runs() == (LOG_SIZE - T) / T,
+		      "fresh-log capacity == (LOG_SIZE - T)/T");
+
+		/* Typical 50 s training runs, long past rotation. */
+		for (int i = 0; i < 200; i++, run_no++) {
+			if (sim_record(39350, run_no)) { return 1; }
 		}
-	}
-	printf("     +max x12: live=%u\n", count);
-	CHECK(count <= (LOG_SIZE - RUNWAY_TARGET)
-		      / run_span(MAX_RUN_BUDGET - BLOB_OVERHEAD) + 1,
-	      "max-budget live set within runway-adjusted region");
+		{
+			uint32_t floor_cap = (LOG_SIZE - T) / run_span(39350);
 
-	/* Adversarial: random mix, deterministic seed, incl. runs sized
-	 * to land exactly on the LOG_END boundary. */
-	{
-		uint32_t seed = 0x5EEDC0DEu;
-		for (int i = 0; i < 500; i++, run_no++) {
-			uint32_t r = seed = seed * 1664525u + 1013904223u;
-			uint32_t payload;
+			printf("     typical x200: live=%u free=%u\n",
+			       count, (unsigned)sim_free_full_runs());
+			CHECK(count >= floor_cap - 1 && count <= floor_cap + 1,
+			      "typical live count == capacity minus runway (±1)");
+		}
 
-			if (i % 37 == 0) {
-				/* Boundary hunter: fill exactly to LOG_END. */
-				uint32_t remaining = LOG_END - sim_cursor;
-				uint32_t fit = (remaining >= BLOB_OVERHEAD + 1)
-					? run_span(remaining - BLOB_OVERHEAD - 1)
-					: run_span(1);
-				payload = fit - BLOB_OVERHEAD;
-				if (payload > MAX_RUN_BUDGET - BLOB_OVERHEAD) {
-					payload = MAX_RUN_BUDGET
-					          - BLOB_OVERHEAD;
-				}
-			} else if (i % 5 == 0) {
-				payload = MAX_RUN_BUDGET - BLOB_OVERHEAD;
-			} else {
-				payload = 1 + (r % (MAX_RUN_BUDGET
-						    - BLOB_OVERHEAD));
+		/* Max-budget runs from mid-rotation: least bottom margin. */
+		for (int i = 0; i < 12; i++, run_no++) {
+			if (sim_record(sim_budget, run_no)) { return 1; }
+		}
+		printf("     +max x12: live=%u free=%u\n",
+		       count, (unsigned)sim_free_full_runs());
+		{
+			uint32_t live_bytes = 0;
+
+			for (uint16_t i = 0; i < count; i++) {
+				live_bytes += ring[i].span;
 			}
-			if (sim_record(payload, run_no)) { return 1; }
+			CHECK(live_bytes + T <= LOG_SIZE,
+			      "live set (mixed sizes) + standing reserve within region");
 		}
+
+		/* Adversarial random mix with boundary hunters. */
+		{
+			uint32_t seed = 0x5EEDC0DEu;
+
+			for (int i = 0; i < 500; i++, run_no++) {
+				uint32_t r = seed = seed * 1664525u
+						       + 1013904223u;
+				uint32_t payload;
+
+				if (i % 37 == 0) {
+					uint32_t remaining =
+						LOG_END - sim_cursor;
+					uint32_t fit =
+						(remaining >= BLOB_OVERHEAD + 1)
+						? run_span(remaining
+							   - BLOB_OVERHEAD - 1)
+						: run_span(1);
+
+					payload = fit - BLOB_OVERHEAD;
+					if (payload > sim_budget) {
+						payload = sim_budget;
+					}
+				} else if (i % 5 == 0) {
+					payload = sim_budget;
+				} else {
+					payload = 1 + (r % sim_budget);
+				}
+				if (sim_record(payload, run_no)) { return 1; }
+			}
+		}
+		printf("     +random x500: live=%u total=%u free=%u\n",
+		       count, run_no, (unsigned)sim_free_full_runs());
+		CHECK(count <= MAX_INDEXED_RUNS,
+		      "index cap respected throughout");
+		CHECK(sim_free_full_runs() <= (LOG_SIZE - T) / T,
+		      "free-run estimate never exceeds fresh capacity");
 	}
-	printf("     +random x500: live=%u total=%u\n", count, run_no);
-	CHECK(count <= MAX_INDEXED_RUNS, "index cap respected throughout");
 	return 0;
 }
 
 int main(void)
 {
-	printf("SGC store layout host tests (SGL2)\n");
+	printf("SGC store layout host tests (SGL3)\n");
 	printf("==================================\n");
 	if (test_span_padding())   { return 1; }
 	if (test_wrap())           { return 1; }

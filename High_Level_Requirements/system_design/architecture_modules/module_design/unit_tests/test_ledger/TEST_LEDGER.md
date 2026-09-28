@@ -2084,3 +2084,35 @@ v0.8.0. Consistency audit of whole store vs intended result (JP order).
   only). v0.8.1 writes the header on first WRITING pass. LESSON: CRC
   green ≠ blob good; verify the header too.
 - FW v0.8.1 on bench. Flash 23.9%, RAM 70%.
+
+### 2026-09-28 — CASE: SGL3 runtime run budget (JP GO 18:41)
+
+**Requirement (JP):** max run duration is USER-SETTABLE, tied to discipline:
+SL 90 s / GS+SG 120 s / DH 150 s / Custom 60–600 s. Documented rate math:
+100 Hz (F01), raw 20 B/frame, compressed avg 8.0 B/frame (v2.4 design) →
+budget at 10 B/frame ceiling = 1 KB/s → budgets 90/120/150/60–600 KB.
+Rationale: production runs have unknown length at start → the wrap tail is
+dead up to TARGET (JP's correction 17:54) → shrink TARGET to the real domain.
+Discipline→seconds mapping lives APP-side; device stores BYTES (bounds:
+1 sector ≤ budget ≤ 600 KB absolute ceiling; default DH 150 KB until the
+app sets one).
+
+**Design:** sgl_header gains run_budget (SGL2→SGL3 magic, old index =
+fresh). runway_plan_topup() takes the target as a PARAMETER (fully
+parametric now). Setter 'b <bytes>' (bench) + store_set_run_budget()
+re-tops the runway when idle. 'D' listing gains {"free":N} — athlete-
+facing capacity estimate: floor((LOG_SIZE − live_spans − target)/
+span(budget)). MAX_INDEXED_RUNS stays 64 for the 2 MB era (JSON buffer +
+entries RAM ≈ +15 KB makes 254 untenable on 64 KB Nicla); on the 8 MB
+custom board (nRF52833, 128 KB RAM) raise toward the 254-entry sector
+geometry. 8 MB bring-up = move LOG_END + DTS (store is parameterized).
+
+**Tests:** host suite parametrized by target; discipline sweep
+(92 160/122 880/153 600/614 400 B budgets) each running the full lifecycle
+sim; capacity formula asserted.
+
+**DYNAMIC WRAP parked** (JP verdict "too complicated", 17:54): record-
+straddling rejected — read path loses single-linear-read invariant,
+two-range extents everywhere, mid-sector wrap points. Documented trade:
+8×244 KiB tiles the 2 MB log EXACTLY (dynamic wrap would fit the 8th max
+run); runway policy already supports it if ever revisited.

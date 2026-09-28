@@ -65,7 +65,7 @@
 /* ── Flash geometry & index placement (map above) ─────────────────── */
 #define INDEX_ADDR       0x1FD000u
 #define SELFTEST_ADDR    0x1FE000u
-#define SGL2_MAGIC       0x324C4753u   /* "SGL2" little-endian        */
+#define SGL3_MAGIC       0x334C4753u   /* "SGL3" little-endian        */
 
 /* Timestamps: the device has no RTC until the epoch-sync port (the
  * phone writes ABC0). Until then, synthetic runs are stamped from the
@@ -88,15 +88,17 @@ struct __attribute__((packed)) run_header {
 	uint8_t  _pad;
 };
 
-/* ── Index structures (device-internal — SGL2 format) ───────────────
- * SGL1 → SGL2 (2026-09-28): erased_end became the two-frontier pair
- * {erased_hi, erased_lo} of the runway policy. Old SGL1 indexes fail
- * the magic check and start fresh — loud, not silent. */
+/* ── Index structures (device-internal — SGL3 format) ───────────────
+ * SGL1 → SGL2 (2026-09-28): two-frontier runway. SGL2 → SGL3 (same
+ * day, JP GO): run_budget added — the ACTIVE discipline budget drives
+ * the runway target. Older indexes fail the magic check and start
+ * fresh — loud, not silent. */
 struct __attribute__((packed)) sgl_header {
 	uint32_t magic;
 	uint32_t write_cursor;    /* next run starts here (sector-adj.)  */
 	uint32_t erased_hi;       /* runway end from cursor              */
 	uint32_t erased_lo;       /* bottom reserve end                  */
+	uint32_t run_budget;      /* ACTIVE budget, payload bytes (SGL3) */
 	uint16_t entry_count;
 	uint16_t next_run_id;
 };
@@ -118,6 +120,7 @@ static uint16_t next_run_id;
 static uint32_t write_cursor;
 static uint32_t erased_hi;
 static uint32_t erased_lo;
+static uint32_t run_budget = RUN_BUDGET_DEFAULT;
 
 /* ── CRC32 (bitwise; identical math to RawRunStore's table) ───────── */
 static uint32_t crc32_byte(uint32_t crc, uint8_t b)
@@ -183,10 +186,11 @@ void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n)
 static void persist_index(void)
 {
 	struct sgl_header hdr = {
-		.magic = SGL2_MAGIC,
+		.magic = SGL3_MAGIC,
 		.write_cursor = write_cursor,
 		.erased_hi = erased_hi,
 		.erased_lo = erased_lo,
+		.run_budget = run_budget,
 		.entry_count = entry_count,
 		.next_run_id = next_run_id,
 	};
@@ -210,7 +214,7 @@ static bool load_index(void)
 	struct sgl_header hdr;
 
 	if (flash_read(flashdev, INDEX_ADDR, &hdr, sizeof(hdr)) != 0 ||
-	    hdr.magic != SGL2_MAGIC ||
+	    hdr.magic != SGL3_MAGIC ||
 	    hdr.entry_count > MAX_INDEXED_RUNS) {
 		return false;
 	}
@@ -230,11 +234,15 @@ static bool load_index(void)
 		return false;
 	}
 
+	if (hdr.run_budget == 0 || hdr.run_budget > MAX_RUN_BUDGET) {
+		return false;
+	}
 	entry_count = hdr.entry_count;
 	next_run_id = hdr.next_run_id;
 	write_cursor = hdr.write_cursor;
 	erased_hi = hdr.erased_hi;
 	erased_lo = hdr.erased_lo;
+	run_budget = hdr.run_budget;
 	return true;
 }
 
@@ -305,7 +313,8 @@ static void reclaim_victims(const struct runway_plan *p)
  * one sector per pass. Zero work → straight back to IDLE. */
 static void schedule_topup(const char *why)
 {
-	runway_plan_topup(write_cursor, erased_hi, erased_lo, &prep.plan);
+	runway_plan_topup(write_cursor, erased_hi, erased_lo,
+			  runway_target(run_budget), &prep.plan);
 
 	if (prep.plan.sectors == 0) {
 		rec_state = REC_IDLE;
@@ -485,7 +494,7 @@ bool store_record_start(uint32_t payload_len)
 		return false;
 	}
 	if (payload_len == 0 ||
-	    payload_len + BLOB_OVERHEAD > MAX_RUN_BUDGET) {
+	    payload_len + BLOB_OVERHEAD > run_budget) {
 		return false;
 	}
 
@@ -525,6 +534,56 @@ bool store_record_start(uint32_t payload_len)
 	rec_state = REC_WRITING;
 	k_work_schedule(&rec_work, K_NO_WAIT);
 	return true;
+}
+
+/* ── Active run budget (SGL3) ──────────────────────────────────────
+ * Discipline-driven: the app maps SL 90 s / GS+SG 120 s / DH 150 s /
+ * Custom 60–600 s → bytes at 1 KB/s and pushes the value here. The
+ * device only validates bytes (1 sector's worth .. MAX_RUN_BUDGET).
+ * Changing the budget re-tops the runway when idle — the planner is
+ * fully parametric, nothing else moves. */
+bool store_set_run_budget(uint32_t payload_bytes)
+{
+	if (payload_bytes < LOG_SECTOR_SIZE - BLOB_OVERHEAD ||
+	    payload_bytes > MAX_RUN_BUDGET) {
+		return false;
+	}
+	if (payload_bytes == run_budget) {
+		return true;
+	}
+	run_budget = payload_bytes;
+	if (store_busy()) {
+		/* No re-top now (recording/top-up in flight); the next
+		 * top-up after the current cycle derives the new target
+		 * automatically. Persist so a crash keeps the setting. */
+		persist_index();
+		return true;
+	}
+	persist_index();
+	schedule_topup("budget-change");
+	return true;
+}
+
+uint32_t store_run_budget(void)
+{
+	return run_budget;
+}
+
+/* Athlete-facing capacity estimate: how many FULL budget runs still
+ * fit without evicting anything live. Free space = what's left after
+ * the live set and the standing reserve. */
+uint32_t store_free_full_runs(void)
+{
+	uint32_t target = runway_target(run_budget);
+	uint32_t live = 0;
+
+	for (uint16_t i = 0; i < entry_count; i++) {
+		live += run_span(entries[i].payload_len);
+	}
+	if (live + target > LOG_SIZE) {
+		return 0;
+	}
+	return (LOG_SIZE - live - target) / target;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -625,10 +684,11 @@ void store_init(void)
 		persist_index();
 	} else {
 		verify_runway();
-		printk("store: %u runs, cursor 0x%lx, runway hi 0x%lx lo 0x%lx\n",
+		printk("store: %u runs, cursor 0x%lx, runway hi 0x%lx lo 0x%lx, budget %lu B\n",
 		       entry_count, (unsigned long)write_cursor,
 		       (unsigned long)erased_hi,
-		       (unsigned long)erased_lo);
+		       (unsigned long)erased_lo,
+		       (unsigned long)run_budget);
 	}
 
 	for (uint8_t i = 0; i < entry_count && i < 8; i++) {
@@ -658,6 +718,7 @@ void store_wipe(void)
 	erased_lo = LOG_START;
 	entry_count = 0;
 	next_run_id = 0;
-	printk("store: wiped\n");
+	printk("store: wiped (budget %lu B kept)\n",
+	       (unsigned long)run_budget);
 	schedule_topup("post-wipe");
 }
