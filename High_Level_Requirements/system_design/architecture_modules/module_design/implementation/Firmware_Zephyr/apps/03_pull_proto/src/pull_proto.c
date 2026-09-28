@@ -64,6 +64,10 @@ static struct bt_uuid_128 console_uuid =
 
 static bool console_subscribed;
 
+static uint8_t run_info_buf[6];    /* count LE + age LE (age=0: no RTC
+				      until the epoch-sync port, ABC0) */
+static char run_list_json[RUN_LIST_JSON_SIZE];   /* sized from MAX_INDEXED_RUNS by construction (founding test) */
+
 /* ── Listing surface (ABC8/ABC9, built from the store) ─────────────
  * BUGFIX v0.9.1 (2026-09-28, found live with the phone): these
  * surfaces were built ONCE at boot — a run recorded after boot was
@@ -98,12 +102,6 @@ static void rebuild_listing(bool log_it)
 		printk("run list: %s\n", run_list_json);
 	}
 }
-
-/* ── (was: listing surface comment anchor) ───────────────────────── */
-
-static uint8_t run_info_buf[6];    /* count LE + age LE (age=0: no RTC
-				      until the epoch-sync port, ABC0) */
-static char run_list_json[RUN_LIST_JSON_SIZE];   /* sized from MAX_INDEXED_RUNS by construction (founding test) */
 
 static ssize_t read_buf(const void *data, uint16_t data_len,
 			void *buf, uint16_t len, uint16_t offset)
