@@ -2170,3 +2170,39 @@ not a storage-arc regression.
 **FW v0.9.2 on bench** (FLASH 24%, RAM 70%). Phone flow verified to:
 connect → live listing → download streams + resume. Completion blocked only
 by the known wedge.
+
+### 2026-09-28 (late) — CASE CONT'D: download loop → root causes + END-TO-END PASS
+
+**JP report:** downloads loop forever (~81 KB, disconnect, restart).
+
+**Diagnosis (serial capture during live loop):**
+- Device EXONERATED with hard proof: frames continued streaming past the
+  phone's reported death (seq 369 @ off 88560 vs phone deaf at 84240; all
+  bt_gatt_notify == 0; no device-side abort). Phone-side deafness (the S22
+  wedge) mid-stream.
+- Wedge persists at 25 ms AND 50 ms cadence (deaths at 84 KB / 43 KB) —
+  cadence lowers exposure but is not a cure.
+- **The infinite loop's true engine: the V2 native downloader restarts at
+  off=0 on every stream timeout (serial: 'stream start id=0 off=0' ×4) —
+  NO resume-on-timeout.** Stochastic death × no convergence = loop.
+  App-side fix needed (NordicBleDownloader: resume from received-bytes
+  offset like the FBP path did).
+- v0.9.3 (a58ddeb): cadence 25→50 ms anyway (5.46-proven profile, halves
+  exposure; 90 KB ≈ 19 s).
+
+**Bricks & burns (all mine, all ledgered):**
+- Two-builds-one-dir race (v093 "frozen" was alive, log buffering;
+  v093b launched over it) → mangled hex → silent boot. Fix discipline:
+  NEVER launch a build while another may live; verify by process list,
+  clean-slate when in doubt.
+- SECOND self-wipe via 'x': node-invoke TIMEOUT does not kill the PC-side
+  process — the zcmd ran on, sent 'x', held COM3. LESSON ×2: 'x' needs
+  device-side confirmation. v0.9.4 PLAN: 'x' prints "confirm within 3 s
+  with X"; scripts updated accordingly.
+- COM3 contention: VS Code nRF sidebar grabs the port after extension
+  restarts; my own long zcmd captures self-collide — stagger captures.
+
+**END-TO-END PASS (v0.9.3, 2 × 40960 B runs):** phone fresh cycle →
+live listing 2/2 → native download BOTH runs single pass at 50 ms →
+"Not Downloaded 0", Saved Runs 8→10. The 40 KB size converges (matches
+09-26 history); 90 KB awaits app-side resume.
