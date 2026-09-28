@@ -2135,3 +2135,38 @@ run); runway policy already supports it if ever revisited.
   Remedy: taskkill the extension python (restarts on demand) + relaunch.
   (First cause was stdin: <NUL. Both now in the remote-build recipe.)
 - FW v0.9.0 on bench. FLASH 24.0%, RAM 70.1%.
+
+### 2026-09-28 — CASE: phone-driven test session — 2 app-contract bugs found & fixed, wedge re-sighted
+
+**Session:** JP connected App 1.46 ("no run missing" = 0/0 stale), handed phone
+control to ZioClaw (adb + uiautomator + screenshots + file-channel pulls —
+semantics NOW EXTRACTABLE from Flutter via uiautomator, better than 09-26).
+
+**Bug 1 (v0.9.1, 2ca973c/45a67e9):** ABC8/ABC9 listing surfaces were built
+ONCE AT BOOT — runs recorded after boot invisible to the app until reboot.
+Symptom: phone connected, read ABC8=0/ABC9=[] while serial D showed 1-2 runs.
+Fix: rebuild_listing() on every GATT read (skip while store_busy). PROVEN
+LIVE: post-flash, post-boot runs immediately visible ("2 on device · 2 not
+downloaded"). Why it hid so long: every bench flow rebooted between record
+and list; production (record → same session download) would have hit it on
+day one.
+
+**Bug 2 (v0.9.2, 72da97c):** the {"free":N,"d_end":N} merged line broke the
+V2 native downloader — it string-matches {"d_end":N} EXACTLY as terminator;
+merged line → "D: directory timeout" retry loop (byte-level proof from
+logcat: all 3 notifications received, then 10 s silence → drop 0x13).
+Fix: d_end PURE (app-frozen), free estimate serial-only. LESSON: app wire
+contract = exact-string discipline; extensions go on NEW lines/chars, never
+merged into frozen ones.
+
+**Wedge re-sighting (NOT new, parked TC-2026-08-26-001):** with directory
+fixed, native FT streams run and RESUME (84.2/87.9 KB reached, retry
+resumed mid-run) but streams still die stochastically (84240 B = 96%,
+then 49 KB...) until attempt budget exhausts. Same S22 signature as
+ArduinoFW era: stochastic phone-side stall, ~244 B chunks, longer runs =
+more exposure. Zephyr port inherits the same agenda (settle/pacing tuning),
+not a storage-arc regression.
+
+**FW v0.9.2 on bench** (FLASH 24%, RAM 70%). Phone flow verified to:
+connect → live listing → download streams + resume. Completion blocked only
+by the known wedge.
