@@ -347,10 +347,23 @@ static void cmd_work_handler(struct k_work *w)
 				 store_run_side(i));
 			console_emit(line);
 		}
-		char tail_line[48];   /* {"free":4294967295,"d_end":255} fits */
+		/* APP CONTRACT (learned the hard way, 2026-09-28): the V2
+		 * native downloader string-matches {"d_end":N} EXACTLY as
+		 * the directory terminator — a merged {"free":..,"d_end":..}
+		 * line made it wait forever ("D: directory timeout" loop).
+		 * d_end stays PURE; the free-run estimate is serial-only
+		 * until it joins the app protocol properly. */
+		char tail_line[24];
 
-		snprintf(tail_line, sizeof(tail_line), "{\"free\":%lu,\"d_end\":%u}",
-			 (unsigned long)store_free_full_runs(), n);
+		if (!req_via_ble) {
+			char free_line[24];
+
+			snprintf(free_line, sizeof(free_line),
+				 "{\"free\":%lu}",
+				 (unsigned long)store_free_full_runs());
+			console_emit(free_line);
+		}
+		snprintf(tail_line, sizeof(tail_line), "{\"d_end\":%u}", n);
 		console_emit(tail_line);
 	} else if (cmd == 's') {
 		long id, off, len;
