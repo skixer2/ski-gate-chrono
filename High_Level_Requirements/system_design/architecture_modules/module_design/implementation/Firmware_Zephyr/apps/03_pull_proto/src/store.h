@@ -41,14 +41,20 @@ void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n);
 
 /* ── Recording producer (4b: real lifecycle) ──────────────────────
  * Starts recording a run of payload_len bytes. The producer runs as
- * a chunked state machine (erase → write → close), non-blocking, and
- * feeds ramp bytes for now — the sensor pipeline later calls the same
- * path with real frames. Returns false if busy or length out of
- * policy (0 < payload_len <= MAX_RUN_BUDGET - 22). */
+ * a chunked state machine (write → close → runway top-up), non-
+ * blocking, and feeds ramp bytes for now — the sensor pipeline later
+ * calls the same path with real frames. SGL2: NO erase at start —
+ * the runway for a max-length run is freed right AFTER each run
+ * (and at boot / after wipe), so a start of unknown length always
+ * has clean space. Returns false if busy (e.g. top-up in flight),
+ * length out of policy (0 < payload_len <= MAX_RUN_BUDGET - 22),
+ * or the runway invariant is violated (loud printk). */
 bool store_record_start(uint32_t payload_len);
 bool store_busy(void);
 
-#endif /* SGC_STORE_H */
-
-/* Bench reset: erase the index, restart the log empty. */
+/* Bench reset: erase the index, restart the log empty. Re-tops the
+ * runway in the background (SGL2: a wipe leaves flash dirty; the
+ * top-up makes the first 244 KiB clean again). */
 void store_wipe(void);
+
+#endif /* SGC_STORE_H */

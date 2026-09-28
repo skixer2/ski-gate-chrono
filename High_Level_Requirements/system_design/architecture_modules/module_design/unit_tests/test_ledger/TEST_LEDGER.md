@@ -2012,3 +2012,49 @@ Plan: (1) watchdog absorbs http.server (one script, both daemons);
 the 09-26 access-denied was the missing admin); (3) node host at boot
 (same mechanism or openclaw service install — inspect first);
 (4) prove with real reboot test.
+
+### 2026-09-28 — CASE: wrap erase bug + erase-policy redesign (JP order 14:20)
+
+**Found (JP code review, question about store_record_start's erase lines):**
+the WRAPPED erase sweep is composed wrong. erase_from = max(addr, erased_end)
+= erased_end (high, ≥ cursor always) while erase_to = LOG_START+span+stub
+(low) → erase_to < erase_from → walker erases ZERO sectors → record programs
+at LOG_START over first-lap bits (corrupt, CRC-fail at pull); reclamation
+overlaps() gets an inverted range → no victims dropped (index keeps entries
+pointing at overwritten flash); debug "erase %lu B" underflows. Never fired
+on bench (3×40 KB in 1.9 MB — wrap needs ~46 typical / 8 max runs). Host
+suite inherited the flaw: simulate() mirrors the same math and checks only
+counts, never erase-before-write.
+
+**Requirement change (JP, verbatim intent):** "the sweep erases exactly what
+the incoming record will occupy" is WRONG for production — run length is
+unknown at start (athlete's descent). Correct: free space for a MAX-LENGTH
+run right AFTER a run ends; leftover runway is bonus. This is also the
+enabler for the future streaming sensor producer (no length at start).
+
+**New policy (SGL2):**
+- At CLOSE (post-run), at BOOT, and after WIPE: top-up erase until
+  coverage U(cursor): [cursor, cursor+TARGET) when remaining ≥ TARGET,
+  else [cursor, LOG_END) ∪ [LOG_START, LOG_START+TARGET) — two segments
+  (stub fully cleaned + bottom reserved for the wrapping max-run; a plain
+  ring-interval runway is INSUFFICIENT near the end — proven by counter-
+  example: remaining=100K, span=244K → bottom needs 244K, interval gives
+  144K). TARGET = run_span(MAX_RUN_BUDGET-BLOB_OVERHEAD) = 244 KiB = 61
+  sectors. All absolute math, no ring arithmetic anywhere.
+- State: two frontiers persisted: erased_hi (from cursor), erased_lo
+  (bottom reserve). Wrap transition at close: hi := lo; lo := LOG_START.
+- Record start: NO erase, NO reclamation. Coverage guard (defense,
+  printk+fail if violated — span must fit [cursor,hi) or [LOG_START,lo)).
+- Reclamation moves to top-up planning: victims = entries intersecting
+  the erase segments. Persist at top-up COMPLETION (crash window (c):
+  mid-top-up crash → old index lists victims, some erased → loud CRC
+  fail at pull, catalog otherwise intact — same philosophy as (a)/(b)).
+- sgl_header format change (adds erased_lo) → magic bumped SGL1→SGL2;
+  old index = load fail → fresh log (loud, not silent).
+
+**Fix scope (this case):** store_layout.h (TARGET + runway_plan pure fns),
+tests/test_layout.c (runway_plan unit tests + bitmap lifecycle simulation:
+every programmed byte must land in an erased sector, wrap included — the
+test that would have caught the original bug), store_flash.c (states
+IDLE→WRITING→CLOSING→TOPUP→IDLE; boot/wipe top-up; header essay), FW →
+v0.8.0. Consistency audit of whole store vs intended result (JP order).

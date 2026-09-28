@@ -351,7 +351,8 @@ static void cmd_work_handler(struct k_work *w)
 		console_emit("OK wiped");
 	} else if (cmd == 'w') {
 		/* 4b bench producer: record a synthetic run through the REAL
-		 * lifecycle (erase → write → close → index). nRF Connect:
+		 * lifecycle (write → close → runway top-up; SGL2: erase is
+		 * post-run/boot, never at start). nRF Connect:
 		 *   write "w 40960"   → one typical training run
 		 *   write "w 249834"  → one max-budget run (forces rotation)
 		 * Progress and the done-line arrive on serial; D updates. */

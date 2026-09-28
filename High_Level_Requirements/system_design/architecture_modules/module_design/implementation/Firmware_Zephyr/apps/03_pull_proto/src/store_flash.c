@@ -1,58 +1,60 @@
 /*
- * store_flash.c — circular run log over SPI NOR (step 4b)
- * =======================================================
- * The production store. Replaces 4a's slot-based reader with the
- * circular log validated by tests/test_layout.c — read the header
- * essay in store_layout.h for the design rationale (short version:
- * JP's packing insight + retained-history requirement → ~48 typical
- * runs on the 2 MB chip instead of 8, oldest-only reclamation, hot
- * path stays program-only).
+ * store_flash.c — SGL2: the circular run log over real SPI NOR
+ * ====================================================================
+ * Design essay: store_layout.h (the pure arithmetic — host-tested).
+ * This file is the hardware side: flash ops + the record state machine.
  *
- * ── What lives where (flash map, top rows unchanged from 4a) ───────
+ * ── Record lifecycle (SGL2) ────────────────────────────────────────
  *
- *   0x00000–0x13FFF   pre-roll region (FlashRing era — untouched, the
- *                     sensor pipeline owns it when it arrives)
- *   0x14000–0x1FBFFF  THE LOG: packed runs, sector-padded, circular
- *   0x1FC000          config (future: device settings persistence)
- *   0x1FD000          INDEX (format below — device-internal, the app
- *                     never sees it; only the blob + D/s are frozen)
- *   0x1FE000          self-test victim sector (4 KB erase proof)
+ *   store_record_start(len)  NO erase, NO reclaim here. The runway
+ *   ──────────────────────  was topped up right after the PREVIOUS
+ *                           run (and at boot / after wipe). A coverage
+ *                           guard verifies and fails LOUDLY if the
+ *                           invariant was ever violated (defense).
+ *   IDLE → WRITING          header + payload chunks + CRC on the fly
+ *          → CLOSING        trailer, index entry commit, persist
+ *          → TOPUP          erase top-up until coverage reaches
+ *                           U(cursor) — then persist again.
+ *   IDLE                    (also entered from boot/wipe via TOPUP)
  *
- * ── Index format ("SGL1", ours to design — see ledger f02fdc5) ────
+ * ── Erase policy (JP, 2026-09-28 — the SGL2 requirement) ───────────
  *
- *   [16 B header][16 B entry] × entry_count   (≤ 1040 B, one sector)
+ *   Run length is UNKNOWN at start (an athlete's descent; a future
+ *   streaming sensor producer). So erase work is never sized for the
+ *   incoming record. Right AFTER a run (and at boot, and after wipe)
+ *   we free enough space for a MAXIMUM-length run:
  *
- *   header: magic "SGL1" · write_cursor · erased_end · entry_count ·
- *           next_run_id
- *   entry:  addr · payload_len · ts · run_id · side · cal
+ *     U(cursor) = [cursor, cursor+RUNWAY_TARGET)         when it fits
+ *               = [cursor, LOG_END) ∪ [LOG_START,
+ *                 LOG_START+RUNWAY_TARGET)               near the end
  *
- *   Entries are in AGE ORDER (oldest first) — the same order the
- *   directory lists and reclamation consumes. No slot bytes anymore:
- *   a log entry IS its address range.
+ *   A run that used less than the max leaves the rest of the runway
+ *   ready for the run after — "even better", exactly as ordered.
+ *   Two persisted frontiers track coverage: erased_hi (from cursor)
+ *   and erased_lo (bottom reserve). Absolute math only — NO ring
+ *   arithmetic (the SGL1 wrap bug was a ring-composition error;
+ *   ledger 2026-09-28).
  *
- * ── Concurrency & the recording producer ───────────────────────────
+ * ── Concurrency: the non-blocking producer ─────────────────────────
  *
- *   Recording must never block the shared system workqueue: erases
- *   take tens of ms per sector and a 40 KB run needs ~10 of them.
- *   So the producer is a small STATE MACHINE driven by a delayable
- *   work item — one sector / one 4 KB chunk per pass, rescheduled
- *   with K_MSEC(1) between passes. The future sensor pipeline will
- *   call the same append path from its own pacing; 'w' merely feeds
- *   it ramp bytes instead of sensor frames.
+ *   Erases take tens of ms per sector and a top-up can need dozens.
+ *   The producer is a small STATE MACHINE driven by a delayable work
+ *   item — one sector erase / one 4 KB payload chunk per pass,
+ *   rescheduled with K_MSEC(1). The sysworkq is never held long.
  *
- *   States: IDLE → ERASING (reclaim + prep, one sector/pass)
- *                 → WRITING (header + payload chunks + CRC on the fly)
- *                 → CLOSING (trailer, index persist, entry commit)
- *                 → IDLE
+ * ── Crash windows (documented, bench-era accepted) ─────────────────
  *
- * ── Crash windows (documented, accepted for the bench era) ────────
- *
- *   The index is persisted (a) after the erase/reclaim phase and
- *   (b) at close. A crash between those loses the in-flight run's
- *   entry but never corrupts the catalog of CLOSED runs; a stale
- *   entry pointing at erased flash fails CRC at the app — loud, not
- *   silent. Good enough until the watchdog/commit discipline of the
- *   production state machine arrives.
+ *   (a) mid-TOPUP:  index on flash still lists victims whose sectors
+ *       are partially erased → their CRC fails at the app — loud, not
+ *       silent. Catalog of untouched runs is intact.
+ *   (b) after close-persist, before TOPUP-persist: runway on flash is
+ *       short of what RAM believes → boot re-erases the delta —
+ *       harmless (idempotent).
+ *   (c) mid-RECORD: no entry is committed, but the partial bytes sit
+ *       INSIDE what the persisted index claims is an erased runway.
+ *       Boot heals this: verify_runway() reads the first bytes of the
+ *       claimed runway — anything not 0xFF resets the frontier and
+ *       forces a full re-top-up.
  */
 #include <zephyr/kernel.h>
 #include <string.h>
@@ -63,7 +65,7 @@
 /* ── Flash geometry & index placement (map above) ─────────────────── */
 #define INDEX_ADDR       0x1FD000u
 #define SELFTEST_ADDR    0x1FE000u
-#define SGL1_MAGIC       0x314C4753u   /* "SGL1" little-endian        */
+#define SGL2_MAGIC       0x324C4753u   /* "SGL2" little-endian        */
 
 /* Timestamps: the device has no RTC until the epoch-sync port (the
  * phone writes ABC0). Until then, synthetic runs are stamped from the
@@ -86,18 +88,21 @@ struct __attribute__((packed)) run_header {
 	uint8_t  _pad;
 };
 
-/* ── Index structures (device-internal — ours) ────────────────────── */
+/* ── Index structures (device-internal — SGL2 format) ───────────────
+ * SGL1 → SGL2 (2026-09-28): erased_end became the two-frontier pair
+ * {erased_hi, erased_lo} of the runway policy. Old SGL1 indexes fail
+ * the magic check and start fresh — loud, not silent. */
 struct __attribute__((packed)) sgl_header {
 	uint32_t magic;
-	uint32_t write_cursor;    /* next run starts here (sector-aligned) */
-	uint32_t erased_end;      /* [.., erased_end) is erased & ready    */
+	uint32_t write_cursor;    /* next run starts here (sector-adj.)  */
+	uint32_t erased_hi;       /* runway end from cursor              */
+	uint32_t erased_lo;       /* bottom reserve end                  */
 	uint16_t entry_count;
 	uint16_t next_run_id;
-	uint8_t  _pad[2];
 };
 
 struct __attribute__((packed)) sgl_entry {
-	uint32_t addr;            /* absolute flash address of the header   */
+	uint32_t addr;            /* absolute flash address of the header */
 	uint32_t payload_len;
 	uint32_t ts_utc;
 	uint16_t run_id;
@@ -111,7 +116,8 @@ static struct sgl_entry entries[MAX_INDEXED_RUNS];
 static uint16_t entry_count;
 static uint16_t next_run_id;
 static uint32_t write_cursor;
-static uint32_t erased_end;
+static uint32_t erased_hi;
+static uint32_t erased_lo;
 
 /* ── CRC32 (bitwise; identical math to RawRunStore's table) ───────── */
 static uint32_t crc32_byte(uint32_t crc, uint8_t b)
@@ -177,9 +183,10 @@ void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n)
 static void persist_index(void)
 {
 	struct sgl_header hdr = {
-		.magic = SGL1_MAGIC,
+		.magic = SGL2_MAGIC,
 		.write_cursor = write_cursor,
-		.erased_end = erased_end,
+		.erased_hi = erased_hi,
+		.erased_lo = erased_lo,
 		.entry_count = entry_count,
 		.next_run_id = next_run_id,
 	};
@@ -203,7 +210,7 @@ static bool load_index(void)
 	struct sgl_header hdr;
 
 	if (flash_read(flashdev, INDEX_ADDR, &hdr, sizeof(hdr)) != 0 ||
-	    hdr.magic != SGL1_MAGIC ||
+	    hdr.magic != SGL2_MAGIC ||
 	    hdr.entry_count > MAX_INDEXED_RUNS) {
 		return false;
 	}
@@ -213,31 +220,33 @@ static bool load_index(void)
 		return false;
 	}
 
-	/* Cursor sanity: a corrupt cursor would poison every future
-	 * write, so we validate against the region and the last entry. */
+	/* Cursor/frontier sanity: a corrupt cursor would poison every
+	 * future write, so we validate against the region; hi must
+	 * never trail the cursor (invariant of every persisted state). */
 	if (hdr.write_cursor < LOG_START || hdr.write_cursor > LOG_END ||
-	    hdr.erased_end < LOG_START || hdr.erased_end > LOG_END) {
+	    hdr.erased_hi < LOG_START || hdr.erased_hi > LOG_END ||
+	    hdr.erased_lo < LOG_START || hdr.erased_lo > LOG_END ||
+	    hdr.erased_hi < hdr.write_cursor) {
 		return false;
 	}
 
 	entry_count = hdr.entry_count;
 	next_run_id = hdr.next_run_id;
 	write_cursor = hdr.write_cursor;
-	erased_end = hdr.erased_end;
+	erased_hi = hdr.erased_hi;
+	erased_lo = hdr.erased_lo;
 	return true;
 }
 
 /* ════════════════════════════════════════════════════════════════════
  * RECORDING PRODUCER — the real lifecycle, chunked & non-blocking
  *
- * store_record_start(len) validates, plans (address, erase range,
- * reclaims), and kicks the state machine. Each work pass does ONE
- * bounded piece of work (one sector erase OR one 4 KB payload chunk)
- * and reschedules — the sysworkq is never held for more than a few
- * ms of flash time per pass.
+ * store_record_start(len) validates, plans the address, and guards
+ * the runway invariant. Each work pass does ONE bounded piece of work
+ * (one sector erase OR one 4 KB payload chunk) and reschedules.
  * ════════════════════════════════════════════════════════════════════ */
 
-enum rec_state { REC_IDLE, REC_ERASING, REC_WRITING, REC_CLOSING };
+enum rec_state { REC_IDLE, REC_WRITING, REC_CLOSING, REC_TOPUP };
 
 static struct k_work_delayable rec_work;
 static enum rec_state rec_state = REC_IDLE;
@@ -249,12 +258,17 @@ static struct {
 	uint32_t payload_len;
 	uint32_t written;      /* payload bytes emitted so far          */
 	uint32_t crc;          /* running CRC (payload only!)           */
-	uint32_t erase_from;   /* erase sweep cursor                    */
-	uint32_t erase_to;     /* inclusive end of erase range          */
-	bool     wrapped;      /* true → erase range includes the stub  */
+	bool     wrapped;      /* record placed at LOG_START            */
 	uint32_t ts;
 	uint8_t  side;
 } rec;
+
+/* Top-up walk state (REC_TOPUP): */
+static struct {
+	struct runway_plan plan;
+	uint8_t  seg;         /* 0 = segment 1, 1 = segment 2          */
+	uint32_t from, to;    /* current segment walk cursors          */
+} prep;
 
 bool store_busy(void)
 {
@@ -267,50 +281,97 @@ static bool overlaps(uint32_t a1, uint32_t a2, uint32_t b1, uint32_t b2)
 	return a1 < b2 && b1 < a2;
 }
 
+/* RECLAMATION: drop oldest entries whose extents intersect the erase
+ * segments — the entire garbage policy, mirroring the host test. */
+static void reclaim_victims(const struct runway_plan *p)
+{
+	while (entry_count > 0 &&
+	       (overlaps(entries[0].addr,
+			 entries[0].addr + run_span(entries[0].payload_len),
+			 p->s1_from, p->s1_to) ||
+		overlaps(entries[0].addr,
+			 entries[0].addr + run_span(entries[0].payload_len),
+			 p->s2_from, p->s2_to))) {
+		printk("rec: reclaim id=%u (%lu B, oldest)\n",
+		       entries[0].run_id,
+		       (unsigned long)entries[0].payload_len);
+		memmove(&entries[0], &entries[1],
+			(entry_count - 1) * sizeof(entries[0]));
+		entry_count--;
+	}
+}
+
+/* Enter REC_TOPUP: plan the top-up, reclaim victims inside it, walk
+ * one sector per pass. Zero work → straight back to IDLE. */
+static void schedule_topup(const char *why)
+{
+	runway_plan_topup(write_cursor, erased_hi, erased_lo, &prep.plan);
+
+	if (prep.plan.sectors == 0) {
+		rec_state = REC_IDLE;
+		return;
+	}
+
+	reclaim_victims(&prep.plan);
+
+	prep.seg = 0;
+	prep.from = prep.plan.s1_from;
+	prep.to = prep.plan.s1_to;
+	if (prep.from >= prep.to) {
+		/* segment 1 already clean — start at the bottom reserve */
+		prep.seg = 1;
+		prep.from = prep.plan.s2_from;
+		prep.to = prep.plan.s2_to;
+	}
+
+	printk("prep: %s — %u sectors (cursor 0x%lx hi 0x%lx lo 0x%lx)\n",
+	       why, (unsigned)prep.plan.sectors,
+	       (unsigned long)write_cursor,
+	       (unsigned long)erased_hi, (unsigned long)erased_lo);
+
+	rec_state = REC_TOPUP;
+	k_work_schedule(&rec_work, K_NO_WAIT);
+}
+
 static void rec_work_handler(struct k_work *w)
 {
 	switch (rec_state) {
-	case REC_ERASING: {
-		/* One sector per pass. The sweep covers [addr, addr+span)
-		 * plus the wrap stub when we circled — and it may have
-		 * required reclaiming the oldest entries (done at plan
-		 * time; their extents are inside this same sweep). */
-		uint32_t from = rec.erase_from;
+	case REC_TOPUP: {
+		/* One sector per pass. Segments are walked in ring order
+		 * (s1 toward LOG_END, then the bottom reserve s2); the
+		 * frontiers are committed as each segment completes. */
+		uint32_t from = prep.from;
 
-		if (from < rec.erase_to) {
+		if (from < prep.to) {
 			flash_erase(flashdev, from, LOG_SECTOR_SIZE);
-			rec.erase_from = from + LOG_SECTOR_SIZE;
-			if (erased_end < from + LOG_SECTOR_SIZE) {
-				erased_end = from + LOG_SECTOR_SIZE;
-			}
+			prep.from = from + LOG_SECTOR_SIZE;
 			k_work_schedule(&rec_work, K_MSEC(1));
 			return;
 		}
 
-		/* Erase phase done → persist (crash window (a), see file
-		 * header) and write the run header. */
+		if (prep.seg == 0) {
+			erased_hi = prep.plan.s1_to;
+			prep.seg = 1;
+			prep.from = prep.plan.s2_from;
+			prep.to = prep.plan.s2_to;
+			if (prep.from < prep.to) {
+				k_work_schedule(&rec_work, K_MSEC(1));
+				return;
+			}
+			/* s2 already clean — fall through to finish */
+		} else {
+			erased_lo = prep.plan.s2_to;
+		}
+
+		/* Coverage reached U(cursor) — persist (crash window (b)
+		 * closes here) and go idle. */
 		persist_index();
-
-		struct run_header hdr = {
-			.format_ver = 2, .arm_side = rec.side,
-			.ts_utc = rec.ts, .baro_temp = 125,
-			.data_size = 0, .frame_count = 0,
-			.cal_accuracy = 3, ._pad = 0,
-		};
-
-		flash_write(flashdev, (off_t)rec.addr, &hdr, sizeof(hdr));
-		printk("rec: writing %lu B at 0x%lx\n",
-		       (unsigned long)rec.payload_len,
-		       (unsigned long)rec.addr);
-		rec_state = REC_WRITING;
-		k_work_schedule(&rec_work, K_MSEC(1));
+		printk("prep: runway ready (hi=0x%lx lo=0x%lx)\n",
+		       (unsigned long)erased_hi, (unsigned long)erased_lo);
+		rec_state = REC_IDLE;
 		return;
 	}
 
-	/* NOTE (bug 09-26, fixed v0.7.4): BLOB_OVERHEAD (22) is SIZE math
-	 * (header+trailer). Byte OFFSETS use sizeof(run_header) — the 4b
-	 * producer wrote payload at +22 instead of +16, pushing the trailer
-	 * 6 bytes past the payload end. Size vs offset: never mix them. */
 	case REC_WRITING: {
 		/* One 4 KB chunk per pass. The payload is the ramp
 		 * generator (bench producer); the sensor pipeline will
@@ -341,6 +402,10 @@ static void rec_work_handler(struct k_work *w)
 		return;
 	}
 
+	/* NOTE (bug 09-26, fixed v0.7.4): BLOB_OVERHEAD (22) is SIZE math
+	 * (header+trailer). Byte OFFSETS use sizeof(run_header) — the 4b
+	 * producer wrote payload at +22 instead of +16, pushing the trailer
+	 * 6 bytes past the payload end. Size vs offset: never mix them. */
 	case REC_CLOSING: {
 		/* Trailer: C3 32 + CRC32 LE (payload only, init/final-xor
 		 * 0xFFFFFFFF — the frozen wire format). */
@@ -375,13 +440,21 @@ static void rec_work_handler(struct k_work *w)
 		entry_count++;
 		write_cursor = rec.addr + rec.span;
 
-		persist_index();          /* crash window (b) closed */
+		persist_index();          /* crash window: entry committed */
 		printk("rec: done id=%u payload=%lu total=%lu runs=%u\n",
 		       (unsigned)(next_run_id - 1),
 		       (unsigned long)rec.payload_len,
 		       (unsigned long)(BLOB_OVERHEAD + rec.payload_len),
 		       entry_count);
-		rec_state = REC_IDLE;
+
+		/* SGL2: right after the run, free space for a max-length
+		 * run. Wrap transition first: the bottom reserve becomes
+		 * the runway (it was pre-erased for exactly this). */
+		if (rec.wrapped) {
+			erased_hi = erased_lo;
+			erased_lo = LOG_START;
+		}
+		schedule_topup("post-run");
 		return;
 	}
 
@@ -403,42 +476,37 @@ bool store_record_start(uint32_t payload_len)
 	uint32_t span = run_span(payload_len);
 
 	/* Plan the address (wrap rule: never straddle LOG_END). */
-	rec.addr = next_run_addr(write_cursor, span, &rec.wrapped);
+	bool wrapped;
+	uint32_t addr = next_run_addr(write_cursor, span, &wrapped);
+
+	/* SGL2: no erase and no reclamation at start — the runway was
+	 * topped up right after the PREVIOUS run. Defense in depth:
+	 * verify coverage and fail LOUDLY if the invariant broke. */
+	if ((!wrapped && addr + span > erased_hi) ||
+	    (wrapped && LOG_START + span > erased_lo)) {
+		printk("ERROR: runway invariant violated "
+		       "(cursor 0x%lx hi 0x%lx lo 0x%lx)\n",
+		       (unsigned long)write_cursor,
+		       (unsigned long)erased_hi,
+		       (unsigned long)erased_lo);
+		return false;
+	}
+
+	rec.addr = addr;
 	rec.span = span;
 	rec.payload_len = payload_len;
 	rec.written = 0;
 	rec.crc = 0xFFFFFFFFu;
 	rec.ts = BUILD_EPOCH + k_uptime_get_32() / 1000;
 	rec.side = (uint8_t)(next_run_id & 1);   /* alternate L/R for bench */
+	rec.wrapped = wrapped;
 
-	/* Erase sweep = the run's extent (+ stub if wrapped), starting
-	 * from wherever the erased runway currently ends. */
-	rec.erase_from = (rec.addr > erased_end) ? rec.addr : erased_end;
-	rec.erase_to = rec.addr + span;
-	if (rec.wrapped) {
-		rec.erase_to += (LOG_END - write_cursor);
-	}
+	printk("rec: start %lu B%s at 0x%lx (hi 0x%lx lo 0x%lx)\n",
+	       (unsigned long)payload_len, wrapped ? " [wrap]" : "",
+	       (unsigned long)addr,
+	       (unsigned long)erased_hi, (unsigned long)erased_lo);
 
-	/* RECLAMATION: drop oldest entries whose extents intersect the
-	 * sweep — the entire garbage policy, mirroring the host test. */
-	while (entry_count > 0 &&
-	       overlaps(entries[0].addr,
-			entries[0].addr + run_span(entries[0].payload_len),
-			rec.erase_from, rec.erase_to)) {
-		printk("rec: reclaim id=%u (%lu B, oldest)\n",
-		       entries[0].run_id,
-		       (unsigned long)entries[0].payload_len);
-		memmove(&entries[0], &entries[1],
-			(entry_count - 1) * sizeof(entries[0]));
-		entry_count--;
-	}
-
-	printk("rec: start %lu B%s at 0x%lx (erase %lu B)\n",
-	       (unsigned long)payload_len, rec.wrapped ? " [wrap]" : "",
-	       (unsigned long)rec.addr,
-	       (unsigned long)(rec.erase_to - rec.erase_from));
-
-	rec_state = REC_ERASING;
+	rec_state = REC_WRITING;
 	k_work_schedule(&rec_work, K_NO_WAIT);
 	return true;
 }
@@ -446,6 +514,32 @@ bool store_record_start(uint32_t payload_len)
 /* ════════════════════════════════════════════════════════════════════
  * BOOT
  * ════════════════════════════════════════════════════════════════════ */
+
+/* Crash window (c) healer: a mid-record crash programs bytes into
+ * what the persisted index claims is an erased runway. Sniff the
+ * first bytes of each claimed region — anything not 0xFF resets the
+ * frontier and forces a full re-top-up at boot. */
+static void verify_runway(void)
+{
+	static uint8_t sniff[64];
+	bool dirty = false;
+
+	flash_read(flashdev, (off_t)write_cursor, sniff, sizeof(sniff));
+	for (uint32_t i = 0; i < sizeof(sniff); i++) {
+		if (sniff[i] != 0xFF) { dirty = true; break; }
+	}
+	if (!dirty && erased_lo > LOG_START) {
+		flash_read(flashdev, (off_t)LOG_START, sniff, sizeof(sniff));
+		for (uint32_t i = 0; i < sizeof(sniff); i++) {
+			if (sniff[i] != 0xFF) { dirty = true; break; }
+		}
+	}
+	if (dirty) {
+		printk("store: stale partial record — runway reset\n");
+		erased_hi = write_cursor;
+		erased_lo = LOG_START;
+	}
+}
 
 void store_init(void)
 {
@@ -498,22 +592,27 @@ void store_init(void)
 		flash_write(flashdev, SELFTEST_ADDR, save, sizeof(save));
 	}
 
+	k_work_init_delayable(&rec_work, rec_work_handler);
+
 	/* Load the log index — or start fresh. Fresh means: cursor at
-	 * LOG_START, NOTHING erased yet, zero entries; the first 'w'
-	 * erases exactly what it needs. Legacy slot-era data (5 runs,
-	 * safe on the phone since 09-24) is consumed by reclamation as
-	 * the log grows — no bulk erase, no boot delay. */
+	 * LOG_START, nothing erased yet; the boot top-up below erases
+	 * the first RUNWAY_TARGET sectors (covers dirty flash after a
+	 * corrupt/absent index). Legacy slot-era data is consumed by
+	 * reclamation as the log grows — no bulk erase, no boot delay. */
 	if (!load_index()) {
 		write_cursor = LOG_START;
-		erased_end = LOG_START;
+		erased_hi = LOG_START;
+		erased_lo = LOG_START;
 		entry_count = 0;
 		next_run_id = 0;
 		printk("store: fresh log (legacy slot data reclaims lazily)\n");
 		persist_index();
 	} else {
-		printk("store: %u runs, cursor 0x%lx, erased to 0x%lx\n",
+		verify_runway();
+		printk("store: %u runs, cursor 0x%lx, runway hi 0x%lx lo 0x%lx\n",
 		       entry_count, (unsigned long)write_cursor,
-		       (unsigned long)erased_end);
+		       (unsigned long)erased_hi,
+		       (unsigned long)erased_lo);
 	}
 
 	for (uint8_t i = 0; i < entry_count && i < 8; i++) {
@@ -526,7 +625,10 @@ void store_init(void)
 		printk("… +%u more\n", entry_count - 8);
 	}
 
-	k_work_init_delayable(&rec_work, rec_work_handler);
+	/* SGL2: boot = one of the two moments the runway is topped up
+	 * (the other: right after each run). Background work — the
+	 * first command during it gets a busy refusal (retry). */
+	schedule_topup("boot");
 }
 
 void store_wipe(void)
@@ -536,8 +638,10 @@ void store_wipe(void)
 	}
 	flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE);
 	write_cursor = LOG_START;
-	erased_end = LOG_START;
+	erased_hi = LOG_START;
+	erased_lo = LOG_START;
 	entry_count = 0;
 	next_run_id = 0;
 	printk("store: wiped\n");
+	schedule_topup("post-wipe");
 }

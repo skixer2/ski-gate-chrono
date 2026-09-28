@@ -64,6 +64,27 @@
 #define MAX_RUN_BUDGET    0x3D000u   /* 244 KiB — old slot size, now a cap */
 #define MAX_INDEXED_RUNS  64u
 
+/* ── Runway policy (SGL2, JP 2026-09-28) ──────────────────────────
+ * Run length is UNKNOWN at record start (an athlete's descent — or a
+ * future streaming sensor producer). So we never size erase work for
+ * the incoming record. Instead, right AFTER a run (and at boot/wipe)
+ * we free enough space for a MAXIMUM-length run:
+ *
+ *   coverage U(cursor) = [cursor, cursor+RUNWAY_TARGET)            when it fits
+ *                      = [cursor, LOG_END) ∪ [LOG_START,
+ *                        LOG_START+RUNWAY_TARGET)                  near the end
+ *
+ * The second, two-segment form matters: a wrapping max-run needs
+ * RUNWAY_TARGET bytes clean AT THE BOTTOM — a plain ring interval of
+ * TARGET from a high cursor covers less than that (counter-example:
+ * remaining=100K, span=244K → interval reaches 144K past LOG_START,
+ * the run needs 244K). Plain absolute math only — NO ring arithmetic
+ * anywhere in this header: ring-distance ambiguity is the bug class
+ * that started SGL2 (ledger 2026-09-28).
+ */
+#define RUNWAY_TARGET     (((MAX_RUN_BUDGET) + LOG_SECTOR_SIZE - 1) \
+                           / LOG_SECTOR_SIZE * LOG_SECTOR_SIZE)   /* 244 KiB */
+
 /* ── Blob arithmetic (wire-format facts, frozen) ────────────────────
  * A stored run occupies: 16 B header + payload + 6 B CRC trailer,
  * then padding to the next 4 KiB sector boundary.
@@ -96,18 +117,45 @@ static inline uint32_t next_run_addr(uint32_t cursor, uint32_t span,
 	return LOG_START;
 }
 
-/* Erase-work needed to make [from, to) usable, given that [from,
- * erased_end) is already erased. Pure bookkeeping — the hardware loop
- * lives in store_flash.c. */
-static inline uint32_t sectors_to_erase(uint32_t from, uint32_t to,
-					uint32_t erased_end)
-{
-	uint32_t start = (from > erased_end) ? from : erased_end;
+/* ── Erase top-up planning (SGL2) ─────────────────────────────────
+ * How much erase work until coverage reaches U(cursor), given the
+ * two persisted frontiers:
+ *   hi — erased end of the runway that starts AT the cursor
+ *        (hi == cursor → nothing ahead is known-erased)
+ *   lo — erased end of the bottom reserve [LOG_START, lo)
+ *        (LOG_START → no bottom reserve)
+ * Pure bookkeeping; the hardware loop lives in store_flash.c.
+ * Segments are [from, to); an empty segment has from == to == 0.
+ */
+struct runway_plan {
+	uint32_t s1_from, s1_to;   /* toward LOG_END                        */
+	uint32_t s2_from, s2_to;   /* bottom reserve (0,0 if none)          */
+	uint32_t sectors;          /* total sectors to erase                */
+};
 
-	if (to <= start) {
-		return 0;
+static inline void runway_plan_topup(uint32_t cursor, uint32_t hi,
+				     uint32_t lo, struct runway_plan *p)
+{
+	uint32_t remaining = LOG_END - cursor;
+	uint32_t target_hi = (remaining >= RUNWAY_TARGET)
+			       ? cursor + RUNWAY_TARGET : LOG_END;
+
+	p->s1_from = (hi > cursor) ? hi : cursor;
+	p->s1_to = (target_hi > p->s1_from) ? target_hi : p->s1_from;
+
+	p->s2_from = p->s2_to = 0;
+	if (remaining < RUNWAY_TARGET) {
+		uint32_t from = (lo > LOG_START) ? lo : LOG_START;
+		uint32_t to = LOG_START + RUNWAY_TARGET;
+
+		p->s2_from = from;
+		p->s2_to = (to > from) ? to : from;
 	}
-	return (to - start + LOG_SECTOR_SIZE - 1) / LOG_SECTOR_SIZE;
+
+	p->sectors = ((p->s1_to - p->s1_from) + LOG_SECTOR_SIZE - 1)
+		     / LOG_SECTOR_SIZE
+		   + ((p->s2_to - p->s2_from) + LOG_SECTOR_SIZE - 1)
+		     / LOG_SECTOR_SIZE;
 }
 
 /* ── Directory-listing budgets (the founding test asserts these) ────
