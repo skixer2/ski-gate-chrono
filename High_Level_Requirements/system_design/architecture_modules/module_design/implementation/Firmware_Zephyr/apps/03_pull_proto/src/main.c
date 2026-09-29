@@ -26,7 +26,7 @@
 #include "pull_proto.h"
 #include "demo_svc.h"
 
-#define APP_VERSION "0.9.5"
+#define APP_VERSION "0.10.0"
 
 int main(void)
 {
@@ -36,6 +36,7 @@ int main(void)
 	 * then peripherals, then BT last (callbacks can fire from
 	 * bt_enable onward — everything they touch must exist). */
 	store_init();
+	recorder_init();
 
 	if (led_state_init() != 0) {
 		return 0;

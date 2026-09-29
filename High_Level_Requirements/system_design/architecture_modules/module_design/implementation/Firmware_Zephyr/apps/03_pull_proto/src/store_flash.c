@@ -278,9 +278,25 @@ static struct {
 	uint32_t from, to;    /* current segment walk cursors          */
 } prep;
 
+/* Streaming-append record state (M3): separate from the bench 'w' rec
+ * so the proven path stays untouched; mutually exclusive via busy(). */
+static struct {
+	bool     active;
+	bool     truncated;
+	bool     wrapped;       /* placed at LOG_START (decided at begin) */
+	uint32_t addr;         /* header location (plan)                */
+	uint32_t written;      /* payload bytes committed               */
+	uint32_t crc;
+	/* 256 B RAM staging; flushed to flash on fill. STATIC (stack
+	 * discipline — the 09-26 MPU lesson). Producer-paced: at the doc
+	 * average (8 B @ 100 Hz) a flush lands every ~3.2 s. */
+	uint8_t  buf[256];
+	uint16_t fill;
+} srec;
+
 bool store_busy(void)
 {
-	return rec_state != REC_IDLE;
+	return rec_state != REC_IDLE || srec.active;
 }
 
 /* Does [a1,a2) intersect [b1,b2)? (Mirror of the host-test helper.) */
@@ -533,6 +549,147 @@ bool store_record_start(uint32_t payload_len)
 
 	rec_state = REC_WRITING;
 	k_work_schedule(&rec_work, K_NO_WAIT);
+	return true;
+}
+
+/* ── Streaming append API (M3 producer path) ────────────────────── */
+
+static void srec_flush(void)
+{
+	if (srec.fill == 0) {
+		return;
+	}
+	flash_write(flashdev,
+		    (off_t)(srec.addr + sizeof(struct run_header)
+			    + srec.written),
+		    srec.buf, srec.fill);
+	srec.written += srec.fill;
+	srec.fill = 0;
+}
+
+bool store_record_begin(void)
+{
+	if (store_busy()) {
+		return false;
+	}
+
+	/* Plan: wrap rule uses the budget-sized TARGET as the fit test
+	 * (conservative vs. dynamic wrap — rejected 2026-09-28). The
+	 * coverage guard then guarantees a FULL budget run fits. */
+	uint32_t target = runway_target(run_budget);
+	bool wrapped;
+	uint32_t addr = next_run_addr(write_cursor, target, &wrapped);
+
+	if ((!wrapped && addr + target > erased_hi) ||
+	    (wrapped && LOG_START + target > erased_lo)) {
+		printk("ERROR: runway invariant violated at begin "
+		       "(hi 0x%lx lo 0x%lx)\n",
+		       (unsigned long)erased_hi,
+		       (unsigned long)erased_lo);
+		return false;
+	}
+
+	/* Header now (the v0.8.1 lesson: header write is explicit). */
+	struct run_header hdr = {
+		.format_ver = 2,
+		.arm_side = (uint8_t)(next_run_id & 1),
+		.ts_utc = BUILD_EPOCH + k_uptime_get_32() / 1000,
+		.baro_temp = 125,
+		.data_size = 0, .frame_count = 0,
+		.cal_accuracy = 3, ._pad = 0,
+	};
+
+	flash_write(flashdev, (off_t)addr, &hdr, sizeof(hdr));
+
+	srec.active = true;
+	srec.truncated = false;
+	srec.wrapped = wrapped;
+	srec.addr = addr;
+	srec.written = 0;
+	srec.fill = 0;
+	srec.crc = 0xFFFFFFFFu;
+	printk("rec: stream begin at 0x%lx (budget %lu B)\n",
+	       (unsigned long)addr, (unsigned long)run_budget);
+	return true;
+}
+
+int32_t store_record_append(const uint8_t *src, uint32_t len)
+{
+	if (!srec.active) {
+		return -1;
+	}
+
+	uint32_t room = run_budget - srec.written - srec.fill;
+	uint32_t take = (len < room) ? len : room;
+
+	if (take < len) {
+		srec.truncated = true;   /* budget cap hit: caller must end */
+	}
+	for (uint32_t i = 0; i < take; i++) {
+		srec.buf[srec.fill] = src[i];
+		srec.crc = crc32_byte(srec.crc, src[i]);
+		if (++srec.fill == sizeof(srec.buf)) {
+			srec_flush();
+		}
+	}
+	return (int32_t)take;
+}
+
+bool store_record_end(void)
+{
+	if (!srec.active) {
+		return false;
+	}
+
+	srec_flush();
+
+	/* Trailer at 16 + payload (frozen wire format). */
+	uint32_t crc = srec.crc ^ 0xFFFFFFFFu;
+	uint8_t trailer[6] = { 0xC3, 0x32,
+			       (uint8_t)crc, (uint8_t)(crc >> 8),
+			       (uint8_t)(crc >> 16),
+			       (uint8_t)(crc >> 24) };
+
+	flash_write(flashdev,
+		    (off_t)(srec.addr + sizeof(struct run_header)
+			    + srec.written),
+		    trailer, sizeof(trailer));
+
+	/* Index entry — cal_accuracy bit 7 = truncated (JP 2026-09-29). */
+	if (entry_count == MAX_INDEXED_RUNS) {
+		memmove(&entries[0], &entries[1],
+			(entry_count - 1) * sizeof(entries[0]));
+		entry_count--;
+	}
+	entries[entry_count] = (struct sgl_entry){
+		.addr = srec.addr,
+		.payload_len = srec.written,
+		.ts_utc = BUILD_EPOCH + k_uptime_get_32() / 1000,
+		.run_id = next_run_id++,
+		.arm_side = (uint8_t)((next_run_id - 1) & 1),
+		.cal_accuracy = (uint8_t)(3 | (srec.truncated ? 0x80 : 0)),
+	};
+	entry_count++;
+
+	uint32_t span = run_span(srec.written);
+
+	write_cursor = srec.addr + span;
+
+	printk("rec: stream done payload=%lu total=%lu%s runs=%u\n",
+	       (unsigned long)srec.written,
+	       (unsigned long)(BLOB_OVERHEAD + srec.written),
+	       srec.truncated ? " [TRUNCATED]" : "", entry_count);
+
+	srec.active = false;
+	persist_index();
+
+	/* Wrap transition (shared semantics with the 'w' path): the
+	 * bottom reserve becomes the runway. */
+	if (srec.wrapped) {
+		erased_hi = (erased_lo > LOG_START) ? erased_lo : LOG_START;
+		erased_lo = LOG_START;
+	}
+	schedule_topup("post-run");
 	return true;
 }
 

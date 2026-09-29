@@ -40,6 +40,7 @@
 #include <zephyr/drivers/uart.h>   /* serial command input (JP 09-25) */
 #include "pull_proto.h"
 #include "store.h"
+#include "recorder.h"
 #include "store_layout.h"
 #include "ble_lifecycle.h"
 
@@ -359,6 +360,13 @@ static void cmd_work_handler(struct k_work *w)
 		 * until it joins the app protocol properly. */
 		char tail_line[24];
 
+		{
+			char rec_line[28];
+
+			snprintf(rec_line, sizeof(rec_line),
+				 "{\"rec\":\"%s\"}", recorder_state_str());
+			console_emit(rec_line);
+		}
 		if (!req_via_ble) {
 			char free_line[24];
 
@@ -400,6 +408,18 @@ static void cmd_work_handler(struct k_work *w)
 			       id, off, len);
 			k_work_schedule(&stream_work, K_NO_WAIT);
 		}
+	} else if (cmd == 'a' || cmd == 'g' || cmd == 'e') {
+		/* M3 step 1: recording state machine (synthetic producer).
+		 * a=arm (120 s timeout) g=go e=end — production triggers
+		 * replace g/e with the drop/flatline detectors later. */
+		if (cmd == 'a') {
+			recorder_arm();
+		} else if (cmd == 'g') {
+			recorder_start();
+		} else {
+			recorder_end();
+		}
+		console_emit("OK rec");
 	} else if (cmd == 'b') {
 		/* SGL3: set the active run budget (payload bytes). The
 		 * discipline mapping (SL 90 KB / GS-SG 120 / DH 150 /

@@ -52,6 +52,25 @@ void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n);
 bool store_record_start(uint32_t payload_len);
 bool store_busy(void);
 
+/* ── Streaming append API (M3 producer path, JP GO 2026-09-29) ────
+ * The recording state machine records with UNKNOWN length at start:
+ *   store_record_begin()  — plans at the cursor (wrap rule uses the
+ *                           budget-sized TARGET as the fit test — the
+ *                           runway guarantees it), writes the 16 B header
+ *                           immediately, arms the budget cap.
+ *   store_record_append(src, len) — RAM-buffered (256 B, page-flushed),
+ *                           CRC on the fly. Returns bytes ACCEPTED
+ *                           (≤ len); < len means the budget cap hit —
+ *                           caller MUST end() (truncate-at-budget + close,
+ *                           run flagged truncated via cal_accuracy bit 7).
+ *   store_record_end()    — trailer, index entry, persist, then the
+ *                           async runway TOPUP (POST_RUN erases).
+ * Synchronous in the caller's (work) context; only TOPUP self-schedules.
+ * The 'w' bench path (store_record_start) is unchanged. */
+bool store_record_begin(void);
+int32_t store_record_append(const uint8_t *src, uint32_t len);
+bool store_record_end(void);
+
 /* ── Active run budget (SGL3, discipline-driven) ──────────────────
  * Payload-byte ceiling for future runs; drives the runway target.
  * App maps disciplines at 1 KB/s: SL 90 s=90 KB, GS/SG 120 s=120 KB,

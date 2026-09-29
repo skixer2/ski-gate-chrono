@@ -10,4 +10,5 @@ target_sources(app PRIVATE
   src/ble_lifecycle.c
   src/pull_proto.c
   src/demo_svc.c
+  src/recorder.c
 )
