@@ -2241,3 +2241,14 @@ Fresh-memory tuning (small changes + tests, not deferred):
   phone-side per-run cycle time (settle savings).
 - PARKED for later: batch-runs-per-connection (biggest lever for
   many-small-runs: 20 runs × 6.5 s connect overhead = 130 s > streaming).
+
+**MEASURED (v0.9.5 + v1.48, logcat timestamps, 90 KB run, attempt 1):**
+settling 500 ms → stream start 0.72 s after settle → DONE at 9.06 s stream
+(90022 B). Full per-run cycle incl. connect+settle+directory ≈ 9.8 s.
+Projections: 6×40 KB day ≈ 28 s (was ~65); full log 20×90 KB ≈ 3.3 min.
+SURPRISE: 20 ms pacing did NOT raise the effective rate (9.9 KB/s ≈ the
+25 ms rate) — the ceiling is per-connection-interval notify dispatch
+(CI 15-30 ms), not STREAM_GAP_MS. Cadence lever exhausted; further speed
+needs unpaced queue-push (5.77 style) or CI/high-priority games — PARKED.
+Batching's value also shrank (per-run overhead now 0.7 s, was ~6.5).
+PASS criteria met: no watchdog trips, single attempt, CRC saved (Runs 12).
