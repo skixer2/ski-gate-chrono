@@ -2229,3 +2229,15 @@ loop's engine.
   BLE path unchanged) — bought by two ZioClaw self-wipes.
 **VERDICT:** 90 KB run @ 25 ms on v1.47: Not Downloaded 0, Saved Runs
 10→11, no errors. End-to-end PASS.
+
+### 2026-09-29 (06:22) — JP GO: settle 4s→0.5s, cadence 25→20ms
+
+Fresh-memory tuning (small changes + tests, not deferred):
+- App: CONNECT_SETTLE_MS 4000→500 — the idle watchdog (1.47) makes a bad
+  start self-correcting in 2 s; the preemptive settle no longer buys safety.
+- FW: STREAM_GAP_MS 25→20 (12 KB/s) — 25 ms proven clean; pushing one notch.
+  Idle watchdog unaffected; dynamic overall floor (5 KB/s) still covers.
+- Measure: device s_done ms for a 90 KB run (expect ~7.5 s vs 9.4 s),
+  phone-side per-run cycle time (settle savings).
+- PARKED for later: batch-runs-per-connection (biggest lever for
+  many-small-runs: 20 runs × 6.5 s connect overhead = 130 s > streaming).
