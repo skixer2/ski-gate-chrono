@@ -29,39 +29,6 @@ bool ble_lifecycle_connected(void)
 	return connected;
 }
 
-/* ── Recording suspension (JP 2026-09-29: ARM closes the link) ────
- * While ARMED/LOGGING there is no phone business — the connection and
- * advertising are torn down so acquisition runs with maximal memory
- * and radio quiet. The disconnected callback must NOT re-advertise
- * while suspended. Resumed when the recorder returns to IDLE. */
-static volatile bool suspended;
-static struct bt_conn *cur_conn;
-
-void ble_lifecycle_suspend(void)
-{
-	suspended = true;
-
-	int err = bt_le_adv_stop();
-
-	if (err && err != -EALREADY) {
-		printk("rec-suspend: adv stop -> %d\n", err);
-	}
-	if (cur_conn) {
-		bt_conn_disconnect(cur_conn,
-				   BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-	}
-	printk("rec-suspend: BLE down for acquisition\n");
-}
-
-void ble_lifecycle_resume(void)
-{
-	if (!suspended) {
-		return;
-	}
-	suspended = false;
-	k_work_schedule(&adv_work, K_NO_WAIT);
-	printk("rec-resume: advertising\n");
-}
 
 /* ── Advertising ─────────────────────────────────────────────────── */
 
@@ -180,3 +147,38 @@ void ble_lifecycle_start(void)
 		printk("ERROR: bt_enable -> %d\n", err);
 	}
 }
+
+/* ── Recording suspension (JP 2026-09-29: ARM closes the link) ────
+ * While ARMED/LOGGING there is no phone business — the connection and
+ * advertising are torn down so acquisition runs with maximal memory
+ * and radio quiet. The disconnected callback must NOT re-advertise
+ * while suspended. Resumed when the recorder returns to IDLE. */
+static volatile bool suspended;
+static struct bt_conn *cur_conn;
+
+void ble_lifecycle_suspend(void)
+{
+	suspended = true;
+
+	int err = bt_le_adv_stop();
+
+	if (err && err != -EALREADY) {
+		printk("rec-suspend: adv stop -> %d\n", err);
+	}
+	if (cur_conn) {
+		bt_conn_disconnect(cur_conn,
+				   BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	}
+	printk("rec-suspend: BLE down for acquisition\n");
+}
+
+void ble_lifecycle_resume(void)
+{
+	if (!suspended) {
+		return;
+	}
+	suspended = false;
+	k_work_schedule(&adv_work, K_NO_WAIT);
+	printk("rec-resume: advertising\n");
+}
+
