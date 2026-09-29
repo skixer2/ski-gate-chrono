@@ -154,7 +154,13 @@
 
 ///   1.44 - V2 STREAMING PULL (FW 5.77): one command, binary stream,
 ///          NO RESUME. Settle 12s to 4s. 2M PHY requested.
-const String APP_VERSION = '1.46';
+const String APP_VERSION = '1.47';
+
+///   1.47 - STREAM WATCHDOGS (2026-09-29, JP): 2 s IDLE timeout (reset per
+///          frame; a flowing stream never fires) + dynamic OVERALL deadline
+///          (bytes / 5 KB/s floor x 1.3 margin). Kills the fixed 10 s wall
+///          clock that made any run slower than 10 s total loop forever
+///          (root cause of the 90 KB "infinite download loop", 2026-09-28).
 
 ///   1.46 - SLOW-MODE GUARD: re-assert CONNECTION_PRIORITY_HIGH on any conn-param
 ///          update >30 ms during download + before every console request.

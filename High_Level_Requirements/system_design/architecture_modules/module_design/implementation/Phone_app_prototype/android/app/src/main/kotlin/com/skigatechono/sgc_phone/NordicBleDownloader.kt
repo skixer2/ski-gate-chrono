@@ -45,9 +45,18 @@ class NordicBleDownloader(private val context: Context) {
         private val CHAR_CONSOLE: UUID = UUID.fromString("5347ABCA-0000-1000-8000-00805F9B34FB")
         private val CHAR_CAL: UUID = UUID.fromString("5347ABD0-0000-1000-8000-00805F9B34FB")
 
-        /* Per-attempt timeout: clean 39 KB at 20+ KB/s ≈ 2 s. 10 s covers
-           slow starts. On failure → restart from scratch. */
-        private const val STREAM_TIMEOUT_MS = 10_000L
+        /* Stream watchdogs (JP 2026-09-29):
+         * IDLE: 2 s without a frame = dead link (1 s is already an
+         * eternity of BLE silence; 2 s is extra-large). Reset on every
+         * received packet — a slow-but-flowing stream never fires it.
+         * OVERALL: dynamic, sized from the run's byte count at a
+         * conservative rate floor (5 KB/s covers 25 ms AND 50 ms
+         * pacing) with a 30% margin — replaces the fixed 10 s wall
+         * clock that killed any run needing >10 s total (the
+         * "infinite download loop" root cause, 2026-09-28/29). */
+        private const val STREAM_IDLE_TIMEOUT_MS = 2_000L
+        private const val RATE_FLOOR_BPS = 5_000.0
+        private const val TIMEOUT_MARGIN = 1.3
         private const val MAX_ATTEMPTS = 8
         private const val CONNECT_SETTLE_MS = 4_000L   /* V2: 12 s reverted — no benefit measured */
     }
@@ -310,13 +319,25 @@ class NordicBleDownloader(private val context: Context) {
 
                 /* Receive binary frames until [0xFF 0xFF 0x00] end marker. */
                 val buffer = ByteArrayOutputStream()
-                val deadline = System.currentTimeMillis() + STREAM_TIMEOUT_MS
+                val t0 = System.currentTimeMillis()
+                val overallMs = (total / RATE_FLOOR_BPS * 1000.0
+                                 * TIMEOUT_MARGIN).toLong().coerceAtLeast(4_000L)
+                val overallDeadline = t0 + overallMs
+                var idleDeadline = t0 + STREAM_IDLE_TIMEOUT_MS
                 var lastProgressMs = 0L
 
-                while (System.currentTimeMillis() < deadline && !cancelled) {
+                while (System.currentTimeMillis() < overallDeadline && !cancelled) {
                     if (!m.isConnected) throw Exception("link lost at ${buffer.size()} B")
-                    val pkt = m.consolePackets.poll(200, TimeUnit.MILLISECONDS) ?: continue
+                    val pkt = m.consolePackets.poll(200, TimeUnit.MILLISECONDS)
+                        ?: run {
+                            if (System.currentTimeMillis() > idleDeadline) {
+                                throw Exception(
+                                    "stream idle ${STREAM_IDLE_TIMEOUT_MS}ms at ${buffer.size()} B")
+                            }
+                            continue
+                        }
                     if (pkt.size < 3) continue
+                    idleDeadline = System.currentTimeMillis() + STREAM_IDLE_TIMEOUT_MS
 
                     val seq = le16(pkt, 0)
                     if (seq == 0xFFFF) {
@@ -345,7 +366,7 @@ class NordicBleDownloader(private val context: Context) {
                         ))
                     }
                 }
-                throw Exception("stream timeout at ${buffer.size()} B")
+                throw Exception("stream overall timeout (${overallMs}ms) at ${buffer.size()} B")
 
             } catch (e: Exception) {
                 lastError = e

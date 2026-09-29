@@ -45,12 +45,11 @@
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
-/* 50 ms: the ArduinoFW 5.46-proven stable cadence. 25 ms (5.81 tuning,
- * inherited by the port) wedges the S22 mid-stream on long runs: phone
- * goes deaf ~84 KB while the device streams on (serial proof 2026-09-28,
- * frames continued past the phone's death with notify()==0). Short 40 KB
- * benches masked it; 90 KB runs die at ~93%. Halved throughput, ~4.9 KB/s. */
-#define STREAM_GAP_MS   50
+/* 25 ms (JP 2026-09-29: revert — it worked all week; the 90 KB deaths
+ * were the APP's fixed 10 s wall clock, not the cadence). With the app's
+ * idle-based watchdog (1.47) a flowing stream never times out at any
+ * cadence. 20 ms = one constant away if we want 12 KB/s. */
+#define STREAM_GAP_MS   25
 
 /* Full 128-bit UUIDs, byte-identical to ArduinoFW's SGC_UUID() strings
  * (see header warning — no 16-bit forms, ever). */
@@ -424,9 +423,26 @@ static void cmd_work_handler(struct k_work *w)
 	} else if (cmd == 'x') {
 		/* Bench reset: wipe the index sector and reboot the log to
 		 * empty (data sectors reclaim lazily on the next writes).
-		 * The escape hatch for "the store state is garbage". */
-		store_wipe();
-		console_emit("OK wiped");
+		 * The escape hatch for "the store state is garbage".
+		 * v0.9.4: TWO-STEP CONFIRM — 'x' arms (3 s window), 'X'
+		 * executes. Two ZioClaw self-wipes in one night (a stray
+		 * 'x' in a capture command; a node-timeout that didn't kill
+		 * the PC-side process) bought this guard. */
+		static int64_t arm_t0 = LLONG_MIN;
+
+		if (req_via_ble) {
+			/* phone never wipes: keep the frozen single-step path */
+			store_wipe();
+			console_emit("OK wiped");
+		} else if (arm_t0 != LLONG_MIN &&
+			   k_uptime_get() - arm_t0 <= 3000) {
+			arm_t0 = LLONG_MIN;
+			store_wipe();
+			console_emit("OK wiped");
+		} else {
+			arm_t0 = k_uptime_get();
+			console_emit("confirm: X within 3 s");
+		}
 	} else if (cmd == 'w') {
 		/* 4b bench producer: record a synthetic run through the REAL
 		 * lifecycle (write → close → runway top-up; SGL2: erase is
