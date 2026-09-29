@@ -153,3 +153,45 @@ Get-ChildItem test_*.py | % { py sgc_test_harness.py --port COM8 $_ --run-id $ru
 `device/requirements_traceability.md` still says S01–S02 and ring 500 in places.  
 **Source of truth for what to run:** this file + `device.md` (S03–S06).  
 Update the matrix later; do not resurrect S01@r=500.
+
+---
+
+# Zephyr-era tests (2026-09-29 section)
+
+*The catalog above maps the ArduinoFW serial suite (FW 5.x, COM8). The
+Zephyr port has its own proof stack — register it here so "green" has one
+address.*
+
+## Host suite (PC, no hardware)
+
+| Test | What it proves | Run |
+|------|----------------|-----|
+| `apps/03_pull_proto/tests/test_layout.c` | span padding, wrap rule, listing budgets, runway planning (incl. two-segment), **bitmap lifecycle: every programmed byte lands in an erased sector**, discipline sweep (SL/GS-SG/DH/600K × 712 records), capacity formula | `gcc -Wall -Wextra -Isrc tests/test_layout.c -o build/test_layout && ./build/test_layout` (JP-PC; gateway uses the gcc docker image) — exit 0 = ALL GREEN |
+
+**Rule:** any change to `store_layout.h` / `store_flash.c` arithmetic MUST
+pass the host suite before flashing. It is the test whose absence shipped
+the SGL1 wrap bug.
+
+## Bench smoke (Zephyr, COM3, after every flash)
+
+```powershell
+py C:\sgc\tools\zserial.py COM3 8          # boot: version, selftest OK, store line, runway ready
+py C:\sgc\tools\zcmd.py COM3 12 w_40960    # record: start/done/prep lines, runway hi = cursor + target
+py C:\sgc\tools\zcmd.py COM3 5 D           # listing: run lines + {"free":N} + {"d_end":n}
+py C:\sgc\tools\zcmd.py COM3 15 s_0_0_64   # stream head: header 02|side|ts|125|...|3 + payload ramp
+```
+
+## Phone E2E (adb-driven, ~2 min)
+
+Force-stop + relaunch → scan → SGC-Dev → connect → listing live ("N on
+device · M not downloaded") → Download → 0 not downloaded + Saved Runs
+count up, no error cards. Watchdog expectations: no idle trips on flowing
+streams; logcat `V2 stream DONE` attempt=1. **'x' is two-step since v0.9.4:
+serial 'x' arms ("confirm: X within 3 s"), 'X' executes** — never put x in
+capture commands.
+
+## Proven baselines
+
+FW **v0.9.5** / App **1.48** (2026-09-29): wrap + CRC 0x28D0D0AC hardware
+match; 90 KB download 9.06 s stream / 9.8 s cycle; ~9.9 KB/s effective
+ceiling (per-CI dispatch).
