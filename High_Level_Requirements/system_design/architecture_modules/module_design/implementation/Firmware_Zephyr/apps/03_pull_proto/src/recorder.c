@@ -26,6 +26,14 @@
 #include "recorder.h"
 #include "store.h"
 
+/* DEDICATED workqueue (v0.10.1): k_timer→SHARED sysworkq lost ~25% of
+ * 10 ms ticks during LOGGING — the phone's auto-reconnect + listing
+ * reads (rebuild_listing in GATT context) load the sysworkq and pending
+ * k_work submissions coalesce. A 100 Hz acquisition cannot share a
+ * queue with BLE. Own stack: 1 KB is ample (append path is tiny). */
+K_KERNEL_STACK_DEFINE_STATIC(rec_q_stack, 1024);
+static struct k_work_q rec_q;
+
 enum rec_state { RC_IDLE, RC_ARMED, RC_LOGGING, RC_POST_RUN };
 
 static enum rec_state rc_state = RC_IDLE;
@@ -104,7 +112,7 @@ static void rc_work_handler(struct k_work *w)
 
 static void rc_timer_fn(struct k_timer *t)
 {
-	k_work_submit(&rc_work);
+	k_work_submit_to_queue(&rec_q, &rc_work);
 }
 
 const char *recorder_state_str(void)
@@ -154,7 +162,11 @@ void recorder_end(void)
 
 void recorder_init(void)
 {
+	k_work_queue_start(&rec_q, rec_q_stack,
+			   K_KERNEL_STACK_SIZEOF(rec_q_stack),
+			   K_PRIO_PREEMPT(4), NULL);
+	k_thread_name_set(&rec_q.thread, "recorder");
 	k_work_init(&rc_work, rc_work_handler);
 	k_timer_init(&rc_tick, rc_timer_fn, NULL);
-	printk("recorder: ready (a=arm g=go e=end)\n");
+	printk("recorder: ready (a=arm g=go e=end, own workqueue)\n");
 }

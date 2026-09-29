@@ -27,7 +27,7 @@
 #include "pull_proto.h"
 #include "demo_svc.h"
 
-#define APP_VERSION "0.10.0"
+#define APP_VERSION "0.10.1"
 
 int main(void)
 {
