@@ -40,6 +40,12 @@ static enum rec_state rc_state = RC_IDLE;
 static struct k_timer rc_tick;
 static struct k_work rc_work;
 
+/* Command intents (v0.10.2): ALL state transitions happen in the rec_q
+ * thread — the console thread only sets intents + pokes the work. The
+ * v0.10.1 two-thread race (console 'e' vs tick close interleaving:
+ * double end(), stuck POST_RUN) is structurally impossible now. */
+static atomic_t cmd_intent;   /* 0=none 1=arm 2=start 3=end */
+
 /* Synthetic frame: deterministic (counter + ramp) for CRC habits. */
 #define SYNTH_FRAME_LEN 8
 static uint32_t synth_seq;
@@ -66,8 +72,46 @@ static void rc_work_handler(struct k_work *w)
 {
 	static uint32_t ticks;
 	uint8_t f[SYNTH_FRAME_LEN];
+	int intent = atomic_set(&cmd_intent, 0);
 
 	ticks++;
+
+	/* Commands execute in-order with the machine, never beside it. */
+	switch (intent) {
+	case 1:
+		if (rc_state == RC_IDLE && !store_busy()) {
+			rc_state = RC_ARMED;
+			ticks = 0;
+			printk("{\"rec\":\"ARMED\"}\n");
+			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
+		} else {
+			printk("{\"rec\":\"ERR\",\"why\":\"not_idle\"}\n");
+		}
+		break;
+	case 2:
+		if (rc_state == RC_ARMED) {
+			if (store_record_begin()) {
+				rc_state = RC_LOGGING;
+				printk("{\"rec\":\"LOGGING\"}\n");
+			} else {
+				printk("{\"rec\":\"ERR\",\"why\":\"store\"}\n");
+			}
+		} else {
+			printk("{\"rec\":\"ERR\",\"why\":\"not_armed\"}\n");
+		}
+		break;
+	case 3:
+		if (rc_state == RC_LOGGING) {
+			store_record_end();
+			rc_state = RC_POST_RUN;
+			printk("{\"rec\":\"POST_RUN\",\"ev\":\"manual_end\"}\n");
+		} else {
+			printk("{\"rec\":\"ERR\",\"why\":\"not_logging\"}\n");
+		}
+		break;
+	default:
+		break;
+	}
 
 	switch (rc_state) {
 	case RC_ARMED:
@@ -87,9 +131,13 @@ static void rc_work_handler(struct k_work *w)
 		int32_t n = store_record_append(f, sizeof(f));
 
 		if (n < (int32_t)sizeof(f)) {
-			/* Budget cap: truncate-at-budget + close (JP). */
-			printk("{\"rec\":\"POST_RUN\",\"ev\":\"budget_reached\"}\n");
-			store_record_end();
+			/* n == -1: record already closed (e.g. manual end
+			 * raced in) — just move on. n < 8 with an active
+			 * record = budget cap: truncate + close (JP). */
+			if (n >= 0) {
+				printk("{\"rec\":\"POST_RUN\",\"ev\":\"budget_reached\"}\n");
+				store_record_end();
+			}
 			rc_state = RC_POST_RUN;
 			/* keep the timer: POST_RUN polls store idle */
 		}
@@ -126,38 +174,20 @@ const char *recorder_state_str(void)
 
 void recorder_arm(void)
 {
-	if (rc_state != RC_IDLE || store_busy()) {
-		printk("{\"rec\":\"ERR\",\"why\":\"not_idle\"}\n");
-		return;
-	}
-	rc_state = RC_ARMED;
-	printk("{\"rec\":\"ARMED\"}\n");
-	k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
+	atomic_set(&cmd_intent, 1);
+	k_work_submit_to_queue(&rec_q, &rc_work);
 }
 
 void recorder_start(void)
 {
-	if (rc_state != RC_ARMED) {
-		printk("{\"rec\":\"ERR\",\"why\":\"not_armed\"}\n");
-		return;
-	}
-	if (!store_record_begin()) {
-		printk("{\"rec\":\"ERR\",\"why\":\"store\"}\n");
-		return;
-	}
-	rc_state = RC_LOGGING;
-	printk("{\"rec\":\"LOGGING\"}\n");
+	atomic_set(&cmd_intent, 2);
+	k_work_submit_to_queue(&rec_q, &rc_work);
 }
 
 void recorder_end(void)
 {
-	if (rc_state != RC_LOGGING) {
-		printk("{\"rec\":\"ERR\",\"why\":\"not_logging\"}\n");
-		return;
-	}
-	store_record_end();
-	rc_state = RC_POST_RUN;
-	printk("{\"rec\":\"POST_RUN\",\"ev\":\"manual_end\"}\n");
+	atomic_set(&cmd_intent, 3);
+	k_work_submit_to_queue(&rec_q, &rc_work);
 }
 
 void recorder_init(void)
