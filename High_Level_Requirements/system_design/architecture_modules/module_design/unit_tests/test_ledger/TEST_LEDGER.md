@@ -2206,3 +2206,26 @@ by the known wedge.
 live listing 2/2 → native download BOTH runs single pass at 50 ms →
 "Not Downloaded 0", Saved Runs 8→10. The 40 KB size converges (matches
 09-26 history); 90 KB awaits app-side resume.
+
+### 2026-09-29 — CASE CLOSED: the download loop was the APP's 10 s wall clock
+
+**JP's energy-saver hypothesis: tested & falsified cleanly** (low_power=0,
+doze off, app whitelisted — identical 43/87 KB death). The arithmetic then
+cracked it: deaths at 43 KB@50ms ≈ 84 KB@25ms ≈ 9 s; 40 KB passes = 8.5 s;
+logcat timeout fired at exactly 10.004 s. NordicBleDownloader.kt line 50:
+STREAM_TIMEOUT_MS = 10_000 — a WALL-CLOCK set at stream start, designed for
+FW 5.77's unpaced 20+ KB/s (39 KB ≈ 2 s). The Zephyr port's paced 9.6/4.8
+KB/s made any run needing >10 s total loop forever (no-resume by design).
+The "phone deaf" observation = app thread post-deadline while the device
+kept streaming (serial-verified). S22 wedge: may exist, but was NOT the
+loop's engine.
+
+**Fix (JP GO 05:29, commit c423329):**
+- App 1.47: 2 s IDLE watchdog (reset per frame — flowing streams never
+  fire) + dynamic OVERALL deadline = bytes / 5 KB/s floor × 1.3 margin
+  (90 KB → 23.4 s).
+- FW v0.9.4: cadence back to 25 ms (JP: it worked all week; 20 ms one
+  constant away). 'x' wipe = two-step confirm (x arms 3 s, X executes;
+  BLE path unchanged) — bought by two ZioClaw self-wipes.
+**VERDICT:** 90 KB run @ 25 ms on v1.47: Not Downloaded 0, Saved Runs
+10→11, no errors. End-to-end PASS.
