@@ -21,6 +21,7 @@
  */
 #include <zephyr/kernel.h>
 #include "store.h"
+#include "recorder.h"
 #include "led_state.h"
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
