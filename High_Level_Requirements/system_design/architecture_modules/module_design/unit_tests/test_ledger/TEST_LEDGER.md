@@ -2252,3 +2252,36 @@ SURPRISE: 20 ms pacing did NOT raise the effective rate (9.9 KB/s ≈ the
 needs unpaced queue-push (5.77 style) or CI/high-priority games — PARKED.
 Batching's value also shrank (per-run overhead now 0.7 s, was ~6.5).
 PASS criteria met: no watchdog trips, single attempt, CRC saved (Runs 12).
+
+### 2026-09-29 (13:05) — CASE: M3 step 1 — recording state machine (JP GO, design reviewed)
+
+**Requirements (JP-reviewed, amendments absorbed):**
+- States: IDLE → ARMED ('a'; 120 s timeout — JP) → LOGGING ('g' synthetic;
+  production = 2.0 m drop detector) → POST_RUN (store close + TOPUP) → IDLE.
+  End: 'e' synthetic (production = 5 s flatline < 2 m) OR budget reached.
+- ACQUISITION runs at 100 Hz from ARM through LOGGING (JP: even in armed
+  state); start-detector check DECIMATED to 10 Hz (every 10th frame).
+- Truncate-at-budget + close (JP): data preserved to budget; run marked
+  truncated — cal_accuracy bit 7 in the RunHeader (frozen-format-safe;
+  app parses it already). App-side warning display = TODO (parked).
+- Synthetic frames at the DOCUMENTED packing average (8.0 B/frame, v2.4)
+  → 90 s = 72 KB. Real 3-packet-type packing = sensor step.
+- Pre-roll DEFERRED to sensor step: flash ring in reserved 0x0000–0x13FFF
+  (F02 port; RAM ring forbidden — v4.60 Cordio lesson). ARMED discards
+  synthetic frames.
+- Serial: 'a'/'g'/'e' + {"rec":"IDLE|ARMED|LOGGING|POST_RUN"} on its own
+  line (never merged into frozen lines — d_end lesson).
+- NO listing-during-run requirement (JP: nobody lists mid-descent).
+
+**Design:** store gains the promised streaming append API —
+store_record_begin() / store_record_append(buf,len) [RAM-buffered, page-
+flushed; returns accepted bytes; budget-capped] / store_record_end()
+[synchronous trailer+persist]. The async k_work machine keeps only TOPUP;
+'w' re-pointed onto the same API (ramp producer moves to pull_proto).
+recorder.c owns the state machine + the 10 ms k_timer→work acquisition
+loop (sysworkq concurrency pattern). Version 0.10.0.
+
+**Acceptance (bench):** 90 s @ 100 Hz × 8 B = 72 KB run; ZERO prep/erase
+lines during LOGGING (hot-path doctrine under true timing); {"free":N}
+ticks down; truncation test: budget 60 KB + 90 s logging → 60 KB run with
+bit-7 flag; phone download CRC-clean.
