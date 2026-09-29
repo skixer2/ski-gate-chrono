@@ -24,6 +24,10 @@
 
 static volatile bool connected;
 
+/* Recording suspension state (see ble_lifecycle_suspend below). */
+static volatile bool suspended;
+static struct bt_conn *cur_conn;
+
 bool ble_lifecycle_connected(void)
 {
 	return connected;
@@ -153,9 +157,6 @@ void ble_lifecycle_start(void)
  * advertising are torn down so acquisition runs with maximal memory
  * and radio quiet. The disconnected callback must NOT re-advertise
  * while suspended. Resumed when the recorder returns to IDLE. */
-static volatile bool suspended;
-static struct bt_conn *cur_conn;
-
 void ble_lifecycle_suspend(void)
 {
 	suspended = true;
