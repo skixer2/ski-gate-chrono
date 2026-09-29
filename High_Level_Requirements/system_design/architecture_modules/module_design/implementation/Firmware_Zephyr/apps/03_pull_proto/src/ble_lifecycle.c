@@ -29,6 +29,40 @@ bool ble_lifecycle_connected(void)
 	return connected;
 }
 
+/* ── Recording suspension (JP 2026-09-29: ARM closes the link) ────
+ * While ARMED/LOGGING there is no phone business — the connection and
+ * advertising are torn down so acquisition runs with maximal memory
+ * and radio quiet. The disconnected callback must NOT re-advertise
+ * while suspended. Resumed when the recorder returns to IDLE. */
+static volatile bool suspended;
+static struct bt_conn *cur_conn;
+
+void ble_lifecycle_suspend(void)
+{
+	suspended = true;
+
+	int err = bt_le_adv_stop();
+
+	if (err && err != -EALREADY) {
+		printk("rec-suspend: adv stop -> %d\n", err);
+	}
+	if (cur_conn) {
+		bt_conn_disconnect(cur_conn,
+				   BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	}
+	printk("rec-suspend: BLE down for acquisition\n");
+}
+
+void ble_lifecycle_resume(void)
+{
+	if (!suspended) {
+		return;
+	}
+	suspended = false;
+	k_work_schedule(&adv_work, K_NO_WAIT);
+	printk("rec-resume: advertising\n");
+}
+
 /* ── Advertising ─────────────────────────────────────────────────── */
 
 static void start_advertising(void)
@@ -82,6 +116,10 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 	}
 
 	connected = true;
+	if (cur_conn) {
+		bt_conn_unref(cur_conn);
+	}
+	cur_conn = bt_conn_ref(conn);
 	printk("connected: %s (LED -> solid green)\n", addr);
 }
 
@@ -92,10 +130,20 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
 	connected = false;
+	if (cur_conn) {
+		bt_conn_unref(cur_conn);
+		cur_conn = NULL;
+	}
 
 	/* Pull protocol owns stream state — let it abort cleanly
 	 * (stateless design, SR-2: a disconnect costs one reconnect). */
 	pull_proto_on_disconnect();
+
+	if (suspended) {
+		printk("disconnected: %s (reason 0x%02x), SUSPENDED "
+		       "(recording)\n", addr, reason);
+		return;
+	}
 
 	printk("disconnected: %s (reason 0x%02x), re-advertising\n",
 	       addr, reason);

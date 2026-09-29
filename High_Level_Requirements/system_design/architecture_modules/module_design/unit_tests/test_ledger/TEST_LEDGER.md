@@ -2311,3 +2311,17 @@ bit-7 flag; phone download CRC-clean.
 - PENDING acceptance: truncation test (b 60000 + 90 s → auto-close at
   budget + TRUNCATED flag in cal bit7) + phone download of runs 5/6.
 - Commits: d009998, 4975255, ecff986, 3c84106, 25f394e.
+
+### 2026-09-29 (15:15) — JP directives: BLE closes on ARM; RAM-ring reconsidered
+
+- **ARM tears down BLE** (v0.10.3): on arm intent → adv stop + link
+  disconnect (suppressed re-advertise while suspended; conn tracked via
+  ref); on return to IDLE (run_ready or arm_timeout) → re-advertise.
+  Rationale (JP): saves memory + keeps acquisition as close to 100 Hz as
+  possible. Product reality: nobody lists mid-descent (confirmed 12:58).
+- **RAM pre-roll ring REOPENED as sensor-step item** (JP): the v4.60
+  Cordio lesson was heap/fragmentation-era; Zephyr shows ~30% RAM free
+  and a STATIC ring has no fragmentation exposure. 1000 × ~10 B packed
+  ≈ 10 KB static is plausible on the 64 KB part (nRF52833 board doubles
+  headroom); flash-ring fallback stays documented. DECIDE when the real
+  frame packing lands (sizes known), with link-time RAM as the gate.

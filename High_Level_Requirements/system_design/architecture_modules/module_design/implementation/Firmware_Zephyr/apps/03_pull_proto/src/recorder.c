@@ -25,6 +25,7 @@
 #include <string.h>
 #include "recorder.h"
 #include "store.h"
+#include "ble_lifecycle.h"
 
 /* DEDICATED workqueue (v0.10.1): k_timer→SHARED sysworkq lost ~25% of
  * 10 ms ticks during LOGGING — the phone's auto-reconnect + listing
@@ -82,6 +83,7 @@ static void rc_work_handler(struct k_work *w)
 		if (rc_state == RC_IDLE && !store_busy()) {
 			rc_state = RC_ARMED;
 			ticks = 0;
+			ble_lifecycle_suspend();   /* JP: no phone while armed */
 			printk("{\"rec\":\"ARMED\"}\n");
 			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
 		} else {
@@ -122,6 +124,7 @@ static void rc_work_handler(struct k_work *w)
 		if (ticks >= 100 * 120) {   /* 120 s arm timeout (JP) */
 			printk("{\"rec\":\"IDLE\",\"ev\":\"arm_timeout\"}\n");
 			rc_state = RC_IDLE;
+			ble_lifecycle_resume();
 			k_timer_stop(&rc_tick);
 		}
 		break;
@@ -148,6 +151,7 @@ static void rc_work_handler(struct k_work *w)
 		if (!store_busy()) {
 			printk("{\"rec\":\"IDLE\",\"ev\":\"run_ready\"}\n");
 			rc_state = RC_IDLE;
+			ble_lifecycle_resume();
 			k_timer_stop(&rc_tick);
 		}
 		break;
