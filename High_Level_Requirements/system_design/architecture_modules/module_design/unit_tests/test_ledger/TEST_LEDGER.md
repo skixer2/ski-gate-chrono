@@ -2285,3 +2285,29 @@ loop (sysworkq concurrency pattern). Version 0.10.0.
 lines during LOGGING (hot-path doctrine under true timing); {"free":N}
 ticks down; truncation test: budget 60 KB + 90 s logging → 60 KB run with
 bit-7 flag; phone download CRC-clean.
+
+### 2026-09-29 (afternoon) — M3 step 1 SHIPPED through v0.10.2
+
+- v0.10.0: recorder.c state machine (a/g/e) + store streaming append API
+  (begin/append/end, RAM-buffered, budget-capped) — first synthetic run
+  CRC-VERIFIED byte-perfect (0x6FCCDAC2, 6541 contiguous frames, first
+  frame seq 513 = ARMED-phase acquisition proving 100.6 Hz idle pacing).
+- FINDING 1 (v0.10.1): k_timer→SHARED sysworkq lost ~25% of 100 Hz ticks
+  during LOGGING (phone listing reads in GATT context coalesce pending
+  works; ARMED idle = 100.6 Hz, LOGGING = ~75 Hz). Fix: DEDICATED
+  workqueue (1 KB stack, prio 4) → measured 9548 frames / ~95.5 s =
+  TRUE 100.0 Hz sustained. LESSON: acquisition never shares a queue
+  with BLE.
+- FINDING 2 (v0.10.2): two-thread race — console thread ('e') and rec_q
+  tick both drove transitions: double end() (budget_reached +
+  manual_end prints interleaved, one run, out-of-order printks across
+  threads) + recorder STUCK in POST_RUN. Fix: SINGLE-WRITER — commands
+  become atomic intents executed inside the rec_q work; tick
+  distinguishes closed-record (-1) from budget cap. Verified: clean
+  ARMED→LOGGING→POST_RUN→IDLE cycle, run 6 recorded + listed.
+- NOTE: partial final frame (payload 26774 = 3346×8 + 6) — end() flushes
+  a partial fill; harmless for synthetic, revisit when real frames land
+  (frame-aligned close).
+- PENDING acceptance: truncation test (b 60000 + 90 s → auto-close at
+  budget + TRUNCATED flag in cal bit7) + phone download of runs 5/6.
+- Commits: d009998, 4975255, ecff986, 3c84106, 25f394e.
