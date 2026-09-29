@@ -58,7 +58,9 @@ class NordicBleDownloader(private val context: Context) {
         private const val RATE_FLOOR_BPS = 5_000.0
         private const val TIMEOUT_MARGIN = 1.3
         private const val MAX_ATTEMPTS = 8
-        private const val CONNECT_SETTLE_MS = 4_000L   /* V2: 12 s reverted — no benefit measured */
+        private const val CONNECT_SETTLE_MS = 500L     /* 1.48: 4 s settle retired — the 2 s idle
+                                           watchdog (1.47) self-corrects a bad start;
+                                           GATT discovery+subscribe+MTU already pace us */
     }
 
     data class DownloadedRun(val id: Int, val timestamp: Int, val data: ByteArray)

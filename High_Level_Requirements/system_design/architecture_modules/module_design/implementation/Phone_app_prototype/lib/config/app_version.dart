@@ -154,7 +154,9 @@
 
 ///   1.44 - V2 STREAMING PULL (FW 5.77): one command, binary stream,
 ///          NO RESUME. Settle 12s to 4s. 2M PHY requested.
-const String APP_VERSION = '1.47';
+const String APP_VERSION = '1.48';
+
+///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
 ///   1.47 - STREAM WATCHDOGS (2026-09-29, JP): 2 s IDLE timeout (reset per
 ///          frame; a flowing stream never fires) + dynamic OVERALL deadline

@@ -45,11 +45,11 @@
 
 #define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
-/* 25 ms (JP 2026-09-29: revert — it worked all week; the 90 KB deaths
- * were the APP's fixed 10 s wall clock, not the cadence). With the app's
- * idle-based watchdog (1.47) a flowing stream never times out at any
- * cadence. 20 ms = one constant away if we want 12 KB/s. */
-#define STREAM_GAP_MS   25
+/* 20 ms (JP 2026-09-29: 25 ms proven clean, push one notch = 12 KB/s).
+ * The app's idle watchdog (1.47+) makes flowing streams timeout-proof;
+ * a genuine stall trips 2 s idle and retries. 25 ms = the known-good
+ * fallback one constant away. */
+#define STREAM_GAP_MS   20
 
 /* Full 128-bit UUIDs, byte-identical to ArduinoFW's SGC_UUID() strings
  * (see header warning — no 16-bit forms, ever). */
