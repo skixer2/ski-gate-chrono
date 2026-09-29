@@ -97,3 +97,29 @@ Firmware platform: **Zephyr RTOS + nRF Connect SDK + Nordic SoftDevice controlle
 
 No phone app changes, no protocol changes, no hardware changes, no feature additions
 during M0-M2.
+
+---
+
+## 7. Progress log (binding status — 2026-09-29)
+
+- **M0 CLOSED** (09-18): stock board `arduino_nicla_sense_me`, NCS v3.4.x,
+  VS Code flow, junction C:\sgc, tools/ (dev) + tools/infra/ (keep-alive:
+  boot-proof tunnel SGC-WatchdogBoot v2.4).
+- **M1 CLOSED** (09-22/23): GATT + pull protocol 3a/3b/3c — App 1.46
+  equivalence PASS (D + runs, 8.5 KB/s), modular v0.5.0.
+- **M2 CLOSED** (09-24..29): storage — SGL2 circular log (two-frontier
+  runway, wrap hardware-proven, CRC 0x28D0D0AC; 712-record host lifecycle
+  proof) → SGL3 runtime discipline budget (SL/GS-SG/DH/custom @ 1 KB/s
+  documented rate; persisted, `b` setter, {"free":N} capacity). Phone
+  pipeline end-to-end PROVEN (App 1.47/1.48 watchdogs fixed the download
+  loop — root cause was the app's fixed 10 s wall clock, not radio).
+  FW v0.9.5 / App 1.48. Note: "no phone app changes" non-goal was
+  superseded 09-28/29 by JP GO (watchdogs, settle, capacity line).
+- **M3 IN PREP (next session):** sensor producer. Order: (1) recording
+  state machine ARM→LOGGING→POST_RUN feeding the SGL3 append path with
+  synthetic frames at real-time 100 Hz pacing (serial-drivable bench,
+  proves hot-path doctrine under true timing); (2) BHI260 + BMP390 drivers,
+  real 20 B / delta-baro v2.4 frames; (3) ABC0 epoch sync.
+- **M4 pending.** Parked with facts: unpaced queue-push (ceiling is per-CI
+  dispatch ~9.9 KB/s), 8 MB custom-board geometry (move LOG_END/DTS, index
+  toward 254 entries with nRF52833), dynamic wrap, reboot-test formality.
