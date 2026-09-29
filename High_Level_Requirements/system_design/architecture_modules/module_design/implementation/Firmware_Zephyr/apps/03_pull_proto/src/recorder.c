@@ -31,7 +31,7 @@
  * reads (rebuild_listing in GATT context) load the sysworkq and pending
  * k_work submissions coalesce. A 100 Hz acquisition cannot share a
  * queue with BLE. Own stack: 1 KB is ample (append path is tiny). */
-K_KERNEL_STACK_DEFINE_STATIC(rec_q_stack, 1024);
+static K_KERNEL_STACK_DEFINE(rec_q_stack, 1024);
 static struct k_work_q rec_q;
 
 enum rec_state { RC_IDLE, RC_ARMED, RC_LOGGING, RC_POST_RUN };
