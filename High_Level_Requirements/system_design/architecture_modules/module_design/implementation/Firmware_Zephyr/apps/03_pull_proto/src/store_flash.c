@@ -687,7 +687,12 @@ bool store_record_end(void)
 			    + srec.written),
 		    trailer, sizeof(trailer));
 
-	/* Index entry — cal_accuracy bit 7 = truncated (JP 2026-09-29). */
+	/* Index entry — cal_accuracy bit 7 = truncated (JP 2026-09-29).
+	 * ENTRY only: the run HEADER cannot carry the flag (NOR cannot
+	 * SET bits after write — header cal stays 3). The entry is RAM +
+	 * index-sector state written at close, where the flag is set
+	 * BEFORE the sector rewrite — verified live (ledger 2026-09-30).
+	 * App-facing truncated display = future protocol extension. */
 	if (entry_count == MAX_INDEXED_RUNS) {
 		memmove(&entries[0], &entries[1],
 			(entry_count - 1) * sizeof(entries[0]));

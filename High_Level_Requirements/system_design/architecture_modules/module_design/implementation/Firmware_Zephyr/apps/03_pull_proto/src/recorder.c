@@ -11,12 +11,25 @@
  *
  * ACQUISITION runs at 100 Hz from ARM through LOGGING (JP: even while
  * armed); the start-detector check is DECIMATED to 10 Hz (every 10th
- * frame). Synthetic step: frames are 8 B placeholders at the documented
- * packing average (v2.4: 8.0 B/frame → 1 KB/s ceiling ⇒ 90 s ≈ 72 KB);
- * ARMED discards them (pre-roll = sensor step, flash ring in the
- * reserved region — never RAM, the v4.60 lesson). Start trigger is the
- * manual 'g' (production: 2.0 m drop detector, F04); end is 'e'
- * (production: 5 s flatline < 2 m).
+ * frame). Start trigger is the manual 'g' (production: 2.0 m drop
+ * detector, F04); end is 'e' (production: 5 s flatline < 2 m).
+ *
+ * PRE-ROLL ARCHITECTURE (documented, F02 + v6.0 — lands with the real
+ * sensor frames): while ARMED, each 10 ms tick pushes 1 new frame into
+ * a SMALL RAM staging buffer and pops up to 2 frames to the FLASH
+ * pre-roll ring (4000×20 B at 0x0000–0x13FFF — the region SGL reserved
+ * by placing LOG_START at 0x14000). Net −1/tick ⇒ a full buffer drains
+ * in ~20 s; ARM fills at most 3000 slots (30 s cap). At run start the
+ * most recent 1000 frames (10 s) become the run's pre-roll and the
+ * backlog drains interleaved during LOGGING. The RAM staging buffer is
+ * small by design (static, bounded — v4.60's lesson was heap-era; JP
+ * 2026-09-29: static RAM is fine with headroom, and this design needs
+ * only the staging window, not the ring).
+ *
+ * Synthetic step (this file, now): frames are 8 B placeholders at the
+ * documented packing average (v2.4: 8.0 B/frame → 90 s ≈ 72 KB);
+ * ARMED-path frames are DISCARDED until the ring + staging land with
+ * the BHI260 driver.
  *
  * Concurrency: k_timer → sysworkq (the port-wide pattern). One frame
  * per tick = ~80 B/s of work — noise.
@@ -27,11 +40,13 @@
 #include "store.h"
 #include "ble_lifecycle.h"
 
-/* DEDICATED workqueue (v0.10.1): k_timer→SHARED sysworkq lost ~25% of
- * 10 ms ticks during LOGGING — the phone's auto-reconnect + listing
- * reads (rebuild_listing in GATT context) load the sysworkq and pending
- * k_work submissions coalesce. A 100 Hz acquisition cannot share a
- * queue with BLE. Own stack: 1 KB is ample (append path is tiny). */
+/* DEDICATED workqueue (v0.10.1). Historical finding: the SHARED
+ * sysworkq lost ~25% of 100 Hz ticks during LOGGING when the phone's
+ * auto-reconnect + listing reads loaded it (measured pre-v0.10.3).
+ * Since v0.10.3 ARM tears the BLE link down (JP), that load source is
+ * gone in production — but the dedicated queue STAYS: an acquisition
+ * loop must never share a queue with BLE-class work, whichever path
+ * re-introduces it ('w' bench, future services). Own 1 KB stack. */
 static K_KERNEL_STACK_DEFINE(rec_q_stack, 1024);
 static struct k_work_q rec_q;
 
