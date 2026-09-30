@@ -360,7 +360,7 @@ static void cmd_work_handler(struct k_work *w)
 		 * until it joins the app protocol properly. */
 		char tail_line[24];
 
-		{
+		if (!req_via_ble) {
 			char rec_line[28];
 
 			snprintf(rec_line, sizeof(rec_line),
