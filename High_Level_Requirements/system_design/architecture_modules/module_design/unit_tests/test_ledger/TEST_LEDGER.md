@@ -2361,3 +2361,39 @@ bit-7 flag; phone download CRC-clean.
 4. "never RAM" superseded (JP 09-29) — and sharpened by (2): only the
    small staging window is RAM; the ring itself is flash.
 Commits: 52aad27 (v0.10.6, comments only — flash on next build).
+
+### 2026-09-30 (21:20) — M3 step 2 DESIGN: BHI260 bring-up (JP GO "item 2")
+
+**Survey results (ground truth, all verified):**
+- Stock Zephyr dts has NO sensor nodes — we add the BHI260 node via
+  app.overlay. Pins: SPI1 (Zephyr) = SCK P0.11 / MOSI P0.27 / MISO P0.28;
+  BHI INT = P0.14 (from our main.cpp wake-pin comment). CS pin = the one
+  open item (candidates P0.24/29/30 — resolve empirically at ping, the
+  Arduino variant isn't on this machine).
+- **BMP390 needs NO separate driver: it sits behind the BHI260 hub**
+  (virtual pressure sensor, same SPI host interface). One interface,
+  everything: RV quaternion, LACC, pressure, temperature.
+- **NO firmware blob: bhy2_boot_from_flash()** — the Nicla's BHI260AP
+  runs its firmware from its OWN internal flash (verified in
+  Arduino_BHY2 BoschSensortec::begin).
+- The bhy2 C API is pure-C portable (bhy2.c/h, bhy2_hif.c/h,
+  bhy2_parse.c/h + common/ — vendored from Arduino_BHY2 GitHub).
+- ArduinoFW recipe (our main.cpp): RV @100 Hz → Q14 ×16384; LACC
+  @100 Hz → int16 mm/s²; baro virtual @100 Hz → Pa/2 uint16 (hPa×50);
+  temp @1 Hz header-only. Rates EXPLICIT (the v4.59 1000 Hz-default
+  FIFO-flood lesson). Frame → BitPacker (ours, portable) → avg 8 B.
+
+**Phased plan (JP-paced, one phase per session-ish):**
+- **A — hub alive:** vendor bhy2 API + Zephyr SPI HAL shim (read/write/
+  delay_us over spi_transceive) + overlay node; boot sequence init →
+  soft reset → boot_from_flash → chip/product/rom id on serial. Accept:
+  correct IDs printed (chip 0x83 family), boot status sane.
+- **B — virtual sensors @ 100 Hz:** configure RV/LACC/pressure (rates
+  explicit); FIFO poll in the recorder's dedicated workqueue; serial
+  dump proof: quaternion+linacc+baro values at 100 Hz ±1% (F01 gate).
+- **C — real frames:** BitPacker port to C + recorder integration
+  (synth_frame → packed real frames); CRC-verified run through the store
+  + phone download; budget math unchanged (doc-avg 8 B/frame).
+- **D — pre-roll ring:** staging buffer + pop-2/push-1 drain + flash
+  ring at 0x0000-0x13FFF (the documented architecture, 2026-09-30
+  review); start detector gets real decimated baro (10 Hz) input.
