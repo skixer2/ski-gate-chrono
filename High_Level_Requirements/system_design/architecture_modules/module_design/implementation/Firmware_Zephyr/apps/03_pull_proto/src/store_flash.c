@@ -122,6 +122,26 @@ static uint32_t erased_hi;
 static uint32_t erased_lo;
 static uint32_t run_budget = RUN_BUDGET_DEFAULT;
 
+/* ── Run timestamps: MONOTONIC BY CONSTRUCTION (2026-09-30) ────────
+ * BUILD_EPOCH + uptime jumps BACKWARD on every reflash (uptime resets)
+ * — bench reality: four reflashes yesterday produced out-of-order and
+ * colliding stamps, confusing the app's downloaded-marking. Guard:
+ * ts = max(last_ts + 1, computed), last_ts seeded from the loaded
+ * index at boot and persisted implicitly via entries. Proper fix =
+ * ABC0 epoch sync (next step); this makes the bench behave until then. */
+static uint32_t last_run_ts;
+
+static uint32_t next_run_ts(void)
+{
+	uint32_t computed = BUILD_EPOCH + k_uptime_get_32() / 1000;
+
+	if (computed <= last_run_ts) {
+		computed = last_run_ts + 1;
+	}
+	last_run_ts = computed;
+	return computed;
+}
+
 /* ── CRC32 (bitwise; identical math to RawRunStore's table) ───────── */
 static uint32_t crc32_byte(uint32_t crc, uint8_t b)
 {
@@ -243,6 +263,14 @@ static bool load_index(void)
 	erased_hi = hdr.erased_hi;
 	erased_lo = hdr.erased_lo;
 	run_budget = hdr.run_budget;
+
+	/* Monotonic-timestamp seed: the newest entry's stamp (entries are
+	 * age-ordered, but stamps predate the guard — take the max). */
+	for (uint16_t i = 0; i < entry_count; i++) {
+		if (entries[i].ts_utc > last_run_ts) {
+			last_run_ts = entries[i].ts_utc;
+		}
+	}
 	return true;
 }
 
@@ -538,7 +566,7 @@ bool store_record_start(uint32_t payload_len)
 	rec.payload_len = payload_len;
 	rec.written = 0;
 	rec.crc = 0xFFFFFFFFu;
-	rec.ts = BUILD_EPOCH + k_uptime_get_32() / 1000;
+	rec.ts = next_run_ts();
 	rec.side = (uint8_t)(next_run_id & 1);   /* alternate L/R for bench */
 	rec.wrapped = wrapped;
 
@@ -590,10 +618,12 @@ bool store_record_begin(void)
 	}
 
 	/* Header now (the v0.8.1 lesson: header write is explicit). */
+	uint32_t ts0 = next_run_ts();
+
 	struct run_header hdr = {
 		.format_ver = 2,
 		.arm_side = (uint8_t)(next_run_id & 1),
-		.ts_utc = BUILD_EPOCH + k_uptime_get_32() / 1000,
+		.ts_utc = ts0,
 		.baro_temp = 125,
 		.data_size = 0, .frame_count = 0,
 		.cal_accuracy = 3, ._pad = 0,
@@ -664,7 +694,7 @@ bool store_record_end(void)
 	entries[entry_count] = (struct sgl_entry){
 		.addr = srec.addr,
 		.payload_len = srec.written,
-		.ts_utc = BUILD_EPOCH + k_uptime_get_32() / 1000,
+		.ts_utc = ts0,
 		.run_id = next_run_id++,
 		.arm_side = (uint8_t)((next_run_id - 1) & 1),
 		.cal_accuracy = (uint8_t)(3 | (srec.truncated ? 0x80 : 0)),
