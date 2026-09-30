@@ -2345,3 +2345,19 @@ bit-7 flag; phone download CRC-clean.
   dissolved.
 - Host suite ALL GREEN on the ts change.
 - Bench: FW v0.10.5, budget restored to 92160 (SL). NEXT: ABC0 epoch sync.
+
+### 2026-09-30 (19:30) — JP code review round: 4 comment/design corrections
+
+1. recorder.c sysworkq comment was stale: the listing-load finding was
+   measured PRE-BLE-suspend; production no longer has that load source.
+   Comment now historical + architectural rationale.
+2. PRE-ROLL ARCHITECTURE now documented in recorder.c (from F02 + v6.0):
+   small RAM staging buffer, pop-2/push-1 per 10 ms tick (net -1, full
+   buffer drains ~20 s), flash ring 4000×20 B at 0x0000-0x13FFF, ARM cap
+   3000 slots, 1000 frames (10 s) retained at start, interleaved drain
+   during run. Implementation lands with BHI260 (real frames).
+3. cal bit 7: implemented in the INDEX ENTRY (proven); the HEADER cannot
+   carry it (NOR no bit-set post-write). Comment clarified.
+4. "never RAM" superseded (JP 09-29) — and sharpened by (2): only the
+   small staging window is RAM; the ring itself is flash.
+Commits: 52aad27 (v0.10.6, comments only — flash on next build).
