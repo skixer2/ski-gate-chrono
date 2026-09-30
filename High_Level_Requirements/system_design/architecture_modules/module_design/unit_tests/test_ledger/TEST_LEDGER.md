@@ -2325,3 +2325,23 @@ bit-7 flag; phone download CRC-clean.
   ≈ 10 KB static is plausible on the 64 KB part (nRF52833 board doubles
   headroom); flash-ring fallback stays documented. DECIDE when the real
   frame packing lands (sizes known), with link-time RAM as the gate.
+
+### 2026-09-30 (18:45) — Item 1 CLOSED: monotonic ts + truncation proven
+
+- **v0.10.5** (2b3ced2 + 21e19db): ts = max(last+1, computed), seeded from
+  loaded index; streaming entry reuses the begin-time stamp. VERIFIED LIVE:
+  runs 8/9/10 stamped 1790321516/17/18 = previous max +1 each (uptime had
+  reset at reflash — guard held). Fixes the backward-jumping stamps that
+  confused the app's downloaded-marking ("4 not downloaded" stale card).
+  Proper fix = ABC0 epoch sync (next).
+- **Truncation-at-budget VERIFIED** (two budgets): 60 000 → run closes at
+  exactly 60 022 total; 8 192 → 8 214; captured printks: budget_reached →
+  "stream done payload=8192 [TRUNCATED]" → IDLE → BLE resume → advertising
+  up. Flag lives in the index ENTRY (cal bit 7) — the HEADER cannot carry
+  it (NOR can't set bits post-write); app-facing truncated display = future
+  protocol extension (own line, when app updates).
+- CORRECTION: "partial final frame" pending item was an arithmetic error —
+  payloads are frame-aligned by construction (3344x8 exactly). Item
+  dissolved.
+- Host suite ALL GREEN on the ts change.
+- Bench: FW v0.10.5, budget restored to 92160 (SL). NEXT: ABC0 epoch sync.
