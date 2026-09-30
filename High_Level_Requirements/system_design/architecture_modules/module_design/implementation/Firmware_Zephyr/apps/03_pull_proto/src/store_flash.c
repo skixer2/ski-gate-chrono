@@ -313,6 +313,7 @@ static struct {
 	bool     truncated;
 	bool     wrapped;       /* placed at LOG_START (decided at begin) */
 	uint32_t addr;         /* header location (plan)                */
+	uint32_t ts;           /* run timestamp (set at begin, reused)  */
 	uint32_t written;      /* payload bytes committed               */
 	uint32_t crc;
 	/* 256 B RAM staging; flushed to flash on fill. STATIC (stack
@@ -620,6 +621,7 @@ bool store_record_begin(void)
 	/* Header now (the v0.8.1 lesson: header write is explicit). */
 	uint32_t ts0 = next_run_ts();
 
+	srec.ts = ts0;
 	struct run_header hdr = {
 		.format_ver = 2,
 		.arm_side = (uint8_t)(next_run_id & 1),
@@ -694,7 +696,7 @@ bool store_record_end(void)
 	entries[entry_count] = (struct sgl_entry){
 		.addr = srec.addr,
 		.payload_len = srec.written,
-		.ts_utc = ts0,
+		.ts_utc = srec.ts,
 		.run_id = next_run_id++,
 		.arm_side = (uint8_t)((next_run_id - 1) & 1),
 		.cal_accuracy = (uint8_t)(3 | (srec.truncated ? 0x80 : 0)),
