@@ -11,4 +11,8 @@ target_sources(app PRIVATE
   src/pull_proto.c
   src/demo_svc.c
   src/recorder.c
+  src/bhy2/bhy2.c
+  src/bhy2/bhy2_hif.c
+  src/bhy2/bhy2_parse.c
+  src/bhy2/bhy2_zephyr.c
 )

@@ -16,3 +16,21 @@
 		led0 = &{/soc/i2c@40003000/is31fl3194@53/led_rgb};
 	};
 };
+
+
+/*
+ * BHI260AP smart sensor hub (M3 step 2). Second device on the physical
+ * SPI0 bus (= &spi2, already enabled for the NOR flash): SCK P0.03 /
+ * MOSI P0.04 / MISO P0.05 shared, CS P0.31 dedicated ("CS BHI260",
+ * Arduino variant pin 17 — NOT P0.29, which is SPI1's header CS1).
+ * 16 MHz (Arduino library clock). Host interrupt P0.14 (unused Phase A).
+ */
+&spi2 {
+	bhi260: bhi260@1 {
+		compatible = "bosch,bhi260ap";
+		reg = <1>;
+		spi-max-frequency = <16000000>;
+		cs-gpios = <&gpio0 31 GPIO_ACTIVE_LOW>;
+		status = "okay";
+	};
+};

@@ -22,12 +22,15 @@
 #include <zephyr/kernel.h>
 #include "store.h"
 #include "recorder.h"
+
+/* M3 step 2 Phase A: BHI260AP hub bring-up (IDs on serial). */
+bool bhy2_bringup(void);
 #include "led_state.h"
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
 #include "demo_svc.h"
 
-#define APP_VERSION "0.10.6"
+#define APP_VERSION "0.11.0"
 
 int main(void)
 {
@@ -38,6 +41,7 @@ int main(void)
 	 * bt_enable onward — everything they touch must exist). */
 	store_init();
 	recorder_init();
+	bhy2_bringup();
 
 	if (led_state_init() != 0) {
 		return 0;
