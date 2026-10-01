@@ -50,8 +50,14 @@ static bool bhy2_ready;
 
 /* Devicetree: the BHI node (see app.overlay — second device on &spi2). */
 #define BHI_NODE DT_NODELABEL(bhi260)
-static const struct gpio_dt_spec bhi_rst =
-	GPIO_DT_SPEC_GET(BHI_NODE, reset_gpios);
+
+/* RESET_BHI260 = P0.18 (Arduino variant pin 13, variant.cpp:91).
+ * Hardcoded: upstream bosch,bhi260ap binding drops reset-gpios. */
+static const struct gpio_dt_spec bhi_rst = {
+	.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
+	.pin = 18,
+	.dt_flags = GPIO_ACTIVE_LOW,
+};
 static const struct device *const spi_dev = DEVICE_DT_GET(DT_BUS(BHI_NODE));
 static const struct spi_config bhi_spi_cfg = {
 	.frequency = 16000000,
