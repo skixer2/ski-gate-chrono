@@ -408,6 +408,13 @@ static void cmd_work_handler(struct k_work *w)
 			       id, off, len);
 			k_work_schedule(&stream_work, K_NO_WAIT);
 		}
+	} else if (cmd == 'B') {
+		/* v0.11.4: re-arm the BHI bit-bang probe + reboot into it
+		 * (probe-boot output is otherwise lost pre-console). */
+		extern void bhy2_probe_rearm(void);
+
+		printk("BB probe rearm\n");
+		bhy2_probe_rearm();
 	} else if (cmd == 'a' || cmd == 'g' || cmd == 'e') {
 		/* M3 step 1: recording state machine (synthetic producer).
 		 * a=arm (120 s timeout) g=go e=end — production triggers

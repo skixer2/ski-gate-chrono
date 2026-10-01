@@ -218,6 +218,15 @@ static void bhy2_bitbang_probe(void)
 	sys_reboot(SYS_REBOOT_WARM);
 }
 
+/* Bench hook: serial 'B' clears the sentinel and warm-reboots into
+ * the bit-bang probe (its boot output is otherwise only visible on
+ * the flash-boot, before any console attaches). */
+void bhy2_probe_rearm(void)
+{
+	bb_once = 0;
+	sys_reboot(SYS_REBOOT_WARM);
+}
+
 bool bhy2_bringup(void)
 {
 	if (bhy2_ready) {
