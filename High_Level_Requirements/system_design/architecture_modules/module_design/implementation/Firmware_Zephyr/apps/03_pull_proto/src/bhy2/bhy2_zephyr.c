@@ -50,6 +50,8 @@ static bool bhy2_ready;
 
 /* Devicetree: the BHI node (see app.overlay — second device on &spi2). */
 #define BHI_NODE DT_NODELABEL(bhi260)
+static const struct gpio_dt_spec bhi_rst =
+	GPIO_DT_SPEC_GET(BHI_NODE, reset_gpios);
 static const struct device *const spi_dev = DEVICE_DT_GET(DT_BUS(BHI_NODE));
 static const struct spi_config bhi_spi_cfg = {
 	.frequency = 16000000,
@@ -121,6 +123,19 @@ bool bhy2_bringup(void)
 	if (!device_is_ready(spi_dev)) {
 		printk("bhy2: SPI device not ready\n");
 		return false;
+	}
+
+	/* Hard-reset pulse on RESET_BHI260 (P0.18): the battery keeps VDD
+	 * alive across nRF reboots, so a wedged hub NEVER sees a cold boot
+	 * unless we pulse its reset line. Low 10 ms, release, boot settle. */
+	if (bhi_rst.port != NULL) {
+		gpio_pin_configure_dt(&bhi_rst, GPIO_OUTPUT_ACTIVE); /* low */
+		k_msleep(10);
+		gpio_pin_set_dt(&bhi_rst, 0); /* high = released */
+		k_msleep(150);
+		printk("bhy2: reset pulse done (P0.18)\n");
+	} else {
+		printk("bhy2: no reset-gpios in DT!\n");
 	}
 
 	int8_t ret = bhy2_init(BHY2_SPI_INTERFACE,

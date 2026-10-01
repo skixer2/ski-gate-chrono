@@ -35,6 +35,11 @@
 		compatible = "bosch,bhi260ap";
 		reg = <1>;
 		spi-max-frequency = <16000000>;
+		/* Hard reset line of the hub (schematic: BHI260 RESET pin 9,
+		 * Arduino variant pin 13 = P0.18). Arduino never drives it
+		 * (PCB pull-up R21 keeps it high) — we pulse it at bring-up
+		 * to clear any garbage-latched state from the broken first run. */
+		reset-gpios = <&gpio0 18 GPIO_ACTIVE_LOW>;
 		status = "okay";
 	};
 };
