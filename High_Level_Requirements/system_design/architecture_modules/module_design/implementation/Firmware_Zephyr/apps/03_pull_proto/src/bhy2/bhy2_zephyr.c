@@ -139,6 +139,9 @@ static const struct gpio_dt_spec bb_cs_x = { DEVICE_DT_GET(DT_NODELABEL(gpio0)),
 
 static void bb_half(void) { k_busy_wait(5); }
 
+/* Once-per-power-cycle sentinel: .noinit survives sys_reboot. */
+__attribute__((section(".noinit"))) static uint32_t bb_once;
+
 static void bb_tx8(uint8_t b)
 {
 	for (int i = 7; i >= 0; i--) {
@@ -197,6 +200,8 @@ static void bb_flash_wake(const struct gpio_dt_spec *cs)
 
 static void bhy2_bitbang_probe(void)
 {
+	printk("BB: gpregret=%02lX (dirty from previous session, why gate failed)\n",
+	       (unsigned long)nrf_power_gpregret_get(NRF_POWER, 0));
 	printk("BB: bit-bang probe (100 kHz, mode 0)\n");
 	bb_flash_wake(&bb_cs_f);
 	uint32_t jedec = bb_exchange(&bb_cs_f, 0x9F, 24);
@@ -209,6 +214,7 @@ static void bhy2_bitbang_probe(void)
 	printk("BB: done, rebooting into SPIM path\n");
 	k_msleep(200);
 	nrf_power_gpregret_set(NRF_POWER, 0, 0x42); /* skip probe next warm boot */
+	bb_once = 0x42BB42BB; /* RAM sentinel — primary gate (GPREGRET proved dirty) */
 	sys_reboot(SYS_REBOOT_WARM);
 }
 
@@ -218,11 +224,10 @@ bool bhy2_bringup(void)
 		return true;
 	}
 
-	/* Probe once per power cycle: GPREGRET survives warm reboot, is
-	 * cleared only by true power-on. Probe boot sets it, then reboots
-	 * into the normal SPIM proof path (which was skipped by the boot
-	 * loop bug of v0.11.2). */
-	if ((nrf_power_gpregret_get(NRF_POWER, 0) & 0x42) == 0) {
+	/* Probe once per power cycle. RAM sentinel in .noinit survives warm
+	 * reboot (nRF52 keeps RAM across sys_reboot, v4.02 lesson) and is
+	 * ours alone — GPREGRET proved dirty from prior sessions. */
+	if (bb_once != 0x42BB42BB) {
 		bhy2_bitbang_probe();
 	}
 	if (!device_is_ready(spi_dev)) {
