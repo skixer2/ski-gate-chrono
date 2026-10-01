@@ -54,7 +54,7 @@ static const struct device *const spi_dev = DEVICE_DT_GET(DT_BUS(BHI_NODE));
 static const struct spi_config bhi_spi_cfg = {
 	.frequency = 16000000,
 	.operation = (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
-		      SPI_TRANSFER_MSB | SPI_MODE_CPHA),  /* Bosch SPI: CPOL=0 CPHA=1 */
+		      SPI_TRANSFER_MSB),  /* Mode 0: Arduino mbed default */
 	.cs = {
 		.gpio = SPI_CS_GPIOS_DT_SPEC_GET(BHI_NODE),
 		.delay = 1,
@@ -63,7 +63,7 @@ static const struct spi_config bhi_spi_cfg = {
 static struct spi_config bhi_spi_cfg_rw = {
 	.frequency = 16000000,
 	.operation = (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
-		      SPI_TRANSFER_MSB | SPI_MODE_CPHA),
+		      SPI_TRANSFER_MSB),
 };
 
 /* ── The three host functions the Bosch API needs ─────────────────── */
