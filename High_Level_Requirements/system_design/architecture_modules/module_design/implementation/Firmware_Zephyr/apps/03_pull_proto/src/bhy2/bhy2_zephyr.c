@@ -208,7 +208,7 @@ static void bhy2_bitbang_probe(void)
 	printk("BB: BHI   @CS P0.29 CHIP_ID 0x90 -> %04lX\n", (unsigned long)id29);
 	printk("BB: done, rebooting into SPIM path\n");
 	k_msleep(200);
-	NRF_POWER->GPREGRET |= 0x42; /* skip probe next warm boot */
+	nrf_power_gpregret_set(NRF_POWER, 0, 0x42); /* skip probe next warm boot */
 	sys_reboot(SYS_REBOOT_WARM);
 }
 
@@ -222,7 +222,7 @@ bool bhy2_bringup(void)
 	 * cleared only by true power-on. Probe boot sets it, then reboots
 	 * into the normal SPIM proof path (which was skipped by the boot
 	 * loop bug of v0.11.2). */
-	if ((nrf_power_gpregret_get(NRF_POWER) & 0x42) == 0) {
+	if ((nrf_power_gpregret_get(NRF_POWER, 0) & 0x42) == 0) {
 		bhy2_bitbang_probe();
 	}
 	if (!device_is_ready(spi_dev)) {
