@@ -198,11 +198,33 @@ static void bb_flash_wake(const struct gpio_dt_spec *cs)
 	k_msleep(1); /* tRES max 35 us — generous margin */
 }
 
+/* Detach SPIM2 from the bus: while the peripheral stays connected via
+ * PSEL, GPIO writes to the pins are shadowed (nRF52 rule: peripheral
+ * owns the pin). Raw register writes — the Zephyr driver re-inits
+ * cleanly after the probe's sys_reboot. SPIM2 base 0x40023000:
+ * ENABLE 0x500, PSEL.SCK 0x508, PSEL.MOSI 0x50C, PSEL.MISO 0x510. */
+static void bb_detach_spim2(void)
+{
+	volatile uint32_t *spim_enable = (volatile uint32_t *)0x40023500UL;
+	volatile uint32_t *psel_sck    = (volatile uint32_t *)0x40023508UL;
+	volatile uint32_t *psel_mosi   = (volatile uint32_t *)0x4002350CUL;
+	volatile uint32_t *psel_miso   = (volatile uint32_t *)0x40023510UL;
+
+	printk("BB: SPIM2 pre-detach ENABLE=%08lX sck=%08lX mosi=%08lX miso=%08lX\n",
+	       (unsigned long)*spim_enable, (unsigned long)*psel_sck,
+	       (unsigned long)*psel_mosi, (unsigned long)*psel_miso);
+	*spim_enable = 0;
+	*psel_sck = 0xFFFFFFFFUL;
+	*psel_mosi = 0xFFFFFFFFUL;
+	*psel_miso = 0xFFFFFFFFUL;
+}
+
 static void bhy2_bitbang_probe(void)
 {
 	printk("BB: gpregret=%02lX (dirty from previous session, why gate failed)\n",
 	       (unsigned long)nrf_power_gpregret_get(NRF_POWER, 0));
 	printk("BB: bit-bang probe (100 kHz, mode 0)\n");
+	bb_detach_spim2();
 	bb_flash_wake(&bb_cs_f);
 	uint32_t jedec = bb_exchange(&bb_cs_f, 0x9F, 24);
 	printk("BB: flash @CS P0.26 JEDEC 0x9F -> %06lX (expect C22815)\n",
