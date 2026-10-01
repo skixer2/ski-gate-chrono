@@ -30,6 +30,21 @@ LOG_MODULE_REGISTER(bhy2, LOG_LEVEL_INF);
 #include "bhy2.h"
 #include "bhy2_hif.h"
 
+/* The vendored bhy2.c is OUR bench-proven copy (cal-hook era): it uses
+ * the delegate indirection for FIFO parse callbacks (BHY2_CFG_DELEGATE_
+ * FIFO_PARSE_CB_INFO_MGMT=1) — provide the no-op delegate here (the
+ * Arduino library registered theirs; we parse FIFOs our own way later). */
+void bhy2_get_fifo_parse_callback_info_delegate(uint8_t sensor_id,
+                                                struct bhy2_fifo_parse_callback_table *info,
+                                                const struct bhy2_dev *dev)
+{
+	ARG_UNUSED(sensor_id);
+	ARG_UNUSED(info);
+	ARG_UNUSED(dev);
+}
+
+#define MAX_READ_WRITE_LEN 256   /* BoschSensortec.h value */
+
 static struct bhy2_dev bhy2;
 static bool bhy2_ready;
 
@@ -67,7 +82,7 @@ int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 
 	int err = spi_transceive(spi_dev, &bhi_spi_cfg, &txs, &rxs);
 
-	return (err == 0) ? BHY2_INTF_RET_SUCCESS : BHY2_INTF_RET_ERROR;
+	return (err == 0) ? BHY2_INTF_RET_SUCCESS : BHY2_INTF_RET_FAILURE;
 }
 
 int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
@@ -82,9 +97,9 @@ int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
 	};
 	const struct spi_buf_set txs = { .buffers = tx, .count = 2 };
 
-	int err = spi_write(spi_dev, &bhy_spi_cfg, &txs);
+	int err = spi_write(spi_dev, &bhi_spi_cfg, &txs);
 
-	return (err == 0) ? BHY2_INTF_RET_SUCCESS : BHY2_INTF_RET_ERROR;
+	return (err == 0) ? BHY2_INTF_RET_SUCCESS : BHY2_INTF_RET_FAILURE;
 }
 
 void bhy2_zephyr_delay_us(uint32_t us, void *intf_ptr)
@@ -119,19 +134,15 @@ bool bhy2_bringup(void)
 	}
 
 	/* Chip/product/ROM identity — the Phase-A gate. */
-	struct bhy2_chip_status cs = { 0 };
-
-	ret = bhy2_get_chip_status(&cs, &bhy2);
-	printk("bhy2: chip_status -> %d, boot_status 0x%02x\n",
-	       ret, cs.boot_status);
-
 	uint16_t prod = 0;
-	uint8_t rev = 0;
 
-	ret = bhy2_get_product_id(&prod, &bhy2);
+	ret = bhy2_get_product_id((uint8_t *)&prod, &bhy2);
 	printk("bhy2: product_id -> %d, id %u\n", ret, prod);
-	ret = bhy2_get_rom_version(&rev, &bhy2);
-	printk("bhy2: rom_version -> %d, rev %u\n", ret, rev);
+
+	uint16_t rom = 0;
+
+	ret = bhy2_get_rom_version(&rom, &bhy2);
+	printk("bhy2: rom_version -> %d, v%u\n", ret, rom);
 
 	ret = bhy2_soft_reset(&bhy2);
 	printk("bhy2: soft_reset -> %d\n", ret);
