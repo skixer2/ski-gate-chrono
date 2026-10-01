@@ -574,6 +574,13 @@ int8_t bhy2_set_data_injection_mode(enum bhy2_data_inj_mode mode, struct bhy2_de
 void bhy2_get_callback_info_delegate(uint8_t sensor_id,
                                 struct bhy2_fifo_parse_callback_table *info,
                                 const struct bhy2_dev *dev);
+
+/* Zephyr port (2026-10-01): bhy2.c's delegate path calls this variant;
+ * provided by the host shim (bhy2_zephyr.c) — the Arduino library's
+ * BoschParser provided theirs. */
+void bhy2_get_fifo_parse_callback_info_delegate(uint8_t sensor_id,
+                                                struct bhy2_fifo_parse_callback_table *info,
+                                                const struct bhy2_dev *dev);
 #endif
 
 

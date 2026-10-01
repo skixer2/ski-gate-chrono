@@ -82,7 +82,7 @@ int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 
 	int err = spi_transceive(spi_dev, &bhi_spi_cfg, &txs, &rxs);
 
-	return (err == 0) ? BHY2_INTF_RET_SUCCESS : BHY2_INTF_RET_FAILURE;
+	return (err == 0) ? BHY2_INTF_RET_SUCCESS : (BHY2_INTF_RET_TYPE)-1;
 }
 
 int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
@@ -99,7 +99,7 @@ int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
 
 	int err = spi_write(spi_dev, &bhi_spi_cfg, &txs);
 
-	return (err == 0) ? BHY2_INTF_RET_SUCCESS : BHY2_INTF_RET_FAILURE;
+	return (err == 0) ? BHY2_INTF_RET_SUCCESS : (BHY2_INTF_RET_TYPE)-1;
 }
 
 void bhy2_zephyr_delay_us(uint32_t us, void *intf_ptr)
@@ -126,7 +126,7 @@ bool bhy2_bringup(void)
 	int8_t ret = bhy2_init(BHY2_SPI_INTERFACE,
 			       bhy2_zephyr_read, bhy2_zephyr_write,
 			       bhy2_zephyr_delay_us,
-			       BHY2_MAX_READ_WRITE_LEN, NULL, &bhy2);
+			       MAX_READ_WRITE_LEN, NULL, &bhy2);
 
 	if (ret != BHY2_OK) {
 		printk("bhy2: init -> %d\n", ret);
