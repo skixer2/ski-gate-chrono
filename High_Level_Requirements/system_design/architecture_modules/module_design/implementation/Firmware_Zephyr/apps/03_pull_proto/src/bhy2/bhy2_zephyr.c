@@ -25,6 +25,7 @@
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/reboot.h>
+#include <hal/nrf_power.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(bhy2, LOG_LEVEL_INF);
 
@@ -179,9 +180,25 @@ static uint32_t bb_exchange(const struct gpio_dt_spec *cs, uint8_t cmd, int rbit
 	return v;
 }
 
+/* Wake the MX25R from deep power-down (0xAB + tRES), so the control
+ * group is valid — the Zephyr NOR driver parks it in DPD after use. */
+static void bb_flash_wake(const struct gpio_dt_spec *cs)
+{
+	gpio_pin_configure_dt(&bb_sck, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&bb_mosi, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&bb_miso, GPIO_INPUT);
+	gpio_pin_configure_dt(cs, GPIO_OUTPUT_INACTIVE);
+	k_busy_wait(50);
+	gpio_pin_set_dt(cs, 0);
+	bb_tx8(0xAB);
+	gpio_pin_set_dt(cs, 1);
+	k_msleep(1); /* tRES max 35 us — generous margin */
+}
+
 static void bhy2_bitbang_probe(void)
 {
 	printk("BB: bit-bang probe (100 kHz, mode 0)\n");
+	bb_flash_wake(&bb_cs_f);
 	uint32_t jedec = bb_exchange(&bb_cs_f, 0x9F, 24);
 	printk("BB: flash @CS P0.26 JEDEC 0x9F -> %06lX (expect C22815)\n",
 	       (unsigned long)jedec);
@@ -189,8 +206,9 @@ static void bhy2_bitbang_probe(void)
 	printk("BB: BHI   @CS P0.31 CHIP_ID 0x90 -> %04lX\n", (unsigned long)id31);
 	uint32_t id29 = bb_exchange(&bb_cs_x, 0x90 | 0x80, 16);
 	printk("BB: BHI   @CS P0.29 CHIP_ID 0x90 -> %04lX\n", (unsigned long)id29);
-	printk("BB: done — rebooting into SPIM path\n");
+	printk("BB: done, rebooting into SPIM path\n");
 	k_msleep(200);
+	NRF_POWER->GPREGRET |= 0x42; /* skip probe next warm boot */
 	sys_reboot(SYS_REBOOT_WARM);
 }
 
@@ -200,7 +218,13 @@ bool bhy2_bringup(void)
 		return true;
 	}
 
-	bhy2_bitbang_probe(); /* v0.11.2: one boot = probe, then reboot */
+	/* Probe once per power cycle: GPREGRET survives warm reboot, is
+	 * cleared only by true power-on. Probe boot sets it, then reboots
+	 * into the normal SPIM proof path (which was skipped by the boot
+	 * loop bug of v0.11.2). */
+	if ((nrf_power_gpregret_get(NRF_POWER) & 0x42) == 0) {
+		bhy2_bitbang_probe();
+	}
 	if (!device_is_ready(spi_dev)) {
 		printk("bhy2: SPI device not ready\n");
 		return false;
