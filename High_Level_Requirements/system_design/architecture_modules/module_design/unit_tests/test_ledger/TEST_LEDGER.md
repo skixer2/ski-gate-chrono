@@ -119,6 +119,23 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
+### TC-2026-10-02-001 — BHI260AP Zephyr bring-up (M3 Phase A) — RESOLVED (PASS)
+
+| Field | Value |
+|---|---|
+| App / FW | `03_pull_proto` v0.11.14 (commit b8c6574) |
+| Duration | 2026-10-01 13:28 → 2026-10-02 08:15 UTC (bench, remote-driven) |
+| Symptom | product_id 0 / soft_reset −5 / boot_status 0x00 — “hub silent” |
+| Root cause 1 | `bosch,bhi260ap` has NO binding in Zephyr 4.4 → unbound node → `SPI_CS_GPIOS_DT_SPEC_GET` empty → driver silently skipped CS (hub never selected) |
+| Root cause 2 | manual-CS era: `GPIO_ACTIVE_LOW` + `gpio_pin_set_dt(cs,0)` = physical HIGH — assert/release inverted |
+| Phantom | reg 0x90 reads 0x00 even via working mbed stack (probe4 S0) — the “dead hub” metric was noise; boot_status 0x11/0x13 is the real one |
+| Proof | id 137 (0x89), soft_reset 0, boot_from_flash 0, status 0x11→0x13 |
+| Collateral fixes | 8 MHz explicit (16 illegal on nRF52832 SPIM2); scratch-buffer read framing (no NULL skip entries); P0.18 reset held high (mbed core parity, CNF 0x301); BB probe + PMIC probe arsenal (compiled out, serial 'B' rearm) |
+| Docs | `Firmware_Zephyr/docs/bhi260_zephyr_bringup.md` (full case study) |
+| Next | Phase B (JP-paced, this afternoon): virtual sensors RV/LACC/baro @100 Hz + temp @1 Hz → FIFO poll → BitPacker → SGL3 |
+
+*Prior session case below (historical).*
+
 *Status: **RESOLVED (PASS 5.74 / 1.41)** — Zero-interruption BLE downloads achieved via memory isolation, sensor-bus sleeping, connection priority scaling, and single-connection batching.*
 
 > **2026-09-03 13:15 morning campaign & complete resolution:** Pushed **FW 5.74 (`ed5ca51`)** and **App 1.40 (`4df3cb7`)** resolving the final cross-stack BLE bottlenecks:
