@@ -34,9 +34,9 @@ static struct {
 	int16_t  temp_cx10;         /* 0.1 °C/LSB — ArduinoFW header semantics */
 } prod;
 
-/* Observed (sid,size) pairs — one-shot histogram for size-contract proof */
-static struct { uint8_t sid; uint8_t size; uint16_t n; } obs[6];
-static void note_obs(uint8_t sid, uint8_t size)
+/* Observed (sid,size) pairs + raw bytes of first frame per sid (decode aid) */
+static struct { uint8_t sid; uint8_t size; uint16_t n; uint8_t raw[8]; bool grabbed; } obs[6];
+static void note_obs(uint8_t sid, uint8_t size, const uint8_t *data)
 {
 	for (int i = 0; i < 6; i++) {
 		if (obs[i].n != 0 && obs[i].sid == sid && obs[i].size == size) {
@@ -45,7 +45,11 @@ static void note_obs(uint8_t sid, uint8_t size)
 	}
 	for (int i = 0; i < 6; i++) {
 		if (obs[i].n == 0) {
-			obs[i].sid = sid; obs[i].size = size; obs[i].n = 1; return;
+			obs[i].sid = sid; obs[i].size = size; obs[i].n = 1;
+			if (!obs[i].grabbed && size <= 8) {
+				memcpy(obs[i].raw, data, size); obs[i].grabbed = true;
+			}
+			return;
 		}
 	}
 }
@@ -60,7 +64,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 
 	switch (info->sensor_id) {
 	case BHY2_SENSOR_ID_RV: {
-		if (info->data_size != 11) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
+		if (info->data_size != 11) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		struct bhy2_data_quaternion q;
 		bhy2_parse_quaternion(info->data_ptr + 1, &q);
 		prod.qw = q.w; prod.qx = q.x; prod.qy = q.y; prod.qz = q.z;
@@ -68,7 +72,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		return;
 	}
 	case BHY2_SENSOR_ID_LACC: {
-		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
+		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		struct bhy2_data_xyz v;
 		bhy2_parse_xyz(info->data_ptr + 1, &v);
 		prod.la_x = v.x; prod.la_y = v.y; prod.la_z = v.z;
@@ -77,7 +81,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 	}
 	case BHY2_SENSOR_ID_BARO: {
 		/* payload: uint32 Pa LE + uint16 accuracy (after status byte) */
-		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
+		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		const uint8_t *d = info->data_ptr + 1;
 		prod.baro_pa = (uint32_t)d[0] |
 			       ((uint32_t)d[1] << 8) |
@@ -88,7 +92,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 	}
 	case BHY2_SENSOR_ID_TEMP: {
 		/* payload: int16, 0.01 °C/LSB (bhy2_data_temperature) */
-		if (info->data_size != 3) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
+		if (info->data_size != 3) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		const uint8_t *d = info->data_ptr + 1;
 		int16_t t = (int16_t)(d[0] | (d[1] << 8));
 		prod.temp_cx10 = t / 10;   /* → 0.1 °C/LSB, ArduinoFW semantics */
@@ -135,14 +139,17 @@ static void stats_thread(void *a, void *b, void *c)
 		printk("{\"ev\":\"b1_rate\",\"rv\":%u,\"lacc\":%u,\"baro\":%u,"
 		       "\"temp\":%u,\"err\":%u,\"short\":%u,"
 		       "\"baro_pa\":%u,\"qw\":%d,\"tx10\":%d,"
-		       "\"obs\":[[%u,%u,%u],[%u,%u,%u],[%u,%u,%u],[%u,%u,%u]]}\n",
+		       "\"obs\":[[%u,%u,%u],[%u,%u,%u],[%u,%u,%u],[%u,%u,%u]],"
+		       \"r0\":[%u,%u,%u,%u,%u,%u,%u,%u]}\n",
 		       prod.n_rv, prod.n_lacc, prod.n_baro, prod.n_temp,
 		       prod.errors, prod.short_frames,
 		       prod.baro_pa, prod.qw, prod.temp_cx10,
 		       obs[0].sid, obs[0].size, obs[0].n,
 		       obs[1].sid, obs[1].size, obs[1].n,
 		       obs[2].sid, obs[2].size, obs[2].n,
-		       obs[3].sid, obs[3].size, obs[3].n);
+		       obs[3].sid, obs[3].size, obs[3].n,
+		       obs[0].raw[0],obs[0].raw[1],obs[0].raw[2],obs[0].raw[3],
+		       obs[0].raw[4],obs[0].raw[5],obs[0].raw[6],obs[0].raw[7]);
 		memset(&prod, 0, sizeof(prod));   /* 1 s window */
 	}
 }
