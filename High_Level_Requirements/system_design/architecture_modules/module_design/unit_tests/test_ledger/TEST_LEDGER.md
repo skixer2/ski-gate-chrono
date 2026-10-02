@@ -119,6 +119,18 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
+### TC-2026-10-02-002 — M3 Phase B: sensor producer (real BHI260 frames) — OPEN (design review)
+
+| Field | Value |
+|---|---|
+| App | `03_pull_proto` (base v0.11.14) |
+| Opened | 2026-10-02 10:55 UTC (ZioClaw, requirements-first per JP rule) |
+| Goal | Synthetic 8 B placeholder frames → real RV/LACC/baro @100 Hz + temp @1 Hz, byte-identical ArduinoFW encoding |
+| Requirements | `Firmware_Zephyr/docs/phase_b_requirements.md` (source-of-truth table read from ArduinoFW code, not memory) |
+| Steps | B1 config+FIFO drain (serial proof, ≥95% of 100 f/s) → B2 BitPacker C port (golden vectors from Arduino bench) → B3 producer swap (≥99.9% ticks, ≤8.5 B/frame avg, BLE-loaded) |
+| Open decisions | FIFO poll vs INT(P0.14); golden-vector capture session; temp header-only confirm |
+| Status | Awaiting JP design review — NO CODE until approved |
+
 ### TC-2026-10-02-001 — BHI260AP Zephyr bring-up (M3 Phase A) — RESOLVED (PASS)
 
 | Field | Value |
