@@ -98,8 +98,11 @@ static void drain_thread(void *a, void *b, void *c)
 		k_sleep(K_MSEC(10));
 	}
 }
+/* Zephyr 4.4.2: K_THREAD_DEFINE delay is ms-int (-1 = SYS_FOREVER_MS);
+ * K_FOREVER (k_timeout_t) does NOT compile here. -1 = startable later
+ * via k_thread_start(). */
 K_THREAD_DEFINE(sensor_prod_tid, 1536, drain_thread, NULL, NULL, NULL,
-		5, 0, K_FOREVER);
+		5, 0, -1);
 
 /* ---- 1 Hz stats (own low-prio thread; printk from drain ctx avoided) ---- */
 static void stats_thread(void *a, void *b, void *c)
@@ -120,7 +123,7 @@ static void stats_thread(void *a, void *b, void *c)
 	}
 }
 K_THREAD_DEFINE(sensor_prod_stats_tid, 1024, stats_thread, NULL, NULL, NULL,
-		10, 0, K_FOREVER);
+		10, 0, -1);
 
 /* ---- setup ---- */
 static const struct { uint8_t id; float rate; } cfgs[] = {
