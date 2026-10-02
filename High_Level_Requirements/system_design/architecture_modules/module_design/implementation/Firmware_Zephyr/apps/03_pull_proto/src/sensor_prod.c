@@ -84,8 +84,8 @@ static void golden_emit(uint8_t idx, uint8_t sid,
 	}
 	printk("]}\n");
 }
- * BHY2 frame layout: data_ptr[0] = status byte, payload at +1;
- * data_size INCLUDES the status byte (RV=11, LACC=7, BARO=7, TEMP=3). */
+/* Layout (v0.12.8+): payload starts at data_ptr+0; event size INCLUDES
+ * the SID byte (RV=11, LACC=7, BARO=4, TEMP=5). No status byte in stream. */
 static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 {
 	ARG_UNUSED(priv);
