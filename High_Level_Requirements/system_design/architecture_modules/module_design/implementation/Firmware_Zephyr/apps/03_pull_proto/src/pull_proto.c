@@ -328,6 +328,8 @@ static int parse_three_l(const char *p, long *id, long *off, long *len)
 	return 0;
 }
 
+void sensor_prod_golden_arm(void);
+
 static void cmd_work_handler(struct k_work *w)
 {
 	/* Copy out FIRST, then free the slot: a write arriving while we
@@ -415,6 +417,9 @@ static void cmd_work_handler(struct k_work *w)
 
 		printk("BB probe rearm\n");
 		bhy2_probe_rearm();
+	} else if (cmd == 'v') {
+		/* B2 golden vectors: arm 8 s raw+decode capture (serial-only). */
+		sensor_prod_golden_arm();
 	} else if (cmd == 'a' || cmd == 'g' || cmd == 'e') {
 		/* M3 step 1: recording state machine (synthetic producer).
 		 * a=arm (120 s timeout) g=go e=end — production triggers

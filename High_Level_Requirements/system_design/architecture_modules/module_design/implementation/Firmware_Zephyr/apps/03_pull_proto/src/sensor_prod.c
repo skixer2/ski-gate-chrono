@@ -57,6 +57,33 @@ static void note_obs(uint8_t sid, uint8_t size, const uint8_t *data)
 
 /* One generic callback: the vendored parser hands us callback_info with
  * data_ptr/data_size already sliced per sensor frame.
+ *
+ * B2 golden vectors: 'v' arms 8 s; first GOLDEN_MAX frames per sensor print
+ * raw event bytes (SID included) next to the firmware decode. Serial-only. */
+
+#define GOLDEN_MAX 5
+static int64_t golden_deadline;
+static uint8_t golden_got[4];
+void sensor_prod_golden_arm(void);
+static void golden_emit(uint8_t idx, uint8_t sid,
+			const struct bhy2_fifo_parse_data_info *info,
+			const int32_t *v, uint8_t vn)
+{
+	if (k_uptime_get() >= golden_deadline || golden_got[idx] >= GOLDEN_MAX) {
+		return;
+	}
+	golden_got[idx]++;
+	const uint8_t *b = info->data_ptr - 1;   /* include SID byte */
+	printk("{\"ev\":\"gv\",\"sid\":%u,\"hex\":\"", sid);
+	for (uint8_t i = 0; i < info->data_size; i++) {
+		printk("%02x", b[i]);
+	}
+	printk("\",\"v\":[");
+	for (uint8_t i = 0; i < vn; i++) {
+		printk("%s%d", i ? "," : "", v[i]);
+	}
+	printk("]}\n");
+}
  * BHY2 frame layout: data_ptr[0] = status byte, payload at +1;
  * data_size INCLUDES the status byte (RV=11, LACC=7, BARO=7, TEMP=3). */
 static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
@@ -70,6 +97,11 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		bhy2_parse_quaternion(info->data_ptr, &q);
 		prod.qw = q.w; prod.qx = q.x; prod.qy = q.y; prod.qz = q.z;
 		prod.n_rv++;
+		{
+			int32_t gv[5] = { q.x, q.y, q.z, q.w,
+				(int16_t)(info->data_ptr[8] | (info->data_ptr[9] << 8)) };
+			golden_emit(0, info->sensor_id, info, gv, 5);
+		}
 		return;
 	}
 	case BHY2_SENSOR_ID_LACC: {
@@ -78,6 +110,10 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		bhy2_parse_xyz(info->data_ptr, &v);
 		prod.la_x = v.x; prod.la_y = v.y; prod.la_z = v.z;
 		prod.n_lacc++;
+		{
+			int32_t gv[3] = { v.x, v.y, v.z };
+			golden_emit(1, info->sensor_id, info, gv, 3);
+		}
 		return;
 	}
 	case BHY2_SENSOR_ID_BARO: {
@@ -87,8 +123,12 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		const uint8_t *d = info->data_ptr;   /* event = SID + uint24 raw */
 		prod.baro_pa = (uint32_t)d[0] |
 			       ((uint32_t)d[1] << 8) |
-			       ((uint32_t)d[2] << 16);   /* uint24 LE, x0.0078 -> Pa */
+			       ((uint32_t)d[2] << 16);   /* uint24 LE, x0.0078 -> hPa */
 		prod.n_baro++;
+		{
+			int32_t gv[1] = { (int32_t)prod.baro_pa };
+			golden_emit(2, info->sensor_id, info, gv, 1);
+		}
 		return;
 	}
 	case BHY2_SENSOR_ID_TEMP: {
@@ -99,11 +139,25 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		int16_t t = (int16_t)(d[0] | (d[1] << 8));
 		prod.temp_cx10 = t / 10;   /* candidate decode, ArduinoFW semantics */
 		prod.n_temp++;
+		{
+			int32_t gv[1] = { t };
+			golden_emit(3, info->sensor_id, info, gv, 1);
+		}
 		return;
 	}
 	default:
 		return;   /* status/meta frames — not counted (B1 scope) */
 	}
+}
+
+
+void sensor_prod_golden_arm(void)
+{
+	for (int i = 0; i < 4; i++) {
+		golden_got[i] = 0;
+	}
+	golden_deadline = k_uptime_get() + 8000;
+	printk("{\"ev\":\"golden_armed\",\"ms\":8000}\n");
 }
 
 /* ---- drain thread: poll FIFO every 10 ms ---- */
