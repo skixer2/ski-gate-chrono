@@ -74,7 +74,7 @@ static const struct gpio_dt_spec bhi_rst = {
 };
 static const struct device *const spi_dev = DEVICE_DT_GET(DT_BUS(BHI_NODE));
 static struct spi_config bhi_spi_cfg = {
-	.frequency = 16000000,
+	.frequency = 8000000, /* nRF52832 SPIM2 max — mbed's 16M request clamps here anyway */
 	.operation = (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
 		      SPI_TRANSFER_MSB),  /* Mode 0: Arduino mbed default */
 	/* cs left empty — manual GPIO CS (bhi_cs) around every op */
@@ -85,23 +85,25 @@ static struct spi_config bhi_spi_cfg = {
 int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 			void *intf_ptr)
 {
-	/* Read = write the register address, then read len bytes. Wire
-	 * framing = the vendored reference (common.cpp): spi.write(reg)
-	 * then read — the address occupies wire byte 0 (discard), data
-	 * follows (skip-1). RESTORED in v0.11.11 alongside manual CS. */
+	/* v0.11.13: NO null-buffer skip entries (Zephyr buffer-walk
+	 * semantics insurance): transceive into ONE scratch buffer covering
+	 * address byte + data, then discard byte 0 manually. 8 MHz (16 was
+	 * illegal on nRF52832 SPIM2 — killed as a variable). */
+	uint8_t scratch[257];
 	const struct spi_buf tx = { .buf = &reg, .len = 1 };
 	const struct spi_buf_set txs = { .buffers = &tx, .count = 1 };
-	struct spi_buf rx[2] = {
-		{ .buf = NULL, .len = 1 },          /* address byte on wire */
-		{ .buf = buf, .len = len },
-	};
-	const struct spi_buf_set rxs = { .buffers = rx, .count = 2 };
+	struct spi_buf rx = { .buf = scratch, .len = len + 1 };
+	const struct spi_buf_set rxs = { .buffers = &rx, .count = 1 };
 
 	gpio_pin_set_dt(&bhi_cs, 0); /* select */
 	int err = spi_transceive(spi_dev, &bhi_spi_cfg, &txs, &rxs);
 	gpio_pin_set_dt(&bhi_cs, 1); /* release */
 
-	return (err == 0) ? BHY2_INTF_RET_SUCCESS : (BHY2_INTF_RET_TYPE)-1;
+	if (err == 0) {
+		memcpy(buf, scratch + 1, len);
+		return BHY2_INTF_RET_SUCCESS;
+	}
+	return (BHY2_INTF_RET_TYPE)-1;
 }
 
 int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
