@@ -394,9 +394,12 @@ bool bhy2_bringup(void)
 	/* Probe once per power cycle. RAM sentinel in .noinit survives warm
 	 * reboot (nRF52 keeps RAM across sys_reboot, v4.02 lesson) and is
 	 * ours alone — GPREGRET proved dirty from prior sessions. */
-	if (bb_once != 0x42BB42BB) {
+	/* v0.11.12: probe COMPILED OUT — it perturbs the board state
+	 * (PMIC LDO writes, 21-pin CS scan) before the SPIM proof ever
+	 * runs. Clean-boot test: manual CS + skip-1 framing alone. */
+	/* if (bb_once != 0x42BB42BB) {
 		bhy2_bitbang_probe();
-	}
+	} */
 	if (!device_is_ready(spi_dev)) {
 		printk("bhy2: SPI device not ready\n");
 		return false;
