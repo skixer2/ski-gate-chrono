@@ -153,6 +153,19 @@ static void bb_tx8(uint8_t b)
 	}
 }
 
+/* Generalized exchange: idle = SCK idle level (0 = mode 0, 1 = mode 3).
+ * Data changes while SCK idles; sample on the active (non-idle) edge. */
+static void bb_tx8_m(uint8_t b, int idle)
+{
+	for (int i = 7; i >= 0; i--) {
+		gpio_pin_set_dt(&bb_mosi, (b >> i) & 1);
+		bb_half();
+		gpio_pin_set_dt(&bb_sck, !idle);
+		bb_half();
+		gpio_pin_set_dt(&bb_sck, idle);
+	}
+}
+
 static uint32_t bb_rx(int bits)
 {
 	uint32_t v = 0;
@@ -163,6 +176,42 @@ static uint32_t bb_rx(int bits)
 		v = (v << 1) | (gpio_pin_get_dt(&bb_miso) ? 1 : 0);
 		gpio_pin_set_dt(&bb_sck, 0);
 		bb_half();
+	}
+	return v;
+}
+
+static uint32_t bb_rx_m(int bits, int idle)
+{
+	uint32_t v = 0;
+
+	for (int i = 0; i < bits; i++) {
+		gpio_pin_set_dt(&bb_sck, !idle);
+		bb_half();
+		v = (v << 1) | (gpio_pin_get_dt(&bb_miso) ? 1 : 0);
+		gpio_pin_set_dt(&bb_sck, idle);
+		bb_half();
+	}
+	return v;
+}
+
+static uint32_t bb_exchange_mode(const struct gpio_dt_spec *cs, uint8_t cmd, int rbits, int idle)
+{
+	gpio_pin_configure_dt(&bb_sck, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&bb_mosi, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&bb_miso, GPIO_INPUT);
+	gpio_pin_configure_dt(cs, GPIO_OUTPUT_INACTIVE);
+	if (idle) {
+		gpio_pin_set_dt(&bb_sck, 1);
+	}
+	k_busy_wait(50);
+	gpio_pin_set_dt(cs, 0); /* assert */
+	bb_half(); bb_half();
+	bb_tx8_m(cmd, idle);
+	uint32_t v = bb_rx_m(rbits, idle);
+	gpio_pin_set_dt(cs, 1); /* release */
+	bb_half();
+	if (idle) {
+		gpio_pin_set_dt(&bb_sck, 0);
 	}
 	return v;
 }
@@ -225,14 +274,41 @@ static void bhy2_bitbang_probe(void)
 	       (unsigned long)nrf_power_gpregret_get(NRF_POWER, 0));
 	printk("BB: bit-bang probe (100 kHz, mode 0)\n");
 	bb_detach_spim2();
+
+	/* MISO idle-level forensics: no CS, no clock. */
+	gpio_pin_configure_dt(&bb_sck, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&bb_mosi, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&bb_miso, GPIO_INPUT);
+	k_busy_wait(100);
+	printk("BB: miso idle level (floating read) = %d\n",
+	       gpio_pin_get_dt(&bb_miso));
+
 	bb_flash_wake(&bb_cs_f);
 	uint32_t jedec = bb_exchange(&bb_cs_f, 0x9F, 24);
 	printk("BB: flash @CS P0.26 JEDEC 0x9F -> %06lX (expect C22815)\n",
 	       (unsigned long)jedec);
-	uint32_t id31 = bb_exchange(&bb_cs_b, 0x90 | 0x80, 16);
-	printk("BB: BHI   @CS P0.31 CHIP_ID 0x90 -> %04lX\n", (unsigned long)id31);
-	uint32_t id29 = bb_exchange(&bb_cs_x, 0x90 | 0x80, 16);
-	printk("BB: BHI   @CS P0.29 CHIP_ID 0x90 -> %04lX\n", (unsigned long)id29);
+
+	/* Full CS scan — every safe pin, both SPI modes. Excluded: bus 3/4/5,
+	 * console 9/20, I2C 15/16/22/23, flash CS 26, reset 18. */
+	static const uint8_t scan[] = { 0, 1, 2, 6, 7, 8, 10, 11, 12, 13, 14,
+				       17, 19, 21, 24, 25, 27, 28, 29, 30, 31 };
+	for (int m = 0; m <= 1; m++) {
+		printk("BB: --- CS scan mode %d ---\n", m ? 3 : 0);
+		for (unsigned i = 0; i < sizeof(scan); i++) {
+			const struct gpio_dt_spec cs = {
+				.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
+				.pin = scan[i],
+				.dt_flags = 0,
+			};
+			uint32_t v = bb_exchange_mode(&cs, 0x90 | 0x80, 16, m);
+			if (v != 0) {
+				printk("BB: ANSWER pin P0.%u mode %d -> %04lX\n",
+				       scan[i], m ? 3 : 0, (unsigned long)v);
+			}
+		}
+		printk("BB: scan mode %d done (nonzero lines above = responders)\n",
+		       m ? 3 : 0);
+	}
 	printk("BB: done, rebooting into SPIM path\n");
 	k_msleep(200);
 	nrf_power_gpregret_set(NRF_POWER, 0, 0x42); /* skip probe next warm boot */
