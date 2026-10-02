@@ -159,12 +159,12 @@ static void stats_thread(void *a, void *b, void *c)
 		}
 		printk("{\"ev\":\"b1_rate\",\"rv\":%u,\"lacc\":%u,\"baro\":%u,"
 		       "\"temp\":%u,\"err\":%u,\"short\":%u,"
-		       "\"baro_pa\":%u,\"qw\":%d,\"tx10\":%d,"
+		       "\"baro_pa\":%u,\"qw\":%d,\"tx10\":%d,\"la\":[%d,%d,%d],"
 		       "\"obs\":[[%u,%u,%u],[%u,%u,%u],[%u,%u,%u],[%u,%u,%u]],"
 		       "\"r0\":[%u,%u,%u,%u,%u,%u,%u,%u]}\n",
 		       prod.n_rv, prod.n_lacc, prod.n_baro, prod.n_temp,
 		       prod.errors, prod.short_frames,
-		       prod.baro_pa, prod.qw, prod.temp_cx10,
+		       prod.baro_pa, prod.qw, prod.temp_cx10, prod.la_x, prod.la_y, prod.la_z,
 		       obs[0].sid, obs[0].size, obs[0].n,
 		       obs[1].sid, obs[1].size, obs[1].n,
 		       obs[2].sid, obs[2].size, obs[2].n,
