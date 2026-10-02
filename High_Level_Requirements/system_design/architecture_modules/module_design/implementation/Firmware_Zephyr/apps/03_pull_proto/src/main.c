@@ -30,7 +30,7 @@ bool bhy2_bringup(void);
 #include "pull_proto.h"
 #include "demo_svc.h"
 
-#define APP_VERSION "0.11.8"
+#define APP_VERSION "0.11.9"
 
 int main(void)
 {

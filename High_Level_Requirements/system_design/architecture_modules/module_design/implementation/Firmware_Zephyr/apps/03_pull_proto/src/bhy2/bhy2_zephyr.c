@@ -307,6 +307,25 @@ static void bhy2_bitbang_probe(void)
 	bq_probe();
 	bb_detach_spim2();
 
+	/* Photocopy the mbed electrical state captured by the Arduino probe2
+	 * PIN_CNF dump (hub boots fine under it). Raw PIN_CNF writes after
+	 * the SPIM detach. P0.18=0x301 (output HIGH — the mbed core drives
+	 * the reset released; our floating probe may have held the hub in
+	 * reset through every scan). */
+	{
+		volatile uint32_t *cnf = (volatile uint32_t *)0x50000700UL;
+
+		cnf[3] = 0x1;    /* SCK     output            */
+		cnf[4] = 0x3;    /* MOSI    output+input      */
+		cnf[5] = 0x4;    /* MISO    input+pulldown    */
+		cnf[26] = 0x3;   /* flash CS output+input     */
+		cnf[31] = 0x3;   /* BHI CS  output+input      */
+		cnf[18] = 0x301; /* reset   output HIGH +sense*/
+		cnf[14] = 0xC;   /* INT     input+pullup      */
+		printk("BB: mbed PIN_CNF state applied (incl. P0.18 high)\n");
+	}
+	k_msleep(5);
+
 	/* MISO idle-level forensics: no CS, no clock. */
 	gpio_pin_configure_dt(&bb_sck, GPIO_OUTPUT_INACTIVE);
 	gpio_pin_configure_dt(&bb_mosi, GPIO_OUTPUT_INACTIVE);
@@ -374,17 +393,13 @@ bool bhy2_bringup(void)
 		return false;
 	}
 
-	/* Hard-reset pulse on RESET_BHI260 (P0.18): the battery keeps VDD
-	 * alive across nRF reboots, so a wedged hub NEVER sees a cold boot
-	 * unless we pulse its reset line. Low 10 ms, release, boot settle. */
+	/* mbed parity: P0.18 = output HIGH, never pulsed (the mbed core
+	 * drives the reset released; our old 10 ms low pulse may itself
+	 * have been wedging the boot sequence). */
 	if (bhi_rst.port != NULL) {
-		gpio_pin_configure_dt(&bhi_rst, GPIO_OUTPUT_ACTIVE); /* low */
-		k_msleep(10);
-		gpio_pin_set_dt(&bhi_rst, 0); /* high = released */
+		gpio_pin_configure_dt(&bhi_rst, GPIO_OUTPUT_INACTIVE); /* high */
 		k_msleep(150);
-		printk("bhy2: reset pulse done (P0.18)\n");
-	} else {
-		printk("bhy2: no reset-gpios in DT!\n");
+		printk("bhy2: P0.18 held high (no pulse, mbed parity)\n");
 	}
 
 	int8_t ret = bhy2_init(BHY2_SPI_INTERFACE,
