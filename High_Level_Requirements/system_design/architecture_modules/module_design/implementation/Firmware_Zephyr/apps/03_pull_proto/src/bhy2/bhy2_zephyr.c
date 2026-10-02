@@ -24,6 +24,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/i2c.h>
 #include <zephyr/sys/reboot.h>
 #include <hal/nrf_power.h>
 #include <zephyr/logging/log.h>
@@ -268,11 +269,42 @@ static void bb_detach_spim2(void)
 	*psel_miso = 0xFFFFFFFFUL;
 }
 
+/* BQ25120A PMIC (I2C0/TWIM0 @ 0x6A — same bus as the IS31 LED).
+ * nicla::begin() talks to it in the Arduino world; we never have.
+ * enable1V8LDO() = write 0xA8 to LDO_CTRL (0x07). If the sensors'
+ * supply hangs off this LDO, the hub was unpowered in ALL our Zephyr
+ * runs while Arduino's begin() lit it up. */
+static void bq_probe(void)
+{
+	const struct device *i2c = DEVICE_DT_GET(DT_NODELABEL(i2c0));
+	uint8_t status = 0xAA, ldo = 0xAA, rd = 0xAA;
+	uint8_t sta_reg = 0x00, ldo_reg = 0x07;
+	uint8_t wr[2];
+
+	if (!device_is_ready(i2c)) {
+		printk("BB: i2c0 not ready!\n");
+		return;
+	}
+	int r1 = i2c_write_read(i2c, 0x6A, &sta_reg, 1, &status, 1);
+	int r2 = i2c_write_read(i2c, 0x6A, &ldo_reg, 1, &ldo, 1);
+	printk("BB: BQ25120 status r=%d v=0x%02X | LDO_CTRL r=%d v=0x%02X\n",
+	       r1, status, r2, ldo);
+
+	wr[0] = ldo_reg;
+	wr[1] = 0xA8; /* Arduino enable1V8LDO() value */
+	int r3 = i2c_write(i2c, wr, 2, 0x6A);
+	int r4 = i2c_write_read(i2c, 0x6A, &ldo_reg, 1, &rd, 1);
+	printk("BB: LDO_CTRL <- 0xA8 (r=%d) readback r=%d v=0x%02X\n",
+	       r3, r4, rd);
+	k_msleep(10);
+}
+
 static void bhy2_bitbang_probe(void)
 {
 	printk("BB: gpregret=%02lX (dirty from previous session, why gate failed)\n",
 	       (unsigned long)nrf_power_gpregret_get(NRF_POWER, 0));
 	printk("BB: bit-bang probe (100 kHz, mode 0)\n");
+	bq_probe();
 	bb_detach_spim2();
 
 	/* MISO idle-level forensics: no CS, no clock. */
