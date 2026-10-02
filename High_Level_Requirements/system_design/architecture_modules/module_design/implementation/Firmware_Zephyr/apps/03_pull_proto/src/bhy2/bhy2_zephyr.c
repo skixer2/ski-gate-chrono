@@ -82,14 +82,18 @@ static struct spi_config bhi_spi_cfg_rw = {
 int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 			void *intf_ptr)
 {
-	/* Read = write the register address, then read len bytes. */
+	/* Read = write the register address, then read len bytes IMMEDIATELY.
+	 * NO dummy/echo byte: the vendored reference (common.cpp) does
+	 * spi.write(reg); spi.write(NULL, len, data, len) — data starts on
+	 * the very next byte. v0.11.10 fixes the phantom-echo discard that
+	 * shifted every read by one byte (product_id 0, boot_status 0,
+	 * soft_reset timeout — the hub was answering the whole time). */
 	const struct spi_buf tx = { .buf = &reg, .len = 1 };
 	const struct spi_buf_set txs = { .buffers = &tx, .count = 1 };
-	struct spi_buf rx[2] = {
-		{ .buf = NULL, .len = 1 },          /* discard reg echo */
+	struct spi_buf rx[1] = {
 		{ .buf = buf, .len = len },
 	};
-	const struct spi_buf_set rxs = { .buffers = rx, .count = 2 };
+	const struct spi_buf_set rxs = { .buffers = rx, .count = 1 };
 
 	int err = spi_transceive(spi_dev, &bhi_spi_cfg, &txs, &rxs);
 
