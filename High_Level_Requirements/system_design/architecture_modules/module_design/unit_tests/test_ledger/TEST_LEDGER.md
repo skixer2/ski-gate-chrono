@@ -129,7 +129,8 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | Requirements | `Firmware_Zephyr/docs/phase_b_requirements.md` (source-of-truth table read from ArduinoFW code, not memory) |
 | Steps | B1 config+FIFO drain (serial proof, ≥95% of 100 f/s) → B2 BitPacker C port (golden vectors from Arduino bench) → B3 producer swap (≥99.9% ticks, ≤8.5 B/frame avg, BLE-loaded) |
 | Decisions (11:31) | FIFO=poll (INT=fallback); golden vectors=yes (bench capture); temp header-only ×10 + arrival-temp in status metadata (blob parked for header v3) |
-| Status | Awaiting JP design review — NO CODE until approved |
+| B1 PASS (14:1x) | JP approved B1. Progression v0.12.0→v0.12.7: (a) K_THREAD_DEFINE delay is ms-int in Zephyr 4.4.2 (use -1, not K_FOREVER); (b) vendored BHY2 has DELEGATE_FIFO_PARSE_CB_INFO_MGMT=1 → register_fifo_parse_callback stores NOTHING; empty delegate → BUS FAULT on garbage ptr. Fix: host-owned sparse 4-entry callback table in bhy2_zephyr.c + `bhy2_zephyr_set_fifo_callback()`; (c) data_size INCLUDES status byte (RV=11, LACC=7, BARO=7, TEMP=3), payload at data_ptr+1. v0.12.7 bench (b1cap9.log): rv≈100/s, lacc≈100/s, baro=16/s, temp=1/s, err=0, short=0, obs empty → all guards satisfied, no size surprises. Stable 60 s+ cycle. |
+| Status | B1 CLOSED (PASS). Next: B2 BitPacker C port w/ golden vectors → JP review |
 
 ### TC-2026-10-02-001 — BHI260AP Zephyr bring-up (M3 Phase A) — RESOLVED (PASS)
 
