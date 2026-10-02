@@ -80,22 +80,23 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		return;
 	}
 	case BHY2_SENSOR_ID_BARO: {
-		/* payload: uint32 Pa LE + uint16 accuracy (after status byte) */
-		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
+		/* OBSERVED 4 B @ ~16.4 Hz (hub clamps BMP390 pass-through rate).
+		 * Decode deferred: hold-last for frames, ArduinoFW parity. */
+		if (info->data_size != 4) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		const uint8_t *d = info->data_ptr + 1;
 		prod.baro_pa = (uint32_t)d[0] |
 			       ((uint32_t)d[1] << 8) |
-			       ((uint32_t)d[2] << 16) |
-			       ((uint32_t)d[3] << 24);
+			       ((uint32_t)d[2] << 16);   /* uint24 Pa LE (4B frame) */
 		prod.n_baro++;
 		return;
 	}
 	case BHY2_SENSOR_ID_TEMP: {
-		/* payload: int16, 0.01 °C/LSB (bhy2_data_temperature) */
-		if (info->data_size != 3) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
+		/* OBSERVED 5 B @ ~0.5 Hz — payload layout under investigation;
+		 * candidate: status + int16 (0.01 °C/LSB) at +1. */
+		if (info->data_size != 5) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		const uint8_t *d = info->data_ptr + 1;
 		int16_t t = (int16_t)(d[0] | (d[1] << 8));
-		prod.temp_cx10 = t / 10;   /* → 0.1 °C/LSB, ArduinoFW semantics */
+		prod.temp_cx10 = t / 10;   /* candidate decode, ArduinoFW semantics */
 		prod.n_temp++;
 		return;
 	}
