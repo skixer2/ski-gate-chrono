@@ -12,6 +12,10 @@ target_sources(app PRIVATE
   src/demo_svc.c
   src/recorder.c
   src/sensor_prod.c
+  src/bitpacker.c
+  src/bitpack_test.c
+  src/bp_ref/bit_packer.cpp
+  src/bp_ref/bp_ref_glue.cpp
   src/bhy2/bhy2.c
   src/bhy2/bhy2_hif.c
   src/bhy2/bhy2_parse.c

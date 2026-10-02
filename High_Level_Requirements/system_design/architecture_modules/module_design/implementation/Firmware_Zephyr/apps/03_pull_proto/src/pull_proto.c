@@ -417,6 +417,11 @@ static void cmd_work_handler(struct k_work *w)
 
 		printk("BB probe rearm\n");
 		bhy2_probe_rearm();
+	} else if (cmd == 'V') {
+		/* B2b: BitPacker differential test (C port vs ArduinoFW ref). */
+		extern void bitpack_test_run(void);
+
+		bitpack_test_run();
 	} else if (cmd == 'v') {
 		/* B2 golden vectors: arm 8 s raw+decode capture (serial-only). */
 		sensor_prod_golden_arm();
