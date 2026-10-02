@@ -128,7 +128,7 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 | Goal | Synthetic 8 B placeholder frames → real RV/LACC/baro @100 Hz + temp @1 Hz, byte-identical ArduinoFW encoding |
 | Requirements | `Firmware_Zephyr/docs/phase_b_requirements.md` (source-of-truth table read from ArduinoFW code, not memory) |
 | Steps | B1 config+FIFO drain (serial proof, ≥95% of 100 f/s) → B2 BitPacker C port (golden vectors from Arduino bench) → B3 producer swap (≥99.9% ticks, ≤8.5 B/frame avg, BLE-loaded) |
-| Open decisions | FIFO poll vs INT(P0.14); golden-vector capture session; temp header-only confirm |
+| Decisions (11:31) | FIFO=poll (INT=fallback); golden vectors=yes (bench capture); temp header-only ×10 + arrival-temp in status metadata (blob parked for header v3) |
 | Status | Awaiting JP design review — NO CODE until approved |
 
 ### TC-2026-10-02-001 — BHI260AP Zephyr bring-up (M3 Phase A) — RESOLVED (PASS)

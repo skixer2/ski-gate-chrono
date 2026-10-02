@@ -53,13 +53,18 @@ Synthetic → real: tick reads latest parsed values → RawFrame → BitPacker �
 store append path. *Pass:* 60 s ARM+LOG ≥ 99.9% ticks, avg ≤8.5 B/frame,
 CRC-intact blob via fake store; then store_flash becomes the next arc.
 
-## Decisions for JP (none block B1)
+## Decisions (JP, 2026-10-02 11:31 UTC — recorded)
 
-1. **FIFO trigger:** poll-in-tick (ArduinoFW parity, my recommendation) vs
-   wire BHI INT (P0.14) from the start?
-2. **Golden vectors:** capture from Arduino bench (true ground truth) — OK
-   to run one capture sketch there?
-3. **Temp:** stay header-only ×10 (ArduinoFW parity) — confirm.
+1. **FIFO: POLL in the 10 ms tick** (ArduinoFW parity). P0.14 INT =
+   documented fallback only if B1 rate gates fail.
+2. **Golden vectors = yes**: (input frame bytes → packed output bytes)
+   pairs captured from ArduinoFW BitPacker on the bench; Zephyr C port
+   must reproduce them byte-identically.
+3. **Temp: header-only ×10** (0.1 °C/LSB, int16, at LOGGING start) —
+   confirmed. **Arrival temp** (wax/ski inference, JP idea): emit in
+   serial/BLE status metadata at run close for now; stored-in-blob
+   parked for header v3 (Zephyr-era app rebuild) — blob layout frozen
+   by current app parser.
 4. Known risk noted in recorder.c: sysworkq lost ~25% of 100 Hz ticks with
    BLE active during LOGGING. B3 must include the BLE-loaded benchmark we
    already know how to run.
