@@ -67,7 +67,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 	case BHY2_SENSOR_ID_RV: {
 		if (info->data_size != 11) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		struct bhy2_data_quaternion q;
-		bhy2_parse_quaternion(info->data_ptr + 1, &q);
+		bhy2_parse_quaternion(info->data_ptr, &q);
 		prod.qw = q.w; prod.qx = q.x; prod.qy = q.y; prod.qz = q.z;
 		prod.n_rv++;
 		return;
@@ -75,7 +75,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 	case BHY2_SENSOR_ID_LACC: {
 		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
 		struct bhy2_data_xyz v;
-		bhy2_parse_xyz(info->data_ptr + 1, &v);
+		bhy2_parse_xyz(info->data_ptr, &v);
 		prod.la_x = v.x; prod.la_y = v.y; prod.la_z = v.z;
 		prod.n_lacc++;
 		return;
@@ -84,10 +84,10 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		/* OBSERVED 4 B @ ~16.4 Hz (hub clamps BMP390 pass-through rate).
 		 * Decode deferred: hold-last for frames, ArduinoFW parity. */
 		if (info->data_size != 4) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
-		const uint8_t *d = info->data_ptr + 1;
+		const uint8_t *d = info->data_ptr;   /* event = SID + uint24 raw */
 		prod.baro_pa = (uint32_t)d[0] |
 			       ((uint32_t)d[1] << 8) |
-			       ((uint32_t)d[2] << 16);   /* uint24 Pa LE (4B frame) */
+			       ((uint32_t)d[2] << 16);   /* uint24 LE, x0.0078 -> Pa */
 		prod.n_baro++;
 		return;
 	}
@@ -95,7 +95,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		/* OBSERVED 5 B @ ~0.5 Hz — payload layout under investigation;
 		 * candidate: status + int16 (0.01 °C/LSB) at +1. */
 		if (info->data_size != 5) { prod.short_frames++; note_obs(info->sensor_id, info->data_size, info->data_ptr); return; }
-		const uint8_t *d = info->data_ptr + 1;
+		const uint8_t *d = info->data_ptr;   /* event = SID + 4 (int16 + 2) */
 		int16_t t = (int16_t)(d[0] | (d[1] << 8));
 		prod.temp_cx10 = t / 10;   /* candidate decode, ArduinoFW semantics */
 		prod.n_temp++;
