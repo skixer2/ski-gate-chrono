@@ -34,44 +34,63 @@ static struct {
 	int16_t  temp_cx10;         /* 0.1 °C/LSB — ArduinoFW header semantics */
 } prod;
 
+/* Observed (sid,size) pairs — one-shot histogram for size-contract proof */
+static struct { uint8_t sid; uint8_t size; uint16_t n; } obs[6];
+static void note_obs(uint8_t sid, uint8_t size)
+{
+	for (int i = 0; i < 6; i++) {
+		if (obs[i].n != 0 && obs[i].sid == sid && obs[i].size == size) {
+			obs[i].n++; return;
+		}
+	}
+	for (int i = 0; i < 6; i++) {
+		if (obs[i].n == 0) {
+			obs[i].sid = sid; obs[i].size = size; obs[i].n = 1; return;
+		}
+	}
+}
+
 /* One generic callback: the vendored parser hands us callback_info with
- * data_ptr/data_size already sliced per sensor frame. */
+ * data_ptr/data_size already sliced per sensor frame.
+ * BHY2 frame layout: data_ptr[0] = status byte, payload at +1;
+ * data_size INCLUDES the status byte (RV=11, LACC=7, BARO=7, TEMP=3). */
 static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 {
 	ARG_UNUSED(priv);
 
 	switch (info->sensor_id) {
 	case BHY2_SENSOR_ID_RV: {
-		if (info->data_size != 10) { prod.short_frames++; return; }
+		if (info->data_size != 11) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
 		struct bhy2_data_quaternion q;
-		bhy2_parse_quaternion(info->data_ptr, &q);
+		bhy2_parse_quaternion(info->data_ptr + 1, &q);
 		prod.qw = q.w; prod.qx = q.x; prod.qy = q.y; prod.qz = q.z;
 		prod.n_rv++;
 		return;
 	}
 	case BHY2_SENSOR_ID_LACC: {
-		if (info->data_size != 6) { prod.short_frames++; return; }
+		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
 		struct bhy2_data_xyz v;
-		bhy2_parse_xyz(info->data_ptr, &v);
+		bhy2_parse_xyz(info->data_ptr + 1, &v);
 		prod.la_x = v.x; prod.la_y = v.y; prod.la_z = v.z;
 		prod.n_lacc++;
 		return;
 	}
 	case BHY2_SENSOR_ID_BARO: {
-		/* bhy2 baro payload: uint32 Pa LE + uint16 accuracy */
-		if (info->data_size != 6) { prod.short_frames++; return; }
-		prod.baro_pa = (uint32_t)info->data_ptr[0] |
-			       ((uint32_t)info->data_ptr[1] << 8) |
-			       ((uint32_t)info->data_ptr[2] << 16) |
-			       ((uint32_t)info->data_ptr[3] << 24);
+		/* payload: uint32 Pa LE + uint16 accuracy (after status byte) */
+		if (info->data_size != 7) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
+		const uint8_t *d = info->data_ptr + 1;
+		prod.baro_pa = (uint32_t)d[0] |
+			       ((uint32_t)d[1] << 8) |
+			       ((uint32_t)d[2] << 16) |
+			       ((uint32_t)d[3] << 24);
 		prod.n_baro++;
 		return;
 	}
 	case BHY2_SENSOR_ID_TEMP: {
-		/* bhy2 temp payload: int16, 0.01 °C/LSB (bhy2_data_temperature) */
-		if (info->data_size != 2) { prod.short_frames++; return; }
-		int16_t t = (int16_t)(info->data_ptr[0] |
-				      (info->data_ptr[1] << 8));
+		/* payload: int16, 0.01 °C/LSB (bhy2_data_temperature) */
+		if (info->data_size != 3) { prod.short_frames++; note_obs(info->sensor_id, info->data_size); return; }
+		const uint8_t *d = info->data_ptr + 1;
+		int16_t t = (int16_t)(d[0] | (d[1] << 8));
 		prod.temp_cx10 = t / 10;   /* → 0.1 °C/LSB, ArduinoFW semantics */
 		prod.n_temp++;
 		return;
@@ -115,10 +134,15 @@ static void stats_thread(void *a, void *b, void *c)
 		}
 		printk("{\"ev\":\"b1_rate\",\"rv\":%u,\"lacc\":%u,\"baro\":%u,"
 		       "\"temp\":%u,\"err\":%u,\"short\":%u,"
-		       "\"baro_pa\":%u,\"qw\":%d,\"tx10\":%d}\n",
+		       "\"baro_pa\":%u,\"qw\":%d,\"tx10\":%d,"
+		       "\"obs\":[[%u,%u,%u],[%u,%u,%u],[%u,%u,%u],[%u,%u,%u]]}\n",
 		       prod.n_rv, prod.n_lacc, prod.n_baro, prod.n_temp,
 		       prod.errors, prod.short_frames,
-		       prod.baro_pa, prod.qw, prod.temp_cx10);
+		       prod.baro_pa, prod.qw, prod.temp_cx10,
+		       obs[0].sid, obs[0].size, obs[0].n,
+		       obs[1].sid, obs[1].size, obs[1].n,
+		       obs[2].sid, obs[2].size, obs[2].n,
+		       obs[3].sid, obs[3].size, obs[3].n);
 		memset(&prod, 0, sizeof(prod));   /* 1 s window */
 	}
 }
