@@ -152,8 +152,9 @@ void sensor_prod_start(void)
 		printk("{\"ev\":\"b1_cfg\",\"sid\":%u,\"rate\":%u,\"rslt\":%d}\n",
 		       cfgs[i].id, (unsigned)cfgs[i].rate, rslt);
 
-		rslt = bhy2_register_fifo_parse_callback(cfgs[i].id,
-							on_frame, NULL, dev);
+		bhy2_zephyr_set_fifo_callback(cfgs[i].id,
+					      on_frame, NULL);
+		rslt = BHY2_OK;
 		printk("{\"ev\":\"b1_cfg\",\"sid\":%u,\"cb_rslt\":%d}\n",
 		       cfgs[i].id, rslt);
 	}

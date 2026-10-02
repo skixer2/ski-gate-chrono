@@ -33,17 +33,45 @@ LOG_MODULE_REGISTER(bhy2, LOG_LEVEL_INF);
 #include "bhy2.h"
 #include "bhy2_hif.h"
 
-/* The vendored bhy2.c is OUR bench-proven copy (cal-hook era): it uses
- * the delegate indirection for FIFO parse callbacks (BHY2_CFG_DELEGATE_
- * FIFO_PARSE_CB_INFO_MGMT=1) — provide the no-op delegate here (the
- * Arduino library registered theirs; we parse FIFOs our own way later). */
+/* Delegate mode (BHY2_CFG_DELEGATE_FIFO_PARSE_CB_INFO_MGMT=1): the vendored
+ * core stores NO callback table — registration is dropped and every FIFO
+ * dispatch asks this delegate for {callback, ref} per sensor_id. Phase B1
+ * (2026-10-02): serve a host-owned sparse table (Arduino_BHY2 pattern).
+ * Leaving this a no-op = dispatch calls stack garbage = BUS FAULT 0x12000000
+ * (proven on bench, v0.12.0). */
+static struct {
+	uint8_t sid;
+	bhy2_fifo_parse_callback_t cb;
+	void *ref;
+} host_fifo_cb[4];
+
+void bhy2_zephyr_set_fifo_callback(uint8_t sensor_id,
+				   bhy2_fifo_parse_callback_t cb, void *ref)
+{
+	for (int i = 0; i < 4; i++) {
+		if (host_fifo_cb[i].sid == sensor_id || host_fifo_cb[i].cb == NULL) {
+			host_fifo_cb[i].sid = sensor_id;
+			host_fifo_cb[i].cb = cb;
+			host_fifo_cb[i].ref = ref;
+			return;
+		}
+	}
+}
+
 void bhy2_get_fifo_parse_callback_info_delegate(uint8_t sensor_id,
                                                 struct bhy2_fifo_parse_callback_table *info,
                                                 const struct bhy2_dev *dev)
 {
-	ARG_UNUSED(sensor_id);
-	ARG_UNUSED(info);
 	ARG_UNUSED(dev);
+	info->callback = NULL;
+	info->callback_ref = NULL;
+	for (int i = 0; i < 4; i++) {
+		if (host_fifo_cb[i].cb != NULL && host_fifo_cb[i].sid == sensor_id) {
+			info->callback = host_fifo_cb[i].cb;
+			info->callback_ref = host_fifo_cb[i].ref;
+			return;
+		}
+	}
 }
 
 #define MAX_READ_WRITE_LEN 256   /* BoschSensortec.h value */

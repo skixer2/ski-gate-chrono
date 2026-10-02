@@ -15,4 +15,9 @@ bool bhy2_bringup(void);
  * NULL until bhy2_bringup() succeeds. */
 struct bhy2_dev *bhy2_zephyr_dev(void);
 
+/* Delegate-mode FIFO callback registration (vendored register is a no-op
+ * storage-wise; dispatch serves THIS host table). */
+void bhy2_zephyr_set_fifo_callback(uint8_t sensor_id,
+				   bhy2_fifo_parse_callback_t cb, void *ref);
+
 #endif /* SGC_BHY2_ZEPHYR_H */
