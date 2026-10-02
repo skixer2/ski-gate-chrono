@@ -54,6 +54,17 @@ static bool bhy2_ready;
 /* Devicetree: the BHI node (see app.overlay — second device on &spi2). */
 #define BHI_NODE DT_NODELABEL(bhi260)
 
+/* MANUAL CS (v0.11.11): the bosch,bhi260ap compatible has NO binding in
+ * Zephyr 4.4 — unbound nodes get no spi-bus resolution, so
+ * SPI_CS_GPIOS_DT_SPEC_GET expanded to an empty spec and the SPI driver
+ * silently skipped CS control: the hub was NEVER selected. Drive CS by
+ * hand, exactly like the Arduino reference (DigitalOut around ops). */
+static const struct gpio_dt_spec bhi_cs = {
+	.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
+	.pin = 31,
+	.dt_flags = GPIO_ACTIVE_LOW,
+};
+
 /* RESET_BHI260 = P0.18 (Arduino variant pin 13, variant.cpp:91).
  * Hardcoded: upstream bosch,bhi260ap binding drops reset-gpios. */
 static const struct gpio_dt_spec bhi_rst = {
@@ -62,19 +73,11 @@ static const struct gpio_dt_spec bhi_rst = {
 	.dt_flags = GPIO_ACTIVE_LOW,
 };
 static const struct device *const spi_dev = DEVICE_DT_GET(DT_BUS(BHI_NODE));
-static const struct spi_config bhi_spi_cfg = {
+static struct spi_config bhi_spi_cfg = {
 	.frequency = 16000000,
 	.operation = (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
 		      SPI_TRANSFER_MSB),  /* Mode 0: Arduino mbed default */
-	.cs = {
-		.gpio = SPI_CS_GPIOS_DT_SPEC_GET(BHI_NODE),
-		.delay = 1,
-	},
-};
-static struct spi_config bhi_spi_cfg_rw = {
-	.frequency = 16000000,
-	.operation = (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
-		      SPI_TRANSFER_MSB),
+	/* cs left empty — manual GPIO CS (bhi_cs) around every op */
 };
 
 /* ── The three host functions the Bosch API needs ─────────────────── */
@@ -82,20 +85,21 @@ static struct spi_config bhi_spi_cfg_rw = {
 int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 			void *intf_ptr)
 {
-	/* Read = write the register address, then read len bytes IMMEDIATELY.
-	 * NO dummy/echo byte: the vendored reference (common.cpp) does
-	 * spi.write(reg); spi.write(NULL, len, data, len) — data starts on
-	 * the very next byte. v0.11.10 fixes the phantom-echo discard that
-	 * shifted every read by one byte (product_id 0, boot_status 0,
-	 * soft_reset timeout — the hub was answering the whole time). */
+	/* Read = write the register address, then read len bytes. Wire
+	 * framing = the vendored reference (common.cpp): spi.write(reg)
+	 * then read — the address occupies wire byte 0 (discard), data
+	 * follows (skip-1). RESTORED in v0.11.11 alongside manual CS. */
 	const struct spi_buf tx = { .buf = &reg, .len = 1 };
 	const struct spi_buf_set txs = { .buffers = &tx, .count = 1 };
-	struct spi_buf rx[1] = {
+	struct spi_buf rx[2] = {
+		{ .buf = NULL, .len = 1 },          /* address byte on wire */
 		{ .buf = buf, .len = len },
 	};
-	const struct spi_buf_set rxs = { .buffers = rx, .count = 1 };
+	const struct spi_buf_set rxs = { .buffers = rx, .count = 2 };
 
+	gpio_pin_set_dt(&bhi_cs, 0); /* select */
 	int err = spi_transceive(spi_dev, &bhi_spi_cfg, &txs, &rxs);
+	gpio_pin_set_dt(&bhi_cs, 1); /* release */
 
 	return (err == 0) ? BHY2_INTF_RET_SUCCESS : (BHY2_INTF_RET_TYPE)-1;
 }
@@ -103,8 +107,7 @@ int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
 			 void *intf_ptr)
 {
-	/* Write = address |0x80? No — the Bosch HIF uses separate read/
-	 * write register access by transfer order; write = reg then data. */
+	/* Write = address byte then data, back to back. */
 	uint8_t hdr = reg;
 	struct spi_buf tx[2] = {
 		{ .buf = &hdr, .len = 1 },
@@ -112,7 +115,9 @@ int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
 	};
 	const struct spi_buf_set txs = { .buffers = tx, .count = 2 };
 
+	gpio_pin_set_dt(&bhi_cs, 0); /* select */
 	int err = spi_write(spi_dev, &bhi_spi_cfg, &txs);
+	gpio_pin_set_dt(&bhi_cs, 1); /* release */
 
 	return (err == 0) ? BHY2_INTF_RET_SUCCESS : (BHY2_INTF_RET_TYPE)-1;
 }
@@ -396,6 +401,9 @@ bool bhy2_bringup(void)
 		printk("bhy2: SPI device not ready\n");
 		return false;
 	}
+
+	/* Manual CS: configure P0.31 output HIGH (deselected) up front. */
+	gpio_pin_configure_dt(&bhi_cs, GPIO_OUTPUT_INACTIVE);
 
 	/* mbed parity: P0.18 = output HIGH, never pulsed (the mbed core
 	 * drives the reset released; our old 10 ms low pulse may itself
