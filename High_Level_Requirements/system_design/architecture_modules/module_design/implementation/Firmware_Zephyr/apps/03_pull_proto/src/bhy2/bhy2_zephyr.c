@@ -62,7 +62,9 @@ static bool bhy2_ready;
 static const struct gpio_dt_spec bhi_cs = {
 	.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
 	.pin = 31,
-	.dt_flags = GPIO_ACTIVE_LOW,
+	.dt_flags = 0, /* PLAIN polarity: set(0)=LOW=assert, set(1)=HIGH=release.
+			 * ACTIVE_LOW + logical set() inverts both edges — the
+			 * v0.11.11-13 bug: chip selected only BETWEEN transfers. */
 };
 
 /* RESET_BHI260 = P0.18 (Arduino variant pin 13, variant.cpp:91).
