@@ -51,6 +51,11 @@ void bhy2_get_fifo_parse_callback_info_delegate(uint8_t sensor_id,
 static struct bhy2_dev bhy2;
 static bool bhy2_ready;
 
+struct bhy2_dev *bhy2_zephyr_dev(void)
+{
+	return bhy2_ready ? &bhy2 : NULL;
+}
+
 /* Devicetree: the BHI node (see app.overlay — second device on &spi2). */
 #define BHI_NODE DT_NODELABEL(bhi260)
 
