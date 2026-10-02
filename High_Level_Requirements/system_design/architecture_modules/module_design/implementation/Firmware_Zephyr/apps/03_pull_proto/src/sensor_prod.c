@@ -127,9 +127,9 @@ static void drain_thread(void *a, void *b, void *c)
 			if (++ticks == 500) {
 				dumped = true;
 				k_sleep(K_MSEC(50));   /* let the FIFO refill */
-				uint32_t rd = 0;
-				if (bhy2_hif_get_fifo_bytes(work_buf, 64, &rd,
-							   &dev->hif) == BHY2_OK &&
+				uint32_t rd = 0, rem = 0;
+				if (bhy2_hif_get_nonwakeup_fifo(work_buf, 64, &rd,
+								&rem, &dev->hif) == BHY2_OK &&
 				    rd > 0) {
 					printk("FIFOHEX n=%u ", rd);
 					for (uint32_t i = 0; i < rd && i < 64; i++) {
