@@ -114,10 +114,27 @@ static void drain_thread(void *a, void *b, void *c)
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 	struct bhy2_dev *dev = bhy2_zephyr_dev();
 
+	static bool dumped = false;
 	while (dev != NULL) {
 		int8_t rslt = bhy2_get_and_process_fifo(work_buf, WORK_BUF_SIZE, dev);
 		if (rslt != BHY2_OK) {
 			prod.errors++;
+		}
+		/* one-shot raw FIFO hexdump @ ~5 s (decode aid, remove after B1) */
+		if (!dumped) {
+			static uint32_t ticks = 0;
+			if (++ticks == 500) {
+				dumped = true;
+				/* next successful read gives a fresh chunk */
+				rslt = bhy2_get_and_process_fifo(work_buf, 64, dev);
+				if (rslt == BHY2_OK) {
+					printk("FIFOHEX ");
+					for (int i = 0; i < 64; i++) {
+						printk("%02x", work_buf[i]);
+					}
+					printk("\n");
+				}
+			}
 		}
 		k_sleep(K_MSEC(10));
 	}
