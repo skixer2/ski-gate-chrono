@@ -140,7 +140,7 @@ static void stats_thread(void *a, void *b, void *c)
 		       "\"temp\":%u,\"err\":%u,\"short\":%u,"
 		       "\"baro_pa\":%u,\"qw\":%d,\"tx10\":%d,"
 		       "\"obs\":[[%u,%u,%u],[%u,%u,%u],[%u,%u,%u],[%u,%u,%u]],"
-		       \"r0\":[%u,%u,%u,%u,%u,%u,%u,%u]}\n",
+		       "\"r0\":[%u,%u,%u,%u,%u,%u,%u,%u]}\n",
 		       prod.n_rv, prod.n_lacc, prod.n_baro, prod.n_temp,
 		       prod.errors, prod.short_frames,
 		       prod.baro_pa, prod.qw, prod.temp_cx10,
