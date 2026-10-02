@@ -79,7 +79,7 @@ def main():
     for why in bad:
         print(f"  PHYS FAIL: {why}")
 
-    verdict = (n >= 12 and good == n and sids == [31, 128, 129, 34]
+    verdict = (n >= 12 and good == n and sids == [31, 34, 128, 129]
                and len(phys) == sum(1 for ok, _ in phys if ok) and not bad)
     print("VERDICT:", "PASS - golden vectors locked" if verdict
           else "INCOMPLETE/MISMATCH - see above")
