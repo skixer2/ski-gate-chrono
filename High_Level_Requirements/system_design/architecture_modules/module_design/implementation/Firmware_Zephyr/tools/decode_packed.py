@@ -61,7 +61,7 @@ def main():
     baro_div2 = 0
     ts = 0
     prev_seq = None
-    types = {1: 0, 2: 0, 3: 0}
+    types = {0: 0, 1: 0, 2: 0, 3: 0}   # T1 encodes as type bits 00
     norms, baros, lamag, dts = [], [], [], []
     seq_err = dt_err = 0
 
@@ -104,6 +104,9 @@ def main():
             la = [la[i] + d[4 + i] for i in range(3)]
             baro_div2 += d[7]
 
+        if ptype not in (1, 2, 3):
+            print(f"BAD type bits {ptype} at frame {n}, pos {pos}")
+            break
         types[ptype] += 1
         q = [v / 16384.0 for v in qi]
         norms.append(math.sqrt(sum(x * x for x in q)))
