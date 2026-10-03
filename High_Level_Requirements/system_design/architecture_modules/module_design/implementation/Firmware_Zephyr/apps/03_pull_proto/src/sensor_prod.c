@@ -61,6 +61,45 @@ static void note_obs(uint8_t sid, uint8_t size, const uint8_t *data)
  * B2 golden vectors: 'v' arms 8 s; first GOLDEN_MAX frames per sensor print
  * raw event bytes (SID included) next to the firmware decode. Serial-only. */
 
+/* ---- B3: latest-value snapshot (recorder pulls each 10 ms tick) ---- */
+static volatile struct sgc_raw_frame snap;   /* quat seqlocked below */
+static volatile uint32_t snap_seq;           /* even = stable */
+static volatile bool snap_quat_valid;
+
+static void snap_quat_write(int16_t w, int16_t x, int16_t y, int16_t z)
+{
+	snap_seq++;                       /* odd = write in flight */
+	__asm volatile("dmb" ::: "memory");
+	snap.q_w = w; snap.q_x = x; snap.q_y = y; snap.q_z = z;
+	__asm volatile("dmb" ::: "memory");
+	snap_seq++;
+	snap_quat_valid = true;
+}
+
+bool sensor_prod_get_frame(struct sgc_raw_frame *out)
+{
+	if (!snap_quat_valid) {
+		return false;
+	}
+	for (int retry = 0; retry < 4; retry++) {
+		uint32_t s1 = snap_seq;
+		if (s1 & 1u) {
+			continue;
+		}
+		__asm volatile("dmb" ::: "memory");
+		out->q_w = snap.q_w; out->q_x = snap.q_x;
+		out->q_y = snap.q_y; out->q_z = snap.q_z;
+		out->la_x = snap.la_x; out->la_y = snap.la_y;
+		out->la_z = snap.la_z;
+		out->baro_pa_div2 = snap.baro_pa_div2;
+		__asm volatile("dmb" ::: "memory");
+		if (snap_seq == s1) {
+			return true;
+		}
+	}
+	return false;   /* writer won the race 4x — skip this tick */
+}
+
 #define GOLDEN_MAX 5
 static int64_t golden_deadline;
 static uint8_t golden_got[4];
@@ -102,6 +141,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 				(int16_t)(info->data_ptr[8] | (info->data_ptr[9] << 8)) };
 			golden_emit(0, info->sensor_id, info, gv, 5);
 		}
+		snap_quat_write(q.w, q.x, q.y, q.z);
 		return;
 	}
 	case BHY2_SENSOR_ID_LACC: {
@@ -114,6 +154,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 			int32_t gv[3] = { v.x, v.y, v.z };
 			golden_emit(1, info->sensor_id, info, gv, 3);
 		}
+		snap.la_x = v.x; snap.la_y = v.y; snap.la_z = v.z;
 		return;
 	}
 	case BHY2_SENSOR_ID_BARO: {
@@ -129,6 +170,9 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 			int32_t gv[1] = { (int32_t)prod.baro_pa };
 			golden_emit(2, info->sensor_id, info, gv, 1);
 		}
+		/* hPa x50 == Pa/2 (ArduinoFW: pressure.value()*50.0f);
+		 * integer form, <=1 LSB vs the float path. */
+		snap.baro_pa_div2 = (uint16_t)((prod.baro_pa * 39u) / 100u);
 		return;
 	}
 	case BHY2_SENSOR_ID_TEMP: {

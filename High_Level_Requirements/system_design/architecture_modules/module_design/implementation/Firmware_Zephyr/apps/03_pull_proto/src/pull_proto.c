@@ -417,6 +417,35 @@ static void cmd_work_handler(struct k_work *w)
 
 		printk("BB probe rearm\n");
 		bhy2_probe_rearm();
+	} else if (cmd == 'H') {
+		/* B3 bench: dump one run's payload as hexdump lines (IDLE only).
+		 * Payload only — header/CRC excluded. 24 B/line. */
+		uint8_t id = (uint8_t)atoi(req + 2);
+
+		if (id < store_run_count()) {
+			uint32_t pay = store_run_payload_len(id);
+			uint32_t off = 16;   /* blob: 16 B header first */
+
+			printk("{\"ev\":\"rh_begin\",\"id\":%u,\"payload\":%u}\n",
+			       id, pay);
+			for (uint32_t o = 0; o < pay; o += 24) {
+				uint8_t buf[24];
+				uint32_t n = pay - o;
+
+				if (n > 24) {
+					n = 24;
+				}
+				store_read_blob(id, off + o, buf, n);
+				printk("{\"ev\":\"rh\",\"off\":%u,\"hex\":\"", o);
+				for (uint32_t i = 0; i < n; i++) {
+					printk("%02x", buf[i]);
+				}
+				printk("\"}\n");
+			}
+			printk("{\"ev\":\"rh_end\",\"id\":%u}\n", id);
+		} else {
+			printk("{\"ev\":\"rh_err\",\"why\":\"bad_id\"}\n");
+		}
 	} else if (cmd == 'V') {
 		/* B2b: BitPacker differential test (C port vs ArduinoFW ref). */
 		extern void bitpack_test_run(void);

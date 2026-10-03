@@ -39,6 +39,8 @@
 #include "recorder.h"
 #include "store.h"
 #include "ble_lifecycle.h"
+#include "sensor_prod.h"
+#include "bitpacker.h"
 
 /* DEDICATED workqueue (v0.10.1). Historical finding: the SHARED
  * sysworkq lost ~25% of 100 Hz ticks during LOGGING when the phone's
@@ -62,20 +64,30 @@ static struct k_work rc_work;
  * double end(), stuck POST_RUN) is structurally impossible now. */
 static atomic_t cmd_intent;   /* 0=none 1=arm 2=start 3=end */
 
-/* Synthetic frame: deterministic (counter + ramp) for CRC habits. */
-#define SYNTH_FRAME_LEN 8
-static uint32_t synth_seq;
+/* B3: REAL producer — pull latest sensor snapshot each tick (hold-last,
+ * ArduinoFW parity: one frame per tick, millis()-style timestamp),
+ * pack adaptive (T1/T2/T3), append to SGL3. Synthetic producer retired. */
+static struct sgc_bitpacker rc_packer;
 
-static void synth_frame(uint8_t *f)
+/* Run stats (printed at POST_RUN — JP rule: values, not just counters). */
+static uint32_t st_frames, st_bytes, st_t1, st_t2, st_t3;
+static uint32_t st_skipped;         /* ticks with no snapshot yet */
+
+static void rc_stats_reset(void)
 {
-	f[0] = (uint8_t)(synth_seq);
-	f[1] = (uint8_t)(synth_seq >> 8);
-	f[2] = (uint8_t)(synth_seq >> 16);
-	f[3] = (uint8_t)(synth_seq >> 24);
-	for (int i = 4; i < SYNTH_FRAME_LEN; i++) {
-		f[i] = (uint8_t)((synth_seq + i) & 0xFF);
-	}
-	synth_seq++;
+	st_frames = st_bytes = st_t1 = st_t2 = st_t3 = st_skipped = 0;
+	sgc_bitpacker_reset(&rc_packer);
+}
+
+static void rc_stats_print(const char *ev)
+{
+	uint32_t avg_x10 = st_frames ? (st_bytes * 10u) / st_frames : 0;
+
+	printk("{\"rec_stats\":\"%s\",\"frames\":%u,\"bytes\":%u,"
+	       "\"avg_b_x10\":%u,\"t1\":%u,\"t2\":%u,\"t3\":%u,"
+	       "\"skipped\":%u}\n",
+	       ev, st_frames, st_bytes, avg_x10,
+	       st_t1, st_t2, st_t3, st_skipped);
 }
 
 /* 10 Hz decimated detector hook — the architecture point where the
@@ -87,7 +99,6 @@ static void detector_10hz(void)
 static void rc_work_handler(struct k_work *w)
 {
 	static uint32_t ticks;
-	uint8_t f[SYNTH_FRAME_LEN];
 	int intent = atomic_set(&cmd_intent, 0);
 
 	ticks++;
@@ -98,6 +109,7 @@ static void rc_work_handler(struct k_work *w)
 		if (rc_state == RC_IDLE && !store_busy()) {
 			rc_state = RC_ARMED;
 			ticks = 0;
+			rc_stats_reset();
 			ble_lifecycle_suspend();   /* JP: no phone while armed */
 			printk("{\"rec\":\"ARMED\"}\n");
 			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
@@ -122,6 +134,7 @@ static void rc_work_handler(struct k_work *w)
 			store_record_end();
 			rc_state = RC_POST_RUN;
 			printk("{\"rec\":\"POST_RUN\",\"ev\":\"manual_end\"}\n");
+			rc_stats_print("manual_end");
 		} else {
 			printk("{\"rec\":\"ERR\",\"why\":\"not_logging\"}\n");
 		}
@@ -131,8 +144,15 @@ static void rc_work_handler(struct k_work *w)
 	}
 
 	switch (rc_state) {
-	case RC_ARMED:
-		synth_frame(f);          /* acquire + discard (pre-roll later) */
+	case RC_ARMED: {
+		struct sgc_raw_frame fr;
+
+		/* acquire + discard (pre-roll ring lands in B4) */
+		if (sensor_prod_get_frame(&fr)) {
+			st_frames++;
+		} else {
+			st_skipped++;
+		}
 		if (ticks % 10 == 0) {
 			detector_10hz();
 		}
@@ -145,15 +165,32 @@ static void rc_work_handler(struct k_work *w)
 		break;
 
 	case RC_LOGGING: {
-		synth_frame(f);
-		int32_t n = store_record_append(f, sizeof(f));
+		struct sgc_raw_frame fr;
+		bool have = sensor_prod_get_frame(&fr);
 
-		if (n < (int32_t)sizeof(f)) {
+		if (!have) {
+			st_skipped++;
+			break;
+		}
+		uint8_t sz = sgc_bitpacker_encode(&rc_packer, &fr,
+						 k_uptime_get_32());
+		st_frames++; st_bytes += sz;
+		if (rc_packer.last_type == SGC_PKT_T1) {
+			st_t1++;
+		} else if (rc_packer.last_type == SGC_PKT_T2) {
+			st_t2++;
+		} else {
+			st_t3++;
+		}
+		int32_t n = store_record_append(rc_packer.buf, sz);
+
+		if (n < (int32_t)sz) {
 			/* n == -1: record already closed (e.g. manual end
-			 * raced in) — just move on. n < 8 with an active
-			 * record = budget cap: truncate + close (JP). */
+			 * raced in) — just move on. 0 <= n < sz with an
+			 * active record = budget cap: truncate + close (JP). */
 			if (n >= 0) {
 				printk("{\"rec\":\"POST_RUN\",\"ev\":\"budget_reached\"}\n");
+				rc_stats_print("budget_reached");
 				store_record_end();
 			}
 			rc_state = RC_POST_RUN;

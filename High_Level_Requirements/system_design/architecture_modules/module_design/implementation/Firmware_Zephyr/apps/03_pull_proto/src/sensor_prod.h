@@ -15,4 +15,10 @@
  * spawns the drain thread. Safe no-op if the hub is not up. */
 void sensor_prod_start(void);
 
+/* B3: latest-value snapshot for the recorder (hold-last semantics,
+ * ArduinoFW parity). seqlock on the quaternion (single writer = drain
+ * thread; reader = recorder workqueue). false until first RV frame. */
+#include "bitpacker.h"
+bool sensor_prod_get_frame(struct sgc_raw_frame *out);
+
 #endif /* SGC_SENSOR_PROD_H */
