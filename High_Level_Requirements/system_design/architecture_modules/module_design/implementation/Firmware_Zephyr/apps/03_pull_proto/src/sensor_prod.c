@@ -214,10 +214,26 @@ static void drain_thread(void *a, void *b, void *c)
 	struct bhy2_dev *dev = bhy2_zephyr_dev();
 
 	static bool dumped = false;
+	static uint32_t idle_polls;   /* consecutive polls with zero events */
 	while (dev != NULL) {
+		uint32_t n0 = prod.n_rv + prod.n_lacc + prod.n_baro + prod.n_temp;
 		int8_t rslt = bhy2_get_and_process_fifo(work_buf, WORK_BUF_SIZE, dev);
+		uint32_t n1 = prod.n_rv + prod.n_lacc + prod.n_baro + prod.n_temp;
+
 		if (rslt != BHY2_OK) {
 			prod.errors++;
+		}
+		/* Hub-FIFO stall guard (2026-10-03: 28 s into the first
+		 * combined run, events stopped with rslt==0 — hub FIFO
+		 * overflow stall, needs FLUSH to restart). */
+		if (n1 == n0) {
+			if (++idle_polls == 500u) {
+				printk("{\"ev\":\"bhy_stall\",\"flush\":%d}\n",
+				       (int)bhy2_hif_set_fifo_flush(&dev->hif));
+				idle_polls = 0;
+			}
+		} else {
+			idle_polls = 0;
 		}
 		/* one-shot raw FIFO hexdump @ ~5 s (decode aid, remove after B1) */
 		if (!dumped) {
@@ -243,8 +259,10 @@ static void drain_thread(void *a, void *b, void *c)
 /* Zephyr 4.4.2: K_THREAD_DEFINE delay is ms-int (-1 = SYS_FOREVER_MS);
  * K_FOREVER (k_timeout_t) does NOT compile here. -1 = startable later
  * via k_thread_start(). */
+/* Prio 3 — ABOVE the recorder workqueue (preempt 4): BHI and the NOR
+ * flash SHARE spi2; acquisition must win the bus over page programs. */
 K_THREAD_DEFINE(sensor_prod_tid, 1536, drain_thread, NULL, NULL, NULL,
-		5, 0, -1);
+		3, 0, -1);
 
 /* ---- 1 Hz stats (own low-prio thread; printk from drain ctx avoided) ---- */
 static void stats_thread(void *a, void *b, void *c)
@@ -269,7 +287,8 @@ static void stats_thread(void *a, void *b, void *c)
 		       obs[3].sid, obs[3].size, obs[3].n,
 		       obs[0].raw[0],obs[0].raw[1],obs[0].raw[2],obs[0].raw[3],
 		       obs[0].raw[4],obs[0].raw[5],obs[0].raw[6],obs[0].raw[7]);
-		memset(&prod, 0, sizeof(prod));   /* 1 s window */
+		prod.n_rv = 0; prod.n_lacc = 0; prod.n_baro = 0; prod.n_temp = 0;
+	prod.errors = 0; prod.short_frames = 0;   /* counters only — keep values */
 	}
 }
 K_THREAD_DEFINE(sensor_prod_stats_tid, 1024, stats_thread, NULL, NULL, NULL,

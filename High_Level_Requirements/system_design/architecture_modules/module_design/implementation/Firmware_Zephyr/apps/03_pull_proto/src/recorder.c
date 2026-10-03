@@ -163,6 +163,7 @@ static void rc_work_handler(struct k_work *w)
 			k_timer_stop(&rc_tick);
 		}
 		break;
+	}   /* RC_ARMED */
 
 	case RC_LOGGING: {
 		struct sgc_raw_frame fr;
