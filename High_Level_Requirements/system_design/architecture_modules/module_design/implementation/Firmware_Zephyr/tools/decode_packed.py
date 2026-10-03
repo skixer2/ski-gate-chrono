@@ -115,6 +115,8 @@ def main():
 
     n = sum(types.values())
     avg = len(data) / n if n else 0
+    print("DEBUG types dict:", dict(types))
+    print("DEBUG first 40 B:", data[:40].hex())
     print(f"frames: {n}  T1/T2/T3: {types[1]}/{types[2]}/{types[3]}")
     print(f"avg bytes/frame: {avg:.2f}   payload consumed: {pos}/{len(data)}")
     print(f"seq errors: {seq_err}   dt!=10ms count: "
