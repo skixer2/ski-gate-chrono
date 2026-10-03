@@ -229,7 +229,7 @@ static void drain_thread(void *a, void *b, void *c)
 		if (n1 == n0) {
 			if (++idle_polls == 500u) {
 				printk("{\"ev\":\"bhy_stall\",\"flush\":%d}\n",
-				       (int)bhy2_hif_set_fifo_flush(&dev->hif));
+				       (int)bhy2_hif_set_fifo_flush(0, &dev->hif));
 				idle_polls = 0;
 			}
 		} else {
