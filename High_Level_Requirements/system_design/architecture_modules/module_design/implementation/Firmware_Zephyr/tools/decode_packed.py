@@ -32,8 +32,23 @@ def s16(v):
 def main():
     log = open(sys.argv[1], 'r', errors='replace').read()
     data = bytearray()
-    for m in re.finditer(r'\{"ev":"rh","off":\d+,"hex":"([0-9a-f]+)"\}', log):
-        data.extend(bytes.fromhex(m.group(1)))
+    bad = 0
+    offs = []
+    for m in re.finditer(r'\{"ev":"rh","off":(\d+),"hex":"([0-9a-fA-F]+)"\}', log):
+        h = m.group(2)
+        if len(h) % 2 or len(h) > 48:   # interleaved/truncated line
+            bad += 1
+            continue
+        try:
+            data.extend(bytes.fromhex(h))
+            offs.append(int(m.group(1)))
+        except ValueError:
+            bad += 1
+    # offset continuity: detect dropped lines
+    drops = sum(1 for a, b in zip(offs, offs[1:]) if b - a > 24)
+    print(f"rh lines ok={len(offs)} bad={bad} offset-gaps={drops}")
+    if drops:
+        print("WARNING: dropped rh lines - decode will desync after gap")
     if not data:
         print("no rh lines found")
         return 2
