@@ -78,7 +78,7 @@ def main():
         ts += dms
         dts.append(dms)
 
-        if ptype == 3:
+        if ptype == 2:            # T3 anchor: 7 x int16 + uint16
             if pos + 16 > len(data):
                 break
             v = [s16(data[pos + 2 * i] | (data[pos + 2 * i + 1] << 8))
@@ -87,11 +87,11 @@ def main():
             la = [v[4], v[5], v[6]]
             baro_div2 = data[pos + 14] | (data[pos + 15] << 8)
             pos += 16
-        elif ptype in (1, 2):
-            n = 4 if ptype == 1 else 8
+        else:                    # T1 (bits 00) or T2 (bits 01)
+            n = 4 if ptype == 0 else 8
             if pos + n > len(data):
                 break
-            if ptype == 1:
+            if ptype == 0:
                 nib = []
                 for b in data[pos:pos + 4]:
                     nib.append(s4(b >> 4))
@@ -104,7 +104,7 @@ def main():
             la = [la[i] + d[4 + i] for i in range(3)]
             baro_div2 += d[7]
 
-        if ptype not in (1, 2, 3):
+        if ptype > 2:
             print(f"BAD type bits {ptype} at frame {n}, pos {pos}")
             break
         types[ptype] += 1
