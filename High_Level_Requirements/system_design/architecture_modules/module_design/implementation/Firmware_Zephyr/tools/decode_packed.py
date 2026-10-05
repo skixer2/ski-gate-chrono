@@ -131,6 +131,10 @@ def main():
           and 800 <= min(baros) and max(baros) <= 1050
           and max(lamag) < 2500 and avg <= 8.5)
     print(f"dt!=10ms: {dt_off} ({100.0 * dt_off / n:.1f}%)")
+    from collections import Counter
+    dh = Counter(dts)
+    print("dms histogram (top):", dh.most_common(6))
+    print("dms=0 (ambiguous T3 gap) count:", dh.get(0, 0))
     print("VERDICT:", "PASS - stored data decodes with sound physics" if ok
           else "CHECK ABOVE - something is off")
     return 0 if ok else 1
