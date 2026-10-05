@@ -55,6 +55,7 @@ def main():
     print(f"payload bytes: {len(data)}")
 
     pos = 0
+    n_frames_seen = 0
     q = [0.0] * 4        # w, x, y, z (floats only for norms)
     qi = [0] * 4         # int16 reconstructions
     la = [0] * 3
@@ -76,7 +77,8 @@ def main():
             seq_err += 1
         prev_seq = seq
         ts += dms
-        dts.append(dms)
+        if n_frames_seen > 0:
+            dts.append(dms)          # frame 0 dms=0 by design (fresh packer)
 
         if ptype == 2:            # T3 anchor: 7 x int16 + uint16
             if pos + 16 > len(data):
@@ -108,6 +110,7 @@ def main():
             print(f"BAD type bits {ptype} at frame {n}, pos {pos}")
             break
         types[ptype] += 1
+        n_frames_seen += 1
         q = [v / 16384.0 for v in qi]
         norms.append(math.sqrt(sum(x * x for x in q)))
         baros.append(baro_div2 * 2.0 / 100.0)       # Pa/2 -> hPa
@@ -134,7 +137,7 @@ def main():
     from collections import Counter
     dh = Counter(dts)
     print("dms histogram (top):", dh.most_common(6))
-    print("dms=0 (ambiguous T3 gap) count:", dh.get(0, 0))
+    print("dms=0 (real >1023ms gaps, frame-0 excluded):", dh.get(0, 0))
     print("VERDICT:", "PASS - stored data decodes with sound physics" if ok
           else "CHECK ABOVE - something is off")
     return 0 if ok else 1
