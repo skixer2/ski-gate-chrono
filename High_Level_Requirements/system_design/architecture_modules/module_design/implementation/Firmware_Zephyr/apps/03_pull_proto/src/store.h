@@ -88,6 +88,10 @@ uint32_t store_free_full_runs(void);
  * top-up makes the first 244 KiB clean again). */
 void store_wipe(void);
 
+/* ABC0 time sync: phone writes UTC epoch seconds at connect. */
+void store_epoch_sync(uint32_t epoch);
+uint32_t store_epoch_now(void);   /* 0 = never synced */
+
 /* ── B4 step-0: ring drain-load simulation (bench only) ───────────
  * Emulates the pre-roll design's per-tick flash cost during LOGGING:
  * 2 pops (20 B read each) + 1 push (20 B) into the reserved ring

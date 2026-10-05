@@ -63,6 +63,9 @@ static struct bt_uuid_128 run_info_uuid =
 static struct bt_uuid_128 run_list_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC9, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 time_sync_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC0, 0x0000, 1000,
+					    0x8000, 0x00805F9B34FB));
 static struct bt_uuid_128 console_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCA, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
@@ -182,6 +185,28 @@ static ssize_t write_console(struct bt_conn *conn,
 	return len;
 }
 
+/* ABC0 time sync — ArduinoFW parity: silent write, uint32 LE epoch
+ * seconds, sanity >1e9 (reject pre-2001 garbage), no response. */
+static ssize_t write_time_sync(struct bt_conn *conn,
+			       const struct bt_gatt_attr *attr,
+			       const void *buf, uint16_t len,
+			       uint16_t offset, uint8_t flags)
+{
+	const uint8_t *data = buf;
+
+	if (offset || len < 4) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	uint32_t epoch = (uint32_t)data[0] | ((uint32_t)data[1] << 8) |
+			 ((uint32_t)data[2] << 16) | ((uint32_t)data[3] << 24);
+
+	if (epoch > 1000000000u) {
+		store_epoch_sync(epoch);
+		printk("{\"ev\":\"epoch_sync\",\"utc\":%u}\n", epoch);
+	}
+	return len;
+}
+
 static void console_ccc_changed(const struct bt_gatt_attr *attr,
 				uint16_t value)
 {
@@ -212,6 +237,13 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 			       NULL, write_console, NULL),
 	BT_GATT_CCC(console_ccc_changed,
 		    BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
+	/* ABC0 appended AFTER existing attrs — stream code references
+	 * attrs[5] for console notify; indices must not shift. */
+	BT_GATT_CHARACTERISTIC(&time_sync_uuid.uuid,
+			       BT_GATT_CHRC_WRITE |
+			       BT_GATT_CHRC_WRITE_WITHOUT_RESP,
+			       BT_GATT_PERM_WRITE,
+			       NULL, write_time_sync, NULL),
 );
 
 static uint32_t job_off;    /* next blob byte to send            */

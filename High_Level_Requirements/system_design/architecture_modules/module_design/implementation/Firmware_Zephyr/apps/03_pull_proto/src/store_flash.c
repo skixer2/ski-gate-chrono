@@ -133,10 +133,33 @@ static uint32_t run_budget = RUN_BUDGET_DEFAULT;
  * ABC0 epoch sync (next step); this makes the bench behave until then. */
 static uint32_t last_run_ts;
 
+/* ── ABC0 epoch sync (ArduinoFW parity) ────────────────────────────
+ * Phone writes UTC epoch seconds at connect. Anchor + uptime
+ * extrapolation; 0 = never synced (BUILD_EPOCH fallback stays). */
+static uint32_t epoch_at_sync;
+static uint32_t ms_at_sync;
+
+void store_epoch_sync(uint32_t epoch)
+{
+	epoch_at_sync = epoch;
+	ms_at_sync = k_uptime_get_32();
+}
+
+uint32_t store_epoch_now(void)
+{
+	if (!epoch_at_sync) {
+		return 0;
+	}
+	return epoch_at_sync + (k_uptime_get_32() - ms_at_sync) / 1000;
+}
+
 static uint32_t next_run_ts(void)
 {
-	uint32_t computed = BUILD_EPOCH + k_uptime_get_32() / 1000;
+	uint32_t computed = store_epoch_now();
 
+	if (!computed) {
+		computed = BUILD_EPOCH + k_uptime_get_32() / 1000;
+	}
 	if (computed <= last_run_ts) {
 		computed = last_run_ts + 1;
 	}
