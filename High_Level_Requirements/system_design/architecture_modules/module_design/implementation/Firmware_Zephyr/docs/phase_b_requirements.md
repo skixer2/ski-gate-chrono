@@ -28,8 +28,9 @@ existing phone pull pipeline and CRC habits work unchanged on Zephyr output.
 - Hub boots from flash (`boot_status 0x13`) via vendored bhy2 API + shim
   (manual plain-polarity CS, 8 MHz). Vendored `bhy2.c`/`bhy2_parse.c` =
   full Bosch API incl. FIFO — **no new vendor code needed**.
-- `recorder.c`: 100 Hz tick (k_timer→sysworkq), synthetic frames,
-  ARMED-path frames discarded until ring+staging land.
+- `recorder.c`: 100 Hz tick (k_timer→dedicated workqueue), REAL producer
+  (B3 PASS 2026-10-03). Pre-roll ring = spec v4-final (recorder.c header):
+  20 s pre-trigger + 20 s post-trigger banks, erase-on-IDLE invariant.
 - `store`: fake blobs, layout ArduinoFW-verbatim; flash store = later step.
 
 ## Steps (each = one bench session, gate before next)
@@ -65,9 +66,9 @@ CRC-intact blob via fake store; then store_flash becomes the next arc.
    serial/BLE status metadata at run close for now; stored-in-blob
    parked for header v3 (Zephyr-era app rebuild) — blob layout frozen
    by current app parser.
-4. Known risk noted in recorder.c: sysworkq lost ~25% of 100 Hz ticks with
-   BLE active during LOGGING. B3 must include the BLE-loaded benchmark we
-   already know how to run.
+4. RESOLVED by design (JP 2026-10-05): no phone connection from arming
+   to run end (v0.10.3 ARM tears BLE down). B3 gate = full-cycle bench:
+   arm→run→end→topup→phone download→re-arm.
 
 ## Ledger
 

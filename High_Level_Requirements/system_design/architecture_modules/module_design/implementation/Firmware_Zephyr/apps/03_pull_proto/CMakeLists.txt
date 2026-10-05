@@ -13,6 +13,7 @@ target_sources(app PRIVATE
   src/recorder.c
   src/sensor_prod.c
   src/bitpacker.c
+  src/ring.c
   src/bitpack_test.c
   src/bp_ref/bit_packer.cpp
   src/bp_ref/bp_ref_glue.cpp

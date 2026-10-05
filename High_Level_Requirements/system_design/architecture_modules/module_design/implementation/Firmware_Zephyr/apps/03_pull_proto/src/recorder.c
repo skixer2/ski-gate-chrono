@@ -14,22 +14,23 @@
  * frame). Start trigger is the manual 'g' (production: 2.0 m drop
  * detector, F04); end is 'e' (production: 5 s flatline < 2 m).
  *
- * PRE-ROLL ARCHITECTURE (documented, F02 + v6.0 — lands with the real
- * sensor frames): while ARMED, each 10 ms tick pushes 1 new frame into
- * a SMALL RAM staging buffer and pops up to 2 frames to the FLASH
- * pre-roll ring (4000×20 B at 0x0000–0x13FFF — the region SGL reserved
- * by placing LOG_START at 0x14000). Net −1/tick ⇒ a full buffer drains
- * in ~20 s; ARM fills at most 3000 slots (30 s cap). At run start the
- * most recent 1000 frames (10 s) become the run's pre-roll and the
- * backlog drains interleaved during LOGGING. The RAM staging buffer is
- * small by design (static, bounded — v4.60's lesson was heap-era; JP
- * 2026-09-29: static RAM is fine with headroom, and this design needs
- * only the staging window, not the ring).
- *
- * Synthetic step (this file, now): frames are 8 B placeholders at the
- * documented packing average (v2.4: 8.0 B/frame → 90 s ≈ 72 KB);
- * ARMED-path frames are DISCARDED until the ring + staging land with
- * the BHI260 driver.
+ * PRE-ROLL RING — SPEC v4-FINAL (JP, 2026-10-05, supersedes F02/v6.0):
+ *   Region 0x0000–0x13FFF (20 sectors, 4096 linear slots × 20 B).
+ *   Bank A 0x0–0x9FFF  = 20 s PRE-trigger  max (ARM ≤ 20 s, absolute:
+ *                        no trigger at 20 s → back to IDLE).
+ *   Bank B 0xA000–0x13FFF = 20 s POST-trigger: order-preserving buffer
+ *     for post-trigger frames that CANNOT be written directly to the run
+ *     while pre-trigger frames still drain (would break timestamp order).
+ *   INVARIANT: entering IDLE ⇒ both banks erased (boot, post-run,
+ *     arm-timeout — every ARM starts on clean banks).
+ *   ARMED: 1 push/tick (forward fill, page-buffered, program-only).
+ *   LOGGING: 2 pops/tick → pack(slot ts, arrival-stamped) → run append;
+ *     then push 1 live frame — EXCEPT when the ring emptied after the
+ *     pops (v4.77 lesson: push-1/pop-1 at count 1 livelocks) → encode
+ *     live direct. Head catches tail exactly at drain end (2:1).
+ *   Post-drain: live frames encode direct; the ring only ever carries
+ *   the first ≤ 20 s of post-trigger data. Run length is bounded by the
+ *   budget, not the ring.
  *
  * Concurrency: k_timer → sysworkq (the port-wide pattern). One frame
  * per tick = ~80 B/s of work — noise.
@@ -41,6 +42,7 @@
 #include "ble_lifecycle.h"
 #include "sensor_prod.h"
 #include "bitpacker.h"
+#include "ring.h"
 
 /* DEDICATED workqueue (v0.10.1). Historical finding: the SHARED
  * sysworkq lost ~25% of 100 Hz ticks during LOGGING when the phone's
@@ -127,7 +129,7 @@ static void rc_work_handler(struct k_work *w)
 			ticks = 0;
 			rc_prev_tick_ms = 0;   /* no gap event across idle */
 			rc_stats_reset();
-			store_ring_sim_reset();   /* B4 step-0 load sim */
+			ring_arm_reset();   /* banks pre-erased (IDLE invariant) */
 			ble_lifecycle_suspend();   /* JP: no phone while armed */
 			printk("{\"rec\":\"ARMED\"}\n");
 			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
@@ -165,18 +167,21 @@ static void rc_work_handler(struct k_work *w)
 	case RC_ARMED: {
 		struct sgc_raw_frame fr;
 
-		/* acquire + discard (pre-roll ring lands in B4) */
+		/* acquire into the pre-trigger bank (arrival ts) */
 		if (sensor_prod_get_frame(&fr)) {
-			st_frames++;
+			if (!ring_push(&fr, k_uptime_get_32())) {
+				st_skipped++;   /* ring exhausted: spec bug */
+			}
 		} else {
 			st_skipped++;
 		}
 		if (ticks % 10 == 0) {
 			detector_10hz();
 		}
-		if (ticks >= 100 * 120) {   /* 120 s arm timeout (JP) */
+		if (ticks >= 100 * 20) {    /* 20 s ARM cap (JP, spec v4) */
 			printk("{\"rec\":\"IDLE\",\"ev\":\"arm_timeout\"}\n");
 			rc_state = RC_IDLE;
+			ring_erase_banks();   /* IDLE invariant */
 			ble_lifecycle_resume();
 			k_timer_stop(&rc_tick);
 		}
@@ -185,36 +190,71 @@ static void rc_work_handler(struct k_work *w)
 
 	case RC_LOGGING: {
 		struct sgc_raw_frame fr;
-		bool have = sensor_prod_get_frame(&fr);
+		uint32_t ts;
+		bool abort = false;
 
-		if (!have) {
-			st_skipped++;
+		/* Drain up to 2 oldest ring slots → run. Slot ts =
+		 * ARRIVAL stamp (pre-trigger frames keep their true time). */
+		for (int i = 0; i < 2 && ring_count() > 0 && !abort; i++) {
+			if (!ring_pop_oldest(&fr, &ts)) {
+				break;
+			}
+			uint8_t sz = sgc_bitpacker_encode(&rc_packer, &fr, ts);
+			st_frames++; st_bytes += sz;
+			if (rc_packer.last_type == SGC_PKT_T1) {
+				st_t1++;
+			} else if (rc_packer.last_type == SGC_PKT_T2) {
+				st_t2++;
+			} else {
+				st_t3++;
+			}
+			int32_t n = store_record_append(rc_packer.buf, sz);
+
+			if (n < (int32_t)sz) {
+				if (n >= 0) {
+					printk("{\"rec\":\"POST_RUN\",\"ev\":\"budget_reached\"}\n");
+					rc_stats_print("budget_reached");
+					store_record_end();
+				}
+				rc_state = RC_POST_RUN;
+				abort = true;
+			}
+		}
+		if (abort) {
 			break;
 		}
-		uint8_t sz = sgc_bitpacker_encode(&rc_packer, &fr,
-						 k_uptime_get_32());
-		st_frames++; st_bytes += sz;
-		if (rc_packer.last_type == SGC_PKT_T1) {
-			st_t1++;
-		} else if (rc_packer.last_type == SGC_PKT_T2) {
-			st_t2++;
-		} else {
-			st_t3++;
-		}
-		store_ring_sim_tick();   /* B4 step-0: ring drain-load sim */
-		int32_t n = store_record_append(rc_packer.buf, sz);
 
-		if (n < (int32_t)sz) {
-			/* n == -1: record already closed (e.g. manual end
-			 * raced in) — just move on. 0 <= n < sz with an
-			 * active record = budget cap: truncate + close (JP). */
-			if (n >= 0) {
-				printk("{\"rec\":\"POST_RUN\",\"ev\":\"budget_reached\"}\n");
-				rc_stats_print("budget_reached");
-				store_record_end();
+		/* Live frame: through the ring (order-preserving buffer)
+		 * ONLY while backlog remains after the pops — otherwise
+		 * direct (v4.77: push-1/pop-1 at count 1 livelocks). */
+		if (sensor_prod_get_frame(&fr)) {
+			if (ring_count() > 0) {
+				ring_push(&fr, k_uptime_get_32());
+			} else {
+				uint8_t sz = sgc_bitpacker_encode(
+					&rc_packer, &fr, k_uptime_get_32());
+				st_frames++; st_bytes += sz;
+				if (rc_packer.last_type == SGC_PKT_T1) {
+					st_t1++;
+				} else if (rc_packer.last_type == SGC_PKT_T2) {
+					st_t2++;
+				} else {
+					st_t3++;
+				}
+				int32_t n = store_record_append(rc_packer.buf, sz);
+
+				if (n < (int32_t)sz) {
+					if (n >= 0) {
+						printk("{\"rec\":\"POST_RUN\",\"ev\":\"budget_reached\"}\n");
+						rc_stats_print("budget_reached");
+						store_record_end();
+					}
+					rc_state = RC_POST_RUN;
+					break;
+				}
 			}
-			rc_state = RC_POST_RUN;
-			/* keep the timer: POST_RUN polls store idle */
+		} else {
+			st_skipped++;
 		}
 		break;
 	}
@@ -223,6 +263,7 @@ static void rc_work_handler(struct k_work *w)
 		if (!store_busy()) {
 			printk("{\"rec\":\"IDLE\",\"ev\":\"run_ready\"}\n");
 			rc_state = RC_IDLE;
+			ring_erase_banks();   /* IDLE invariant */
 			ble_lifecycle_resume();
 			k_timer_stop(&rc_tick);
 		}

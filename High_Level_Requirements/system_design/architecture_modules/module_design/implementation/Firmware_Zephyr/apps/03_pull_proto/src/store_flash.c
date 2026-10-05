@@ -114,6 +114,8 @@ struct __attribute__((packed)) sgl_entry {
 
 /* ── In-RAM store state (the index, cached) ───────────────────────── */
 static const struct device *flashdev;
+
+const struct device *store_flash_device(void) { return flashdev; }
 static struct sgl_entry entries[MAX_INDEXED_RUNS];
 static uint16_t entry_count;
 static uint16_t next_run_id;
