@@ -64,7 +64,7 @@ static struct bt_uuid_128 run_list_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC9, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
 static struct bt_uuid_128 time_sync_uuid =
-	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC0, 0x0000, 1000,
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC0, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
 static struct bt_uuid_128 console_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCA, 0x0000, 0x1000,
