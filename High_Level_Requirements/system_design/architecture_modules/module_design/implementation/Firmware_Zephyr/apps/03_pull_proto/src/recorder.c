@@ -181,9 +181,9 @@ static void rc_work_handler(struct k_work *w)
 		if (ticks >= 100 * 20) {    /* 20 s ARM cap (JP, spec v4) */
 			printk("{\"rec\":\"IDLE\",\"ev\":\"arm_timeout\"}\n");
 			rc_state = RC_IDLE;
+			k_timer_stop(&rc_tick);
 			ring_erase_banks();   /* IDLE invariant */
 			ble_lifecycle_resume();
-			k_timer_stop(&rc_tick);
 		}
 		break;
 	}   /* RC_ARMED */
@@ -263,9 +263,9 @@ static void rc_work_handler(struct k_work *w)
 		if (!store_busy()) {
 			printk("{\"rec\":\"IDLE\",\"ev\":\"run_ready\"}\n");
 			rc_state = RC_IDLE;
+			k_timer_stop(&rc_tick);
 			ring_erase_banks();   /* IDLE invariant */
 			ble_lifecycle_resume();
-			k_timer_stop(&rc_tick);
 		}
 		break;
 
