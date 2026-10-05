@@ -362,6 +362,38 @@ static int parse_three_l(const char *p, long *id, long *off, long *len)
 
 void sensor_prod_golden_arm(void);
 
+static void gatt_attr_cb(struct bt_gatt_attr *attr, void *user_data)
+{
+	uint8_t uuid[16];
+	char line[80];
+	ssize_t l;
+	static uint16_t seq;
+
+	/* print any UUID: 16-bit or 128-bit (canonical, big-endian order) */
+	l = bt_gatt_attr_get_uuid(attr, uuid);
+	if (l == 2) {
+		snprintf(line, sizeof(line), "attr %u: 16bit %04x\n",
+			 ++seq, sys_get_le16(uuid));
+	} else if (l == 16) {
+		snprintf(line, sizeof(line),
+			 "attr %u: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
+			 ++seq,
+			 uuid[15], uuid[14], uuid[13], uuid[12],
+			 uuid[11], uuid[10], uuid[9], uuid[8],
+			 uuid[7], uuid[6], uuid[5], uuid[4],
+			 uuid[3], uuid[2], uuid[1], uuid[0]);
+	} else {
+		return;
+	}
+	printk("%s", line);
+}
+
+void gatt_dump(void)
+{
+	bt_gatt_foreach_attr(0, 0xffff, gatt_attr_cb, NULL);
+	printk("gatt dump done\n");
+}
+
 static void cmd_work_handler(struct k_work *w)
 {
 	/* Copy out FIRST, then free the slot: a write arriving while we
@@ -478,6 +510,11 @@ static void cmd_work_handler(struct k_work *w)
 		} else {
 			printk("{\"ev\":\"rh_err\",\"why\":\"bad_id\"}\n");
 		}
+	} else if (cmd == 'G') {
+		/* GATT table self-dump: every attr's UUID (debug for ABC0). */
+		extern void gatt_dump(void);
+
+		gatt_dump();
 	} else if (cmd == 'V') {
 		/* B2b: BitPacker differential test (C port vs ArduinoFW ref). */
 		extern void bitpack_test_run(void);
