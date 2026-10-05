@@ -117,19 +117,29 @@ function Ensure-NodeHost {
     # USERPROFILE redirect = the node identity lives in the user's
     # .openclaw; without this a SYSTEM-hosted node would pair as a
     # brand-new device.
-    Start-Process cmd -ArgumentList @(
-        '/c', 'set', "USERPROFILE=$USER_DIR",
-        '&&', 'set', "APPDATA=$USER_DIR\AppData\Roaming",
-        '&&', $NODE_EXE,
-        "$USER_DIR\AppData\Roaming\npm\node_modules\openclaw\openclaw.mjs",
-        'node', 'run',
-        '>', "$USER_DIR\nodehost.log", '2>&1'
-    ) -WindowStyle Hidden
+    # v2.5 FIX: the old cmd /c set-and-chain spawn was broken — PS 5.1
+    # Start-Process joins ArgumentList WITHOUT quoting, so the space in
+    # "C:\Program Files\nodejs" reached cmd bare ('C:\Program' is not
+    # recognized) and the host crash-looped on every check. Latent since
+    # v2.1: never fired while a manually-started host was alive.
+    # Now: Start-Process node.exe directly + env inherited from us +
+    # native file redirects. No cmd parser in the way.
+    $oldUP = $env:USERPROFILE; $oldAD = $env:APPDATA
+    $env:USERPROFILE = $USER_DIR
+    $env:APPDATA     = "$USER_DIR\AppData\Roaming"
+    try {
+        Start-Process -FilePath $NODE_EXE -ArgumentList @(
+            "$USER_DIR\AppData\Roaming\npm\node_modules\openclaw\openclaw.mjs",
+            'node', 'run'
+        ) -RedirectStandardOutput "$USER_DIR\nodehost.log" -RedirectStandardError "$USER_DIR\nodehost.err.log" -WindowStyle Hidden -ErrorAction Stop
+    } finally {
+        $env:USERPROFILE = $oldUP; $env:APPDATA = $oldAD
+    }
     Start-Sleep -Seconds 3
 }
 
 # ── Main loop ───────────────────────────────────────────────────────
-Log 'watchdog v2.4: starting (boot-proof, 3 daemons)  [v2.4: infra path move]'
+Log 'watchdog v2.5: starting (boot-proof, 3 daemons)  [v2.5: quote-safe nodehost spawn]'
 $script:TunFails = 0
 $script:WebFails = 0
 $Beat = 0
