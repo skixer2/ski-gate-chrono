@@ -362,7 +362,8 @@ static int parse_three_l(const char *p, long *id, long *off, long *len)
 
 void sensor_prod_golden_arm(void);
 
-static void gatt_attr_cb(struct bt_gatt_attr *attr, void *user_data)
+static uint8_t gatt_attr_cb(const struct bt_gatt_attr *attr,
+			    uint16_t handle, void *user_data)
 {
 	uint8_t uuid[16];
 	char line[80];
@@ -386,6 +387,7 @@ static void gatt_attr_cb(struct bt_gatt_attr *attr, void *user_data)
 		return;
 	}
 	printk("%s", line);
+	return BT_GATT_ITER_CONTINUE;
 }
 
 void gatt_dump(void)
