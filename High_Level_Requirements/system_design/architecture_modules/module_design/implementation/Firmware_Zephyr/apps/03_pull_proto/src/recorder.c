@@ -55,6 +55,12 @@ static struct k_work_q rec_q;
 enum rec_state { RC_IDLE, RC_ARMED, RC_LOGGING, RC_POST_RUN };
 
 static enum rec_state rc_state = RC_IDLE;
+
+/* Tick-gap forensics (2026-10-05: 1 real >1 s stall seen in 30 s run —
+ * release blocker, JP). Prints any inter-handler gap > 50 ms; localizes
+ * the stall to BEFORE the handler (starvation/queue) vs INSIDE it
+ * (flash append) when cross-checked with packed dms. */
+static uint32_t rc_prev_tick_ms;
 static struct k_timer rc_tick;
 static struct k_work rc_work;
 
@@ -100,6 +106,13 @@ static void rc_work_handler(struct k_work *w)
 {
 	static uint32_t ticks;
 	int intent = atomic_set(&cmd_intent, 0);
+	uint32_t now_ms = k_uptime_get_32();
+
+	if (rc_prev_tick_ms && (now_ms - rc_prev_tick_ms) > 50u) {
+		printk("{\"ev\":\"tick_gap\",\"ms\":%u}\n",
+		       now_ms - rc_prev_tick_ms);
+	}
+	rc_prev_tick_ms = now_ms;
 
 	ticks++;
 
@@ -109,6 +122,7 @@ static void rc_work_handler(struct k_work *w)
 		if (rc_state == RC_IDLE && !store_busy()) {
 			rc_state = RC_ARMED;
 			ticks = 0;
+			rc_prev_tick_ms = 0;   /* no gap event across idle */
 			rc_stats_reset();
 			ble_lifecycle_suspend();   /* JP: no phone while armed */
 			printk("{\"rec\":\"ARMED\"}\n");
