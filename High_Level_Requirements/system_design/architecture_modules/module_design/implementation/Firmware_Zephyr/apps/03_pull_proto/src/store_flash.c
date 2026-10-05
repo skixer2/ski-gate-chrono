@@ -901,6 +901,73 @@ void store_init(void)
 	schedule_topup("boot");
 }
 
+/* ── B4 step-0: ring drain-load simulation ─────────────────────────
+ * Mirrors the intended pre-roll architecture: page-buffered 20 B slot
+ * writes, forward fill, no erase while logging. Runs EVERY logging
+ * tick (real drain only lasts ~10 s) — deliberately harsher. */
+#define RING_SIM_BASE   0x00000u
+#define RING_SIM_BYTES  (5u * 4096u)
+#define RING_SIM_PAGE   256u
+static struct {
+	uint8_t  buf[RING_SIM_PAGE];
+	uint16_t fill;
+	uint32_t cursor;       /* next flash byte */
+	uint32_t pages;
+	uint32_t flush_ms_max;
+} rsim;
+
+void store_ring_sim_reset(void)
+{
+	memset(&rsim, 0, sizeof(rsim));
+	for (uint32_t a = RING_SIM_BASE; a < RING_SIM_BASE + RING_SIM_BYTES;
+	     a += 4096u) {
+		flash_erase(flashdev, a, 4096u);
+	}
+	printk("ring_sim: erased %u B\n", RING_SIM_BYTES);
+}
+
+static void rsim_flush(void)
+{
+	uint32_t t0 = k_uptime_get_32();
+
+	flash_write(flashdev, RING_SIM_BASE + rsim.cursor, rsim.buf,
+		    RING_SIM_PAGE);
+	uint32_t dt = k_uptime_get_32() - t0;
+
+	if (dt > rsim.flush_ms_max) {
+		rsim.flush_ms_max = dt;
+	}
+	rsim.cursor += RING_SIM_PAGE;
+	rsim.pages++;
+	rsim.fill = 0;
+	memset(rsim.buf, 0xFF, sizeof(rsim.buf));
+	if (rsim.cursor + RING_SIM_PAGE > RING_SIM_BYTES) {
+		rsim.cursor = 0;   /* wrap (sim only; real ring wraps per slot) */
+	}
+}
+
+void store_ring_sim_tick(void)
+{
+	static uint8_t rdiscard[20];
+
+	/* 2 pops = 2 x 20 B reads (bus load, results discarded) */
+	flash_read(flashdev, RING_SIM_BASE + rsim.cursor, rdiscard, 20);
+	flash_read(flashdev, RING_SIM_BASE + rsim.cursor + 20, rdiscard, 20);
+	/* 1 push = 20 B write into the page buffer (3 writes total per
+	 * tick incl. the 2 pop-replays a real drain would append) */
+	for (int i = 0; i < 3; i++) {
+		if (rsim.fill + 20 > RING_SIM_PAGE) {
+			rsim_flush();
+		}
+		/* pattern: counter so readback is verifiable */
+		*(uint32_t *)&rsim.buf[rsim.fill] = rsim.cursor + rsim.fill;
+		rsim.fill += 20;
+	}
+}
+
+uint32_t store_ring_sim_flush_ms_max(void) { return rsim.flush_ms_max; }
+uint32_t store_ring_sim_pages(void) { return rsim.pages; }
+
 void store_wipe(void)
 {
 	if (store_busy()) {

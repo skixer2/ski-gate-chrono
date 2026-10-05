@@ -88,4 +88,15 @@ uint32_t store_free_full_runs(void);
  * top-up makes the first 244 KiB clean again). */
 void store_wipe(void);
 
+/* ── B4 step-0: ring drain-load simulation (bench only) ───────────
+ * Emulates the pre-roll design's per-tick flash cost during LOGGING:
+ * 2 pops (20 B read each) + 1 push (20 B) into the reserved ring
+ * region 0x0-0x4FFF (5 sectors, min page-multiple granting 10 s of
+ * pre-trigger at 100 Hz x 20 B). Page-buffered writes (256 B), no
+ * erase during logging — region erased once at reset. */
+void store_ring_sim_reset(void);   /* erase 5 sectors (~250 ms) */
+void store_ring_sim_tick(void);    /* 2 reads + 3x20 B buffered writes */
+uint32_t store_ring_sim_flush_ms_max(void);
+uint32_t store_ring_sim_pages(void);
+
 #endif /* SGC_STORE_H */

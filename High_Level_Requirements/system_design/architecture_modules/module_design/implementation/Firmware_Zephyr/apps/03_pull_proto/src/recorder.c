@@ -87,13 +87,16 @@ static void rc_stats_reset(void)
 
 static void rc_stats_print(const char *ev)
 {
-	uint32_t avg_x10 = st_frames ? (st_bytes * 10u) / st_frames : 0;
+	uint32_t packed = st_t1 + st_t2 + st_t3;
+	uint32_t avg_x10 = packed ? (st_bytes * 10u) / packed : 0;
 
 	printk("{\"rec_stats\":\"%s\",\"frames\":%u,\"bytes\":%u,"
 	       "\"avg_b_x10\":%u,\"t1\":%u,\"t2\":%u,\"t3\":%u,"
-	       "\"skipped\":%u}\n",
+	       "\"skipped\":%u,\"ring_sim_pages\":%u,"
+	       "\"ring_sim_flush_ms_max\":%u}\n",
 	       ev, st_frames, st_bytes, avg_x10,
-	       st_t1, st_t2, st_t3, st_skipped);
+	       st_t1, st_t2, st_t3, st_skipped,
+	       store_ring_sim_pages(), store_ring_sim_flush_ms_max());
 }
 
 /* 10 Hz decimated detector hook — the architecture point where the
@@ -124,6 +127,7 @@ static void rc_work_handler(struct k_work *w)
 			ticks = 0;
 			rc_prev_tick_ms = 0;   /* no gap event across idle */
 			rc_stats_reset();
+			store_ring_sim_reset();   /* B4 step-0 load sim */
 			ble_lifecycle_suspend();   /* JP: no phone while armed */
 			printk("{\"rec\":\"ARMED\"}\n");
 			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
@@ -197,6 +201,7 @@ static void rc_work_handler(struct k_work *w)
 		} else {
 			st_t3++;
 		}
+		store_ring_sim_tick();   /* B4 step-0: ring drain-load sim */
 		int32_t n = store_record_append(rc_packer.buf, sz);
 
 		if (n < (int32_t)sz) {
