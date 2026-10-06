@@ -92,21 +92,30 @@ static void rebuild_listing(bool log_it)
 	run_info_buf[1] = (uint8_t)(n >> 8);
 	memset(&run_info_buf[2], 0, 4);
 
-	pos += snprintf(&run_list_json[pos], sizeof(run_list_json) - pos,
-			"[");
-	/* BENCH EXPERIMENT (dir-length test): emit only the LAST 10 runs */
-	if (n > 10) {
-		n = 10;
-	}
-	for (uint8_t i = 0; i < n; i++) {
+	/* APP CONTRACT (v1.1): the run-list characteristic delivers at most
+	 * 512 bytes to the phone (FBP long-read cap). Fill NEWEST-FIRST with
+	 * as many whole entries as fit; older runs fall off the tail. */
+	{
+		uint32_t budget = 510;   /* [ and ] */
+
 		pos += snprintf(&run_list_json[pos],
-				sizeof(run_list_json) - pos,
-				"%s{\"id\":%u,\"ts\":%lu,\"size\":%lu,"
-				"\"side\":\"%s\"}",
-				(i ? "," : ""), i,
-				(unsigned long)store_run_ts(i),
-				(unsigned long)store_run_payload_len(i),
-				store_run_side(i) ? "right" : "left");
+				sizeof(run_list_json) - pos, "[");
+		for (int16_t i = (int16_t)n - 1; i >= 0; i--) {
+			char entry[80];
+			int el = snprintf(entry, sizeof(entry),
+					  "%s{\"id\":%u,\"ts\":%lu,\"size\":%lu,"
+					  "\"side\":\"%s\"}",
+					  (pos > 1 ? "," : ""), (uint8_t)i,
+					  (unsigned long)store_run_ts(i),
+					  (unsigned long)store_run_payload_len(i),
+					  store_run_side(i) ? "right" : "left");
+
+			if (pos + el + 1 > budget) {
+				break;   /* would not fit whole */
+			}
+			memcpy(&run_list_json[pos], entry, el);
+			pos += el;
+		}
 	}
 	snprintf(&run_list_json[pos], sizeof(run_list_json) - pos, "]");
 
