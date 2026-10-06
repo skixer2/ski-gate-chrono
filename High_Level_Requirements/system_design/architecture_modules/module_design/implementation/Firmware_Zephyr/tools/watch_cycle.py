@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """State-aware serial watch + app reconnect: parses uiautomator dumps to find
 buttons by content-desc substring. Usage: py watch_cycle.py <out.log>"""
+import os
 import re
 import subprocess
 import sys
@@ -19,8 +20,13 @@ def adb(*args):
 def ui_dump():
     adb('shell', 'rm', '/sdcard/ui.xml')
     adb('shell', 'uiautomator', 'dump', '/sdcard/ui.xml')
-    raw = adb('pull', '/sdcard/ui.xml', '/dev/stdout')
-    return raw.decode('utf-8', 'replace')
+    tmp = os.environ.get('TEMP', 'C:\\Windows\\Temp') + '\\ui_dump.xml'
+    adb('pull', '/sdcard/ui.xml', tmp)
+    try:
+        with open(tmp, 'rb') as f:
+            return f.read().decode('utf-8', 'replace')
+    except OSError:
+        return 
 
 
 def find_and_tap(needle, wait=6.0):
