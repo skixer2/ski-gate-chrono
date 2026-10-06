@@ -47,20 +47,20 @@ d = b''
 
 # state machine: whichever button exists
 for _ in range(6):
-    if find_and_tap('Disconnect', 6):
+    if find_and_tap('Disconnect', 4):
         break
-    if find_and_tap('Scan Devices', 7):
+    if find_and_tap('Scan Devices', 4):
         break
     time.sleep(2)
 
 for _ in range(6):
-    if find_and_tap('SGC-Dev', 18):
+    if find_and_tap('SGC-Dev', 12):
         break
     time.sleep(2)
 
 # capture through the connect+read window
 t0 = time.time()
-while time.time() - t0 < 25:
+while time.time() - t0 < 12:
     d += s.read(5000)
     if b'abc9_read' in d and d.count(b'abc9_read') >= 2:
         time.sleep(3)
