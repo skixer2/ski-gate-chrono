@@ -94,6 +94,10 @@ static void rebuild_listing(bool log_it)
 
 	pos += snprintf(&run_list_json[pos], sizeof(run_list_json) - pos,
 			"[");
+	/* BENCH EXPERIMENT (dir-length test): emit only the LAST 10 runs */
+	if (n > 10) {
+		n = 10;
+	}
 	for (uint8_t i = 0; i < n; i++) {
 		pos += snprintf(&run_list_json[pos],
 				sizeof(run_list_json) - pos,
