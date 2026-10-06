@@ -140,7 +140,13 @@ static ssize_t read_run_list(struct bt_conn *conn,
 	if (!store_busy()) {
 		rebuild_listing(false);
 	}
-	return read_buf(run_list_json, strlen(run_list_json), buf, len, offset);
+	ssize_t r = read_buf(run_list_json, strlen(run_list_json),
+			     buf, len, offset);
+
+	printk("{\"ev\":\"abc9_read\",\"len\":%u,\"off\":%u,\"ret\":%d,"
+	       "\"json_len\":%u}\n",
+	       len, offset, (int)r, (unsigned)strlen(run_list_json));
+	return r;
 }
 
 /* ── Request capture (write callback = BT RX context) ────────────── */
