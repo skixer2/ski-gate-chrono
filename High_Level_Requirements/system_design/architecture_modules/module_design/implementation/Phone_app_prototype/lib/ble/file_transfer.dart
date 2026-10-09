@@ -35,15 +35,21 @@ class FileTransfer {
   FileTransfer(this.service);
 
   /// Fetch the list of runs stored on the device.
+  /// v1.50 (audit A5): NEVER returns a silent []. Empty string, short reads
+  /// and parse failures all throw with context — this exact catch masked
+  /// the 512-B truncation for days ("0 on device", 2026-10-06).
   Future<List<RunMetadata>> getRunList() async {
+    final json = await service.getRunListJson();
+    if (json.isEmpty) {
+      throw Exception('run list: device returned 0 bytes');
+    }
     try {
-      final json = await service.getRunListJson();
-      if (json.isEmpty) return [];
       final List<dynamic> list = jsonDecode(json);
       return list.map((e) => RunMetadata.fromJson(e as Map<String, dynamic>)).toList();
     } catch (e) {
-      debugPrint('[FT] Failed to parse run list: $e');
-      return [];
+      final head = json.length > 40 ? json.substring(0, 40) : json;
+      final tail = json.length > 40 ? json.substring(json.length - 40) : '';
+      throw Exception('run list parse failed ($e) — ${json.length} B, head="$head", tail="$tail"');
     }
   }
 

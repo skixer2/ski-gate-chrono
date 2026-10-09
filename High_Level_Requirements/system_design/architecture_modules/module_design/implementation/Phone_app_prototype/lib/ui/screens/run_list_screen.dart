@@ -34,7 +34,8 @@ class _RunListScreenState extends State<RunListScreen> {
   SGCService? _sgc;
   BluetoothDevice? _device;   // V1.22: kept for per-run reconnect (Phase 2)
   DeviceConfig? _config;
-  int _runCount = 0;
+  int? _runCount;   // v1.50: null = read FAILED (never a fake 0)
+  final List<String> _setupWarnings = [];   // v1.50 (audit A6): surfaced, never silent
   bool _isConnecting = false;
   bool _isScanning = false;
   bool _isDownloading = false;
@@ -70,7 +71,7 @@ class _RunListScreenState extends State<RunListScreen> {
     setState(() {
       _sgc = null;
       _config = null;
-      _runCount = 0;
+      _runCount = null;
       _deviceRuns = [];
       _isConnecting = false;
       _isDownloading = false;
@@ -98,7 +99,7 @@ class _RunListScreenState extends State<RunListScreen> {
         setState(() {
           _sgc = null;
           _config = null;
-          _runCount = 0;
+          _runCount = null;
           _deviceRuns = [];
         });
       }
@@ -152,6 +153,7 @@ class _RunListScreenState extends State<RunListScreen> {
 
   Future<void> _selectDevice(BluetoothDevice device) async {
     setState(() => _isConnecting = true);
+    _setupWarnings.clear();
 
     try {
       await _ble.connectToDevice(device);
@@ -163,10 +165,17 @@ class _RunListScreenState extends State<RunListScreen> {
 
       try {
         debugPrint('[SGC] syncing time…');
-        await sgc.syncTime();
+        final syncErr = await sgc.syncTime();
+        if (syncErr != null) {
+          debugPrint('[SGC] ⚠️ time sync: $syncErr');
+          _setupWarnings.add('time: $syncErr');
+        }
         debugPrint('[SGC] reading config…');
         _config = await sgc.readConfig();
-        debugPrint('[SGC] config: ${_config?.deviceName} / ${_config?.armSide.label} / ${_config?.discipline.label}');
+        _setupWarnings.addAll(_config?.warnings ?? const []);
+        debugPrint('[SGC] config: ${_config?.deviceName ?? 'UNKNOWN'} / '
+            '${_config?.armSide?.label ?? 'UNKNOWN'} / ${_config?.discipline?.label ?? 'UNKNOWN'}'
+            '${(_config?.warnings.isNotEmpty ?? false) ? ' (warnings: ${_config!.warnings.length})' : ''}');
         debugPrint('[SGC] reading run count…');
         _runCount = await sgc.getRunCount();
         debugPrint('[SGC] run count = $_runCount');
@@ -174,8 +183,13 @@ class _RunListScreenState extends State<RunListScreen> {
         _deviceRuns = await ft.getRunList();
         debugPrint('[SGC] device runs: ${_deviceRuns.length}');
       } catch (e, stack) {
+        // v1.50 (audit A6): setup failures SURFACE — orange banner + card
+        // state. The old green 'Connected' regardless masked '0 on device'.
         debugPrint('[SGC] ERROR during setup: $e');
         debugPrint('[SGC] stack: $stack');
+        _setupWarnings.add('setup: $e');
+        _runCount = null;
+        _deviceRuns = [];
       }
 
       setState(() {
@@ -184,10 +198,14 @@ class _RunListScreenState extends State<RunListScreen> {
       });
 
       if (mounted) {
+        final warn = _setupWarnings;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connected to ${device.platformName}'),
-            backgroundColor: Colors.green,
+            content: Text(warn.isEmpty
+                ? 'Connected to ${device.platformName}'
+                : 'Connected — ${warn.length} warning(s): ${warn.first}${warn.length > 1 ? ' (+${warn.length - 1})' : ''}'),
+            backgroundColor: warn.isEmpty ? Colors.green : Colors.orange,
+            duration: Duration(seconds: warn.isEmpty ? 3 : 8),
           ),
         );
       }
@@ -245,7 +263,7 @@ class _RunListScreenState extends State<RunListScreen> {
         _sgc = null;
         _device = null;
         _config = null;
-        _runCount = 0;
+        _runCount = null;
         _deviceRuns = [];
       });
     }
@@ -681,11 +699,19 @@ class _RunListScreenState extends State<RunListScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                _infoRow('Arm Side', _config?.armSide.label ?? 'Unknown'),
-                _infoRow('Discipline', _config?.discipline.label ?? 'Unknown'),
-                _infoRow('Runs on Device', _runCount.toString()),
+                _infoRow('Arm Side', _config?.armSide?.label ?? 'Unknown'),
+                _infoRow('Discipline', _config?.discipline?.label ?? 'Unknown'),
+                if (_setupWarnings.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '⚠ ${_setupWarnings.length} warning(s): ${_setupWarnings.first}',
+                      style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+                    ),
+                  ),
+                _infoRow('Runs on Device', _runCount?.toString() ?? '? (read failed)'),
                 _infoRow('Not Downloaded', _missingRuns.length.toString()),
-                _infoRow('BLE MTU', '${_ble.mtu} bytes'),
+                _infoRow('BLE MTU', _ble.isConnected ? '${_ble.mtu} bytes' : '— (disconnected)'),
               ],
             ),
           ),

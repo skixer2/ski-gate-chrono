@@ -285,6 +285,10 @@ class NordicBleDownloader(private val context: Context) {
                 val sz = Regex("\"sz\":(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()
                 val side = Regex("\"side\":(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()
                 if (id != null && sz != null) out.add(PullDirEntry(id, ts ?: 0, sz, side ?: 0))
+            } else if (text.startsWith("E ")) {
+                /* v1.50 (audit A7): device error codes fail FAST — the old
+                   code ignored them and burned the full 10 s deadline. */
+                throw Exception("D: device error ${text.substring(2)} (after $seen lines)")
             } else if (text.startsWith("{\"d_end\"")) {
                 return out
             }

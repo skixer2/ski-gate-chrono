@@ -6,8 +6,12 @@ import 'ble_manager.dart';
 import '../models/device_config.dart';
 import '../models/gate_side.dart';
 
+String _shortUuid(String uuid) =>
+    uuid.substring(uuid.length - 12, uuid.length - 4);
+
 class SGCService {
   final BLEManager ble;
+
 
   // V1.21: read services LIVE from the manager so this instance self-heals
   // after a reconnect (services are rediscovered per connection).
@@ -55,68 +59,138 @@ class SGCService {
     return null;
   }
 
+  /// v1.50 (audit A1/A2): reads and writes THROW on failure — the old
+  /// silent Uint8List(0)/no-op pattern fabricated defaults downstream
+  /// and masked bugs for days ("0 on device", fake config card).
   Future<Uint8List> _readChar(String uuid) async {
     final c = _findChar(uuid);
-    if (c == null) { debugPrint('[SGC] char not found: $uuid'); return Uint8List(0); }
-    try { return Uint8List.fromList(await c.read()); }
-    catch (e) { debugPrint('[SGC] read fail: $e'); return Uint8List(0); }
+    if (c == null) {
+      throw CharAccessException(_shortUuid(uuid), 'characteristic not found (FW too old or service mismatch)');
+    }
+    try {
+      return Uint8List.fromList(await c.read());
+    } catch (e) {
+      throw CharAccessException(_shortUuid(uuid), 'read failed: $e');
+    }
   }
 
   Future<void> _writeChar(String uuid, Uint8List data) async {
     final c = _findChar(uuid);
-    if (c == null) { debugPrint('[SGC] char not found: $uuid'); return; }
-    try { await c.write(data, withoutResponse: false); } catch (_) {}
+    if (c == null) {
+      throw CharAccessException(_shortUuid(uuid), 'characteristic not found — write DROPPED');
+    }
+    try {
+      await c.write(data, withoutResponse: false);
+    } catch (e) {
+      throw CharAccessException(_shortUuid(uuid), 'write failed: $e');
+    }
+  }
+
+  /// Single-byte read that validates length (audit A4).
+  Future<int> _readByte(String uuid) async {
+    final b = await _readChar(uuid);
+    if (b.isEmpty) {
+      throw CharAccessException(_shortUuid(uuid), 'returned 0 bytes');
+    }
+    return b[0];
   }
 
   // ── Time ─────────────────────────────────────────────────────
-  Future<void> syncTime() async {
+  /// v1.50 (audit A8/B2): returns null when the sync is VERIFIED via
+  /// ABC0 readback (FW ≥ 0.18.0), else a human-readable reason. Never
+  /// throws — a failed sync must not kill the connect flow, but it
+  /// MUST be surfaced (was: fully silent).
+  Future<String?> syncTime() async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final d = ByteData(4)..setUint32(0, now, Endian.little);
-    await _writeChar(charCurrentTime, d.buffer.asUint8List());
+    try {
+      await _writeChar(charCurrentTime, d.buffer.asUint8List());
+    } on CharAccessException catch (e) {
+      return 'time write failed (${e.reason})';
+    }
+    try {
+      final rb = await _readChar(charCurrentTime);
+      if (rb.length < 4) {
+        return 'readback short (${rb.length} B) — sync not verified';
+      }
+      final synced = ByteData.sublistView(rb).getUint32(0, Endian.little);
+      final drift = (synced - now).abs();
+      if (synced == 0) {
+        return 'device epoch is 0 — sync rejected/lost';
+      }
+      if (drift > 2) {
+        return 'sync drift ${drift}s — not verified';
+      }
+      return null; // verified
+    } on CharAccessException catch (e) {
+      return 'readback failed (${e.reason}) — FW < 0.18.0?';
+    }
   }
 
   // ── Config ───────────────────────────────────────────────────
+  /// v1.50 (audit A3): per-char tolerant + signaled. Fields the device
+  /// can't serve are null (UI shows 'Unknown'); failures land in
+  /// warnings. NO fabricated defaults — ever.
   Future<DeviceConfig> readConfig() async {
-    final nb = await _readChar(charDeviceName);
-    final ab = await _readChar(charArmSide);
-    final db = await _readChar(charDiscipline);
-    final cb = await _readChar(charCalAccuracy);
+    final warnings = <String>[];
+    String? name; ArmSide? arm; Discipline? disc; int? cal;
+
+    try {
+      final nb = await _readChar(charDeviceName);
+      name = String.fromCharCodes(nb.where((b) => b != 0));
+      if (name.isEmpty) warnings.add('device name empty');
+    } on CharAccessException catch (e) {
+      warnings.add('name: ${e.reason}');
+    }
+    try {
+      arm = (await _readByte(charArmSide)) == 1 ? ArmSide.right : ArmSide.left;
+    } on CharAccessException catch (e) {
+      warnings.add('arm side: ${e.reason}');
+    }
+    try {
+      final v = await _readByte(charDiscipline);
+      disc = Discipline.values[v.clamp(0, 3)];
+    } on CharAccessException catch (e) {
+      warnings.add('discipline: ${e.reason}');
+    }
+    try {
+      cal = await _readByte(charCalAccuracy);
+    } on CharAccessException catch (e) {
+      warnings.add('cal: ${e.reason}');
+    }
+    for (final w in warnings) {
+      debugPrint('[SGC] config warning: $w');
+    }
     return DeviceConfig(deviceId: ble.device?.remoteId.str ?? '',
-      deviceName: String.fromCharCodes(nb.where((b) => b != 0)),
-      armSide: ab.isNotEmpty && ab[0] == 1 ? ArmSide.right : ArmSide.left,
-      discipline: db.isNotEmpty ? Discipline.values[db[0].clamp(0, 3)] : Discipline.gs,
-      calibrationAccuracy: cb.isNotEmpty ? cb[0] : 0);
+      deviceName: name, armSide: arm, discipline: disc,
+      calibrationAccuracy: cal, warnings: warnings);
   }
 
   Future<void> writeDeviceName(String name) async {
     await _writeChar(charDeviceName, Uint8List.fromList(name.codeUnits.take(20).toList()));
   }
-
   // ── Packed reads ─────────────────────────────────────────────
+  /// v1.50: THROWS on failure (audit A4 — '0 on device' was a masker).
   Future<int> getRunCount() async {
     final b = await _readChar(charRunInfo);
-    return b.length >= 2 ? b[0] | (b[1] << 8) : 0;
+    if (b.length < 2) {
+      throw CharAccessException(_shortUuid(charRunInfo), 'short read: ${b.length} B (need 2)');
+    }
+    return b[0] | (b[1] << 8);
   }
-  Future<int> getBattery() async {
-    final b = await _readChar(charBattery);
-    return b.isNotEmpty ? (b[0] & 0x7F) : -1;
+  /// ABC5: 0x7F = unknown (no battery / battery-mode / I2C error) → null.
+  /// Throws on transport failure. bit7 = charging (not yet driven by FW).
+  Future<int?> getBattery() async {
+    final v = await _readByte(charBattery);
+    return (v & 0x7F) == 0x7F ? null : (v & 0x7F);
   }
   Future<bool> isCharging() async {
-    final b = await _readChar(charBattery);
-    return b.isNotEmpty && ((b[0] & 0x80) != 0);
+    final v = await _readByte(charBattery);
+    return (v & 0x80) != 0;
   }
-  Future<int> getDeviceState() async {
-    final b = await _readChar(charDeviceState);
-    return b.isNotEmpty ? (b[0] & 0x1F) : 0;
-  }
-  Future<int> getSensorStatus() async {
-    final b = await _readChar(charDeviceState);
-    return b.isNotEmpty ? ((b[0] >> 5) & 0x07) : 0;
-  }
-  Future<int> getFlashUsed() async {
-    final b = await _readChar(charFlashUsed);
-    return b.isNotEmpty ? b[0] : 0;
-  }
+  Future<int> getDeviceState() async => (await _readByte(charDeviceState)) & 0x1F;
+  Future<int> getSensorStatus() async => ((await _readByte(charDeviceState)) >> 5) & 0x07;
+  Future<int> getFlashUsed() async => await _readByte(charFlashUsed);
 
   Future<void> sendFtAck() async {
     await _writeChar(charFtRequest, Uint8List.fromList([0x01]));
@@ -125,7 +199,6 @@ class SGCService {
     final b = await _readChar(charRunList);
     return String.fromCharCodes(b.where((x) => x != 0));
   }
-
   /// Download a run's compressed data via the BLE FT protocol (device-push).
   ///
   /// V1.21: RESUME-CAPABLE. On failure (timeout / disconnect / FT error) the
@@ -168,13 +241,15 @@ class SGCService {
         final data = buf.toBytes();
         // Stream-level CRC32 (device FINAL packet) covers the whole run file
         // (header+payload+trailer) — proves BLE-level integrity up front.
+        // v1.50 (audit A9): mismatch now FAILS the attempt (resume loop
+        // handles it) instead of warn-and-return corrupt bytes.
         if (st.deviceCrc != null && data.isNotEmpty) {
           final local = _crc32(data);
           if (local == st.deviceCrc) {
             debugPrint('[SGC] ✅ stream CRC32 OK (${data.length} B, '
                 '${attempt > 1 ? "resumed ×${attempt - 1}" : "first attempt"})');
           } else {
-            debugPrint('[SGC] ⚠️ stream CRC32 mismatch: '
+            throw Exception('FT: stream CRC32 mismatch '
                 'device=0x${st.deviceCrc!.toRadixString(16)} local=0x${local.toRadixString(16)}');
           }
         }
@@ -286,6 +361,16 @@ class SGCService {
     }
     return crc ^ 0xFFFFFFFF;
   }
+}
+
+
+/// v1.50: a characteristic access failure that MUST surface (audit A1/A2).
+class CharAccessException implements Exception {
+  final String uuid;   // short form, e.g. '5347ABC1'
+  final String reason; // 'characteristic not found ...' / 'read failed: ...'
+  CharAccessException(this.uuid, this.reason);
+  @override
+  String toString() => 'char $uuid: $reason';
 }
 
 /// Transfer state carried across FT resume attempts (V1.21).

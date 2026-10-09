@@ -67,7 +67,7 @@ bool store_busy(void);
  *                           async runway TOPUP (POST_RUN erases).
  * Synchronous in the caller's (work) context; only TOPUP self-schedules.
  * The 'w' bench path (store_record_start) is unchanged. */
-bool store_record_begin(void);
+bool store_record_begin(uint8_t arm_side);   /* side from device config (v0.18.0) */
 int32_t store_record_append(const uint8_t *src, uint32_t len);
 bool store_record_end(void);
 
@@ -91,6 +91,10 @@ void store_wipe(void);
 /* ABC0 time sync: phone writes UTC epoch seconds at connect. */
 void store_epoch_sync(uint32_t epoch);
 uint32_t store_epoch_now(void);   /* 0 = never synced */
+
+/* v0.18.0 status surfaces (ABC7 / error-tolerance audit). */
+const struct device *store_flash_device(void);
+uint8_t store_used_pct(void);      /* % of LOG region in live runs */
 
 /* ── B4 step-0: ring drain-load simulation (bench only) ───────────
  * Emulates the pre-roll design's per-tick flash cost during LOGGING:

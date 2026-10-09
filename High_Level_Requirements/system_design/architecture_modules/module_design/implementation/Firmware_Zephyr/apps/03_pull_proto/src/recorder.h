@@ -10,6 +10,7 @@ void recorder_start(void);    /* 'g' — ARMED → LOGGING (synthetic;
 			       *   production: 2.0 m drop detector)     */
 void recorder_end(void);      /* 'e' — LOGGING → POST_RUN (synthetic;
 			       *   production: 5 s flatline < 2 m)      */
-const char *recorder_state_str(void);   /* "IDLE|ARMED|LOGGING|POST_RUN" */
+const char *recorder_state_str(void);
+uint8_t recorder_state_idx(void);    /* 0=IDLE 1=ARMED 2=LOGGING 3=POST_RUN */   /* "IDLE|ARMED|LOGGING|POST_RUN" */
 
 #endif /* SGC_RECORDER_H */

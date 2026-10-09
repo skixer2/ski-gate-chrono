@@ -31,7 +31,7 @@
 #include "pull_proto.h"
 #include "demo_svc.h"
 
-#define APP_VERSION "0.17.8"
+#define APP_VERSION "0.18.0"
 
 int main(void)
 {
@@ -41,6 +41,7 @@ int main(void)
 	 * then peripherals, then BT last (callbacks can fire from
 	 * bt_enable onward — everything they touch must exist). */
 	store_init();
+	ble_config_start();   /* v0.18.0: config chars + battery poller */
 	recorder_init();
 	if (bhy2_bringup()) {
 		sensor_prod_start();

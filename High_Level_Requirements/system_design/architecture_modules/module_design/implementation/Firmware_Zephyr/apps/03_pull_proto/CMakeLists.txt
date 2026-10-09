@@ -9,6 +9,7 @@ target_sources(app PRIVATE
   src/led_state.c
   src/ble_lifecycle.c
   src/pull_proto.c
+  src/ble_config.c
   src/demo_svc.c
   src/recorder.c
   src/sensor_prod.c

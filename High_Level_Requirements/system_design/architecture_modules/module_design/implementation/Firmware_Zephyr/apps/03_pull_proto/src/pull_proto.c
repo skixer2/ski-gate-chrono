@@ -40,6 +40,7 @@
 #include <zephyr/drivers/uart.h>   /* serial command input (JP 09-25) */
 #include "pull_proto.h"
 #include "store.h"
+#include "ble_config.h"
 #include "recorder.h"
 #include "store_layout.h"
 #include "ble_lifecycle.h"
@@ -69,6 +70,30 @@ static struct bt_uuid_128 time_sync_uuid =
 static struct bt_uuid_128 console_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCA, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
+
+/* v0.18.0 config/status chars (error-tolerance audit B3) - ArduinoFW
+ * 5.x contract, base 5347ABxx-0000-1000-8000-00805F9B34FB. */
+static struct bt_uuid_128 dev_name_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC1, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 arm_side_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC2, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 discipline_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC3, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 state_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC4, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 battery_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC5, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 flash_used_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC7, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 cal_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABD0, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
 
 static bool console_subscribed;
 
@@ -234,6 +259,136 @@ static void console_ccc_changed(const struct bt_gatt_attr *attr,
 	       console_subscribed ? "SUBSCRIBED" : "unsubscribed");
 }
 
+/* ---- v0.18.0 config/status read+write callbacks (audit B3) -------
+ * Writes only touch RAM + schedule an async flash flush (ble_config);
+ * NEVER erase in BT RX context. Reads compose fresh values. */
+static ssize_t read_dev_name(struct bt_conn *conn,
+			     const struct bt_gatt_attr *attr,
+			     void *buf, uint16_t len, uint16_t offset)
+{
+	const char *n = ble_config_dev_name();
+
+	return read_buf(n, (uint16_t)strlen(n), buf, len, offset);
+}
+
+static ssize_t write_dev_name(struct bt_conn *conn,
+			      const struct bt_gatt_attr *attr,
+			      const void *buf, uint16_t len,
+			      uint16_t offset, uint8_t flags)
+{
+	if (offset) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	if (len == 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+	ble_config_set_dev_name((const char *)buf, (uint8_t)len);
+	printk("cfg: name <- '%s' (%u B)\n", ble_config_dev_name(), len);
+	return len;
+}
+
+static ssize_t read_arm_side(struct bt_conn *conn,
+			     const struct bt_gatt_attr *attr,
+			     void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t v = ble_config_arm_side();
+
+	return read_buf(&v, 1, buf, len, offset);
+}
+
+static ssize_t write_arm_side(struct bt_conn *conn,
+			      const struct bt_gatt_attr *attr,
+			      const void *buf, uint16_t len,
+			      uint16_t offset, uint8_t flags)
+{
+	if (offset) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	if (len == 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+	ble_config_set_arm_side(((const uint8_t *)buf)[0]);
+	printk("cfg: arm <- %u\n", ble_config_arm_side());
+	return len;
+}
+
+static ssize_t read_discipline(struct bt_conn *conn,
+			       const struct bt_gatt_attr *attr,
+			       void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t v = ble_config_discipline();
+
+	return read_buf(&v, 1, buf, len, offset);
+}
+
+static ssize_t write_discipline(struct bt_conn *conn,
+				const struct bt_gatt_attr *attr,
+				const void *buf, uint16_t len,
+				uint16_t offset, uint8_t flags)
+{
+	if (offset) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+	}
+	if (len == 0) {
+		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+	ble_config_set_discipline(((const uint8_t *)buf)[0]);
+	printk("cfg: discipline <- %u\n", ble_config_discipline());
+	return len;
+}
+
+static ssize_t read_state(struct bt_conn *conn,
+			  const struct bt_gatt_attr *attr,
+			  void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t v = ble_config_state_byte();
+
+	return read_buf(&v, 1, buf, len, offset);
+}
+
+static ssize_t read_battery(struct bt_conn *conn,
+			    const struct bt_gatt_attr *attr,
+			    void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t v = ble_config_battery_byte();
+
+	return read_buf(&v, 1, buf, len, offset);
+}
+
+static ssize_t read_flash_used(struct bt_conn *conn,
+			       const struct bt_gatt_attr *attr,
+			       void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t v = ble_config_flash_used_pct();
+
+	return read_buf(&v, 1, buf, len, offset);
+}
+
+static ssize_t read_cal(struct bt_conn *conn,
+		       const struct bt_gatt_attr *attr,
+		       void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t v = ble_config_cal();
+
+	return read_buf(&v, 1, buf, len, offset);
+}
+
+/* ABC0 readback (audit B2): last-synced epoch LE, 0 = never synced.
+ * Lets the app VERIFY the write landed (epoch sanity failures are
+ * otherwise silent on both sides). */
+static ssize_t read_time_sync(struct bt_conn *conn,
+			      const struct bt_gatt_attr *attr,
+			      void *buf, uint16_t len, uint16_t offset)
+{
+	uint32_t epoch = store_epoch_now();
+	uint8_t v[4] = {
+		(uint8_t)epoch, (uint8_t)(epoch >> 8),
+		(uint8_t)(epoch >> 16), (uint8_t)(epoch >> 24)
+	};
+
+	return read_buf(v, 4, buf, len, offset);
+}
+
 /* attrs[] indices: [0] svc · [1,2] run info · [3,4] run list ·
  * [5,6] console (+declaration) · [7] CCC. console value = attrs[6]
  * for GATT ops — but notify via attrs[5] is the proven form (see
@@ -259,10 +414,41 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 	/* ABC0 appended AFTER existing attrs — stream code references
 	 * attrs[5] for console notify; indices must not shift. */
 	BT_GATT_CHARACTERISTIC(&time_sync_uuid.uuid,
+			       BT_GATT_CHRC_READ |
 			       BT_GATT_CHRC_WRITE |
 			       BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-			       BT_GATT_PERM_WRITE,
-			       NULL, write_time_sync, NULL),
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_time_sync, write_time_sync, NULL),
+	/* v0.18.0 config/status chars — appended AFTER ABC0 so existing
+	 * attr indices (console notify = attrs[5]) never shift. */
+	BT_GATT_CHARACTERISTIC(&dev_name_uuid.uuid,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_dev_name, write_dev_name, NULL),
+	BT_GATT_CHARACTERISTIC(&arm_side_uuid.uuid,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_arm_side, write_arm_side, NULL),
+	BT_GATT_CHARACTERISTIC(&discipline_uuid.uuid,
+			       BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE,
+			       BT_GATT_PERM_READ | BT_GATT_PERM_WRITE,
+			       read_discipline, write_discipline, NULL),
+	BT_GATT_CHARACTERISTIC(&state_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_state, NULL, NULL),
+	BT_GATT_CHARACTERISTIC(&battery_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_battery, NULL, NULL),
+	BT_GATT_CHARACTERISTIC(&flash_used_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_flash_used, NULL, NULL),
+	BT_GATT_CHARACTERISTIC(&cal_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_cal, NULL, NULL),
 );
 
 static uint32_t job_off;    /* next blob byte to send            */

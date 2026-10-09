@@ -43,6 +43,7 @@
 #include "sensor_prod.h"
 #include "bitpacker.h"
 #include "ring.h"
+#include "ble_config.h"
 
 /* DEDICATED workqueue (v0.10.1). Historical finding: the SHARED
  * sysworkq lost ~25% of 100 Hz ticks during LOGGING when the phone's
@@ -139,7 +140,7 @@ static void rc_work_handler(struct k_work *w)
 		break;
 	case 2:
 		if (rc_state == RC_ARMED) {
-			if (store_record_begin()) {
+			if (store_record_begin(ble_config_arm_side())) {
 				rc_state = RC_LOGGING;
 				printk("{\"rec\":\"LOGGING\"}\n");
 			} else {
@@ -278,6 +279,11 @@ static void rc_work_handler(struct k_work *w)
 static void rc_timer_fn(struct k_timer *t)
 {
 	k_work_submit_to_queue(&rec_q, &rc_work);
+}
+
+uint8_t recorder_state_idx(void)
+{
+	return (uint8_t)rc_state;   /* IDLE=0 ARMED=1 LOGGING=2 POST_RUN=3 */
 }
 
 const char *recorder_state_str(void)

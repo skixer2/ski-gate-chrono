@@ -204,6 +204,21 @@ uint8_t store_run_side(uint8_t id)
 	return entries[id].arm_side;
 }
 
+/* v0.18.0 (ABC7): % of the LOG region occupied by live runs, counted
+ * in logical bytes (16 B header + payload + 6 B trailer). Page padding
+ * ignored — this is a usage estimate, not allocation accounting. */
+uint8_t store_used_pct(void)
+{
+	uint32_t used = 0;
+
+	for (uint16_t i = 0; i < entry_count; i++) {
+		used += entries[i].payload_len + 22;
+	}
+	uint32_t pct = (used * 100u) / LOG_SIZE;
+
+	return (uint8_t)(pct > 100 ? 100 : pct);
+}
+
 uint32_t store_run_total(uint8_t id)
 {
 	return BLOB_OVERHEAD + entries[id].payload_len;
@@ -621,7 +636,7 @@ static void srec_flush(void)
 	srec.fill = 0;
 }
 
-bool store_record_begin(void)
+bool store_record_begin(uint8_t arm_side)
 {
 	if (store_busy()) {
 		return false;
@@ -649,7 +664,7 @@ bool store_record_begin(void)
 	srec.ts = ts0;
 	struct run_header hdr = {
 		.format_ver = 2,
-		.arm_side = (uint8_t)(next_run_id & 1),
+		.arm_side = arm_side ? 1 : 0,   /* v0.18.0: real config, not id parity */
 		.ts_utc = ts0,
 		.baro_temp = 125,
 		.data_size = 0, .frame_count = 0,
