@@ -22,6 +22,7 @@
 #include <zephyr/kernel.h>
 #include "store.h"
 #include "recorder.h"
+#include "ble_config.h"
 
 /* M3 Phase A: BHI260AP hub bring-up; Phase B1: real sensor producer. */
 #include "bhy2/bhy2_zephyr.h"

@@ -125,14 +125,14 @@ static bool batt_warned_batt_mode;
 
 static int bq_read(uint8_t reg, uint8_t *val)
 {
-	return i2c_write_read(bqi2c, BQ_ADDR, &reg, 1, val, 1);
+	return i2c_write_read(bqi2c, &reg, 1, val, 1, BQ_ADDR);
 }
 
 static int bq_write(uint8_t reg, uint8_t val)
 {
 	uint8_t buf[2] = { reg, val };
 
-	return i2c_write(bqi2c, BQ_ADDR, buf, 2);
+	return i2c_write(bqi2c, buf, 2, BQ_ADDR);
 }
 
 /* Nicla_System.cpp getBatteryVoltagePercentage() — verbatim port.
