@@ -102,10 +102,70 @@ static void rc_stats_print(const char *ev)
 	       store_ring_sim_pages(), store_ring_sim_flush_ms_max());
 }
 
-/* 10 Hz decimated detector hook — the architecture point where the
- * production 2.0 m baro-drop check will live (F04). Synthetic: nop. */
-static void detector_10hz(void)
+/* ---- Baro-drop START detector (F04) — port of ArduinoFW ------------
+ * start_detector.cpp/h, constants verbatim: DROP 2.0 m, 12 Pa/m at
+ * sea level, P0 reference 101325 Pa. Fed at 10 Hz (every 10th ARMED
+ * tick) with the LATEST snapshot pressure in Pa. Integer-only x100
+ * fixed point (Zephyr printk has no %f): drop_x100 = dpa*101325/(12*p0).
+ * Diagnostic lines: lock, 1 Hz progress, trigger — values, not counters. */
+#define SD_DROP_X100      200      /* 2.00 m */
+#define SD_P0_MIN_PA      50000u   /* auto-init validity window */
+#define SD_P0_MAX_PA      110000u
+#define SD_SEA_LEVEL_PA   101325u
+#define SD_PA_PER_M_SEA   12u      /* Pa/m at sea level (x100 = 1200) */
+
+static uint32_t sd_p0_pa;         /* 0 = not locked yet */
+static uint32_t rc_last_baro_pa;  /* latest acquired frame, Pa */
+static uint8_t  sd_calls;         /* 1 Hz progress divider */
+
+static void sd_reset(void)
 {
+	sd_p0_pa = 0;
+	rc_last_baro_pa = 0;
+	sd_calls = 0;
+}
+
+/* Returns true when cumulative descent since P0 lock >= 2.0 m. */
+static bool sd_feed(uint32_t pa)
+{
+	if (sd_p0_pa == 0) {
+		if (pa > SD_P0_MIN_PA && pa < SD_P0_MAX_PA) {
+			sd_p0_pa = pa;
+			printk("{\"ev\":\"sd\",\"p0\":%u,\"pa\":%u,"
+			       "\"drp_x100\":0,\"lock\":1}\n", pa, pa);
+		}
+		return false;
+	}
+	if (pa == 0) {
+		return false;
+	}
+
+	/* Descent = pressure INCREASE. pa_per_m scales with air density:
+	 * 12 Pa/m × p0/101325. drop_x100 = (pa-p0)*10132500/(12*p0). */
+	int64_t dpa = (int64_t)pa - (int64_t)sd_p0_pa;
+	int32_t drop_x100 = (int32_t)((dpa * (int64_t)SD_SEA_LEVEL_PA * 100LL) /
+				      ((int64_t)SD_PA_PER_M_SEA * sd_p0_pa));
+
+	if (++sd_calls >= 10) {   /* 1 Hz progress (serial-only, bench) */
+		sd_calls = 0;
+		printk("{\"ev\":\"sd\",\"p0\":%u,\"pa\":%u,"
+			       "\"drp_x100\":%d}\n", sd_p0_pa, pa, drop_x100);
+	}
+
+	if (drop_x100 >= SD_DROP_X100) {
+		printk("{\"ev\":\"start\",\"mode\":\"drop\","
+			       "\"drp_x100\":%d}\n", drop_x100);
+		return true;
+	}
+	return false;
+}
+
+/* 10 Hz decimated detector hook — runs inside the rec_q handler
+ * (single-writer discipline). On trigger performs the same ARMED→
+ * LOGGING transition as the 'g' intent (splice included). */
+static bool detector_10hz(void)
+{
+	return sd_feed(rc_last_baro_pa);
 }
 
 static void rc_work_handler(struct k_work *w)
@@ -131,6 +191,7 @@ static void rc_work_handler(struct k_work *w)
 			rc_prev_tick_ms = 0;   /* no gap event across idle */
 			rc_stats_reset();
 			ring_arm_reset();   /* banks pre-erased (IDLE invariant) */
+			sd_reset();         /* F04: P0 locks on first valid baro */
 			ble_lifecycle_suspend();   /* JP: no phone while armed */
 			printk("{\"rec\":\"ARMED\"}\n");
 			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
@@ -170,14 +231,22 @@ static void rc_work_handler(struct k_work *w)
 
 		/* acquire into the pre-trigger bank (arrival ts) */
 		if (sensor_prod_get_frame(&fr)) {
+			rc_last_baro_pa = (uint32_t)fr.baro_pa_div2 * 2u;
 			if (!ring_push(&fr, k_uptime_get_32())) {
 				st_skipped++;   /* ring exhausted: spec bug */
 			}
 		} else {
 			st_skipped++;
 		}
-		if (ticks % 10 == 0) {
-			detector_10hz();
+		if (ticks % 10 == 0 && detector_10hz()) {
+			/* Baro-drop START (F04): same transition as 'g'. */
+			if (store_record_begin(ble_config_arm_side())) {
+				rc_state = RC_LOGGING;
+				printk("{\"rec\":\"LOGGING\",\"ev\":\"baro_drop\"}\n");
+				break;
+			} else {
+				printk("{\"rec\":\"ERR\",\"why\":\"store\"}\n");
+			}
 		}
 		if (ticks >= 100 * 20) {    /* 20 s ARM cap (JP, spec v4) */
 			printk("{\"rec\":\"IDLE\",\"ev\":\"arm_timeout\"}\n");
