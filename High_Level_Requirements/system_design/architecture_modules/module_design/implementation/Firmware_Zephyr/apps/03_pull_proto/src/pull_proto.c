@@ -278,7 +278,7 @@ static uint8_t frame[3 + STREAM_PAYLOAD];
 
 /* ── Output paths (notify + serial mirror; rc ALWAYS checked) ───── */
 
-static void console_emit(const char *s)
+static int console_emit(const char *s)
 {
 	if (req_via_ble) {
 		printk("<phone %s\n", s);
@@ -290,9 +290,14 @@ static void console_emit(const char *s)
 					 s, strlen(s));
 
 		if (err) {
-			printk("ERROR: notify \"%s\" -> %d (MTU?)\n", s, err);
+			/* v0.17.8: -ENOMEM = ATT TX pool drained (burst outran
+			 * the link; gatt.c bt_att_create_pdu fail-fast). Caller
+			 * decides retry — dir emitter paces on this. */
+			printk("ERROR: notify \"%s\" -> %d (pool?)\n", s, err);
 		}
+		return err;
 	}
+	return 0;
 }
 
 static void console_emit_bin(const uint8_t *d, size_t n)
@@ -381,6 +386,87 @@ static int parse_three_l(const char *p, long *id, long *off, long *len)
 
 void sensor_prod_golden_arm(void);
 
+/* ── Directory job (paced, TX-pool-safe) ───────────────────────────
+ *
+ * v0.17.8 root cause (bench 2026-10-09, logcat-proven): the old code
+ * emitted ALL listing lines + d_end back-to-back from cmd_work.
+ * bt_gatt_notify() fail-fasts -ENOMEM once the ATT TX pool
+ * (CONFIG_BT_ATT_TX_COUNT=10) is full — the pool drains over the air
+ * at ~1 PDU/connection-interval, so a 21-notify burst delivered only
+ * ~9 lines and LOST d_end  phone: "D: directory timeout" ×8 attempts.
+ * Fix: one line per DIR_LINE_GAP_MS, retry the SAME line on error.
+ * 21 lines ≈ 320 ms; worst case 255 lines ≈ 3.9 s < app's 10 s.
+ */
+static struct k_work_delayable dir_work;
+static uint8_t  dir_idx;          /* next run line to emit           */
+static uint8_t  dir_n;            /* store_run_count() at start      */
+static bool     dir_active;
+static bool     dir_via_ble;      /* transport captured at start     */
+static bool     dir_extras_done;  /* serial rec/free emitted once    */
+
+#define DIR_LINE_GAP_MS 15
+
+static void dir_work_handler(struct k_work *w)
+{
+	char line[96];
+	int err;
+
+	if (!dir_active) {
+		return;
+	}
+
+	/* BLE bursts die with the link/subscription (pool never drains). */
+	if (dir_via_ble &&
+	    (!ble_lifecycle_connected() || !console_subscribed)) {
+		printk("{\"ev\":\"d_abort\",\"at\":%u}\n", dir_idx);
+		dir_active = false;
+		return;
+	}
+
+	/* A serial request may have flipped the routing var mid-burst
+	 * (it got E 4 busy); keep the burst on its origin transport. */
+	req_via_ble = dir_via_ble;
+
+	if (dir_idx < dir_n) {
+		snprintf(line, sizeof(line),
+			 "{\"run\":%u,\"ts\":%lu,\"sz\":%lu,\"side\":%u}",
+			 dir_idx, (unsigned long)store_run_ts(dir_idx),
+			 (unsigned long)store_run_total(dir_idx),
+			 store_run_side(dir_idx));
+	} else {
+		/* Serial-only extras BEFORE the terminator (v0.17.7 order),
+		 * exactly once even if d_end itself retries. */
+		if (!dir_via_ble && !dir_extras_done) {
+			char rec_line[28];
+			char free_line[24];
+
+			dir_extras_done = true;
+			snprintf(rec_line, sizeof(rec_line),
+				 "{\"rec\":\"%s\"}", recorder_state_str());
+			console_emit(rec_line);
+			snprintf(free_line, sizeof(free_line),
+				 "{\"free\":%lu}",
+			 (unsigned long)store_free_full_runs());
+			console_emit(free_line);
+		}
+		snprintf(line, sizeof(line), "{\"d_end\":%u}", dir_n);
+	}
+
+	err = console_emit(line);
+	if (err) {
+		/* Pool empty: retry SAME line after a gap. */
+		k_work_reschedule(&dir_work, K_MSEC(DIR_LINE_GAP_MS));
+		return;
+	}
+
+	dir_idx++;
+	if (dir_idx > dir_n) {
+		dir_active = false;    /* d_end delivered */
+		return;
+	}
+	k_work_reschedule(&dir_work, K_MSEC(DIR_LINE_GAP_MS));
+}
+
 static void cmd_work_handler(struct k_work *w)
 {
 	/* Copy out FIRST, then free the slot: a write arriving while we
@@ -393,43 +479,16 @@ static void cmd_work_handler(struct k_work *w)
 	char cmd = req[0];
 
 	if (cmd == 'D') {
-		uint8_t n = store_run_count();
-
-		for (uint8_t i = 0; i < n; i++) {
-			char line[96];
-
-			snprintf(line, sizeof(line),
-				 "{\"run\":%u,\"ts\":%lu,\"sz\":%lu,\"side\":%u}",
-				 i, (unsigned long)store_run_ts(i),
-				 (unsigned long)store_run_total(i),
-				 store_run_side(i));
-			console_emit(line);
+		if (dir_active || job_active) {
+			console_emit("E 4");   /* busy — mirrors 's' policy */
+			return;
 		}
-		/* APP CONTRACT (learned the hard way, 2026-09-28): the V2
-		 * native downloader string-matches {"d_end":N} EXACTLY as
-		 * the directory terminator — a merged {"free":..,"d_end":..}
-		 * line made it wait forever ("D: directory timeout" loop).
-		 * d_end stays PURE; the free-run estimate is serial-only
-		 * until it joins the app protocol properly. */
-		char tail_line[24];
-
-		if (!req_via_ble) {
-			char rec_line[28];
-
-			snprintf(rec_line, sizeof(rec_line),
-				 "{\"rec\":\"%s\"}", recorder_state_str());
-			console_emit(rec_line);
-		}
-		if (!req_via_ble) {
-			char free_line[24];
-
-			snprintf(free_line, sizeof(free_line),
-				 "{\"free\":%lu}",
-				 (unsigned long)store_free_full_runs());
-			console_emit(free_line);
-		}
-		snprintf(tail_line, sizeof(tail_line), "{\"d_end\":%u}", n);
-		console_emit(tail_line);
+		dir_n = store_run_count();
+		dir_idx = 0;
+		dir_via_ble = req_via_ble;
+		dir_extras_done = false;
+		dir_active = true;
+		k_work_schedule(&dir_work, K_NO_WAIT);
 	} else if (cmd == 's') {
 		long id, off, len;
 
@@ -440,7 +499,7 @@ static void cmd_work_handler(struct k_work *w)
 			console_emit("E 1");            /* bad run */
 		} else if ((uint32_t)off >= store_run_total((uint8_t)id)) {
 			console_emit("E 2");            /* bad off/len */
-		} else if (job_active) {
+		} else if (job_active || dir_active) {
 			/* one stream at a time; the phone never does this */
 			console_emit("E 4");
 		} else {
@@ -667,6 +726,8 @@ void pull_proto_on_disconnect(void)
 	 * will re-send after reconnecting — stateless, SR-2). */
 	k_work_cancel_delayable(&stream_work);
 	job_active = false;
+	k_work_cancel_delayable(&dir_work);
+	dir_active = false;
 	req_pending = false;
 }
 
@@ -674,6 +735,7 @@ void pull_proto_start(void)
 {
 	k_work_init(&cmd_work, cmd_work_handler);
 	k_work_init_delayable(&stream_work, stream_work_handler);
+	k_work_init_delayable(&dir_work, dir_work_handler);
 
 	/* Serial transport bring-up: our RX ISR replaces the console's
 	 * (single callback slot — printk TX is poll-mode, unaffected). */

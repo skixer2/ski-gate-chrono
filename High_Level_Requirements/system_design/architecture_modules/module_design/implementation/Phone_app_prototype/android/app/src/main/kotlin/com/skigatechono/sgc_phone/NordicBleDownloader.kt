@@ -269,9 +269,16 @@ class NordicBleDownloader(private val context: Context) {
         m.sendRequest("D")
         val out = mutableListOf<PullDirEntry>()
         val deadline = System.currentTimeMillis() + 10_000L
+        var seen = 0                                    /* v1.48+: partial-burst
+           diagnostics — a truncated D burst (TX-pool exhaustion on device)
+           must say HOW FAR it got, not just "timeout" (JP directive
+           2026-10-06: error-tolerant reads + explicit error signaling). */
+        var lastLine = ""
         while (System.currentTimeMillis() < deadline && !cancelled) {
             val pkt = m.consolePackets.poll(3, TimeUnit.MILLISECONDS) ?: continue
+            seen++
             val text = String(pkt, Charsets.US_ASCII).trim()
+            lastLine = text
             if (text.startsWith("{\"run\"")) {
                 val id = Regex("\"run\":(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()
                 val ts = Regex("\"ts\":(\\d+)").find(text)?.groupValues?.get(1)?.toIntOrNull()
@@ -284,7 +291,7 @@ class NordicBleDownloader(private val context: Context) {
             /* V2: silently ignore echo lines ("D", "s ...") — no more
                "unexpected line" noise in the UI (JP's 12:57 complaint). */
         }
-        throw Exception("D: directory timeout")
+        throw Exception("D: directory timeout (packets=$seen, last=\"$lastLine\")")
     }
 
     /**
