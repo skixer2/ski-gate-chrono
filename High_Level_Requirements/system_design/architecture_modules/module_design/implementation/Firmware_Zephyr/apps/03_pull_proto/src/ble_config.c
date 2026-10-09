@@ -125,7 +125,7 @@ static bool batt_warned_batt_mode;
 
 static int bq_read(uint8_t reg, uint8_t *val)
 {
-	return i2c_write_read(bqi2c, &reg, 1, val, 1, BQ_ADDR);
+	return i2c_write_read(bqi2c, BQ_ADDR, &reg, 1, val, 1);
 }
 
 static int bq_write(uint8_t reg, uint8_t val)
