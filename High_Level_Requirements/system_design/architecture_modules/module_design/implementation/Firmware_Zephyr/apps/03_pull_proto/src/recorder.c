@@ -174,7 +174,10 @@ static void rc_work_handler(struct k_work *w)
 	int intent = atomic_set(&cmd_intent, 0);
 	uint32_t now_ms = k_uptime_get_32();
 
-	if (rc_prev_tick_ms && (now_ms - rc_prev_tick_ms) > 50u) {
+	/* Gap forensics: skip when idle (first tick after re-arm would
+	 * otherwise print a bogus giant gap from the previous session). */
+	if (rc_state != RC_IDLE && rc_prev_tick_ms &&
+	    (now_ms - rc_prev_tick_ms) > 50u) {
 		printk("{\"ev\":\"tick_gap\",\"ms\":%u}\n",
 		       now_ms - rc_prev_tick_ms);
 	}
