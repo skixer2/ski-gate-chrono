@@ -756,7 +756,7 @@ static void cmd_work_handler(struct k_work *w)
 		 * decaying; seed fixed → runs reproducible. */
 #if IS_ENABLED(CONFIG_SGC_BENCH)
 		long secs = strtol(&req[1], NULL, 10);
-		const char *g1 = strchr(req, ' ');
+		const char *g1 = strrchr(req, ' ');   /* LAST space: the first is secs */
 		long gate_s = g1 ? strtol(g1 + 1, NULL, 10) : 15;
 
 		if (secs < 10 || secs > 120 || gate_s < 3 || gate_s > 60) {
