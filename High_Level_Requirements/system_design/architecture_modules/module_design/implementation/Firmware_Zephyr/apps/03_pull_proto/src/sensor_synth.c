@@ -21,7 +21,7 @@
  *
  * Ground truth prints the moment it enters the data:
  *   {"synth":"start","secs":N,"gate_s":M,"seed":42}
- *   {"synth":"impact","n":k,"t_ms":…,"amp_mg":…}   (t_ms from run start)
+ *   {"synth":"impact","n":k,"t_ms":…,"amp_mms2":…}   (t_ms from run start)
  *   {"synth":"done","impacts":N}
  *
  * Concurrency: 'S' (cmd_work) initializes all state, then arms the
@@ -116,7 +116,7 @@ bool sensor_synth_get_frame(struct sgc_raw_frame *f)
 		impact_amp = lcg_range(22000, 32000);   /* 2.24-3.26 g, int16-safe */
 		impact_t0 = t_ms;
 		printk("{\"synth\":\"impact\",\"n\":%u,\"t_ms\":%u,"
-		       "\"amp_mg\":%d}\n", next_impact_k,
+		       "\"amp_mms2\":%d}\n", next_impact_k,
 		       t_ms - PREROLL_MS, impact_amp);
 		f->la_y = (int16_t)impact_amp;
 		next_impact_k++;
