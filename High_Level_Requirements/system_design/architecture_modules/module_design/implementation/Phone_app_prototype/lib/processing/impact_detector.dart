@@ -11,13 +11,21 @@ class ImpactEvent {
 class ImpactDetector {
   final double multiplier;
   final int baselineWindow;
+
+  /// Absolute floor (g). Pole contacts are short ≥~2 g transients; turn
+  /// dynamics plateau at ~1.1 g (v²/r). A pure relative threshold
+  /// (median × multiplier) sits far below turn amplitude on quiet baselines
+  /// and counts every turn EDGE as an impact (S-bench run 25: 17 "gates").
+  /// Threshold = max(relative, absFloorG). 1.8 g separates the classes on
+  /// synthetic truth; recalibrate on real slope data.
+  final double absFloorG;
   static const int cooldownSamples = 20;
 
   /// Firmware / BHY2 LACC wire units are **mm/s²** (int16). |g| ≈ 9810 mm/s².
   /// (Was incorrectly 9.81 — treated LA as m/s² and inflated "g" by 1000×.)
   static const double gMmPerS2 = 9810.0;
 
-  ImpactDetector({required this.multiplier, required this.baselineWindow});
+  ImpactDetector({required this.multiplier, required this.baselineWindow, this.absFloorG = 1.8});
 
   List<ImpactEvent> detect(List<SensorFrame> frames) {
     final impacts = <ImpactEvent>[];
@@ -29,7 +37,8 @@ class ImpactDetector {
     for (int i = baselineWindow; i < frames.length; i++) {
       final window = mags.sublist(i - baselineWindow, i).toList()..sort();
       final baseline = window[window.length ~/ 2];
-      final threshold = baseline * multiplier;
+      final threshold =
+          max(baseline * multiplier, absFloorG);
 
       if (mags[i] > threshold && (i - lastImpactIdx) >= cooldownSamples) {
         double peakMag = mags[i];
