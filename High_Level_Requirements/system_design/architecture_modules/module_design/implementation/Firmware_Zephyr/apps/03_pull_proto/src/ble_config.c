@@ -145,6 +145,14 @@ static int bq_battery_pct(void)
 	if (bq_read(BQ_FAULTS, &faults) != 0) {
 		return -4;
 	}
+	static bool diag_done;   /* one-shot bench diagnostic (values) */
+	if (!diag_done) {
+		diag_done = true;
+		uint8_t st = 0xFF;
+		bq_read(BQ_STATUS, &st);
+		printk("batt: BQ alive, faults=0x%02x status=0x%02x\n",
+		       faults, st);
+	}
 	if (faults & 0x20) {            /* BAT_UVLO: not connected / too low */
 		return -1;
 	}
@@ -248,7 +256,13 @@ void ble_config_start(void)
 {
 	k_work_init_delayable(&cfg_flush, cfg_flush_handler);
 
-	bqi2c = DEVICE_DT_GET(DT_NODELABEL(i2c1));
+	/* Zephyr nodelabel vs Arduino Wire numbering TRAP (2026-10-10):
+	 * the BQ25120A + IS31FL3194 sit on P0.15/P0.16, which is Zephyr
+	 * &i2c0 (TWIM0) — the board dts puts the LED driver there and the
+	 * LED has worked since M0. Zephyr &i2c1 = P0.22/P0.23 (Arduino
+	 * "Wire", the sensor-side bus) — nothing at 0x6A there. Arduino's
+	 * Wire1 = Zephyr i2c0; do not trust the names across APIs. */
+	bqi2c = DEVICE_DT_GET(DT_NODELABEL(i2c0));
 	if (!device_is_ready(bqi2c)) {
 		printk("cfg: i2c1 not ready — battery stays unknown\n");
 		bqi2c = NULL;
