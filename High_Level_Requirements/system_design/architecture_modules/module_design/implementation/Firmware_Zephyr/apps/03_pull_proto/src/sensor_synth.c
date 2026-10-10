@@ -11,7 +11,10 @@
  *     is exact yaw (libc cos/sin, bench build only) → |q| = 1.0000.
  *   - During turns: la_x = dir × CENTRIPETAL_MG (v²/r @ 12 m/s, r 13 m)
  *     ± noise; between turns: noise only.
- *   - Pole impact at every k·gate_interval (k = 1, 2, …), timed from
+ *   - NOTE: packed la fields are mm/s² (B3 units; still-device noise
+*     ≈10 mm/s² ≈ 1 mg). Impacts 22000-32000 mm/s² (2.24-3.26 g,
+*     int16-safe), turns ±10791 (1.1 g), noise ±150.
+*   - Pole impact at every k·gate_interval (k = 1, 2, …), timed from
  *     recorder START (after the 2 s preroll): 3 samples at 100 Hz —
  *     amp (2.2–3.5 g, LCG-varied), then 40 %, then 15 % — on la_y.
  *   - Baro: 889.0 hPa ± 1 LSB.
@@ -40,7 +43,7 @@
 #define TURN_DUR_MS      1200u
 #define TURN_PERIOD_MS   4000u
 #define TURN_STEP_X100   35u     /* 0.35° per 10 ms tick = 35°/s */
-#define CENTRIPETAL_MG   1100
+#define CENTRIPETAL_MMS2 10791   /* 1.1 g in mm/s^2 (packed la field units) */
 #define BARO_DIV2        44450u  /* 889.0 hPa as Pa/2 (start altitude) */
 #define BARO_RATE_X256   60u     /* descent: +60/256 div2-LSB per 10 ms
 				  * = +0.47 hPa/s = ~4.6 m/s downhill (GS) */
@@ -101,16 +104,16 @@ bool sensor_synth_get_frame(struct sgc_raw_frame *f)
 	f->q_y = 0;
 	f->q_z = (int16_t)lround(sin(half) * 16384.0);
 
-	f->la_x = (int16_t)(turning ? dir * CENTRIPETAL_MG : 0)
-		  + (int16_t)lcg_range(-15, 15);
-	f->la_y = (int16_t)lcg_range(-15, 15);
-	f->la_z = (int16_t)lcg_range(-15, 15);
+	f->la_x = (int16_t)(turning ? dir * CENTRIPETAL_MMS2 : 0)
+		  + (int16_t)lcg_range(-150, 150);
+	f->la_y = (int16_t)lcg_range(-150, 150);
+	f->la_z = (int16_t)lcg_range(-150, 150);
 
 	/* Impacts: 3-sample transient on la_y at each gate interval. */
 	uint32_t dt = t_ms - impact_t0;
 
 	if (syn_gate_s && t_ms == impact_time(next_impact_k)) {
-		impact_amp = lcg_range(2200, 3500);
+		impact_amp = lcg_range(22000, 32000);   /* 2.24-3.26 g, int16-safe */
 		impact_t0 = t_ms;
 		printk("{\"synth\":\"impact\",\"n\":%u,\"t_ms\":%u,"
 		       "\"amp_mg\":%d}\n", next_impact_k,
