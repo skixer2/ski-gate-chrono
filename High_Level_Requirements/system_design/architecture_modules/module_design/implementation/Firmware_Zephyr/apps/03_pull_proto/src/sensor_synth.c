@@ -41,7 +41,9 @@
 #define TURN_PERIOD_MS   4000u
 #define TURN_STEP_X100   35u     /* 0.35° per 10 ms tick = 35°/s */
 #define CENTRIPETAL_MG   1100
-#define BARO_DIV2        44450u  /* 889.0 hPa as Pa/2 */
+#define BARO_DIV2        44450u  /* 889.0 hPa as Pa/2 (start altitude) */
+#define BARO_RATE_X256   60u     /* descent: +60/256 div2-LSB per 10 ms
+				  * = +0.47 hPa/s = ~4.6 m/s downhill (GS) */
 #define SYNTH_SEED       42u
 #define SYNTH_PI         3.14159265358979323846
 
@@ -52,6 +54,8 @@ static uint32_t next_impact_k;   /* k of the next due impact        */
 static int32_t  impact_amp;      /* amplitude of the last impact    */
 static uint32_t impact_t0;       /* its first-sample time           */
 static int32_t  heading_x100;    /* degrees ×100, wraps ±18000      */
+static uint32_t baro_base;       /* ramped div2 base (descent)      */
+static uint32_t baro_frac;       /* sub-LSB accumulator (×256)      */
 static uint32_t lcg = SYNTH_SEED;
 
 static struct k_work_delayable syn_work;
@@ -119,7 +123,16 @@ bool sensor_synth_get_frame(struct sgc_raw_frame *f)
 		f->la_y = (int16_t)(impact_amp * 15 / 100);
 	}
 
-	f->baro_pa_div2 = (uint16_t)(BARO_DIV2 + lcg_range(0, 1));
+	/* Descent ramp from RUN start (preroll = standing at the gate,
+	 * flat — also keeps the baro-drop detector quiet in ARMED). */
+	if (t_ms >= PREROLL_MS) {
+		baro_frac += BARO_RATE_X256;
+		while (baro_frac >= 256u) {
+			baro_frac -= 256u;
+			baro_base += 1u;
+		}
+	}
+	f->baro_pa_div2 = (uint16_t)(baro_base + lcg_range(0, 1));
 
 	t_ms += 10u;
 	return true;
@@ -154,6 +167,8 @@ bool sensor_synth_start(uint32_t secs, uint32_t gate_s)
 	impact_amp = 0;
 	impact_t0 = 0xFFFFFFF0u;   /* dt never 10/20 before first impact */
 	heading_x100 = 0;
+	baro_base = BARO_DIV2;
+	baro_frac = 0;
 	lcg = SYNTH_SEED;
 	syn_stage_ms = 0;
 
