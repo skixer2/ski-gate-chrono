@@ -167,37 +167,107 @@ class GateTimeEstimator {
   // ═══════════════════════════════════════════════════════════════════
 
   List<GateTimestamp> _estimateBronze(List<SensorFrame> frames) {
-    final timestamps = <GateTimestamp>[];
-    int gateNum = 1;
-
+    // ── JP directive 2026-10-10: impacts FIRST, then turns, then associate ──
+    // 1. Turn windows from zero-crossing pairs (as before).
+    // 2. Every impact is a confirmed gate at the impact time. Each impact
+    //    claims the turn window containing it (fallback: nearest center
+    //    within ±1500 ms) and takes its side; the window is consumed.
+    // 3. Turns left unclaimed → fallback gates (isEstimated) at the center.
+    // Rationale: the pole contact is the primary physical evidence; the
+    // turn is corroborating kinematics. (The old code anchored on turn
+    // centers with a ±200 ms impact window — real impacts land up to
+    // ~600 ms off center and never associated: every gate came out "*".)
+    final turnCenters = <int>[];
+    final turnSides = <GateSide>[];
+    final turnStart = <int>[];
+    final turnEnd = <int>[];
     for (int i = 0; i < _zeros.length - 1; i++) {
       final zI = _zeros[i];
       final zI1 = _zeros[i + 1];
+      turnCenters.add(zI.msFromStart +
+          ((zI1.msFromStart - zI.msFromStart) ~/ 2));
+      turnSides.add(_classifySide(frames, zI, zI1));
+      turnStart.add(zI.msFromStart);
+      turnEnd.add(zI1.msFromStart);
+    }
 
-      // Side from Y half-plane classification (same algorithm as Gold)
-      final side = _classifySide(frames, zI, zI1);
+    final claimed = List<bool>.filled(turnCenters.length, false);
+    // (ms, side, isEstimated, force) — built impact-first, sorted by time.
+    final gates = <({int ms, GateSide side, bool estimated, double? force})>[];
 
-      // Timestamp = midpoint of zero-crossing pair (turn center)
-      final tMs = zI.msFromStart +
-          ((zI1.msFromStart - zI.msFromStart) ~/ 2);
-
-      // Check for impact in this window
-      final impacts = knownImpacts.where(
-        (p) => (p.msFromStart - tMs).abs() < 200,
-      );
-      final isEstimated = impacts.isEmpty;
-
-      timestamps.add(GateTimestamp(
-        gateNumber: gateNum++,
+    for (final imp in knownImpacts) {
+      int best = -1;
+      int bestDist = 1 << 30;   // distance when not contained
+      bool bestContained = false;
+      for (int j = 0; j < turnCenters.length; j++) {
+        if (claimed[j]) continue;
+        final contained = imp.msFromStart >= turnStart[j] - 200 &&
+            imp.msFromStart <= turnEnd[j] + 200;
+        final dist = (imp.msFromStart - turnCenters[j]).abs();
+        if (contained && !bestContained) {
+          // containment beats any distance
+          best = j;
+          bestContained = true;
+          bestDist = dist;
+        } else if (contained && dist < bestDist) {
+          best = j;
+          bestDist = dist;
+        } else if (!contained && !bestContained &&
+                   dist <= 1500 && dist < bestDist) {
+          best = j;
+          bestDist = dist;
+        }
+      }
+      final side = best >= 0
+          ? turnSides[best]
+          : _classifySideAround(frames, imp.msFromStart, 1000);
+      if (best >= 0) claimed[best] = true;
+      gates.add((
+        ms: imp.msFromStart,
         side: side,
-        isEstimated: isEstimated,
-        msFromStart: impacts.isNotEmpty ? impacts.first.msFromStart : tMs,
-        impactForce: impacts.isNotEmpty ? impacts.first.force : null,
-        rfidTagId: null, // no course data → no RFID tags available
+        estimated: false,
+        force: imp.force,
       ));
     }
 
-    return timestamps;
+    for (int j = 0; j < turnCenters.length; j++) {
+      if (!claimed[j]) {
+        gates.add((
+          ms: turnCenters[j],
+          side: turnSides[j],
+          estimated: true,
+          force: null,
+        ));
+      }
+    }
+
+    gates.sort((a, b) => a.ms.compareTo(b.ms));
+    return [
+      for (int n = 0; n < gates.length; n++)
+        GateTimestamp(
+          gateNumber: n + 1,
+          side: gates[n].side,
+          isEstimated: gates[n].estimated,
+          msFromStart: gates[n].ms,
+          impactForce: gates[n].force,
+          rfidTagId: null,
+        ),
+    ];
+  }
+
+  /// Side classification for an orphan impact (no associated turn):
+  /// Y half-plane mean over ±windowMs around the impact time.
+  GateSide _classifySideAround(
+      List<SensorFrame> frames, int ms, int windowMs) {
+    final idx = (ms ~/ 10).clamp(0, frames.length - 1);
+    final from = (idx - windowMs ~/ 10).clamp(0, frames.length - 1);
+    final to = (idx + windowMs ~/ 10).clamp(0, frames.length - 1);
+    double sum = 0;
+    for (int t = from; t <= to; t++) {
+      sum += frames[t].laY;
+    }
+    final meanY = to >= from ? sum / (to - from + 1) : 0.0;
+    return meanY < 0 ? GateSide.rightGate : GateSide.leftGate;
   }
 
   // ═══════════════════════════════════════════════════════════════════
