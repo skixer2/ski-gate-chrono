@@ -38,6 +38,7 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/drivers/uart.h>   /* serial command input (JP 09-25) */
+#include "sensor_synth.h"           /* bench 'S' synthetic runs */
 #include "pull_proto.h"
 #include "store.h"
 #include "ble_config.h"
@@ -742,14 +743,31 @@ static void cmd_work_handler(struct k_work *w)
 		} else {
 			printk("{\"ev\":\"rh_err\",\"why\":\"bad_id\"}\n");
 		}
-	} else if (cmd == 'V') {
-		/* B2b: BitPacker differential test (C port vs ArduinoFW ref). */
-		extern void bitpack_test_run(void);
+	} else if (cmd == 'S') {
+		/* BENCH (CONFIG_SGC_BENCH): synthetic FRAME run through the
+		 * REAL pipeline — generator feeds sensor_prod snapshots, the
+		 * recorder runs its normal lifecycle, the store gets a real
+		 * run, the phone downloads + decodes it like any other.
+		 * Ground truth (pole-impact times/amplitudes, turn schedule)
+		 * prints on serial as it is placed into the data.
+		 *   S <secs> <gate_interval_s>   e.g. S 60 15
+		 * GS turn model: 35°/s × 1.2 s turns every 4 s alternating;
+		 * centripetal ≈ ±1100 mg; pole impact = 2.2–3.5 g × 3 samples
+		 * decaying; seed fixed → runs reproducible. */
+#if IS_ENABLED(CONFIG_SGC_BENCH)
+		long secs = strtol(&req[1], NULL, 10);
+		const char *g1 = strchr(req, ' ');
+		long gate_s = g1 ? strtol(g1 + 1, NULL, 10) : 15;
 
-		bitpack_test_run();
-	} else if (cmd == 'v') {
-		/* B2 golden vectors: arm 8 s raw+decode capture (serial-only). */
-		sensor_prod_golden_arm();
+		if (secs < 10 || secs > 120 || gate_s < 3 || gate_s > 60) {
+			console_emit("E 3");            /* malformed */
+		} else if (!sensor_synth_start((uint32_t)secs,
+					       (uint32_t)gate_s)) {
+			console_emit("E 5");            /* busy */
+		}
+#else
+		console_emit("E 5");                /* not a bench build */
+#endif
 	} else if (cmd == 'a' || cmd == 'g' || cmd == 'e') {
 		/* M3 step 1: recording state machine (synthetic producer).
 		 * a=arm (120 s timeout) g=go e=end — production triggers
@@ -806,12 +824,10 @@ static void cmd_work_handler(struct k_work *w)
 			console_emit("confirm: X within 3 s");
 		}
 	} else if (cmd == 'w') {
-		/* 4b bench producer: record a synthetic run through the REAL
-		 * lifecycle (write → close → runway top-up; SGL2: erase is
-		 * post-run/boot, never at start). nRF Connect:
-		 *   write "w 40960"   → one typical training run
-		 *   write "w 249834"  → one max-budget run (forces rotation)
-		 * Progress and the done-line arrive on serial; D updates. */
+#if IS_ENABLED(CONFIG_SGC_BENCH)
+		/* BENCH (v0.20.0): storage-lifecycle producer — raw ramp bytes
+		 * into the store (budget/rotation/wrap testing; NOT sensor
+		 * frames — for realistic runs use 'S', the frame producer). */
 		long len = strtol(&req[1], NULL, 10);
 
 		if (len <= 0) {
@@ -821,6 +837,9 @@ static void cmd_work_handler(struct k_work *w)
 		} else {
 			printk("w: accepted %ld B\n", len);
 		}
+#else
+		console_emit("E 5");                /* not a bench build */
+#endif
 	} else {
 		console_emit("E 4");                    /* unknown command */
 	}

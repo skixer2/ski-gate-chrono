@@ -1,0 +1,16 @@
+# SGC app Kconfig — bench instrumentation gate (v0.20.0 producer-merge).
+#
+# Bench builds (JP-PC development): CONFIG_SGC_BENCH=y keeps the 1 Hz
+# b1_rate telemetry thread alive. Production builds (ANNA-B402) set =n.
+# The synthetic-run machinery ('S' frame producer, 'w' storage producer)
+# is bench-only by construction: it lives behind this gate too.
+menu "SGC"
+
+config SGC_BENCH
+	bool "Bench instrumentation (b1_rate telemetry, synth producers)"
+	default y
+	help
+	  Keep serial bench telemetry and synthetic-run producers compiled
+	  in. Say n for production images.
+
+endmenu

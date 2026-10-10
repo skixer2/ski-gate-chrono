@@ -1,20 +1,19 @@
 /*
- * SGC Zephyr — App 03: pull-protocol product app (v0.5.0, step 3c)
+ * SGC Zephyr — App 03: pull-protocol product app (v0.20.0)
  * ==================================================================
- * Step 3c split main.c (~700 dense lines) into modules; this file is
- * now WIRING ONLY:
+ * Wiring only (step 3c split; v0.20.0 producer-merge cleanup removed
+ * the retired scaffolding — bp_ref oracle, boot self-test, demo_svc,
+ * store_fake):
  *
- *   store.h + store_fake.c   run blobs (byte-exact ArduinoFW layout);
- *                            the flash port later implements the same
- *                            header and swaps one CMake line
+ *   store.h + store_flash.c  run blobs (byte-exact ArduinoFW layout)
  *   led_state.c              LED as link state (own 1 Hz tick)
  *   ble_lifecycle.c          advertising + conn callbacks + restart
  *   pull_proto.c             0x5347 product service: D/s commands,
  *                            binary frames, END marker, error paths
- *   demo_svc.c               8d5a counter/button canary (app-02 heir)
- *
- * Bench equivalence for 3c = one App-1.46 round: D + both runs + CRC
- * (nothing behavioral changed; only ownership moved).
+ *   recorder.c               ARMED/LOGGING/POST_RUN machine + baro-drop
+ *   sensor_prod.c            BHI260 snapshots (recorder feed)
+ *   sensor_synth.c           bench: synthetic FRAME runs ('S') through
+ *                            the identical pipeline (pole/turn truth)
  *
  * The SGC concurrency pattern holds everywhere: ISR/callback context
  * only SUBMITS work; real work runs from the sysworkq; main() idles.
@@ -30,9 +29,8 @@
 #include "led_state.h"
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
-#include "demo_svc.h"
 
-#define APP_VERSION "0.19.1"
+#define APP_VERSION "0.20.0"
 
 int main(void)
 {
@@ -49,9 +47,6 @@ int main(void)
 	}
 
 	if (led_state_init() != 0) {
-		return 0;
-	}
-	if (demo_svc_start() != 0) {
 		return 0;
 	}
 	pull_proto_start();

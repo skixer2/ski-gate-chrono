@@ -102,9 +102,5 @@ uint8_t store_used_pct(void);      /* % of LOG region in live runs */
  * region 0x0-0x4FFF (5 sectors, min page-multiple granting 10 s of
  * pre-trigger at 100 Hz x 20 B). Page-buffered writes (256 B), no
  * erase during logging — region erased once at reset. */
-void store_ring_sim_reset(void);   /* erase 5 sectors (~250 ms) */
-void store_ring_sim_tick(void);    /* 2 reads + 3x20 B buffered writes */
-uint32_t store_ring_sim_flush_ms_max(void);
-uint32_t store_ring_sim_pages(void);
 
 #endif /* SGC_STORE_H */

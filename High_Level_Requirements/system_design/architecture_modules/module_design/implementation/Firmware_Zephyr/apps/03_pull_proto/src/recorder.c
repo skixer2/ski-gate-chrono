@@ -95,11 +95,9 @@ static void rc_stats_print(const char *ev)
 
 	printk("{\"rec_stats\":\"%s\",\"frames\":%u,\"bytes\":%u,"
 	       "\"avg_b_x10\":%u,\"t1\":%u,\"t2\":%u,\"t3\":%u,"
-	       "\"skipped\":%u,\"ring_sim_pages\":%u,"
-	       "\"ring_sim_flush_ms_max\":%u}\n",
+	       "\"skipped\":%u}\n",
 	       ev, st_frames, st_bytes, avg_x10,
-	       st_t1, st_t2, st_t3, st_skipped,
-	       store_ring_sim_pages(), store_ring_sim_flush_ms_max());
+	       st_t1, st_t2, st_t3, st_skipped);
 }
 
 /* ---- Baro-drop START detector (F04) — port of ArduinoFW ------------

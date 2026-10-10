@@ -58,8 +58,10 @@ static void note_obs(uint8_t sid, uint8_t size, const uint8_t *data)
 /* One generic callback: the vendored parser hands us callback_info with
  * data_ptr/data_size already sliced per sensor frame.
  *
- * B2 golden vectors: 'v' arms 8 s; first GOLDEN_MAX frames per sensor print
- * raw event bytes (SID included) next to the firmware decode. Serial-only. */
+ * (v0.20.0 cleanup: the B2 golden raw-vector capture and the one-shot
+ * FIFO hexdump were removed — the host differential suite owns that
+ * ground now; synthetic runs enter at the FRAME level via the
+ * sensor_prod_get_frame() override.) */
 
 /* ---- B3: latest-value snapshot (recorder pulls each 10 ms tick) ---- */
 static volatile struct sgc_raw_frame snap;   /* quat seqlocked below */
@@ -78,6 +80,17 @@ static void snap_quat_write(int16_t w, int16_t x, int16_t y, int16_t z)
 
 bool sensor_prod_get_frame(struct sgc_raw_frame *out)
 {
+	/* Bench override first: synthetic 'S' runs feed the identical
+	 * downstream path (BitPacker → ring → store), even sensor-less. */
+#if IS_ENABLED(CONFIG_SGC_BENCH)
+	{
+		extern bool sensor_synth_get_frame(struct sgc_raw_frame *f);
+
+		if (sensor_synth_get_frame(out)) {
+			return true;
+		}
+	}
+#endif
 	if (!snap_quat_valid) {
 		return false;
 	}
@@ -100,29 +113,6 @@ bool sensor_prod_get_frame(struct sgc_raw_frame *out)
 	return false;   /* writer won the race 4x — skip this tick */
 }
 
-#define GOLDEN_MAX 5
-static int64_t golden_deadline;
-static uint8_t golden_got[4];
-void sensor_prod_golden_arm(void);
-static void golden_emit(uint8_t idx, uint8_t sid,
-			const struct bhy2_fifo_parse_data_info *info,
-			const int32_t *v, uint8_t vn)
-{
-	if (k_uptime_get() >= golden_deadline || golden_got[idx] >= GOLDEN_MAX) {
-		return;
-	}
-	golden_got[idx]++;
-	const uint8_t *b = info->data_ptr - 1;   /* include SID byte */
-	printk("{\"ev\":\"gv\",\"sid\":%u,\"hex\":\"", sid);
-	for (uint8_t i = 0; i < info->data_size; i++) {
-		printk("%02x", b[i]);
-	}
-	printk("\",\"v\":[");
-	for (uint8_t i = 0; i < vn; i++) {
-		printk("%s%d", i ? "," : "", v[i]);
-	}
-	printk("]}\n");
-}
 /* Layout (v0.12.8+): payload starts at data_ptr+0; event size INCLUDES
  * the SID byte (RV=11, LACC=7, BARO=4, TEMP=5). No status byte in stream. */
 static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
@@ -136,12 +126,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		bhy2_parse_quaternion(info->data_ptr, &q);
 		prod.qw = q.w; prod.qx = q.x; prod.qy = q.y; prod.qz = q.z;
 		prod.n_rv++;
-		{
-			int32_t gv[5] = { q.x, q.y, q.z, q.w,
-				(int16_t)(info->data_ptr[8] | (info->data_ptr[9] << 8)) };
-			golden_emit(0, info->sensor_id, info, gv, 5);
-		}
-		snap_quat_write(q.w, q.x, q.y, q.z);
+				snap_quat_write(q.w, q.x, q.y, q.z);
 		return;
 	}
 	case BHY2_SENSOR_ID_LACC: {
@@ -150,11 +135,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		bhy2_parse_xyz(info->data_ptr, &v);
 		prod.la_x = v.x; prod.la_y = v.y; prod.la_z = v.z;
 		prod.n_lacc++;
-		{
-			int32_t gv[3] = { v.x, v.y, v.z };
-			golden_emit(1, info->sensor_id, info, gv, 3);
-		}
-		snap.la_x = v.x; snap.la_y = v.y; snap.la_z = v.z;
+				snap.la_x = v.x; snap.la_y = v.y; snap.la_z = v.z;
 		return;
 	}
 	case BHY2_SENSOR_ID_BARO: {
@@ -166,11 +147,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 			       ((uint32_t)d[1] << 8) |
 			       ((uint32_t)d[2] << 16);   /* uint24 LE, x0.0078 -> hPa */
 		prod.n_baro++;
-		{
-			int32_t gv[1] = { (int32_t)prod.baro_pa };
-			golden_emit(2, info->sensor_id, info, gv, 1);
-		}
-		/* hPa x50 == Pa/2 (ArduinoFW: pressure.value()*50.0f);
+				/* hPa x50 == Pa/2 (ArduinoFW: pressure.value()*50.0f);
 		 * integer form, <=1 LSB vs the float path. */
 		snap.baro_pa_div2 = (uint16_t)((prod.baro_pa * 39u) / 100u);
 		return;
@@ -183,11 +160,7 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		int16_t t = (int16_t)(d[0] | (d[1] << 8));
 		prod.temp_cx10 = t / 10;   /* candidate decode, ArduinoFW semantics */
 		prod.n_temp++;
-		{
-			int32_t gv[1] = { t };
-			golden_emit(3, info->sensor_id, info, gv, 1);
-		}
-		return;
+				return;
 	}
 	default:
 		return;   /* status/meta frames — not counted (B1 scope) */
@@ -195,14 +168,6 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 }
 
 
-void sensor_prod_golden_arm(void)
-{
-	for (int i = 0; i < 4; i++) {
-		golden_got[i] = 0;
-	}
-	golden_deadline = k_uptime_get() + 8000;
-	printk("{\"ev\":\"golden_armed\",\"ms\":8000}\n");
-}
 
 /* ---- drain thread: poll FIFO every 10 ms ---- */
 #define WORK_BUF_SIZE 256u   /* ~27 B/tick @300 f/s → 10× headroom */
@@ -213,7 +178,6 @@ static void drain_thread(void *a, void *b, void *c)
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 	struct bhy2_dev *dev = bhy2_zephyr_dev();
 
-	static bool dumped = false;
 	static uint32_t idle_polls;   /* consecutive polls with zero events */
 	while (dev != NULL) {
 		uint32_t n0 = prod.n_rv + prod.n_lacc + prod.n_baro + prod.n_temp;
@@ -235,24 +199,6 @@ static void drain_thread(void *a, void *b, void *c)
 		} else {
 			idle_polls = 0;
 		}
-		/* one-shot raw FIFO hexdump @ ~5 s (decode aid, remove after B1) */
-		if (!dumped) {
-			static uint32_t ticks = 0;
-			if (++ticks == 500) {
-				dumped = true;
-				k_sleep(K_MSEC(50));   /* let the FIFO refill */
-				uint32_t rd = 0, rem = 0;
-				if (bhy2_hif_get_nonwakeup_fifo(work_buf, 64, &rd,
-								&rem, &dev->hif) == BHY2_OK &&
-				    rd > 0) {
-					printk("FIFOHEX n=%u ", rd);
-					for (uint32_t i = 0; i < rd && i < 64; i++) {
-						printk("%02x", work_buf[i]);
-					}
-					printk("\n");
-				}
-			}
-		}
 		k_sleep(K_MSEC(10));
 	}
 }
@@ -264,6 +210,7 @@ static void drain_thread(void *a, void *b, void *c)
 K_THREAD_DEFINE(sensor_prod_tid, 1536, drain_thread, NULL, NULL, NULL,
 		3, 0, -1);
 
+#if IS_ENABLED(CONFIG_SGC_BENCH)
 /* ---- 1 Hz stats (own low-prio thread; printk from drain ctx avoided) ---- */
 static void stats_thread(void *a, void *b, void *c)
 {
@@ -293,6 +240,7 @@ static void stats_thread(void *a, void *b, void *c)
 }
 K_THREAD_DEFINE(sensor_prod_stats_tid, 1024, stats_thread, NULL, NULL, NULL,
 		10, 0, -1);
+#endif /* CONFIG_SGC_BENCH */
 
 /* ---- setup ---- */
 static const struct { uint8_t id; float rate; } cfgs[] = {
@@ -329,6 +277,8 @@ void sensor_prod_start(void)
 	}
 
 	k_thread_start(sensor_prod_tid);
+#if IS_ENABLED(CONFIG_SGC_BENCH)
 	k_thread_start(sensor_prod_stats_tid);
+#endif
 	printk("{\"ev\":\"b1_cfg\",\"ok\":true}\n");
 }
