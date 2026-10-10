@@ -14,3 +14,7 @@ config SGC_BENCH
 	  in. Say n for production images.
 
 endmenu
+
+# An app-root Kconfig REPLACES the Zephyr root — it must source the
+# real tree itself (Zephyr docs: Application-Specific Kconfig).
+source "Kconfig.zephyr"
