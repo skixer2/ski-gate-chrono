@@ -14,6 +14,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "bitpacker.h"   /* struct sgc_raw_frame */
 
 /* Arm + run + close a synthetic run. Returns false if the recorder is
  * busy. Completion is asynchronous (serial shows the lifecycle). */
