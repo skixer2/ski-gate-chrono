@@ -58,7 +58,7 @@ def detect_impacts(fr):
     imps, last = [], -20
     for i in range(50, len(fr)):
         w = sorted(mags[i-50:i])
-        base = w[25]
+        base = w[0]   # noise floor, not median (turn plateau guard)
         thr = max(base * 2.5, 1.8)
         if mags[i] > thr and i - last >= 20:
             pk, pj = mags[i], i
@@ -131,7 +131,7 @@ if __name__ == '__main__':
         fs = f" force={f:.2f}g" if f else ""
         print(f"  gate {n:2d}  t={ms/1000:6.2f}s  {side}  {kind}{fs}")
     if len(sys.argv) > 2:
-        truth = [(int(m.group(1)), int(m.group(2)))
+        truth = [(int(m.group(1)), int(m.group(2)) + 2000)
                  for m in re.finditer(r'"synth":"impact","n":(\d+),"t_ms":(\d+)', open(sys.argv[2], errors='replace').read())]
         det = [ms for ms, s, k, f in gates if k == 'C']
         print("truth impacts:", [t for _, t in truth])

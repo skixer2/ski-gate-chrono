@@ -114,9 +114,12 @@ bool sensor_synth_get_frame(struct sgc_raw_frame *f)
 	f->q_y = 0;
 	f->q_z = (int16_t)lround(sin(half) * 16384.0);
 
-	f->la_x = (int16_t)(turning ? dir * CENTRIPETAL_MMS2 : 0)
+	/* Lateral dynamics on la_y = the PRODUCT's lateral axis (the app's
+	 * side classifier reads local Y). Run 28: centripetal on la_x made
+	 * every gate classify 'L'. */
+	f->la_y = (int16_t)(turning ? dir * CENTRIPETAL_MMS2 : 0)
 		  + (int16_t)lcg_range(-150, 150);
-	f->la_y = (int16_t)lcg_range(-150, 150);
+	f->la_x = (int16_t)lcg_range(-150, 150);
 	f->la_z = (int16_t)lcg_range(-150, 150);
 
 	/* Impacts: 3-sample transient on la_y at each gate interval. */

@@ -30,7 +30,7 @@
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
 
-#define APP_VERSION "0.20.5"
+#define APP_VERSION "0.20.6"
 
 int main(void)
 {

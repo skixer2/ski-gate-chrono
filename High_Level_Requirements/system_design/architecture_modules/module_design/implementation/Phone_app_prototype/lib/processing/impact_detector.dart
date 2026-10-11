@@ -35,8 +35,12 @@ class ImpactDetector {
         .toList();
 
     for (int i = baselineWindow; i < frames.length; i++) {
+      // Baseline = window MINIMUM (noise floor), NOT median: under
+      // continuous GS turning the median sits on the turn plateau
+      // (~1.1 g) and a relative threshold there (2.5x = 2.75 g) drops
+      // the smaller true impacts (S-bench run 28: 18/35 missed).
       final window = mags.sublist(i - baselineWindow, i).toList()..sort();
-      final baseline = window[window.length ~/ 2];
+      final baseline = window.first;
       final threshold =
           max(baseline * multiplier, absFloorG);
 
