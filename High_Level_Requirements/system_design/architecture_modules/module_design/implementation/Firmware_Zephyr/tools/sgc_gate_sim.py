@@ -159,6 +159,26 @@ if __name__ == '__main__':
             omf2.append(a2)
         gates2 = estimate(fr2, imps2, omf2)
         gatesA = gates
+
+        # Device-side self-deduction (JP 2026-10-11): the outside leg
+        # blocks, so a device's impacts correlate with ONE turn
+        # direction (= its la_y centripetal sign at impact times).
+        def lateral_sign_at(frames, imps_):
+            signs = []
+            for ms, _f in imps_:
+                i = min(len(frames)-1, ms // 10)
+                ys = [frames[t][2][1] for t in range(max(0, i-15), min(len(frames), i+5))]
+                if ys:
+                    signs.append(1 if sum(ys) > 0 else -1)
+            return signs
+
+        for name, frs, im in (('A', fr, imps), ('B', fr2, imps2)):
+            sg = lateral_sign_at(frs, im)
+            pos = sum(1 for x in sg if x > 0)
+            print(f"device {name}: {len(sg)} impacts, la_y sign at impact: "
+                  f"{pos}(+)/{len(sg)-pos}(-) -> "
+                  f"{'+Y-turn device' if pos > len(sg)-pos else '-Y-turn device'}")
+
         gates = blend(gates, gates2)
         print(f"deviceA: {len(gatesA)} gates ({sum(1 for g in gatesA if g[2]=='C')} confirmed)")
         print(f"deviceB: {len(gates2)} gates ({sum(1 for g in gates2 if g[2]=='C')} confirmed)")
