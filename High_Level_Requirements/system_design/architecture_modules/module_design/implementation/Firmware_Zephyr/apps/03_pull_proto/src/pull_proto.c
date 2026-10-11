@@ -755,15 +755,23 @@ static void cmd_work_handler(struct k_work *w)
 		 * centripetal ≈ ±1100 mg; pole impact = 2.2–3.5 g × 3 samples
 		 * decaying; seed fixed → runs reproducible. */
 #if IS_ENABLED(CONFIG_SGC_BENCH)
-		long secs = strtol(&req[1], NULL, 10);
-		const char *g1 = strrchr(req, ' ');   /* LAST space: the first is secs */
-		long gate_s = g1 ? strtol(g1 + 1, NULL, 10) : 15;
+		char *end;
+		long secs = strtol(&req[1], &end, 10);
+		long gate_s = strtol(end, &end, 10);
+		char side = 'a';       /* a=all, r/l = dual-device one-side */
 
+		while (*end == ' ') {
+			end++;
+		}
+		if (*end == 'r' || *end == 'l' || *end == 'a') {
+			side = *end;
+		}
 		if (secs < 10 || secs > 120 || gate_s > 60) {
-			/* gate_s = 0 → every turn (master-race mode) */
+			/* gate_s = 0 → every turn; side r/l → impacts
+			 * only on that direction's turns (device emulation) */
 			console_emit("E 3");            /* malformed */
 		} else if (!sensor_synth_start((uint32_t)secs,
-					       (uint32_t)gate_s)) {
+					       (uint32_t)gate_s, side)) {
 			console_emit("E 5");            /* busy */
 		}
 #else

@@ -56,6 +56,10 @@
 static volatile bool syn_active;
 static uint32_t t_ms;            /* since synth start (frame time)  */
 static uint32_t syn_secs, syn_gate_s;
+static char syn_side;         /* 'a' all turns, 'r'/'l' one direction
+			       * (dual-device bench: ONE physical device
+			       * can only impact the gates ITS leg blocks,
+			       * ~every other turn — JP 2026-10-11). */
 static uint32_t next_impact_k;   /* k of the next due impact        */
 static int32_t  impact_amp;      /* amplitude of the last impact    */
 static uint32_t impact_t0;       /* its first-sample time           */
@@ -76,13 +80,24 @@ static int32_t lcg_range(int32_t lo, int32_t hi)
 /* Run-relative time of impact k (first sample).
  * gate_s > 0: fixed grid k·gate_s.
  * gate_s = 0 (master-race mode, JP 2026-10-11): one impact per turn,
- * 150 ms after the turn apex (apex = mid-turn at this model's ω). */
+ * 150 ms after the turn apex (apex = mid-turn at this model's ω).
+ * syn_side 'r'/'l': only turns of ONE direction carry impacts — the
+ * dual-device reality (r-device and l-device runs are complementary;
+ * the app blends them). Which turn direction a given leg blocks is a
+ * cross-blocking constant JP owns — 'r' = even periods (dir +1) here. */
 static uint32_t impact_time(uint32_t k)
 {
 	if (syn_gate_s) {
 		return PREROLL_MS + k * syn_gate_s * 1000u;
 	}
-	return PREROLL_MS + (k - 1u) * TURN_PERIOD_MS +
+	uint32_t p = k - 1u;               /* turn (period) index */
+
+	if (syn_side == 'r') {
+		p = 2u * p;            /* even periods: dir = +1 */
+	} else if (syn_side == 'l') {
+		p = 2u * p + 1u;       /* odd periods: dir = -1 */
+	}
+	return PREROLL_MS + p * TURN_PERIOD_MS +
 	       TURN_DUR_MS / 2u + 150u;
 }
 
@@ -178,6 +193,7 @@ bool sensor_synth_start(uint32_t secs, uint32_t gate_s)
 	}
 	syn_secs = secs;
 	syn_gate_s = gate_s;
+	syn_side = side;
 	t_ms = 0;
 	next_impact_k = 1;
 	impact_amp = 0;

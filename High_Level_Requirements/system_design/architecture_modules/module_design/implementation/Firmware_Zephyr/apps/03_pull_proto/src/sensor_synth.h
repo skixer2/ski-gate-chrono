@@ -18,7 +18,7 @@
 
 /* Arm + run + close a synthetic run. Returns false if the recorder is
  * busy. Completion is asynchronous (serial shows the lifecycle). */
-bool sensor_synth_start(uint32_t secs, uint32_t gate_interval_s);
+bool sensor_synth_start(uint32_t secs, uint32_t gate_interval_s, char side);
 
 /* Frame source override, called from sensor_prod_get_frame() context
  * (recorder workqueue). false = no synth session active. */

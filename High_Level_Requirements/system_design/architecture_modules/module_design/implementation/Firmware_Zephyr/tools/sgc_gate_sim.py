@@ -117,6 +117,27 @@ def estimate(fr, imps, omf):
     gates.sort()
     return gates
 
+def blend(ga, gb, win=400):
+    """Two-device merge (JP 2026-10-11): impacts from EITHER device
+    confirm a gate; estimates within `win` of the other device's impact
+    become confirmed; estimate-estimate pairs collapse (mean time)."""
+    allg = sorted(ga + gb, key=lambda g: g[0])
+    out = []
+    for g in allg:
+        if out and abs(g[0] - out[-1][0]) <= win:
+            ms, side, kind, f = out[-1]
+            if kind == 'C' or g[2] == 'C':
+                keep = g if g[2] == 'C' else out[-1]
+                if kind == 'C' and g[2] == 'C':
+                    keep = g if (g[3] or 0) >= (f or 0) else out[-1]
+                out[-1] = keep
+            else:
+                out[-1] = ((ms + g[0]) // 2, side, '*', None)
+        else:
+            out.append(g)
+    return out
+
+
 if __name__ == '__main__':
     fr = frames_from_dump(sys.argv[1])
     imps = detect_impacts(fr)
@@ -126,11 +147,28 @@ if __name__ == '__main__':
         a = x if a is None else 0.1*x + 0.9*a
         omf.append(a)
     gates = estimate(fr, imps, omf)
-    print(f"frames={len(fr)} impacts={len(imps)} quiet_centers->turns; predicted gates:")
+
+    if len(sys.argv) >= 3 and sys.argv[2].endswith('_dump.log'):
+        # BLEND MODE: two device dumps -> two-device gate list.
+        fr2 = frames_from_dump(sys.argv[2])
+        imps2 = detect_impacts(fr2)
+        omf2 = []
+        a2 = None
+        for x in omega_series(fr2):
+            a2 = x if a2 is None else 0.1 * x + 0.9 * a2
+            omf2.append(a2)
+        gates2 = estimate(fr2, imps2, omf2)
+        gatesA = gates
+        gates = blend(gates, gates2)
+        print(f"deviceA: {len(gatesA)} gates ({sum(1 for g in gatesA if g[2]=='C')} confirmed)")
+        print(f"deviceB: {len(gates2)} gates ({sum(1 for g in gates2 if g[2]=='C')} confirmed)")
+        print(f"frames={len(fr)}+{len(fr2)} impacts={len(imps)}+{len(imps2)}; BLENDED gates:")
+    else:
+        print(f"frames={len(fr)} impacts={len(imps)} quiet_centers->turns; predicted gates:")
     for n, (ms, side, kind, f) in enumerate(gates, 1):
         fs = f" force={f:.2f}g" if f else ""
         print(f"  gate {n:2d}  t={ms/1000:6.2f}s  {side}  {kind}{fs}")
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and not sys.argv[2].endswith('_dump.log'):
         truth = [(int(m.group(1)), int(m.group(2)) + 2000)
                  for m in re.finditer(r'"synth":"impact","n":(\d+),"t_ms":(\d+)', open(sys.argv[2], errors='replace').read())]
         det = [ms for ms, s, k, f in gates if k == 'C']
