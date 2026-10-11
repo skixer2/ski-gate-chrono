@@ -35,6 +35,7 @@ class GateTimeEstimator {
 
   List<ZeroCrossing> _zeros = [];
   List<double> _omega = [];
+  List<double> _omegaFilt = [];
 
   GateTimeEstimator({this.course, this.knownImpacts = const []});
 
@@ -48,6 +49,7 @@ class GateTimeEstimator {
     // Shared pipeline: compute ω(t) and find zero-crossings
     _omega = _computeOmega(frames);
     final omegaFilt = _butterworthFiltfilt(_omega, 0.5, 4);
+    _omegaFilt = omegaFilt;
     _zeros = _findZeros(omegaFilt);
 
     if (course != null) {
@@ -177,6 +179,7 @@ class GateTimeEstimator {
     // turn is corroborating kinematics. (The old code anchored on turn
     // centers with a ±200 ms impact window — real impacts land up to
     // ~600 ms off center and never associated: every gate came out "*".)
+    final turnApexMs = <int>[];   // argmax ω inside the window
     final turnCenters = <int>[];
     final turnSides = <GateSide>[];
     final turnStart = <int>[];
@@ -186,6 +189,17 @@ class GateTimeEstimator {
       final zI1 = _zeros[i + 1];
       turnCenters.add(zI.msFromStart +
           ((zI1.msFromStart - zI.msFromStart) ~/ 2));
+      // Apex = max filtered ω frame in the window (tightest line).
+      int apexMs = zI.msFromStart;
+      double apexW = -1;
+      for (int t = zI.frameIndex;
+           t <= zI1.frameIndex && t < _omegaFilt.length; t++) {
+        if (_omegaFilt[t] > apexW) {
+          apexW = _omegaFilt[t];
+          apexMs = frames[t].msFromStart;
+        }
+      }
+      turnApexMs.add(apexMs);
       turnSides.add(_classifySide(frames, zI, zI1));
       turnStart.add(zI.msFromStart);
       turnEnd.add(zI1.msFromStart);
@@ -232,8 +246,10 @@ class GateTimeEstimator {
 
     for (int j = 0; j < turnCenters.length; j++) {
       if (!claimed[j]) {
+        // JP (2026-10-11): a well-performed turn puts the gate 1-2
+        // tenths AFTER the apex. Fallback timestamp = apex + 150 ms.
         gates.add((
-          ms: turnCenters[j],
+          ms: turnApexMs[j] + 150,
           side: turnSides[j],
           estimated: true,
           force: null,

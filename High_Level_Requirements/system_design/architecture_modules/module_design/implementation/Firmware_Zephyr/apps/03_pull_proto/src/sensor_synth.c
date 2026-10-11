@@ -6,8 +6,8 @@
  * production path (BitPacker → ring → store → phone decode).
  *
  * Model (deterministic, seed fixed → reproducible ground truth):
- *   - GS turn rhythm: 1.2 s turn at 35°/s every 4.0 s, alternating
- *     direction. Heading integrates in integer °×100; the quaternion
+ *   - GS turn rhythm: 0.9 s turn at 60°/s every 1.5 s, alternating
+ *     direction (JP timing model, 2026-10-11). Heading integrates in integer °×100; the quaternion
  *     is exact yaw (libc cos/sin, bench build only) → |q| = 1.0000.
  *   - During turns: la_x = dir × CENTRIPETAL_MG (v²/r @ 12 m/s, r 13 m)
  *     ± noise; between turns: noise only.
@@ -40,9 +40,12 @@
 #if IS_ENABLED(CONFIG_SGC_BENCH)
 
 #define PREROLL_MS       2000u
-#define TURN_DUR_MS      1200u
-#define TURN_PERIOD_MS   4000u
-#define TURN_STEP_X100   35u     /* 0.35° per 10 ms tick = 35°/s */
+/* GS rhythm (JP 2026-10-11): gate-to-gate 1.4-1.5 s avg (1.2 flat,
+ * 2.0 steep); 35 gates ≈ 50 s. Turn nearly continuous: 0.9 s of each
+ * 1.5 s period; heading rate 60°/s (a GS turn swings ~50-55°). */
+#define TURN_DUR_MS      900u
+#define TURN_PERIOD_MS   1500u
+#define TURN_STEP_X100   60u     /* 0.60° per 10 ms tick = 60°/s */
 #define CENTRIPETAL_MMS2 10791   /* 1.1 g in mm/s^2 (packed la field units) */
 #define BARO_DIV2        44450u  /* 889.0 hPa as Pa/2 (start altitude) */
 #define BARO_RATE_X256   60u     /* descent: +60/256 div2-LSB per 10 ms
@@ -70,10 +73,17 @@ static int32_t lcg_range(int32_t lo, int32_t hi)
 	return lo + (int32_t)((lcg >> 16) % (uint32_t)(hi - lo + 1));
 }
 
-/* Run-relative time of impact k (first sample). */
+/* Run-relative time of impact k (first sample).
+ * gate_s > 0: fixed grid k·gate_s.
+ * gate_s = 0 (master-race mode, JP 2026-10-11): one impact per turn,
+ * 150 ms after the turn apex (apex = mid-turn at this model's ω). */
 static uint32_t impact_time(uint32_t k)
 {
-	return PREROLL_MS + k * syn_gate_s * 1000u;
+	if (syn_gate_s) {
+		return PREROLL_MS + k * syn_gate_s * 1000u;
+	}
+	return PREROLL_MS + (k - 1u) * TURN_PERIOD_MS +
+	       TURN_DUR_MS / 2u + 150u;
 }
 
 bool sensor_synth_get_frame(struct sgc_raw_frame *f)
@@ -112,7 +122,7 @@ bool sensor_synth_get_frame(struct sgc_raw_frame *f)
 	/* Impacts: 3-sample transient on la_y at each gate interval. */
 	uint32_t dt = t_ms - impact_t0;
 
-	if (syn_gate_s && t_ms == impact_time(next_impact_k)) {
+	if (t_ms == impact_time(next_impact_k)) {
 		impact_amp = lcg_range(22000, 32000);   /* 2.24-3.26 g, int16-safe */
 		impact_t0 = t_ms;
 		printk("{\"synth\":\"impact\",\"n\":%u,\"t_ms\":%u,"

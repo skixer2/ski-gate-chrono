@@ -759,7 +759,8 @@ static void cmd_work_handler(struct k_work *w)
 		const char *g1 = strrchr(req, ' ');   /* LAST space: the first is secs */
 		long gate_s = g1 ? strtol(g1 + 1, NULL, 10) : 15;
 
-		if (secs < 10 || secs > 120 || gate_s < 3 || gate_s > 60) {
+		if (secs < 10 || secs > 120 || gate_s > 60) {
+			/* gate_s = 0 → every turn (master-race mode) */
 			console_emit("E 3");            /* malformed */
 		} else if (!sensor_synth_start((uint32_t)secs,
 					       (uint32_t)gate_s)) {
