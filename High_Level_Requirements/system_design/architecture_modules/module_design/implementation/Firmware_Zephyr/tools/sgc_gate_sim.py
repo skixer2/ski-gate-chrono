@@ -117,7 +117,7 @@ def estimate(fr, imps, omf):
     gates.sort()
     return gates
 
-def blend(ga, gb, win=400):
+def blend(ga, gb, win=800):
     """Two-device merge (JP 2026-10-11): impacts from EITHER device
     confirm a gate; estimates within `win` of the other device's impact
     become confirmed; estimate-estimate pairs collapse (mean time)."""
