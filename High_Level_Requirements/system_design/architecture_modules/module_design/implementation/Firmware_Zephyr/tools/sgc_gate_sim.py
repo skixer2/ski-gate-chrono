@@ -163,21 +163,25 @@ if __name__ == '__main__':
         # Device-side self-deduction (JP 2026-10-11): the outside leg
         # blocks, so a device's impacts correlate with ONE turn
         # direction (= its la_y centripetal sign at impact times).
-        def lateral_sign_at(frames, imps_):
+        def turn_dir_at(frames, imps_):
+            """Heading-rate sign at impact times: dqz/dt over the 200 ms
+            BEFORE each impact (impact fires mid-turn; turn direction =
+            the turn the impact belongs to). Robust vs la_y
+            reconstruction (see checkdump: plateau anomaly, 2026-10-11)."""
             signs = []
             for ms, _f in imps_:
                 i = min(len(frames)-1, ms // 10)
-                ys = [frames[t][2][1] for t in range(max(0, i-15), min(len(frames), i+5))]
-                if ys:
-                    signs.append(1 if sum(ys) > 0 else -1)
+                z = [frames[t][1][3] for t in range(max(1, i-20), min(len(frames), i+1))]
+                if len(z) >= 2 and abs(z[-1] - z[0]) > 50:
+                    signs.append(1 if z[-1] > z[0] else -1)
             return signs
 
         for name, frs, im in (('A', fr, imps), ('B', fr2, imps2)):
-            sg = lateral_sign_at(frs, im)
+            sg = turn_dir_at(frs, im)
             pos = sum(1 for x in sg if x > 0)
-            print(f"device {name}: {len(sg)} impacts, la_y sign at impact: "
-                  f"{pos}(+)/{len(sg)-pos}(-) -> "
-                  f"{'+Y-turn device' if pos > len(sg)-pos else '-Y-turn device'}")
+            print(f"device {name}: {len(sg)} impacts, heading-rate sign: "
+                  f"{pos}(CW)/{len(sg)-pos}(CCW) -> "
+                  f"{'CW-turn blocker (outside leg on CCW turns)' if pos > len(sg)-pos else 'CCW-turn blocker (outside leg on CW turns)'}")
 
         gates = blend(gates, gates2)
         print(f"deviceA: {len(gatesA)} gates ({sum(1 for g in gatesA if g[2]=='C')} confirmed)")
