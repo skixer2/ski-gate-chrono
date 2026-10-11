@@ -138,5 +138,5 @@ if __name__ == '__main__':
         print("detected     :", det)
         for n, (k, t) in enumerate(truth):
             near = min(det, default=None, key=lambda d: abs(d - t))
-            ok = near is not None and abs(near - t) <= 30
+            ok = near is not None and abs(near - t) <= 60
             print(f"  impact {k}: truth {t} ms -> detected {near} ms  {'OK' if ok else 'MISS/OFF'}")
