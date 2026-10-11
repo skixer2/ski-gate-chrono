@@ -186,7 +186,7 @@ static void syn_work_handler(struct k_work *w)
 	printk("{\"synth\":\"done\",\"impacts\":%u}\n", next_impact_k - 1u);
 }
 
-bool sensor_synth_start(uint32_t secs, uint32_t gate_s)
+bool sensor_synth_start(uint32_t secs, uint32_t gate_s, char side)
 {
 	if (syn_active || recorder_state_idx() != 0 || store_busy()) {
 		return false;
