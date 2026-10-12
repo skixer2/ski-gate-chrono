@@ -1,71 +1,78 @@
-# Draft: gate-side determination & the two-device blend — ASSUMPTIONS EXPOSED
+# Device-side determination & two-pole blend — draft v0.2
 
-*Draft v0.1, 2026-10-11, from JP's corrections: (a) not sure the
-"outside leg blocks" mapping is correct, (b) the devices are fixed on
-the POLES, not worn on legs. This document pins the physical model
-first; the algorithm follows from it. ZioClaw's previous messages
-assumed skier-worn shin devices — WRONG per (b).*
+*2026-10-12. v0.1 assumed gate-poles; WRONG twice. JP 07:34: the
+devices are fixed on the SKIER'S SKI POLES — one per hand. v0.2 =
+pole model. Everything below marked (ASSUMPTION) needs JP's confirm.*
 
-## 0. OPEN QUESTIONS (block the algorithm design)
+## 1. Physical model
 
-1. **Where exactly are the two devices?** Both on poles — of the SAME
-   gate (a GS gate = a pair of poles), or on two different gates
-   (consecutive?), or start/finish only?
-2. **What does a pole-mounted device record during a race?**
-   - Its own pole being hit (impact) — presumably yes
-   - The pole's swing after the hit (rotation vector shows the pole
-     swinging — the same signal family as the B4 start-trigger
-     "poles swinging 90°→60°")
-   - Baro: constant (the pole is static) — so the descent-ramp runs
-     we've been synthesizing describe WHAT trajectory? (A pole never
-     descends.)
-3. **Which skier?** If a pole device records a whole training session,
-   it sees MANY skiers — is a "run" one skier's passage (how isolated?)
-   and how are two devices' data associated to the same skier?
-4. **What is "estimation" on a device whose pole was NOT hit?** The
-   un-hit pole of a pair: what signal does the passing skier leave on
-   it (vibration coupling through the snow? air? nothing)?
+- **Device L on the left ski pole, device R on the right ski pole**
+  (arm_side / ABC1 config = which pole at install).
+- Both poles travel with the skier: descent (baro rises ✓ — the
+  ramp model was right), every turn visible in RV from both (ASSUMPTION:
+  pole swing tracks body rotation closely enough for the ω analysis).
+- **Impacts on a pole device, three sources:**
+  1. **Gate contact** — the pole (or that side's body) hits/brushes
+     the gate pole. Only ONE pole's device feels it clearly.
+  2. **Pole plants** — rhythmic, every turn cycle (ASSUMPTION: ~1
+     plant per pole per gate cycle in GS; amplitude/plant-direction
+     TBD by JP). Plants must NOT be counted as gates → the impact
+     classifier needs a plant-vs-gate discriminator (amplitude?
+     axial-vs-lateral direction? rhythm ~0.75 s vs gates 1.5 s?).
+  3. Noise/other contacts.
+- "Estimation" (JP's blend spec) = the turn analysis each device can
+  do independently of impacts: BOTH poles see ALL turns; each device
+  estimates all gate times (apex+150 ms class); its own pole only
+  impact-confirms the gates THAT pole contacted.
 
-## 1. What the deduction must produce
+## 2. The blend (JP's spec, verbatim reading now)
 
-Per JP: "the actual device side could be deduced from the two devices'
-run data." Candidate meanings depending on §0 answers:
+- R-device run: impacts (R-pole gate contacts + R plants) + estimates
+  (all gates).
+- L-device run: same, complementary.
+- Merge: impact from EITHER pole confirms the gate; unclaimed
+  estimates stay estimated. Gate side = turn direction.
+- Bonus per gate: **which pole made contact** → the skier's blocking
+  pattern (cross-block vs inside reach vs no block) — coaching data.
 
-- **(A) Which pole of a pair was hit** (red/blue, course-left/right):
-  the hit device knows its impact; the side label needs the device's
-  mounting position — either configured at install, or deduced if the
-  two devices of a pair see systematically different signals
-  (approach direction asymmetry).
-- **(B) Skier-carried + pole-reference hybrid:** skier device records
-  the run (descent, turns, impacts at gates it brushed); pole devices
-  give exact passage timestamps (the Gold-tier pressure/RFID
-  cross-check in the app). "Deduction" = matching skier-run gates to
-  pole-device timestamps, and the skier device's impact-vs-turn
-  correlation then deduces which LINE (right/left gates) the skier
-  was skiing — no leg physics involved.
+## 3. Device-side / technique DEDUCTION (JP's question, answered)
 
-## 2. The flawed claim, retracted
+Do NOT assume right-pole→left-gates (cross-blocking) — technique
+varies, masters often don't block at all. Instead, DEDUCE from the
+paired data:
 
-> "+ω (left) turns → right-leg device (right leg is outside on left
-> turns)"
+```
+for each pole device:
+    correlate its gate-classified impacts with turn direction
+    → R-pole impacts on LEFT-turn gates  = cross-blocker
+    → R-pole impacts on RIGHT-turn gates = inside-reach blocker
+    → no gate-classified impacts         = no blocker (plants only)
+```
 
-This assumed devices strapped to the skier's shins. If devices are on
-poles, there is no leg, no outside-leg blocking, and turn-direction
-correlation of impacts measures something else entirely. RETRACTED
-pending §0.
+Self-calibrating per skier per run; a config error (ABC1 set wrong)
+shows up as the deduced side contradicting the configured side →
+warn, trust the data. This also REPLACES any hardcoded
+cross-blocking constant.
 
-## 3. What stands regardless of the model
+Prereq: reliable plant-vs-gate classification on each device (§1.2)
+— the deduction above must run on gate-classified impacts only.
 
-- Both devices sync to the same phone clock at connect → shared time
-  base for any cross-device association (unchanged).
-- The bench synthetic chain (packer, store, download, decode) is
-  model-agnostic; only the GENERATOR's physics changes once the model
-  is pinned.
-- Impact-first association within one run (App 1.52+) is unchanged —
-  it does not care what the impacts physically are.
+## 4. OPEN (JP)
 
-## 4. Next step
+1. Plant rhythm & signature in GS master racing: plants per gate
+   cycle, per pole; rough amplitude vs a gate hit; axial (along pole)
+   vs lateral (gate hit) — can they be separated by our LACC/RV?
+2. Does the pole-device really see ALL turns cleanly (pole swing vs
+   body rotation) — or does the ω estimate need pole-swing filtering?
+3. Gate contact: is it always the POLE that touches (vs shin)?
+   If shin contacts dominate for some skiers, the pole device feels
+   them only via body coupling — weaker impacts. Threshold impact?
+4. Start trigger (B4 "poles swinging 90°→60°"): confirm the start
+   detector picture — pole angle w.r.t. gravity at the start push?
 
-JP answers §0 (or corrects the questions) → this doc gets the real
-model → the generator + blend get rewritten to match → re-proven on
-the bench.
+## 5. Bench plan once §4 is answered
+
+Synth 'S' gets a pole model: plants every cycle (both), gate hits
+only on one direction's turns per device (already parameterized) →
+r + l runs → blend → all gates + per-pole attribution → deduction
+printout = blocking pattern.
