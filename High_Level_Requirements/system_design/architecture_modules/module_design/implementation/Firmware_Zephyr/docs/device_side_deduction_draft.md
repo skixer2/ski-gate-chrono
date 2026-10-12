@@ -50,7 +50,23 @@ in the generator's z-up convention), 'l' device CCW. The previous
 'r'/'l' parity was inverted w.r.t. this physics — fixed in
 sensor_synth.c with this doc.
 
-## 5. Status
+## 5. Side classification reliability (laY test vs rotation sense)
+
+- **laY half-plane test** (current app): mean of LOCAL-FRAME laY over
+  the turn window; sign → side. Assumes device Y points to a known
+  BODY side. TRUE for a fixed mounting; FALSE for a pole in a moving
+  arm — the pole's local axes rotate with every swing/reach, exactly
+  during gate contacts. FRAGILE for our product.
+- **Rotation sense about the gravity vertical** (signed gyro/yaw from
+  the RV quaternion): CW-from-above = right turn. Frame-independent —
+  arm/pole motion adds rotation about mostly HORIZONTAL axes (swings)
+  which the vertical projection rejects; wrist twist about vertical
+  is brief and averages out over the ~0.9 s turn window.
+- **DECISION: rotation sense is the classifier; laY test demoted**
+  (kept only as a cross-check/sanity vote during validation on real
+  snow). Same ladder serves slalom (б§1).
+
+## 6. Status
 
 - App/sim: sides switch to signed-rotation classification (todo,
   small: replaces the laY half-plane test where the axes convention
