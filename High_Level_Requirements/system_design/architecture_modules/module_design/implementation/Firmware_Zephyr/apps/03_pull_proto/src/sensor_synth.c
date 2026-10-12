@@ -93,9 +93,9 @@ static uint32_t impact_time(uint32_t k)
 	uint32_t p = k - 1u;               /* turn (period) index */
 
 	if (syn_side == 'r') {
-		p = 2u * p;            /* even periods: dir = +1 */
+		p = 2u * p + 1u;       /* odd periods: dir = -1 = CW = right */
 	} else if (syn_side == 'l') {
-		p = 2u * p + 1u;       /* odd periods: dir = -1 */
+		p = 2u * p;            /* even periods: dir = +1 = CCW = left */
 	}
 	return PREROLL_MS + p * TURN_PERIOD_MS +
 	       TURN_DUR_MS / 2u + 150u;

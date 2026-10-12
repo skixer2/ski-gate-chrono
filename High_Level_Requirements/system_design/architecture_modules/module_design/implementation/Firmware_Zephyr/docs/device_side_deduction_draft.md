@@ -1,78 +1,61 @@
-# Device-side determination & two-pole blend — draft v0.2
+# Gate-side determination & two-pole blend — v0.3 (JP physics pinned)
 
-*2026-10-12. v0.1 assumed gate-poles; WRONG twice. JP 07:34: the
-devices are fixed on the SKIER'S SKI POLES — one per hand. v0.2 =
-pole model. Everything below marked (ASSUMPTION) needs JP's confirm.*
+*2026-10-12. Supersedes v0.1 (legs — wrong) and v0.2 (gate poles —
+wrong). v0.3 = ski poles in the skier's hands + JP's stated physics.*
 
-## 1. Physical model
+## 1. FINAL model (GS and all disciplines except slalom)
 
-- **Device L on the left ski pole, device R on the right ski pole**
-  (arm_side / ABC1 config = which pole at install).
-- Both poles travel with the skier: descent (baro rises ✓ — the
-  ramp model was right), every turn visible in RV from both (ASSUMPTION:
-  pole swing tracks body rotation closely enough for the ω analysis).
-- **Impacts on a pole device, three sources:**
-  1. **Gate contact** — the pole (or that side's body) hits/brushes
-     the gate pole. Only ONE pole's device feels it clearly.
-  2. **Pole plants** — rhythmic, every turn cycle (ASSUMPTION: ~1
-     plant per pole per gate cycle in GS; amplitude/plant-direction
-     TBD by JP). Plants must NOT be counted as gates → the impact
-     classifier needs a plant-vs-gate discriminator (amplitude?
-     axial-vs-lateral direction? rhythm ~0.75 s vs gates 1.5 s?).
-  3. Noise/other contacts.
-- "Estimation" (JP's blend spec) = the turn analysis each device can
-  do independently of impacts: BOTH poles see ALL turns; each device
-  estimates all gate times (apex+150 ms class); its own pole only
-  impact-confirms the gates THAT pole contacted.
+- **Left pole impacts the gate on a left turn; right pole on a right
+  turn.** (JP 07:55, stated as fact — inside arm/pole reaches the
+  gate; NOT cross-blocking.)
+- **Pole plants:** slalom only, not every athlete; in GS almost
+  nobody plants. → Plants are NOISE to tolerate, never signal. No
+  plant model in the estimator.
+- Gate estimation = acceleration + gyro turn analysis (as documented,
+  and as implemented in the app since 1.52/1.54: ω turn windows +
+  impacts; lateral la supports classification).
+- **Slalom:** device-side definition becomes necessary (deferred).
 
-## 2. The blend (JP's spec, verbatim reading now)
+## 2. Implementation decision (JP): device-agnostic sides
 
-- R-device run: impacts (R-pole gate contacts + R plants) + estimates
-  (all gates).
-- L-device run: same, complementary.
-- Merge: impact from EITHER pole confirms the gate; unclaimed
-  estimates stay estimated. Gate side = turn direction.
-- Bonus per gate: **which pole made contact** → the skier's blocking
-  pattern (cross-block vs inside reach vs no block) — coaching data.
+**Neglect left/right classification of devices/arms/poles entirely.**
 
-## 3. Device-side / technique DEDUCTION (JP's question, answered)
+- **Right turns = clockwise rotation; left turns = the others**
+  (rotation sense about the gravity vertical — CW viewed from above).
+- Gate side comes from the rotation direction of each turn — any
+  device, no mounting-side config, no deduction needed.
+- The two devices differ only in WHICH gates they impact-confirm:
+  left-pole device confirms left-turn gates, right-pole device right-
+  turn gates (б§1). The blend (either device's impact confirms a
+  gate) is unaffected by device identity.
+- Residual value of per-device attribution: which pole contacted each
+  gate (blocking quality per side) — coaching metric, optional.
 
-Do NOT assume right-pole→left-gates (cross-blocking) — technique
-varies, masters often don't block at all. Instead, DEDUCE from the
-paired data:
+## 3. Signed rotation in the pipeline
 
-```
-for each pole device:
-    correlate its gate-classified impacts with turn direction
-    → R-pole impacts on LEFT-turn gates  = cross-blocker
-    → R-pole impacts on RIGHT-turn gates = inside-reach blocker
-    → no gate-classified impacts         = no blocker (plants only)
-```
+Current ω analysis is direction-agnostic (|q_i · q_{i-1}|). Side
+classification needs the SIGNED rotation about the gravity vertical:
 
-Self-calibrating per skier per run; a config error (ABC1 set wrong)
-shows up as the deduced side contradicting the configured side →
-warn, trust the data. This also REPLACES any hardcoded
-cross-blocking constant.
+  ω_signed = Δ(yaw about gravity up-axis) per frame
+           CW (viewed from above) → right turn → right gate
 
-Prereq: reliable plant-vs-gate classification on each device (§1.2)
-— the deduction above must run on gate-classified impacts only.
+Synth (yaw-only, z-up): signed Δqz. Real pole mounting: project
+angular velocity on the gravity direction obtained from the
+quaternion (mount-robust — pole tilt does not flip the definition).
 
-## 4. OPEN (JP)
+## 4. Synth convention corrected (source, rides next build)
 
-1. Plant rhythm & signature in GS master racing: plants per gate
-   cycle, per pole; rough amplitude vs a gate hit; axial (along pole)
-   vs lateral (gate hit) — can they be separated by our LACC/RV?
-2. Does the pole-device really see ALL turns cleanly (pole swing vs
-   body rotation) — or does the ω estimate need pole-swing filtering?
-3. Gate contact: is it always the POLE that touches (vs shin)?
-   If shin contacts dominate for some skiers, the pole device feels
-   them only via body coupling — weaker impacts. Threshold impact?
-4. Start trigger (B4 "poles swinging 90°→60°"): confirm the start
-   detector picture — pole angle w.r.t. gravity at the start push?
+Faithful bench model: 'r' device impacts CW turns (heading decreasing
+in the generator's z-up convention), 'l' device CCW. The previous
+'r'/'l' parity was inverted w.r.t. this physics — fixed in
+sensor_synth.c with this doc.
 
-## 5. Bench plan once §4 is answered
+## 5. Status
 
-Synth 'S' gets a pole model: plants every cycle (both), gate hits
-only on one direction's turns per device (already parameterized) →
-r + l runs → blend → all gates + per-pole attribution → deduction
-printout = blocking pattern.
+- App/sim: sides switch to signed-rotation classification (todo,
+  small: replaces the laY half-plane test where the axes convention
+  could otherwise bite on real hardware).
+- Blend: already proven direction-agnostic (runs 32/33, 35/35).
+- The "cross-blocking constant" concept: DEAD. The device-side
+  "deduction" question: MOOT for GS (sides come from rotation); for
+  slalom, config required.
