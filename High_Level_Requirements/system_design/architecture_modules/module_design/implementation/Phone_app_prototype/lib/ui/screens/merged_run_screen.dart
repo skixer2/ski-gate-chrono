@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/gate_side.dart';
-import '../models/gate_timestamp.dart';
-import '../widgets/gate_timestamp_table.dart';
+import '../../models/gate_side.dart';
+import '../../models/gate_timestamp.dart';
+import '../../widgets/gate_timestamp_table.dart';
 
 /// Read-only detail for a merged dual-device course (JP 2026-10-13).
 /// Shows the impact-confirmed union of a left-pole + right-pole run pair.
