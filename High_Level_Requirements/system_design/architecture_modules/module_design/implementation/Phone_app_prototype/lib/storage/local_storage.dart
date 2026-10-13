@@ -104,6 +104,30 @@ class LocalStorage {
     return saved;
   }
 
+  // ── Merged runs (dual-device blend, JP 2026-10-13) ──────────────
+
+  /// Load merged-course entries (merged_runs.json).
+  Future<List<Map<String, dynamic>>> loadMerges() async {
+    try {
+      final dir = await _dir;
+      final f = File('${dir.parent.path}/$_mergesFile');
+      if (!await f.exists()) return [];
+      final List<dynamic> list = jsonDecode(await f.readAsString());
+      return list.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Persist merged-course entries.
+  Future<void> saveMerges(List<Map<String, dynamic>> merges) async {
+    final dir = await _dir;
+    final f = File('${dir.parent.path}/$_mergesFile');
+    await f.writeAsString(jsonEncode(merges));
+  }
+
+  static const _mergesFile = 'merged_runs.json';
+
   /// List all saved runs (newest first).
   Future<List<SavedRun>> listAll() async {
     try {

@@ -1,17 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../ble/ble_manager.dart' hide ScanResult;
 import '../../ble/sgc_service.dart';
 import '../../ble/native_ble_downloader.dart';
 import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
+import '../../processing/run_merger.dart';
 import '../../storage/local_storage.dart';
 import '../../config/app_version.dart';
 import '../../models/device_config.dart';
 import 'run_detail_screen.dart';
+import 'merged_run_screen.dart';
 
 /// Top-level decompression entry point for compute() — runs in a background
 /// isolate so the BLE platform channel is not blocked during multi-run
@@ -28,7 +32,8 @@ class RunListScreen extends StatefulWidget {
   State<RunListScreen> createState() => _RunListScreenState();
 }
 
-class _RunListScreenState extends State<RunListScreen> {
+class _RunListScreenState extends State<RunListScreen>
+    with WidgetsBindingObserver {
   final _ble = BLEManager();
   final _storage = LocalStorage();
   SGCService? _sgc;
@@ -48,12 +53,37 @@ class _RunListScreenState extends State<RunListScreen> {
   List<RunMetadata> _deviceRuns = []; // runs present on the connected device
   StreamSubscription<bool>? _connSub;
 
+  // ── Auto-sync (JP directive 2026-10-13 16:39) ─────────────────────
+  // Phone automatically: connect to paired SGC devices → download
+  // missing runs → disconnect → merge corresponding runs → stay quiet
+  // 5 minutes even if devices are still available.
+  Timer? _autoTimer;
+  DateTime? _autoQuietUntil;
+  String _autoStatus = '';
+  bool _autoBusy = false;
+  bool _autoEnabled = true;
+  bool _appResumed = true;
+  Set<String> _pairedMacs = {};
+  List<Map<String, dynamic>> _merges = [];
+  final Map<String, List<Map<String, dynamic>>> _gateCache = {};
+  static const _prefsAutoSync = 'sgc.autosync';
+  static const _prefsPairedMacs = 'sgc.paired_macs';
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadLocalRuns();
+    _loadAutoPrefs();
+    _autoTimer = Timer.periodic(
+        const Duration(seconds: 15), (_) => _autoTick());
     // React to unexpected BLE drops so the UI is never stuck "connected".
     _connSub = _ble.connectionStream.listen(_onConnectionChanged);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
   }
 
   void _onConnectionChanged(bool connected) {
@@ -80,10 +110,246 @@ class _RunListScreenState extends State<RunListScreen> {
 
   @override
   void dispose() {
+    _autoTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _connSub?.cancel();
     FlutterBluePlus.stopScan();  // clean up if tab switched mid-scan
     _ble.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAutoPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    _autoEnabled = prefs.getBool(_prefsAutoSync) ?? true;
+    _pairedMacs = (prefs.getStringList(_prefsPairedMacs) ?? []).toSet();
+    _merges = await _storage.loadMerges();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _rememberPaired(String mac) async {
+    if (_pairedMacs.add(mac)) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_prefsPairedMacs, _pairedMacs.toList());
+      debugPrint('[AUTO] paired device: $mac (${_pairedMacs.length} total)');
+    }
+  }
+
+  String _quietStatus() {
+    final left = _autoQuietUntil!.difference(DateTime.now());
+    final m = left.inMinutes;
+    final s = left.inSeconds % 60;
+    return 'Auto: quiet ${m}:${s.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _autoTick() async {
+    if (!_autoEnabled || _autoBusy || _isDownloading || _isScanning ||
+        _isConnecting || _ble.isConnected || !_appResumed) {
+      return;
+    }
+    if (_autoQuietUntil != null &&
+        DateTime.now().isBefore(_autoQuietUntil!)) {
+      if (mounted && _autoStatus != _quietStatus()) {
+        setState(() => _autoStatus = _quietStatus());
+      }
+      return;
+    }
+    _autoBusy = true;
+    try {
+      final dev = await _autoQuickScan();
+      if (dev == null) {
+        if (mounted) setState(() => _autoStatus = 'Auto: scanning…');
+        return;
+      }
+      await _autoCycle(dev);
+    } catch (e) {
+      debugPrint('[AUTO] cycle error: $e');
+      if (mounted) setState(() => _autoStatus = 'Auto: error — retry in 1 min');
+      // Back off after errors instead of hammering a sick link.
+      _autoQuietUntil = DateTime.now().add(const Duration(minutes: 1));
+    } finally {
+      _autoBusy = false;
+    }
+  }
+
+  /// 4-second scan; returns the first PAIRED device seen (MAC match).
+  Future<BluetoothDevice?> _autoQuickScan() async {
+    try { await FlutterBluePlus.stopScan(); } catch (_) {}
+    BluetoothDevice? found;
+    final sub = FlutterBluePlus.scanResults.listen((results) {
+      for (final r in results) {
+        if (_pairedMacs.contains(r.device.remoteId.str)) {
+          found ??= r.device;
+        }
+      }
+    });
+    try {
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 4),
+      );
+    } catch (_) {
+    } finally {
+      await sub.cancel();
+      try { await FlutterBluePlus.stopScan(); } catch (_) {}
+    }
+    return found;
+  }
+
+  /// One full auto cycle: read listing → download missing → merge → quiet.
+  Future<void> _autoCycle(BluetoothDevice dev) async {
+    final address = dev.remoteId.str;
+    if (mounted) setState(() => _autoStatus = 'Auto: reading $address…');
+    final raw = await NativeBleDownloader().readRunList(address: address);
+    if (raw.isEmpty) throw Exception('device returned 0-byte run list');
+    final List<dynamic> list = jsonDecode(raw) as List<dynamic>;
+    final deviceRuns = list
+        .map((e) => RunMetadata.fromJson(e as Map<String, dynamic>))
+        .toList();
+    await _loadLocalRuns();
+    final localKeys = _localRuns.map((r) => (r.id, r.timestamp)).toSet();
+    final missing = deviceRuns
+        .where((r) => !localKeys.contains((r.id, r.timestamp)))
+        .toList();
+    debugPrint('[AUTO] $address: ${deviceRuns.length} runs on device, '
+        '${missing.length} missing');
+
+    if (missing.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = true;
+          _downloadStatus = 'Auto: downloading ${missing.length} runs…';
+          _downloadCurrent = 0;
+          _downloadTotal = missing.length;
+        });
+      }
+      int saved = 0;
+      try {
+        NativeBleDownloader.setListener(
+          onLog: (msg) {
+            if (mounted) setState(() => _downloadStatus = msg);
+          },
+          onProgress: (runId, bytes, expected) {
+            if (mounted) {
+              setState(() {
+                _downloadStatus = 'Auto FT run #$runId';
+                _downloadBytes = bytes;
+                _downloadRunSize = expected;
+              });
+            }
+          },
+          onRunComplete: (runId, timestamp, data) async {
+            if (!Decompressor().validateCRC(data)) {
+              debugPrint('[AUTO] ⚠️ CRC FAILED run #$runId');
+              return;
+            }
+            try {
+              final decoded = await compute(_decompressInIsolate, data);
+              await _storage.save(
+                runId: runId,
+                compressedData: data,
+                result: decoded,
+                deviceName: 'SGC',
+              );
+              saved++;
+              await _loadLocalRuns();
+            } catch (e) {
+              debugPrint('[AUTO] save error run #$runId: $e');
+            }
+          },
+        );
+        final result = await NativeBleDownloader().downloadRuns(
+          address: address,
+          runIds: missing.map((r) => r.id).toList(),
+        );
+        for (final line in result.log) {
+          debugPrint('[AUTO-NATIVE] $line');
+        }
+      } finally {
+        NativeBleDownloader.setListener();
+        if (mounted) {
+          setState(() {
+            _isDownloading = false;
+            _downloadStatus = '';
+          });
+        }
+      }
+      debugPrint('[AUTO] saved $saved/${missing.length} runs');
+    }
+
+    await _runMergePass();
+
+    // JP: quiet 5 minutes — even if devices are still available.
+    _autoQuietUntil = DateTime.now().add(const Duration(minutes: 5));
+    if (mounted) setState(() => _autoStatus = _quietStatus());
+  }
+
+  /// Pair complementary saved runs and persist the merged courses.
+  Future<void> _runMergePass() async {
+    final merged = [..._merges];
+    final inMerge = <String>{};
+    for (final m in merged) {
+      inMerge.add(m['aFile'] as String);
+      inMerge.add(m['bFile'] as String);
+    }
+    final cand =
+        _localRuns.where((r) => !inMerge.contains(r.fileName)).toList();
+    if (cand.length < 2) return;
+
+    for (int i = 0; i < cand.length; i++) {
+      for (int j = i + 1; j < cand.length; j++) {
+        final a = cand[i], b = cand[j];
+        final maxF =
+            a.frameCount > b.frameCount ? a.frameCount : b.frameCount;
+        if (maxF == 0 ||
+            (a.frameCount - b.frameCount).abs() / maxF > 0.02) {
+          continue;
+        }
+        final ga = await _gatesFor(a.fileName);
+        final gb = await _gatesFor(b.fileName);
+        if (ga == null || gb == null) continue;
+        if (!RunMerger.isComplementaryPair(
+            framesA: a.frameCount,
+            framesB: b.frameCount,
+            gatesA: ga,
+            gatesB: gb)) {
+          continue;
+        }
+        final gates = RunMerger.mergeConfirmed(ga, gb);
+        if (gates.length < 6) continue;
+        debugPrint('[AUTO] merged ${a.fileName} + ${b.fileName}: '
+            '${gates.length} gates');
+        merged.add({
+          'aFile': a.fileName,
+          'bFile': b.fileName,
+          'aId': a.id,
+          'bId': b.id,
+          'gates': gates,
+          'created': DateTime.now().toIso8601String(),
+        });
+        inMerge.add(a.fileName);
+        inMerge.add(b.fileName);
+      }
+    }
+    if (merged.length != _merges.length) {
+      await _storage.saveMerges(merged);
+      _merges = merged;
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// Gate estimate for a saved run (cached; computed in an isolate).
+  Future<List<Map<String, dynamic>>?> _gatesFor(String fileName) async {
+    final cached = _gateCache[fileName];
+    if (cached != null) return cached;
+    final data = await _storage.load(fileName);
+    if (data == null) return null;
+    try {
+      final gates = await compute(RunMerger.estimateGatesForIsolate, data);
+      _gateCache[fileName] = gates;
+      return gates;
+    } catch (e) {
+      debugPrint('[AUTO] gate estimate failed for $fileName: $e');
+      return null;
+    }
   }
 
   Future<void> _scanDevices() async {
@@ -158,6 +424,7 @@ class _RunListScreenState extends State<RunListScreen> {
     try {
       await _ble.connectToDevice(device);
       _device = device;  // V1.22: keep for per-run reconnect
+      _rememberPaired(device.remoteId.str);  // v1.58: auto-sync pairing
       final sgc = SGCService(_ble);
 
       // Dump discovered services so we can see what the device actually exposes
@@ -657,7 +924,49 @@ class _RunListScreenState extends State<RunListScreen> {
                         ]),
                       ),
                     ),
+                    if (_autoEnabled) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _autoStatus.isEmpty
+                            ? 'Auto-sync armed · paired devices: ${_pairedMacs.length}'
+                            : _autoStatus,
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                     const SizedBox(height: 12),
+                    if (_merges.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 4),
+                        child: Text('Merged Courses (${_merges.length})',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700)),
+                      ),
+                      for (final m in _merges)
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.merge_type),
+                            title: Text(
+                                'Run #${m['aId']} + #${m['bId']}'),
+                            subtitle: Text(
+                                '${(m['gates'] as List).length} gates impact-confirmed · dual device'),
+                            onTap: () =>
+                                Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => MergedRunScreen(
+                                title:
+                                    'Run #${m['aId']} + #${m['bId']}',
+                                gates: (m['gates'] as List)
+                                    .cast<Map<String, dynamic>>(),
+                              ),
+                            )),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                    ],
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       child: Text('Saved Runs (${_localRuns.length})',
