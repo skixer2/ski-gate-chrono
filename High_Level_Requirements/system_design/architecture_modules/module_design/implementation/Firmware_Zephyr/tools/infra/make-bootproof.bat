@@ -20,8 +20,12 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='py
 echo [2/4] Removing the old logon task if present...
 schtasks /delete /tn SGC-NodeWatchdog /f 2>nul
 
-echo [3/4] Registering the boot task (SYSTEM, onstart)...
-schtasks /create /tn SGC-WatchdogBoot /tr "powershell -NoProfile -ExecutionPolicy Bypass -File C:\sgc\tools\infra\node-watchdog.ps1" /sc onstart /ru SYSTEM /rl highest /f
+echo [3/4] Registering the boot task (SYSTEM, onstart + resume + 15-min liveness)...
+rem v2 (2026-10-13): import XML instead of /sc onstart — the CLI default leaves
+rem ExecutionTimeLimit at 72h, which KILLED the watchdog every 72h of uptime
+rem (Sep 30 + Oct 11 incidents). The XML sets PT0S (unlimited) + a resume
+rem trigger (Power-Troubleshooter id 1) + a 15-min liveness repetition.
+schtasks /create /tn SGC-WatchdogBoot /xml "%~dp0SGC-WatchdogBoot-task.v2.xml" /f
 if %errorlevel% neq 0 (
     echo ERROR: task creation failed.
     pause

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>2026-09-27T21:49:26</Date>
+    <Author>UM790PRO_JPV\v17ni</Author>
+    <Description>SGC boot-proof watchdog (v2.5 harness). Task def v2 (2026-10-13): ExecutionTimeLimit PT0S (fixes 72h mystery kills), resume trigger (Power-Troubleshooter id 1), 15-min liveness repetition. Import: schtasks /create /f /tn SGC-WatchdogBoot /xml SGC-WatchdogBoot-task.v2.xml</Description>
+    <URI>\SGC-WatchdogBoot</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <UserId>S-1-5-18</UserId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <IdleSettings>
+      <Duration>PT10M</Duration>
+      <WaitTimeout>PT1H</WaitTimeout>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+  </Settings>
+  <Triggers>
+    <BootTrigger>
+      <StartBoundary>2026-09-27T21:49:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </BootTrigger>
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Microsoft-Windows-Power-Troubleshooter/Operational"&gt;&lt;Select Path="Microsoft-Windows-Power-Troubleshooter/Operational"&gt;*[System[Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription>
+    </EventTrigger>
+    <TimeTrigger>
+      <StartBoundary>2026-10-13T12:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <Repetition>
+        <Interval>PT15M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell</Command>
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -File C:\sgc\tools\infra\node-watchdog.ps1</Arguments>
+    </Exec>
+  </Actions>
+</Task>
