@@ -63,6 +63,7 @@ class _RunListScreenState extends State<RunListScreen>
   bool _autoBusy = false;
   bool _autoEnabled = true;
   bool _appResumed = true;
+  DateTime? _lastAutoScan;   // Android scan-throttle guard
   Set<String> _pairedMacs = {};
   List<Map<String, dynamic>> _merges = [];
   final Map<String, List<Map<String, dynamic>>> _gateCache = {};
@@ -153,6 +154,15 @@ class _RunListScreenState extends State<RunListScreen>
       }
       return;
     }
+    // Android silently throttles BLE scans started >5×/30 s (results
+    // come back empty forever if we keep scanning). Scan at most every
+    // 45 s — and never while a manual scan is active.
+    final now = DateTime.now();
+    if (_lastAutoScan != null &&
+        now.difference(_lastAutoScan!) < const Duration(seconds: 45)) {
+      return;
+    }
+    _lastAutoScan = now;
     _autoBusy = true;
     try {
       final dev = await _autoQuickScan();
@@ -184,7 +194,7 @@ class _RunListScreenState extends State<RunListScreen>
     });
     try {
       await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 4),
+        timeout: const Duration(seconds: 10),
       );
     } catch (_) {
     } finally {
