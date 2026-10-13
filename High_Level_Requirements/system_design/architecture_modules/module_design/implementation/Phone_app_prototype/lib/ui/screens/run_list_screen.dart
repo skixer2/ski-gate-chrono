@@ -200,6 +200,12 @@ class _RunListScreenState extends State<RunListScreen>
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 10),
       );
+      // FBP 1.32: startScan's future completes when the scan STARTS —
+      // awaiting it alone gives an 18 ms scan. Wait for actual end.
+      await FlutterBluePlus.isScanning
+          .where((v) => v == false)
+          .first
+          .timeout(const Duration(seconds: 12));
     } catch (e) {
       debugPrint('[AUTO] startScan error: $e');
     } finally {
