@@ -70,15 +70,11 @@ class GateTimestampTable extends StatelessWidget {
                   final isEstimated = gate.isEstimated;
 
                   return Container(
-                    color: isEstimated
-                        ? (isDark
+                    color: index.isEven
+                        ? null
+                        : (isDark
                             ? Colors.grey.shade800
-                            : Colors.grey.shade50)
-                        : (index.isEven
-                            ? null
-                            : (isDark
-                                ? Colors.grey.shade800
-                                : Colors.grey.shade50)),
+                            : Colors.grey.shade50),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),
                     child: Row(
