@@ -181,12 +181,16 @@ class _RunListScreenState extends State<RunListScreen>
     }
   }
 
-  /// 4-second scan; returns the first PAIRED device seen (MAC match).
+  /// 10-second scan; returns the first PAIRED device seen (MAC match).
   Future<BluetoothDevice?> _autoQuickScan() async {
     try { await FlutterBluePlus.stopScan(); } catch (_) {}
     BluetoothDevice? found;
+    int seen = 0;
     final sub = FlutterBluePlus.scanResults.listen((results) {
+      seen = results.length;
       for (final r in results) {
+        debugPrint('[AUTO] adv ${r.device.remoteId.str} '
+            'paired=${_pairedMacs.contains(r.device.remoteId.str)}');
         if (_pairedMacs.contains(r.device.remoteId.str)) {
           found ??= r.device;
         }
@@ -196,8 +200,11 @@ class _RunListScreenState extends State<RunListScreen>
       await FlutterBluePlus.startScan(
         timeout: const Duration(seconds: 10),
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AUTO] startScan error: $e');
     } finally {
+      debugPrint('[AUTO] scan done: seen=$seen '
+          'matched=${found != null} paired=[${_pairedMacs.join(',')}]');
       await sub.cancel();
       try { await FlutterBluePlus.stopScan(); } catch (_) {}
     }
