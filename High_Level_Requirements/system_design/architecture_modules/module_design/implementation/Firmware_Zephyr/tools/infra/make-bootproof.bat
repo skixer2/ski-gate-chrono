@@ -25,7 +25,8 @@ rem v2 (2026-10-13): import XML instead of /sc onstart — the CLI default leave
 rem ExecutionTimeLimit at 72h, which KILLED the watchdog every 72h of uptime
 rem (Sep 30 + Oct 11 incidents). The XML sets PT0S (unlimited) + a resume
 rem trigger (Power-Troubleshooter id 1) + a 15-min liveness repetition.
-schtasks /create /tn SGC-WatchdogBoot /xml "%~dp0SGC-WatchdogBoot-task.v2.xml" /f
+powershell -NoProfile -Command "Set-Content -Encoding Unicode -Path '%TEMP%\sgc-wd-utf16.xml' -Value ((Get-Content -Raw '%~dp0SGC-WatchdogBoot-task.v2.xml') -replace 'UTF-8', 'UTF-16' -replace 'Power-Troubleshooter/Operational', 'System')"
+schtasks /create /tn SGC-WatchdogBoot /xml "%TEMP%\sgc-wd-utf16.xml" /f
 if %errorlevel% neq 0 (
     echo ERROR: task creation failed.
     pause
