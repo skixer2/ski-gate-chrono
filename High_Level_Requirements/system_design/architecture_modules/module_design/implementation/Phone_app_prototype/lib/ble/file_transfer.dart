@@ -13,11 +13,16 @@ class RunMetadata {
   const RunMetadata({required this.id, required this.timestamp, required this.size, required this.side});
 
   factory RunMetadata.fromJson(Map<String, dynamic> json) {
+    // side may arrive as int (native listing) or String (Flutter listing).
+    final rawSide = json['side'];
+    final side = rawSide is int
+        ? (rawSide == 1 ? 'right' : 'left')
+        : (rawSide as String? ?? 'left');
     return RunMetadata(
-      id: json['id'] as int,
-      timestamp: json['ts'] as int,
-      size: json['size'] as int,
-      side: json['side'] as String? ?? 'left',
+      id: (json['id'] as num).toInt(),
+      timestamp: (json['ts'] as num).toInt(),
+      size: (json['size'] as num).toInt(),
+      side: side,
     );
   }
 }
