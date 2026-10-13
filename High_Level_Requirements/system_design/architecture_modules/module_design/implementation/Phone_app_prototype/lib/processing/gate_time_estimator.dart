@@ -307,8 +307,8 @@ class GateTimeEstimator {
   /// Positive (right-hand rule about up) = CCW = left turn.
   double _signedVerticalRotation(List<SensorFrame> frames, int i0, int i1) {
     double sum = 0;
-    final from = Math.max(1, i0);
-    final to = Math.min(frames.length - 1, i1);
+    final from = max(1, i0);
+    final to = min(frames.length - 1, i1);
     for (int i = from; i <= to; i++) {
       final a = frames[i - 1], b = frames[i];
       final aw = a.qW / 16384.0, ax = a.qX / 16384.0,
@@ -325,7 +325,7 @@ class GateTimeEstimator {
       final gy = 2 * (by * bz + bw * bx);
       final gz = 1 - 2 * (bx * bx + by * by);
       final dot = cx * gx + cy * gy + cz * gz;
-      sum += 2 * Math.atan2(dot, cw);
+      sum += 2 * atan2(dot, cw);
     }
     return sum;
   }
