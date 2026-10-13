@@ -52,11 +52,17 @@ class GateTimestampTable extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final gate = gateTimestamps[index];
                   final timeStr = _formatMs(gate.msFromStart);
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
                   final sideColor = gate.isEstimated
-                      ? Colors.grey
-                      : (gate.side == GateSide.rightGate
-                          ? Colors.red.shade700
-                          : Colors.blue.shade700);
+                      ? (isDark ? Colors.grey.shade400 : Colors.grey.shade600)
+                      : (isDark
+                          ? (gate.side == GateSide.rightGate
+                              ? Colors.red.shade300
+                              : Colors.blue.shade300)
+                          : (gate.side == GateSide.rightGate
+                              ? Colors.red.shade700
+                              : Colors.blue.shade700));
                   final sideLabel = gate.side == GateSide.rightGate ? 'R' : 'L';
                   final forceStr = gate.impactForce != null
                       ? '${gate.impactForce!.toStringAsFixed(1)} G'
@@ -65,8 +71,14 @@ class GateTimestampTable extends StatelessWidget {
 
                   return Container(
                     color: isEstimated
-                        ? Colors.grey.shade50
-                        : (index.isEven ? null : Colors.grey.shade50),
+                        ? (isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade50)
+                        : (index.isEven
+                            ? null
+                            : (isDark
+                                ? Colors.grey.shade800
+                                : Colors.grey.shade50)),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 8),
                     child: Row(
@@ -80,8 +92,12 @@ class GateTimestampTable extends StatelessWidget {
                               fontWeight: FontWeight.w600,
                               fontSize: 15,
                               color: isEstimated
-                                  ? Colors.grey.shade500
-                                  : Colors.black87,
+                                  ? (isDark
+                                      ? Colors.grey.shade400
+                                      : Colors.grey.shade500)
+                                  : (isDark
+                                      ? Colors.grey.shade100
+                                      : Colors.black87),
                             ),
                           ),
                         ),
@@ -91,10 +107,12 @@ class GateTimestampTable extends StatelessWidget {
                           height: 22,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: sideColor.withOpacity(0.15),
+                            color: sideColor
+                                .withOpacity(isDark ? 0.25 : 0.15),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                                color: sideColor.withOpacity(0.4)),
+                                color: sideColor
+                                    .withOpacity(isDark ? 0.55 : 0.4)),
                           ),
                           child: Text(
                             sideLabel,
@@ -114,8 +132,12 @@ class GateTimestampTable extends StatelessWidget {
                               fontFamily: 'monospace',
                               fontSize: 14,
                               color: isEstimated
-                                  ? Colors.grey.shade600
-                                  : Colors.black87,
+                                  ? (isDark
+                                      ? Colors.grey.shade400
+                                      : Colors.grey.shade600)
+                                  : (isDark
+                                      ? Colors.grey.shade100
+                                      : Colors.black87),
                             ),
                           ),
                         ),
@@ -128,7 +150,9 @@ class GateTimestampTable extends StatelessWidget {
                             style: TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 13,
-                              color: Colors.grey.shade600,
+                              color: isDark
+                                  ? Colors.grey.shade400
+                                  : Colors.grey.shade600,
                             ),
                           ),
                         ),

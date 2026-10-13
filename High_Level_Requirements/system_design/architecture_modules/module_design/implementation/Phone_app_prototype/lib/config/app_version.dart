@@ -154,7 +154,7 @@
 
 ///   1.44 - V2 STREAMING PULL (FW 5.77): one command, binary stream,
 ///          NO RESUME. Settle 12s to 4s. 2M PHY requested.
-const String APP_VERSION = '1.55';
+const String APP_VERSION = '1.56';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
