@@ -5,6 +5,7 @@ import 'impact_detector.dart';
 import 'gate_time_estimator.dart';
 import '../models/gate_side.dart';
 import '../models/gate_timestamp.dart';
+import '../models/sensor_frame.dart';
 
 /// Dual-device run merging (JP directive 2026-10-13 16:39).
 ///
@@ -88,5 +89,62 @@ class RunMerger {
     ];
     out.sort((a, b) => (a['ms'] as int).compareTo(b['ms'] as int));
     return out;
+  }
+
+  /// Full pair merge in a compute isolate: gates + averaged baro profile
+  /// (JP 2026-10-14: averaged altitude/speed graphs for merged runs —
+  /// two aligned runs average down the noise by ~√2).
+  /// args: {'aData': Uint8List, 'bData': Uint8List}
+  /// returns {'ok': bool, 'gates': [...], 'baro': [{'ms','alt'}...]}
+  static Map<String, dynamic> mergePairForIsolate(Map<String, dynamic> args) {
+    final ra = Decompressor().decompressFull(args['aData'] as Uint8List);
+    final rb = Decompressor().decompressFull(args['bData'] as Uint8List);
+    final gatesA = _estimate(ra.frames);
+    final gatesB = _estimate(rb.frames);
+    final maxF = ra.frames.length > rb.frames.length
+        ? ra.frames.length
+        : rb.frames.length;
+    final ok = isComplementaryPair(
+        framesA: ra.frames.length,
+        framesB: rb.frames.length,
+        gatesA: gatesA,
+        gatesB: gatesB);
+    if (!ok) return {'ok': false};
+
+    // Averaged baro: align by frame index, decimate to 10 Hz.
+    final n = ra.frames.length < rb.frames.length
+        ? ra.frames.length
+        : rb.frames.length;
+    final baro = <Map<String, dynamic>>[];
+    for (int i = 0; i < n; i += 10) {
+      final fa = ra.frames[i] as SensorFrame;
+      final fb = rb.frames[i] as SensorFrame;
+      baro.add({
+        'ms': ((fa.msFromStart + fb.msFromStart) / 2).round(),
+        'alt': (fa.baroAltitudeM + fb.baroAltitudeM) / 2.0,
+      });
+    }
+    return {
+      'ok': true,
+      'gates': mergeConfirmed(gatesA, gatesB),
+      'baro': baro,
+      'frames': maxF,
+    };
+  }
+
+  static List<Map<String, dynamic>> _estimate(List<SensorFrame> frames) {
+    final impacts =
+        ImpactDetector(multiplier: 2.5, baselineWindow: 50).detect(frames);
+    final gates =
+        GateTimeEstimator(course: null, knownImpacts: impacts).estimate(frames);
+    return [
+      for (final g in gates)
+        {
+          'ms': g.msFromStart,
+          'side': g.side == GateSide.rightGate ? 'R' : 'L',
+          'estimated': g.isEstimated,
+          'force': g.impactForce,
+        }
+    ];
   }
 }

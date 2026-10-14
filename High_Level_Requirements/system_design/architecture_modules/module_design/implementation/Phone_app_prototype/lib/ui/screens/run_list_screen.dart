@@ -85,6 +85,15 @@ class _RunListScreenState extends State<RunListScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appResumed = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.paused) {
+      // JP 2026-10-14: connections must be SHORT. If the app is backgrounded
+      // mid-cycle, Android can freeze the process and leak an open GATT
+      // (device green LED held overnight). Tear down defensively.
+      try {
+        NativeBleDownloader().cancel();
+        NativeBleDownloader().closeAll();
+      } catch (_) {}
+    }
   }
 
   void _onConnectionChanged(bool connected) {
@@ -335,7 +344,17 @@ class _RunListScreenState extends State<RunListScreen>
             gatesB: gb)) {
           continue;
         }
-        final gates = RunMerger.mergeConfirmed(ga, gb);
+        // Full merge in an isolate: confirmed-gate union + averaged baro
+        // profile for the charts (JP 2026-10-14).
+        final dataA = await _storage.load(a.fileName);
+        final dataB = await _storage.load(b.fileName);
+        if (dataA == null || dataB == null) continue;
+        final mergedPair = await compute(RunMerger.mergePairForIsolate, {
+          'aData': dataA,
+          'bData': dataB,
+        });
+        if (mergedPair['ok'] != true) continue;
+        final gates = (mergedPair['gates'] as List).cast<Map<String, dynamic>>();
         if (gates.length < 6) continue;
         debugPrint('[AUTO] merged ${a.fileName} + ${b.fileName}: '
             '${gates.length} gates');
@@ -345,6 +364,7 @@ class _RunListScreenState extends State<RunListScreen>
           'aId': a.id,
           'bId': b.id,
           'gates': gates,
+          'baro': mergedPair['baro'],
           'created': DateTime.now().toIso8601String(),
         });
         inMerge.add(a.fileName);
@@ -354,6 +374,38 @@ class _RunListScreenState extends State<RunListScreen>
     if (merged.length != _merges.length) {
       await _storage.saveMerges(merged);
       _merges = merged;
+      if (mounted) setState(() {});
+    }
+    // Backfill: entries created before 1.59 lack the averaged baro profile.
+    await _backfillMergedBaro();
+  }
+
+  Future<void> _backfillMergedBaro() async {
+    final byFile = {for (final r in _localRuns) r.fileName: r};
+    var changed = false;
+    for (final m in _merges) {
+      if (m['baro'] != null) continue;
+      final a = byFile[m['aFile'] as String?];
+      final b = byFile[m['bFile'] as String?];
+      if (a == null || b == null) continue;
+      final dataA = await _storage.load(a.fileName);
+      final dataB = await _storage.load(b.fileName);
+      if (dataA == null || dataB == null) continue;
+      try {
+        final res = await compute(RunMerger.mergePairForIsolate, {
+          'aData': dataA,
+          'bData': dataB,
+        });
+        if (res['ok'] == true) {
+          m['baro'] = res['baro'];
+          changed = true;
+        }
+      } catch (e) {
+        debugPrint('[AUTO] baro backfill failed for ${m['aFile']}: $e');
+      }
+    }
+    if (changed) {
+      await _storage.saveMerges(_merges);
       if (mounted) setState(() {});
     }
   }
@@ -983,6 +1035,9 @@ class _RunListScreenState extends State<RunListScreen>
                                     'Run #${m['aId']} + #${m['bId']}',
                                 gates: (m['gates'] as List)
                                     .cast<Map<String, dynamic>>(),
+                                baro: (m['baro'] as List?)
+                                        ?.cast<Map<String, dynamic>>() ??
+                                    const [],
                               ),
                             )),
                           ),

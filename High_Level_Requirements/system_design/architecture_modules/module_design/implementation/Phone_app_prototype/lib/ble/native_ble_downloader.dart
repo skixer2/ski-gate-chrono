@@ -122,4 +122,9 @@ class NativeBleDownloader {
   }
 
   Future<void> cancel() => _channel.invokeMethod<void>('cancel');
+
+  /// JP 2026-10-14: hard-close any GATT the native engine holds.
+  /// Called on app pause / cycle end so a frozen process never leaks
+  /// an open link (device LED held overnight).
+  Future<void> closeAll() => _channel.invokeMethod<void>('closeAll');
 }

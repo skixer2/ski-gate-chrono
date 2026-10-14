@@ -658,4 +658,11 @@ class NativeBleDownloader(private val context: Context) {
             closeGatt("readRunList")
         }
     }
+
+    /** JP 2026-10-14: phone-led short connections — hard-close any GATT
+     * this engine holds (called on app pause / cycle end so a frozen
+     * process can never leak an open link). */
+    fun closeAll() {
+        closeGatt("lifecycle")
+    }
 }

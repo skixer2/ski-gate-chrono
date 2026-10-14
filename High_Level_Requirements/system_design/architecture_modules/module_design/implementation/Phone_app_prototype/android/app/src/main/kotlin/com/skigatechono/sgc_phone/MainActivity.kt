@@ -112,6 +112,10 @@ class MainActivity : FlutterActivity() {
                         downloader?.cancel()
                         result.success(null)
                     }
+                    "closeAll" -> {
+                        Thread { downloader?.closeAll() }.start()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
