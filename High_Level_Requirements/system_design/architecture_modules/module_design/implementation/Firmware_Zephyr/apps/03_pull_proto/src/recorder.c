@@ -114,6 +114,43 @@ static void rc_stats_print(const char *ev)
 
 static uint32_t sd_p0_pa;         /* 0 = not locked yet */
 static uint32_t rc_last_baro_pa;  /* latest acquired frame, Pa */
+
+/* ── F04 run END: baro flatline (5 s within a ~2 m band) ─────────
+ * Spec: end is 'e' (production: 5 s flatline < 2 m) — JP 2026-10-14:
+ * the red LED that never went out. A real course descends > 2 m per
+ * 5 s; a resting device (bench drop landed, finish-line stop) ends.
+ * Sampled 10 Hz from the live frame's baro (Pa). */
+#define END_WIN_SAMPLES 50    /* 5 s @ 10 Hz */
+#define END_BAND_PA     30u   /* ~2.4 m at sea level (2 m spec + noise) */
+static uint32_t end_win_buf[END_WIN_SAMPLES];
+static uint16_t end_win_n;
+static uint8_t  end_div;
+
+static void flatline_end_reset(void)
+{
+	end_win_n = 0;
+	end_div = 0;
+}
+
+/* Feed the LIVE frame baro; true => run should end. */
+static bool flatline_end_feed(uint32_t pa)
+{
+	if (++end_div < 10) {
+		return false;          /* sample at 10 Hz, frames are 100 Hz */
+	}
+	end_div = 0;
+	end_win_buf[end_win_n % END_WIN_SAMPLES] = pa;
+	end_win_n++;
+	if (end_win_n < END_WIN_SAMPLES) {
+		return false;
+	}
+	uint32_t mn = UINT32_MAX, mx = 0;
+	for (int i = 0; i < END_WIN_SAMPLES; i++) {
+		if (end_win_buf[i] < mn) mn = end_win_buf[i];
+		if (end_win_buf[i] > mx) mx = end_win_buf[i];
+	}
+	return (mx - mn) < END_BAND_PA;
+}
 static uint8_t  sd_calls;         /* 1 Hz progress divider */
 
 static void sd_reset(void)
@@ -243,6 +280,7 @@ static void rc_work_handler(struct k_work *w)
 			/* Baro-drop START (F04): same transition as 'g'. */
 			if (store_record_begin(ble_config_arm_side())) {
 				rc_state = RC_LOGGING;
+				flatline_end_reset();
 				printk("{\"rec\":\"LOGGING\",\"ev\":\"baro_drop\"}\n");
 				break;
 			} else {
@@ -299,6 +337,14 @@ static void rc_work_handler(struct k_work *w)
 		 * ONLY while backlog remains after the pops — otherwise
 		 * direct (v4.77: push-1/pop-1 at count 1 livelocks). */
 		if (sensor_prod_get_frame(&fr)) {
+			rc_last_baro_pa = (uint32_t)fr.baro_pa_div2 * 2u;
+			if (flatline_end_feed(rc_last_baro_pa)) {
+				printk("{\"rec\":\"POST_RUN\",\"ev\":\"flatline_end\"}\n");
+				rc_stats_print("flatline_end");
+				store_record_end();
+				rc_state = RC_POST_RUN;
+				break;
+			}
 			if (ring_count() > 0) {
 				ring_push(&fr, k_uptime_get_32());
 			} else {
