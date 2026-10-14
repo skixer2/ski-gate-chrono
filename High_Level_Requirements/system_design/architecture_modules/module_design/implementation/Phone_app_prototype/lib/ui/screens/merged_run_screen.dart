@@ -76,7 +76,11 @@ class MergedRunScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: Text(title)),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        // JP 2026-10-14: bottom inset so the system gesture bar never
+        // covers the legend (merged screens have no "Raw Data" section
+        // below the table to push it up).
+        padding: EdgeInsets.fromLTRB(
+            16, 16, 16, 24 + MediaQuery.of(context).padding.bottom),
         children: [
           Card(
             child: Padding(
