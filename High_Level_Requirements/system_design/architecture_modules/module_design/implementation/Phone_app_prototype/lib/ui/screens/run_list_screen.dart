@@ -308,6 +308,10 @@ class _RunListScreenState extends State<RunListScreen>
 
     await _runMergePass();
 
+    // JP 2026-10-14: no GATT client may outlive the cycle — clears any
+    // straggler managers (leaked holders kept the device connected).
+    try { await NativeBleDownloader().closeAll(); } catch (_) {}
+
     // JP: quiet 5 minutes — even if devices are still available.
     _autoQuietUntil = DateTime.now().add(const Duration(minutes: 5));
     if (mounted) setState(() => _autoStatus = _quietStatus());

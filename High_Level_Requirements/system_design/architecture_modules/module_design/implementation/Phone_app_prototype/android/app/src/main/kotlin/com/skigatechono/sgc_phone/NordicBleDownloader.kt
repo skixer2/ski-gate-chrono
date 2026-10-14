@@ -188,9 +188,12 @@ class NordicBleDownloader(private val context: Context) {
         }
 
         fun shutdown() {
-            try {
-                if (isConnected) disconnect().timeout(3_000).await()
-            } catch (e: Exception) {
+            // JP 2026-10-14 leak fix: ALWAYS issue disconnect — gating on
+            // isConnected raced the FT-complete callback, skipped the
+            // disconnect, and close() alone does NOT drop the ACL. That
+            // stacked leaked GATT clients holding the device connected
+            // (steady green LED, 8 holders observed).
+            try { disconnect().timeout(3_000).await() } catch (e: Exception) {
                 log("disconnect during shutdown failed: ${e.message}")
             }
             try { close() } catch (_: Exception) {}
@@ -250,12 +253,14 @@ class NordicBleDownloader(private val context: Context) {
         }
     }
 
+    private val liveManagers = mutableSetOf<SgcBleManager>()
     @Volatile private var activeManager: SgcBleManager? = null
 
     private fun newConnectedManager(address: String): SgcBleManager {
         val manager = SgcBleManager(context)
         try {
             manager.connectToSgc(address)
+            synchronized(liveManagers) { liveManagers.add(manager) }
             activeManager = manager
             return manager
         } catch (e: Exception) {
@@ -264,13 +269,18 @@ class NordicBleDownloader(private val context: Context) {
         }
     }
 
-    /** JP 2026-10-14: phone-led short connections — hard-close any link
-     * this engine holds (app pause / cycle end). Belt-and-braces against
-     * a frozen process leaking an open GATT overnight. */
-    fun closeAll() {
-        val m = activeManager ?: return
-        activeManager = null
+    private fun shutdownManager(m: SgcBleManager) {
+        synchronized(liveManagers) { liveManagers.remove(m) }
         try { m.shutdown() } catch (_: Exception) {}
+        if (activeManager === m) activeManager = null
+    }
+
+    /** JP 2026-10-14: phone-led short connections — hard-close EVERY link
+     * this engine holds (app pause / cycle end). Clears any straggler
+     * managers so no leaked GATT client can hold the device. */
+    fun closeAll() {
+        val snapshot = synchronized(liveManagers) { liveManagers.toList() }
+        for (m in snapshot) shutdownManager(m)
     }
 
     /**
@@ -324,7 +334,7 @@ class NordicBleDownloader(private val context: Context) {
             if (cancelled) throw Exception("cancelled")
             try {
                 if (manager == null || !manager.isConnected) {
-                    try { manager?.shutdown() } catch (_: Exception) {}
+                    manager?.let { shutdownManager(it) }
                     manager = newConnectedManager(address)
                 }
                 val m = manager!!
@@ -396,7 +406,7 @@ class NordicBleDownloader(private val context: Context) {
             } catch (e: Exception) {
                 lastError = e
                 log("V2 run #$runId attempt $attempt failed: ${e.message}")
-                try { manager?.shutdown() } catch (_: Exception) {}
+                manager?.let { shutdownManager(it) }
                 manager = null
                 if (attempt < MAX_ATTEMPTS) {
                     Thread.sleep((1_500L * attempt).coerceAtMost(6_000L))
@@ -406,7 +416,7 @@ class NordicBleDownloader(private val context: Context) {
                 }
             }
         }
-        try { manager?.shutdown() } catch (_: Exception) {}
+        manager?.let { shutdownManager(it) }
         throw lastError ?: Exception("stream pull failed")
     }
 
@@ -448,7 +458,7 @@ class NordicBleDownloader(private val context: Context) {
                 "{\"id\":${e.id},\"ts\":${e.ts},\"size\":${e.sz - 22},\"side\":${e.side}}"
             }
         } finally {
-            manager.shutdown()
+            shutdownManager(manager)
         }
     }
 }
