@@ -250,15 +250,27 @@ class NordicBleDownloader(private val context: Context) {
         }
     }
 
+    @Volatile private var activeManager: SgcBleManager? = null
+
     private fun newConnectedManager(address: String): SgcBleManager {
         val manager = SgcBleManager(context)
         try {
             manager.connectToSgc(address)
+            activeManager = manager
             return manager
         } catch (e: Exception) {
             try { manager.shutdown() } catch (_: Exception) {}
             throw e
         }
+    }
+
+    /** JP 2026-10-14: phone-led short connections — hard-close any link
+     * this engine holds (app pause / cycle end). Belt-and-braces against
+     * a frozen process leaking an open GATT overnight. */
+    fun closeAll() {
+        val m = activeManager ?: return
+        activeManager = null
+        try { m.shutdown() } catch (_: Exception) {}
     }
 
     /**
