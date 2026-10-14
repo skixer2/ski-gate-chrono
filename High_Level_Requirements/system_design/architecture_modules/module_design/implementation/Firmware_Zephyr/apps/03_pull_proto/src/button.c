@@ -27,7 +27,7 @@ static struct k_timer debounce_timer;
 
 static void debounce_expired(struct k_timer *t)
 {
-	int val = gpio_pin_get_raw(btn, btn_pin);
+	int val = gpio_pin_get_raw(btn, BTN_PIN);
 	if (val != 0) {
 		return;   /* released within the window — bounce, not a press */
 	}
@@ -55,11 +55,11 @@ int button_init(void)
 		return -1;
 	}
 	/* Internal pull-up, switch closes to GND (F03 wiring). */
-	gpio_pin_configure(btn, btn_pin, GPIO_INPUT | GPIO_PULL_UP);
-	gpio_pin_interrupt_configure(btn, btn_pin, GPIO_INT_EDGE_FALLING);
-	gpio_init_callback(&btn_cb, btn_isr, BIT(btn_pin));
+	gpio_pin_configure(btn, BTN_PIN, GPIO_INPUT | GPIO_PULL_UP);
+	gpio_pin_interrupt_configure(btn, BTN_PIN, GPIO_INT_EDGE_FALLING);
+	gpio_init_callback(&btn_cb, btn_isr, BIT(BTN_PIN));
 	gpio_add_callback(btn, &btn_cb);
 	k_timer_init(&debounce_timer, debounce_expired, NULL);
-	printk("button: arming input P0.%02u ready (F03)\n", btn_pin);
+	printk("button: arming input P0.%02u ready (F03)\n", BTN_PIN);
 	return 0;
 }
