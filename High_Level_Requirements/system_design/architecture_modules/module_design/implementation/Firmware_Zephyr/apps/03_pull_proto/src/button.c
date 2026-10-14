@@ -15,14 +15,12 @@
 #include "button.h"
 #include "recorder.h"
 
-#define WAKE_BUTTON_NODE DT_ALIAS(wake_button)
-#if !DT_NODE_HAS_STATUS(WAKE_BUTTON_NODE, okay)
-#error "wake-button alias missing — add to app.overlay (gpio0 pin 2)"
-#endif
+/* F03 wiring: monostable switch from P0.02 to GND. Pin is a design
+ * constant (the physical-pin rule: nRF P0.02 = Zephyr gpio0 pin 2). */
+#define BTN_PORT DT_NODELABEL(gpio0)
+#define BTN_PIN  2
 
-static const struct device *btn =
-	DEVICE_DT_GET(DT_GPIO_CTLR(WAKE_BUTTON_NODE, gpios));
-static const uint8_t btn_pin = DT_GPIO_PIN(WAKE_BUTTON_NODE, gpios);
+static const struct device *btn = DEVICE_DT_GET(BTN_PORT);
 
 static struct gpio_callback btn_cb;
 static struct k_timer debounce_timer;
