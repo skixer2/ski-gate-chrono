@@ -56,11 +56,8 @@ int button_init(void)
 		printk("ERROR: button GPIO device not ready\n");
 		return -1;
 	}
-	int flags = GPIO_INPUT;
-	if (DT_PROP(WAKE_BUTTON_NODE, gpio_pull_up)) {
-		flags |= GPIO_PULL_UP;
-	}
-	gpio_pin_configure(btn, btn_pin, flags);
+	/* Internal pull-up, switch closes to GND (F03 wiring). */
+	gpio_pin_configure(btn, btn_pin, GPIO_INPUT | GPIO_PULL_UP);
 	gpio_pin_interrupt_configure(btn, btn_pin, GPIO_INT_EDGE_FALLING);
 	gpio_init_callback(&btn_cb, btn_isr, BIT(btn_pin));
 	gpio_add_callback(btn, &btn_cb);
