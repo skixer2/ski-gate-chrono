@@ -12,7 +12,7 @@
  * ACQUISITION runs at 100 Hz from ARM through LOGGING (JP: even while
  * armed); the start-detector check is DECIMATED to 10 Hz (every 10th
  * frame). Start trigger is the manual 'g' (production: 2.0 m drop
- * detector, F04); end is 'e' (production: 5 s flatline < 2 m).
+ * detector, F04); end is 'e' (production: 5 s no-descent, JP 2026-10-14).
  *
  * PRE-ROLL RING — SPEC v4-FINAL (JP, 2026-10-05, supersedes F02/v6.0):
  *   Region 0x0000–0x13FFF (20 sectors, 4096 linear slots × 20 B).
@@ -115,13 +115,17 @@ static void rc_stats_print(const char *ev)
 static uint32_t sd_p0_pa;         /* 0 = not locked yet */
 static uint32_t rc_last_baro_pa;  /* latest acquired frame, Pa */
 
-/* ── F04 run END: baro flatline (5 s within a ~2 m band) ─────────
- * Spec: end is 'e' (production: 5 s flatline < 2 m) — JP 2026-10-14:
- * the red LED that never went out. A real course descends > 2 m per
- * 5 s; a resting device (bench drop landed, finish-line stop) ends.
- * Sampled 10 Hz from the live frame's baro (Pa). */
+/* ── F04 run END: no net baro DESCENT for 5 s (JP 2026-10-14) ────
+ * JP's rule, verbatim intent: "baro delta >= 0 for more than 5 s —
+ * either the athlete stops at the end of the run, or he takes a
+ * lift; either case, the run stops." Replaces the earlier ~2.4 m
+ * band: courses DO have flats < 2 m per 5 s that must keep logging.
+ * Descending = pressure RISING. End when a full 5 s window shows no
+ * pressure rise beyond sensor noise (stop: flat ± noise; lift:
+ * falling). Sampled 10 Hz from the live frame's baro (Pa). */
 #define END_WIN_SAMPLES 50    /* 5 s @ 10 Hz */
-#define END_BAND_PA     30u   /* ~2.4 m at sea level (2 m spec + noise) */
+#define END_NOISE_PA    8u    /* descent floor ≈ 0.65 m / 5 s — below
+			       * this we are noise-flat, not descending */
 static uint32_t end_win_buf[END_WIN_SAMPLES];
 static uint16_t end_win_n;
 static uint8_t  end_div;
@@ -144,12 +148,14 @@ static bool flatline_end_feed(uint32_t pa)
 	if (end_win_n < END_WIN_SAMPLES) {
 		return false;
 	}
-	uint32_t mn = UINT32_MAX, mx = 0;
-	for (int i = 0; i < END_WIN_SAMPLES; i++) {
-		if (end_win_buf[i] < mn) mn = end_win_buf[i];
-		if (end_win_buf[i] > mx) mx = end_win_buf[i];
+	uint32_t oldest = end_win_buf[end_win_n % END_WIN_SAMPLES];
+	uint32_t newest = end_win_buf[(end_win_n - 1) % END_WIN_SAMPLES];
+	/* climbing or flat (lift / stop): pressure not rising */
+	if (newest <= oldest) {
+		return true;
 	}
-	return (mx - mn) < END_BAND_PA;
+	/* descending, but less than the noise floor => still "no descent" */
+	return (newest - oldest) <= END_NOISE_PA;
 }
 static uint8_t  sd_calls;         /* 1 Hz progress divider */
 
