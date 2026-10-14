@@ -51,6 +51,10 @@
  * IS P0.02 (not the Arduino numbering trap).
  */
 / {
+	aliases {
+		wake-button = &wake_button;   /* DT_ALIAS(wake_button) */
+	};
+
 	wake_button: wake_button {
 		/* Plain node (no gpio-keys binding — that needs a parent
 		 * container in Zephyr 4.4); the driver reads gpios +
