@@ -27,10 +27,11 @@
 #include "bhy2/bhy2_zephyr.h"
 #include "sensor_prod.h"
 #include "led_state.h"
+#include "button.h"
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
 
-#define APP_VERSION "0.20.8"
+#define APP_VERSION "0.21.0"
 
 int main(void)
 {
@@ -49,6 +50,7 @@ int main(void)
 	if (led_state_init() != 0) {
 		return 0;
 	}
+	button_init();     /* F03: press-to-arm (P0.02, 20 ms debounce) */
 	pull_proto_start();
 	ble_lifecycle_start();
 

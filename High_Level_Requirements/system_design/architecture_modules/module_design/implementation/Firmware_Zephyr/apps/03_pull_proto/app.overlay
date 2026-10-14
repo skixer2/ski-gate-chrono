@@ -44,3 +44,17 @@
 		status = "okay";
 	};
 };
+
+/*
+ * F03 arming button (2026-10-14): monostable switch / piezo on P0.02,
+ * closed to GND. Zephyr pin numbers are PHYSICAL nRF pins — pin 2
+ * IS P0.02 (not the Arduino numbering trap).
+ */
+/ {
+	wake_button: wake_button {
+		compatible = "gpio-keys";
+		gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+		gpio-pull-up;          /* internal pull-up, switch to GND */
+		label = "SGC_ARM_BUTTON";
+	};
+};

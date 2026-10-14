@@ -17,6 +17,7 @@
 #include <zephyr/drivers/led.h>
 #include "led_state.h"
 #include "ble_lifecycle.h"
+#include "recorder.h"
 
 static const struct device *led =
 	DEVICE_DT_GET(DT_PARENT(DT_ALIAS(led0)));
@@ -26,7 +27,22 @@ static struct k_timer       led_timer;
 
 static void led_work_handler(struct k_work *w)
 {
-	if (ble_lifecycle_connected()) {
+	/* Array maps <B,G,R> (index 0 = BLUE die — verified quirk).
+	 * Run state outranks link state (JP 2026-10-14):
+	 *   red    = LOGGING   (hard evidence — record in progress)
+	 *   yellow = ARMED     (waiting for the drop; distinct from
+	 *                       green = BLE connected)
+	 *   green  = connected (no run activity)
+	 *   blue blink = advertising
+	 */
+	uint8_t st = recorder_state_idx();
+	if (st == 2) {                       /* LOGGING */
+		const uint8_t red[3] = { 0x00, 0x00, 0xFF };
+		led_set_color(led, 0, 3, red);
+	} else if (st == 1) {                /* ARMED */
+		const uint8_t yellow[3] = { 0x00, 0xFF, 0xFF };
+		led_set_color(led, 0, 3, yellow);
+	} else if (ble_lifecycle_connected()) {
 		const uint8_t green[3] = { 0x00, 0xFF, 0x00 };
 		led_set_color(led, 0, 3, green);
 	} else {
