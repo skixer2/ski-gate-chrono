@@ -330,6 +330,7 @@ class NordicBleDownloader(private val context: Context) {
         var lastError: Exception? = null
         var manager: SgcBleManager? = null
 
+        try {
         for (attempt in 1..MAX_ATTEMPTS) {
             if (cancelled) throw Exception("cancelled")
             try {
@@ -416,7 +417,11 @@ class NordicBleDownloader(private val context: Context) {
                 }
             }
         }
-        manager?.let { shutdownManager(it) }
+        } finally {
+            // JP 2026-10-14 leak fix: SUCCESS returns skipped shutdown —
+            // one leaked GATT client per downloaded run held the ACL.
+            manager?.let { shutdownManager(it) }
+        }
         throw lastError ?: Exception("stream pull failed")
     }
 
