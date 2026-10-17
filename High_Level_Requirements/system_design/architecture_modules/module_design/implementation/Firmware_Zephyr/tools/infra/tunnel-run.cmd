@@ -31,27 +31,42 @@ if not exist %KEYDST% (
   copy /Y %KEYSRC% %KEYDST% >nul 2>&1
   icacls %KEYDST% /inheritance:r >nul 2>&1
   icacls %KEYDST% /grant:r "SYSTEM:F" "Administrators:F" >nul 2>&1
-  echo [%DATE% %TIME%] key copy created >> C:\Users\v17ni\tunnel-run.log
+  echo [%DATE% %TIME%] key copy created >> C:\Users\v17ni\zio_claw\harness\tunnel-run.log
 )
 
 if /i "%~1"=="AUX" goto aux
 
-echo [%DATE% %TIME%] tunnel-run v4 start (main+aux spawn) >> C:\Users\v17ni\tunnel-run.log
+echo [%DATE% %TIME%] tunnel-run v4.1 start (main+aux spawn) >> C:\Users\v17ni\zio_claw\harness\tunnel-run.log
 start "sgc-tunnel-aux" /min cmd /c "%~f0" AUX
+
+rem ---- v4.1: wait-for-internet gate (JP 2026-10-17: post-boot WLAN route can
+rem take minutes to mature; ssh attempts against a dead route burn the retry
+rem budget in timeout cycles and delay reconnect until watchdog respawns).
+rem Gate: ping the VPS until it answers (max ~12 min), then connect immediately.
+set W=0
+:waitnet
+ping -n 2 -w 1000 72.60.88.60 >nul 2>&1
+if not errorlevel 1 goto netok
+set /a W+=1
+if !W! geq 36 goto netok
+timeout /t 10 /nobreak >nul
+goto waitnet
+:netok
+echo [%DATE% %TIME%] internet gate passed after !W! waits >> C:\Users\v17ni\zio_claw\harness\tunnel-run.log
 
 set N=0
 :mainloop
 set /a N+=1
-%SSHBASE% -N -L 18789:127.0.0.1:18789 %COMMON% -o ExitOnForwardFailure=yes -i %KEYDST% root@72.60.88.60 >> C:\Users\v17ni\tunnel-run.log 2>&1
-echo [%DATE% %TIME%] main attempt !N! exited rc=!ERRORLEVEL! >> C:\Users\v17ni\tunnel-run.log
+%SSHBASE% -N -L 18789:127.0.0.1:18789 %COMMON% -o ExitOnForwardFailure=yes -i %KEYDST% root@72.60.88.60 >> C:\Users\v17ni\zio_claw\harness\tunnel-run.log 2>&1
+echo [%DATE% %TIME%] main attempt !N! exited rc=!ERRORLEVEL! >> C:\Users\v17ni\zio_claw\harness\tunnel-run.log
 if !N! geq 5 exit /b 1
 timeout /t 20 /nobreak >nul
 goto mainloop
 
 :aux
 set /a A+=1
-%SSHBASE% -N -R 9999:127.0.0.1:8080 %COMMON% -o ExitOnForwardFailure=yes -i %KEYDST% root@72.60.88.60 >> C:\Users\v17ni\tunnel-aux.log 2>&1
-echo [%DATE% %TIME%] aux attempt !A! exited rc=!ERRORLEVEL! >> C:\Users\v17ni\tunnel-aux.log
+%SSHBASE% -N -R 9999:127.0.0.1:8080 %COMMON% -o ExitOnForwardFailure=yes -i %KEYDST% root@72.60.88.60 >> C:\Users\v17ni\zio_claw\harness\tunnel-aux.log 2>&1
+echo [%DATE% %TIME%] aux attempt !A! exited rc=!ERRORLEVEL! >> C:\Users\v17ni\zio_claw\harness\tunnel-aux.log
 if !A! geq %AUXTRIES% exit /b 1
 timeout /t 30 /nobreak >nul
 goto aux
