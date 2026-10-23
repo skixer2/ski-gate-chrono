@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../models/gate_side.dart';
 import '../../ble/ble_manager.dart' hide ScanResult;
 import '../../ble/sgc_service.dart';
 import '../../ble/native_ble_downloader.dart';
