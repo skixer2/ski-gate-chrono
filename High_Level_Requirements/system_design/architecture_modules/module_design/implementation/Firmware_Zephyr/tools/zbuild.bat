@@ -28,6 +28,11 @@ set "NRFUTIL_HOME=%TC%\nrfutil\home"
 set "SRC=%~f1"
 set "BRD=%2"
 set "BLD=%~f3"
+rem 2026-10-23: SYSTEM-scheduled builds hit git dubious-ownership on the
+rem NCS workspace — inject safe.directory via env-var config (no file writes).
+set GIT_CONFIG_COUNT=1
+set GIT_CONFIG_KEY_0=safe.directory
+set GIT_CONFIG_VALUE_0=*
 rem Run west FROM the west workspace (apps may live anywhere, e.g. the repo)
 cd /d %WS%
 if exist "%BLD%" rmdir /s /q "%BLD%"
