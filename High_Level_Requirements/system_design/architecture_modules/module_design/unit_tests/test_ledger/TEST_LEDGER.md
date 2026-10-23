@@ -119,6 +119,22 @@ FW `src/ble/sgc_service.cpp` · App `lib/ble/sgc_service.dart`
 
 ## 2. Active Session Test Case
 
+### TC-2026-10-23-001 — SNOW KIT APP ARC (merge hardening → F45 → F31/33 → ABC5 → disconnect → F21/F20) — COMPLETE, JP pass pending on 1.65
+
+| Field | Value |
+|---|---|
+| App | 1.60.0 → 1.65.0 (fef74ac → 672dd96); FW v0.21.3 → v0.21.4 (aeef060, flashed+verified) |
+| Opened | 2026-10-23 11:59 UTC (JP: "resume the app side") |
+| **1.60 Merge hardening ×4** | Silent catch → quarantine+loud log; atomic saveMerges; race guard (empty _merges → disk reload); monotonic shrink guard (allowShrink reserved). Verified: app runs, merges intact. |
+| **1.60.1→1.61.1 F45** | Run naming: edit icon/long-press, 40 chars, default = date + daily ordinal; name in list + detail. **JP crashed Cancel (controller disposed mid exit-animation) → 1.61.1 = dialog owns controller as StatefulWidget; JP re-test PASS ("Good!").** 1.62.0 extended to merged courses (name in merged_runs.json, same-count save passes shrink guard). |
+| **F31/F33** | Already shipped (blue=left/red=right/grey+*=estimated on both charts, verified in code) → reqs doc v6.2 (4132aab) synced to code reality, JP-confirmed. |
+| **1.63.0 ABC5** | Battery % + charging in device card (FW exposed since 0.20.x; UI never read it). JP bench: **92% read correct**. Charging bolt missing → FW gap (bit7 hardcoded 0). |
+| **FW v0.21.4** | bit7 = VIN-inferred charging (successful BQ read ⇒ USB power; -3 ⇒ battery; charging = vin && <100%). Built via SYSTEM scheduled task (fwbuild_sched.bat), flashed via zflash_log.bat (USERPROFILE pin) — **Programming Finished / Verified OK**. **JP 14:53: "Charging indication OK!!"** |
+| **1.64.0 Disconnect** | Manual button on card + 1-min idle auto-disconnect (re-arms on activity/connect/batch-end; never fires mid-transfer; cancelled at teardown/dispose). **JP bench: everything OK.** |
+| **1.65.0 F21+F20** | F21: Device Name/Arm Side/Discipline editable on card over BLE (writeArmSide/writeDiscipline added; write → config re-read → snackbar; name re-advertises). F20: ProfileScreen (name/club/group/age/category + push toggle, SharedPreferences sgc.profile.*), Settings tile live + Cloud Sync switch bound to same pref. Build fix: gate_side.dart import. **Installed, 1.65.0 live, JP on-phone pass pending.** |
+| Tooling (commits) | app_build_install.bat, fwbuild_sched.bat, zflash_log.bat, zbuild first-match .west + west -z ZEPHYR_BASE + safe.directory env injection, appbuild_sched.bat (dead end — SID). Node-host 2026.9.3 quirks documented in TOOLS.md. |
+| Status | **SNOW KIT COMPLETE** — JP pass on 1.65 pending; then remote-DB arc (REQ-DB/I07/F23/F43/F25/F46/F48/F50). Open: pairing UI (2nd Nicla, Nov), JP diff review 1.60→1.65, "9 on device vs 38" counter cosmetic, printk interleave cosmetic. |
+
 ### TC-2026-10-02-002 — M3 Phase B: sensor producer (real BHI260 frames) — OPEN (design review)
 
 | Field | Value |
@@ -931,6 +947,7 @@ PHY: no onPhyUpdate lines → LE 1M end-to-end; variable eliminated.
 
 | Case ID | Date | Title | Result | Archive |
 |---------|------|-------|--------|---------|
+| TC-2026-10-23-001 | 2026-10-23 | Snow kit app arc (1.60→1.65 + FW 0.21.4) | **COMPLETE, JP 1.65 pass pending** | §2 (active) |
 | TC-2026-08-14-001 | 2026-08-14 | FW 5.02 boot + smoke | **PASS smoke** | §2b |
 | TC-2026-08-14-002 | 2026-08-14 | BLE zombie / no ADV | **PASS 5.03** | §2b (closed) |
 | TC-2026-08-15-001 | 2026-08-15 | FT download hang + `ble_radio` regression | **PASS (5.16)** | history |
