@@ -177,7 +177,11 @@
 ///          default stays "Run #a + #b" (moves to subtitle when named),
 ///          detail header follows the name. Same-count save passes the
 ///          monotonic shrink guard by design.
-const String APP_VERSION = '1.62.0';
+///   1.63 - ABC5 BATTERY % IN DEVICE CARD (snow kit): read on connect
+///          (bit7 = charging, 0x7F = unknown → "— (unknown)"), shown as
+///          "87%" / "87% · charging ⚡"; battery read failure never masks
+///          the run list (own try). Cleared on every disconnect/teardown.
+const String APP_VERSION = '1.63.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

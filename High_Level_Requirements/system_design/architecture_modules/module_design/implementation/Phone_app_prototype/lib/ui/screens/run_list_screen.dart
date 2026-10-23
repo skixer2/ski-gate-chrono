@@ -40,6 +40,9 @@ class _RunListScreenState extends State<RunListScreen>
   BluetoothDevice? _device;   // V1.22: kept for per-run reconnect (Phase 2)
   DeviceConfig? _config;
   int? _runCount;   // v1.50: null = read FAILED (never a fake 0)
+  // ABC5 (F-snow-kit): null = unknown (0x7F / read failed).
+  int? _batteryPct;
+  bool _batteryCharging = false;
   final List<String> _setupWarnings = [];   // v1.50 (audit A6): surfaced, never silent
   bool _isConnecting = false;
   bool _isScanning = false;
@@ -112,6 +115,8 @@ class _RunListScreenState extends State<RunListScreen>
       _sgc = null;
       _config = null;
       _runCount = null;
+      _batteryPct = null;
+      _batteryCharging = false;
       _deviceRuns = [];
       _isConnecting = false;
       _isDownloading = false;
@@ -458,6 +463,8 @@ class _RunListScreenState extends State<RunListScreen>
           _sgc = null;
           _config = null;
           _runCount = null;
+          _batteryPct = null;
+          _batteryCharging = false;
           _deviceRuns = [];
         });
       }
@@ -538,6 +545,18 @@ class _RunListScreenState extends State<RunListScreen>
         debugPrint('[SGC] reading run count…');
         _runCount = await sgc.getRunCount();
         debugPrint('[SGC] run count = $_runCount');
+        // ABC5 battery (bit7 = charging, 0x7F = unknown) — separate try
+        // so a battery read failure never masks the run list.
+        try {
+          _batteryPct = await sgc.getBattery();
+          _batteryCharging = await sgc.isCharging();
+          debugPrint('[SGC] battery = $_batteryPct%'
+              '${_batteryCharging ? ' (charging)' : ''}');
+        } catch (e) {
+          debugPrint('[SGC] battery read failed: $e');
+          _batteryPct = null;
+          _batteryCharging = false;
+        }
         final ft = FileTransfer(sgc);
         _deviceRuns = await ft.getRunList();
         debugPrint('[SGC] device runs: ${_deviceRuns.length}');
@@ -548,6 +567,8 @@ class _RunListScreenState extends State<RunListScreen>
         debugPrint('[SGC] stack: $stack');
         _setupWarnings.add('setup: $e');
         _runCount = null;
+        _batteryPct = null;
+        _batteryCharging = false;
         _deviceRuns = [];
       }
 
@@ -623,6 +644,8 @@ class _RunListScreenState extends State<RunListScreen>
         _device = null;
         _config = null;
         _runCount = null;
+        _batteryPct = null;
+        _batteryCharging = false;
         _deviceRuns = [];
       });
     }
@@ -1129,6 +1152,9 @@ class _RunListScreenState extends State<RunListScreen>
                   ),
                 _infoRow('Runs on Device', _runCount?.toString() ?? '? (read failed)'),
                 _infoRow('Not Downloaded', _missingRuns.length.toString()),
+                _infoRow('Battery', _batteryPct == null
+                    ? '— (unknown)'
+                    : '$_batteryPct%${_batteryCharging ? ' · charging ⚡' : ''}'),
                 _infoRow('BLE MTU', _ble.isConnected ? '${_ble.mtu} bytes' : '— (disconnected)'),
               ],
             ),
