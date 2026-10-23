@@ -169,6 +169,16 @@ class SGCService {
   Future<void> writeDeviceName(String name) async {
     await _writeChar(charDeviceName, Uint8List.fromList(name.codeUnits.take(20).toList()));
   }
+
+  // F21 (2026-10-23): arm side + discipline writes (single byte, same
+  // throw-on-failure contract as writeDeviceName).
+  Future<void> writeArmSide(ArmSide side) async {
+    await _writeChar(charArmSide, Uint8List.fromList([side == ArmSide.right ? 1 : 0]));
+  }
+
+  Future<void> writeDiscipline(Discipline d) async {
+    await _writeChar(charDiscipline, Uint8List.fromList([d.index]));
+  }
   // ── Packed reads ─────────────────────────────────────────────
   /// v1.50: THROWS on failure (audit A4 — '0 on device' was a masker).
   Future<int> getRunCount() async {

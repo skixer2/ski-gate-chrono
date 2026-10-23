@@ -1172,8 +1172,42 @@ class _RunListScreenState extends State<RunListScreen>
                   ],
                 ),
                 const SizedBox(height: 16),
-                _infoRow('Arm Side', _config?.armSide?.label ?? 'Unknown'),
-                _infoRow('Discipline', _config?.discipline?.label ?? 'Unknown'),
+                // F21 (2026-10-23): device params editable over BLE.
+                // Tap row → dialog → write → re-read config (device
+                // re-advertises with a new name immediately).
+                InkWell(
+                  onTap: _editDeviceName,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      SizedBox(width: 120, child: Text('Device Name', style: const TextStyle(color: Colors.grey))),
+                      Expanded(child: Text(_config?.deviceName ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w500))),
+                      const Icon(Icons.edit, size: 16, color: Colors.grey),
+                    ]),
+                  ),
+                ),
+                InkWell(
+                  onTap: _editArmSide,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      SizedBox(width: 120, child: Text('Arm Side', style: const TextStyle(color: Colors.grey))),
+                      Expanded(child: Text(_config?.armSide?.label ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w500))),
+                      const Icon(Icons.edit, size: 16, color: Colors.grey),
+                    ]),
+                  ),
+                ),
+                InkWell(
+                  onTap: _editDiscipline,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      SizedBox(width: 120, child: Text('Discipline', style: const TextStyle(color: Colors.grey))),
+                      Expanded(child: Text(_config?.discipline?.label ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.w500))),
+                      const Icon(Icons.edit, size: 16, color: Colors.grey),
+                    ]),
+                  ),
+                ),
                 if (_setupWarnings.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -1380,6 +1414,116 @@ class _RunListScreenState extends State<RunListScreen>
     }
   }
 
+  // ── F21: device param editors (write via BLE, re-read, confirm) ──
+
+  Future<void> _afterParamWrite(String what) async {
+    _resetIdleDisconnectTimer();   // param write = activity
+    try {
+      _config = await _sgc?.readConfig();
+    } catch (e) {
+      debugPrint('[SGC] config re-read after $what write failed: $e');
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _editDeviceName() async {
+    final sgc = _sgc;
+    if (sgc == null) return;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _RenameDialog(
+        initialName: _config?.deviceName,
+        defaultHint: '',
+        hintOverride: 'Device name (≤ 20 chars) — used in Bluetooth advertising',
+      ),
+    );
+    final name = result?.trim();
+    if (name == null || name.isEmpty || name == _config?.deviceName) return;
+    try {
+      await sgc.writeDeviceName(name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Device renamed to "$name" — advertising follows')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Rename failed: $e')));
+      }
+      return;
+    }
+    await _afterParamWrite('name');
+  }
+
+  Future<void> _editArmSide() async {
+    final sgc = _sgc;
+    if (sgc == null) return;
+    final side = await showDialog<ArmSide>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Arm Side'),
+        children: [
+          for (final s in ArmSide.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, s),
+              child: Row(children: [
+                Icon(s == ArmSide.right ? Icons.arrow_forward : Icons.arrow_back,
+                    color: s == ArmSide.right ? Colors.red : Colors.blue),
+                const SizedBox(width: 12),
+                Text(s.label,
+                    style: s == _config?.armSide
+                        ? const TextStyle(fontWeight: FontWeight.bold)
+                        : null),
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (side == null || side == _config?.armSide) return;
+    try {
+      await sgc.writeArmSide(side);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Arm side write failed: $e')));
+      }
+      return;
+    }
+    await _afterParamWrite('arm side');
+  }
+
+  Future<void> _editDiscipline() async {
+    final sgc = _sgc;
+    if (sgc == null) return;
+    final d = await showDialog<Discipline>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Discipline'),
+        children: [
+          for (final v in Discipline.values)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, v),
+              child: Text(v.label,
+                  style: v == _config?.discipline
+                      ? const TextStyle(fontWeight: FontWeight.bold)
+                      : null),
+            ),
+        ],
+      ),
+    );
+    if (d == null || d == _config?.discipline) return;
+    try {
+      await sgc.writeDiscipline(d);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Discipline write failed: $e')));
+      }
+      return;
+    }
+    await _afterParamWrite('discipline');
+  }
+
   Widget _infoRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -1496,8 +1640,13 @@ class _ScanSheetState extends State<_ScanSheet> {
 class _RenameDialog extends StatefulWidget {
   final String? initialName;
   final String defaultHint;
+  final String? hintOverride;   // F21: full custom hint (device name)
 
-  const _RenameDialog({required this.initialName, required this.defaultHint});
+  const _RenameDialog({
+    required this.initialName,
+    required this.defaultHint,
+    this.hintOverride,
+  });
 
   @override
   State<_RenameDialog> createState() => _RenameDialogState();
@@ -1527,7 +1676,8 @@ class _RenameDialogState extends State<_RenameDialog> {
         autofocus: true,
         maxLength: 40,
         decoration: InputDecoration(
-          hintText: 'e.g. Race simulation · empty = ${widget.defaultHint}',
+          hintText: widget.hintOverride ??
+              'e.g. Race simulation · empty = ${widget.defaultHint}',
         ),
         onSubmitted: (_) => Navigator.pop(context, _ctrl.text),
       ),

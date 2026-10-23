@@ -186,7 +186,15 @@
 ///          after 1 min idle. Timer re-arms on connect-complete and after
 ///          every download batch; self-re-arms if it fires mid-transfer;
 ///          cancelled on disconnect/teardown/dispose.
-const String APP_VERSION = '1.64.0';
+///   1.65 - F21 + F20 (snow kit complete, JP "go with the rest" 14:53):
+///          F21 device params editable over BLE — Device Name / Arm Side /
+///          Discipline rows on the connected card (tap → dialog → write →
+///          config re-read; name change re-advertises). F20 athlete profile
+///          screen (name/club/group/age/category + push-to-cloud toggle,
+///          SharedPreferences persistence) wired to Settings; Cloud Sync
+///          switch bound to the same pref. SGCService gains writeArmSide +
+///          writeDiscipline.
+const String APP_VERSION = '1.65.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
