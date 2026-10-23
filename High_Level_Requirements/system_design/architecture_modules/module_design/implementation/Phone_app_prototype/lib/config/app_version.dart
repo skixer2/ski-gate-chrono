@@ -181,7 +181,12 @@
 ///          (bit7 = charging, 0x7F = unknown → "— (unknown)"), shown as
 ///          "87%" / "87% · charging ⚡"; battery read failure never masks
 ///          the run list (own try). Cleared on every disconnect/teardown.
-const String APP_VERSION = '1.63.0';
+///   1.64 - DISCONNECT (JP 2026-10-23 13:16): manual Disconnect button on
+///          the connected card (disabled mid-download) + auto-disconnect
+///          after 1 min idle. Timer re-arms on connect-complete and after
+///          every download batch; self-re-arms if it fires mid-transfer;
+///          cancelled on disconnect/teardown/dispose.
+const String APP_VERSION = '1.64.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

@@ -43,6 +43,31 @@ class _RunListScreenState extends State<RunListScreen>
   // ABC5 (F-snow-kit): null = unknown (0x7F / read failed).
   int? _batteryPct;
   bool _batteryCharging = false;
+
+  // 1.64 (JP 2026-10-23): auto-disconnect after 1 min of idle connection.
+  Timer? _idleDisconnectTimer;
+
+  /// (Re)arm the 1-min idle auto-disconnect. Called on connect-complete,
+  /// download-complete — any device activity. While a transfer is in
+  /// flight the timer re-arms itself instead of firing.
+  void _resetIdleDisconnectTimer() {
+    _idleDisconnectTimer?.cancel();
+    _idleDisconnectTimer = Timer(const Duration(minutes: 1), () {
+      if (!_ble.isConnected) return;
+      if (_isDownloading || _isConnecting) {
+        debugPrint('[SGC] idle timer fired mid-activity — re-arming');
+        _resetIdleDisconnectTimer();
+        return;
+      }
+      debugPrint('[SGC] idle 60 s — auto-disconnect (battery discipline)');
+      _disconnect();
+    });
+  }
+
+  void _cancelIdleDisconnectTimer() {
+    _idleDisconnectTimer?.cancel();
+    _idleDisconnectTimer = null;
+  }
   final List<String> _setupWarnings = [];   // v1.50 (audit A6): surfaced, never silent
   bool _isConnecting = false;
   bool _isScanning = false;
@@ -110,6 +135,7 @@ class _RunListScreenState extends State<RunListScreen>
       return;
     }
     debugPrint('[SGC] BLE disconnected — clearing connected UI state');
+    _cancelIdleDisconnectTimer();
     if (!mounted) return;
     setState(() {
       _sgc = null;
@@ -125,6 +151,7 @@ class _RunListScreenState extends State<RunListScreen>
 
   @override
   void dispose() {
+    _cancelIdleDisconnectTimer();
     _autoTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _connSub?.cancel();
@@ -310,6 +337,7 @@ class _RunListScreenState extends State<RunListScreen>
       }
       debugPrint('[AUTO] saved $saved/${missing.length} runs');
     }
+    _resetIdleDisconnectTimer();   // 1.64: transfer done -> idle clock restarts
 
     await _runMergePass();
 
@@ -576,6 +604,7 @@ class _RunListScreenState extends State<RunListScreen>
         _sgc = sgc;
         _isConnecting = false;
       });
+      _resetIdleDisconnectTimer();   // 1.64: 1-min idle auto-disconnect
 
       if (mounted) {
         final warn = _setupWarnings;
@@ -636,6 +665,7 @@ class _RunListScreenState extends State<RunListScreen>
   }
 
   Future<void> _disconnect() async {
+    _cancelIdleDisconnectTimer();
     _isDownloading = false;  // V1.23: cancel any in-flight batch first
     await _ble.disconnect();
     if (mounted) {
@@ -797,6 +827,7 @@ class _RunListScreenState extends State<RunListScreen>
         );
       }
     } finally {
+      _resetIdleDisconnectTimer();   // 1.64: batch done -> idle clock restarts
       if (mounted) {
         setState(() {
           _isDownloading = false;
@@ -962,6 +993,7 @@ class _RunListScreenState extends State<RunListScreen>
       }
     } finally {
       NativeBleDownloader.setListener();
+      _resetIdleDisconnectTimer();   // 1.64: batch done -> idle clock restarts
       if (mounted) {
         setState(() {
           _isDownloading = false;
@@ -1156,6 +1188,17 @@ class _RunListScreenState extends State<RunListScreen>
                     ? '— (unknown)'
                     : '$_batteryPct%${_batteryCharging ? ' · charging ⚡' : ''}'),
                 _infoRow('BLE MTU', _ble.isConnected ? '${_ble.mtu} bytes' : '— (disconnected)'),
+                const SizedBox(height: 8),
+                // 1.64 (JP 2026-10-23): manual disconnect — the connected
+                // card was a dead end before. Auto: 1 min idle also drops.
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.link_off, size: 18),
+                    label: const Text('Disconnect'),
+                    onPressed: _isDownloading ? null : _disconnect,
+                  ),
+                ),
               ],
             ),
           ),
