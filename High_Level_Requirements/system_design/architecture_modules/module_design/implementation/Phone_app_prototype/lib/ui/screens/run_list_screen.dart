@@ -319,6 +319,20 @@ class _RunListScreenState extends State<RunListScreen>
 
   /// Pair complementary saved runs and persist the merged courses.
   Future<void> _runMergePass() async {
+    // Race guard (2026-10-14 diagnosis): if the in-memory list is empty
+    // but a valid file exists on disk, reload it before pairing —
+    // otherwise this pass pairs against an empty baseline (the exact
+    // state that made the Merged Courses section vanish) and could
+    // duplicate already-known merges.
+    if (_merges.isEmpty) {
+      final onDisk = await _storage.loadMerges();
+      if (onDisk.isNotEmpty) {
+        _merges = onDisk;
+        debugPrint('[AUTO] race guard: reloaded ${onDisk.length} '
+            'merges from disk before pairing');
+        if (mounted) setState(() {});
+      }
+    }
     final merged = [..._merges];
     final inMerge = <String>{};
     for (final m in merged) {

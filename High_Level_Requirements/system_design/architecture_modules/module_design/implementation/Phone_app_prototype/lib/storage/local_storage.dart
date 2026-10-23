@@ -107,23 +107,67 @@ class LocalStorage {
   // ── Merged runs (dual-device blend, JP 2026-10-13) ──────────────
 
   /// Load merged-course entries (merged_runs.json).
+  ///
+  /// 2026-10-14 diagnosis: the old silent `catch (_) { return []; }` made a
+  /// single transient read failure wipe the in-memory merge list for the
+  /// whole instance life ("Merged Courses disappeared" bug). Now:
+  /// - file missing → [] (normal first launch);
+  /// - decode/read failure → quarantine the file as
+  ///   merged_runs.corrupt.json (timestamped side-copy kept if the name
+  ///   is already taken) + loud log, so on-disk history is never lost and
+  ///   the failure is visible in logcat.
   Future<List<Map<String, dynamic>>> loadMerges() async {
+    final dir = await _dir;
+    final f = File('${dir.parent.path}/$_mergesFile');
+    if (!await f.exists()) return [];
     try {
-      final dir = await _dir;
-      final f = File('${dir.parent.path}/$_mergesFile');
-      if (!await f.exists()) return [];
       final List<dynamic> list = jsonDecode(await f.readAsString());
       return list.cast<Map<String, dynamic>>();
-    } catch (_) {
+    } catch (e, st) {
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final corrupt = File('${dir.parent.path}/merged_runs.corrupt.json');
+      try {
+        if (await corrupt.exists()) {
+          await f.copy('${dir.parent.path}/merged_runs.corrupt.$stamp.json');
+        } else {
+          await f.copy(corrupt.path);
+        }
+      } catch (_) {}
+      debugPrint('[LocalStorage] MERGES FILE CORRUPT — quarantined '
+          '(${corrupt.path}); starting from empty list. Error: $e\n$st');
       return [];
     }
   }
 
   /// Persist merged-course entries.
-  Future<void> saveMerges(List<Map<String, dynamic>> merges) async {
+  ///
+  /// Hardening 2026-10: atomic write (temp + rename) — a kill/crash
+  /// mid-write can no longer truncate merged_runs.json. Monotonic guard:
+  /// a save that would persist FEWER entries than currently on disk is
+  /// rejected loudly (protects against in-memory races silently deleting
+  /// known merges). Pass [allowShrink: true] only for explicit user deletion.
+  Future<void> saveMerges(List<Map<String, dynamic>> merges,
+      {bool allowShrink = false}) async {
     final dir = await _dir;
     final f = File('${dir.parent.path}/$_mergesFile');
-    await f.writeAsString(jsonEncode(merges));
+    if (!allowShrink) {
+      try {
+        if (await f.exists()) {
+          final List<dynamic> onDisk = jsonDecode(await f.readAsString());
+          if (merges.length < onDisk.length) {
+            debugPrint('[LocalStorage] saveMerges REJECTED: would shrink '
+                '${onDisk.length} → ${merges.length} on-disk merges '
+                '(use allowShrink for explicit deletion)');
+            return;
+          }
+        }
+      } catch (_) {
+        // Disk unreadable/corrupt: proceed — the write replaces it.
+      }
+    }
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(jsonEncode(merges), flush: true);
+    await tmp.rename(f.path);
   }
 
   static const _mergesFile = 'merged_runs.json';

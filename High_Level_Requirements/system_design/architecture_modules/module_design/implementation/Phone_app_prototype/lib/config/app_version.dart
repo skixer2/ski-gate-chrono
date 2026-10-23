@@ -154,7 +154,14 @@
 
 ///   1.44 - V2 STREAMING PULL (FW 5.77): one command, binary stream,
 ///          NO RESUME. Settle 12s to 4s. 2M PHY requested.
-const String APP_VERSION = '1.59.3';
+///   1.60 - MERGE HARDENING x4 (2026-10-14 diagnosis, JP-agreed): the
+///          "Merged Courses disappeared" transient. (1) loadMerges: no
+///          silent catch — corrupt file quarantined as merged_runs.corrupt.json
+///          + loud log. (2) saveMerges: atomic temp+rename. (3) merge pass
+///          race guard: empty in-memory list reloaded from disk before
+///          pairing. (4) monotonic save guard: shrinking saves rejected
+///          (allowShrink reserved for explicit user deletion).
+const String APP_VERSION = '1.60.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
