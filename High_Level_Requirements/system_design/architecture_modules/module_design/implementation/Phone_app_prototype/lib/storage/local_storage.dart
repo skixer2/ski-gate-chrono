@@ -16,6 +16,7 @@ class SavedRun {
   final String deviceName;
   final String fileName;    // e.g. "run_3_1719000000.bin"
   final DateTime savedAt;
+  final String? name;       // F45: user-editable label; null = default (date + run #)
 
   const SavedRun({
     required this.id,
@@ -26,6 +27,7 @@ class SavedRun {
     required this.deviceName,
     required this.fileName,
     required this.savedAt,
+    this.name,
   });
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +39,7 @@ class SavedRun {
     'deviceName': deviceName,
     'fileName': fileName,
     'savedAt': savedAt.toIso8601String(),
+    if (name != null) 'name': name,
   };
 
   factory SavedRun.fromJson(Map<String, dynamic> json) => SavedRun(
@@ -48,6 +51,7 @@ class SavedRun {
     deviceName: json['deviceName'] as String? ?? 'SGC',
     fileName: json['fileName'] as String,
     savedAt: DateTime.parse(json['savedAt'] as String),
+    name: json['name'] as String?,
   );
 }
 
@@ -171,6 +175,34 @@ class LocalStorage {
   }
 
   static const _mergesFile = 'merged_runs.json';
+
+  /// F45: assign a user-editable name to a saved run. Empty/whitespace
+  /// name clears the label (back to the default). Rewrites the index
+  /// atomically via [_writeIndex].
+  Future<void> renameRun(String fileName, String? rawName) async {
+    final name = rawName?.trim();
+    final dir = await _dir;
+    final indexFile = File('${dir.path}/$_indexFile');
+    final List<dynamic> raw = jsonDecode(await indexFile.readAsString());
+    var hit = false;
+    for (final e in raw) {
+      if (e is Map<String, dynamic> && e['fileName'] == fileName) {
+        if (name == null || name.isEmpty) {
+          e.remove('name');
+        } else {
+          e['name'] = name;
+        }
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) {
+      debugPrint('[LocalStorage] renameRun: no index entry for $fileName');
+      return;
+    }
+    await indexFile.writeAsString(jsonEncode(raw));
+    debugPrint('[LocalStorage] Renamed $fileName → "${name == null || name.isEmpty ? "(default)" : name}"');
+  }
 
   /// List all saved runs (newest first).
   Future<List<SavedRun>> listAll() async {

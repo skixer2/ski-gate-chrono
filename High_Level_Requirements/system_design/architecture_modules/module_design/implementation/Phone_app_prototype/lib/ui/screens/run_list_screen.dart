@@ -659,6 +659,7 @@ class _RunListScreenState extends State<RunListScreen>
           builder: (_) => RunDetailScreen(
             result: decoded,
             deviceName: run.deviceName,
+            runName: run.name,
           ),
         ),
       );
@@ -1189,6 +1190,14 @@ class _RunListScreenState extends State<RunListScreen>
         .toLocal().toString().substring(0, 16);
     final durStr = '${(run.durationSec ~/ 60).toString().padLeft(2, '0')}:'
         '${(run.durationSec % 60).toStringAsFixed(1).padLeft(4, '0')}';
+    // F45: user name if set, else default "date + run_number" label.
+    final hasName = run.name != null && run.name!.isNotEmpty;
+    final title = hasName
+        ? run.name!
+        : '${_defaultRunLabel(run)} — $durStr';
+    final subtitle = hasName
+        ? 'Run #${run.id} · $durStr · $dateStr · ${run.frameCount} frames · ${run.deviceName}'
+        : '$dateStr · ${run.frameCount} frames · ${run.deviceName}';
 
     return Card(
       child: ListTile(
@@ -1196,13 +1205,83 @@ class _RunListScreenState extends State<RunListScreen>
           run.side == 'right' ? Icons.arrow_forward : Icons.arrow_back,
           color: Colors.blue.shade400,
         ),
-        title: Text('Run #${run.id} — $durStr',
+        title: Text(title,
             style: const TextStyle(fontWeight: FontWeight.w500)),
-        subtitle: Text('$dateStr · ${run.frameCount} frames · ${run.deviceName}'),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+        subtitle: Text(subtitle),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
+              tooltip: 'Rename run',
+              onPressed: () => _promptRename(run),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
         onTap: () => _openLocalRun(run),
+        onLongPress: () => _promptRename(run),
       ),
     );
+  }
+
+  /// F45: default label = local date + 1-based ordinal of the run within
+  /// that day (ordered by timestamp, then id). Deterministic from the
+  /// current run set — no extra storage.
+  String _defaultRunLabel(SavedRun run) {
+    final day = DateTime.fromMillisecondsSinceEpoch(run.timestamp * 1000, isUtc: true)
+        .toLocal();
+    final dayKey = '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+    final sameDay = _localRuns.where((r) {
+      final d = DateTime.fromMillisecondsSinceEpoch(r.timestamp * 1000, isUtc: true)
+          .toLocal();
+      return '${d.year.toString().padLeft(4, '0')}-'
+              '${d.month.toString().padLeft(2, '0')}-'
+              '${d.day.toString().padLeft(2, '0')}' == dayKey;
+    }).toList()
+      ..sort((a, b) {
+        final c = a.timestamp.compareTo(b.timestamp);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
+    final n = sameDay.indexWhere((r) => r.fileName == run.fileName) + 1;
+    return '$dayKey Run $n';
+  }
+
+  /// F45: rename dialog. Empty input = back to default label.
+  Future<void> _promptRename(SavedRun run) async {
+    final ctrl = TextEditingController(text: run.name ?? '');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Name this run'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 40,
+          decoration: InputDecoration(
+            hintText: 'e.g. Race simulation · empty = ${_defaultRunLabel(run)}',
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true) {
+      await _storage.renameRun(run.fileName, ctrl.text);
+      await _loadLocalRuns();
+    }
+    ctrl.dispose();
   }
 
   Widget _infoRow(String label, String value) {

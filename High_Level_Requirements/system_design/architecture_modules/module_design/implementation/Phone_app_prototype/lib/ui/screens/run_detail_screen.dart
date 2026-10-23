@@ -28,11 +28,15 @@ class RunDetailScreen extends StatefulWidget {
   /// Optional arm side from device config.
   final ArmSide? armSide;
 
+  /// F45: user-editable run name (null = default label).
+  final String? runName;
+
   const RunDetailScreen({
     super.key,
     required this.result,
     this.deviceName,
     this.armSide,
+    this.runName,
   });
 
   @override
@@ -135,7 +139,7 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.deviceName ?? 'Run Detail'),
+        title: Text(widget.runName ?? widget.deviceName ?? 'Run Detail'),
         actions: [
           IconButton(
             icon: const Icon(Icons.ios_share),

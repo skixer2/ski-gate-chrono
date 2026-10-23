@@ -161,7 +161,12 @@
 ///          race guard: empty in-memory list reloaded from disk before
 ///          pairing. (4) monotonic save guard: shrinking saves rejected
 ///          (allowShrink reserved for explicit user deletion).
-const String APP_VERSION = '1.60.0';
+///   1.61 - F45 RUN NAMING: user-editable label per run (edit icon or
+///          long-press a run → dialog, 40 chars, empty = default). Default
+///          label = local date + daily ordinal ("2026-10-23 Run 2"); name
+///          persisted in runs.json index, shown in list + detail header;
+///          will ride along with cloud upload attribution later.
+const String APP_VERSION = '1.61.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
