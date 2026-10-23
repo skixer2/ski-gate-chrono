@@ -121,6 +121,7 @@ void ble_config_set_discipline(uint8_t v)
 
 static const struct device *bqi2c;
 static uint8_t batt_cache = BATT_UNKNOWN;
+static bool batt_vin;          /* VIN present at last good read (USB power) */
 static bool batt_warned_batt_mode;
 
 static int bq_read(uint8_t reg, uint8_t *val)
@@ -206,6 +207,7 @@ static void batt_work_handler(struct k_work *w)
 
 	switch (pct) {
 	case -3:
+		batt_vin = false;   /* VIN_UV: on battery */
 		if (!batt_warned_batt_mode) {
 			batt_warned_batt_mode = true;
 			printk("batt: battery-mode read skipped "
@@ -223,6 +225,7 @@ static void batt_work_handler(struct k_work *w)
 		break;
 	default:
 		batt_cache = (uint8_t)(pct & 0x7F);
+		batt_vin = true;    /* successful read ⇒ VIN present (USB) */
 		break;
 	}
 	k_work_reschedule(d, K_SECONDS(30));
@@ -231,7 +234,13 @@ static void batt_work_handler(struct k_work *w)
 /* ── Status surfaces ──────────────────────────────────────────────── */
 uint8_t ble_config_battery_byte(void)
 {
-	return batt_cache;    /* bit7 charging = 0 (TODO STATUS port) */
+	/* v0.21.4: bit7 = on USB power AND not full (charging). VIN state is
+	 * implied by the read path (success ⇒ VIN present; -3 ⇒ battery).
+	 * CHG_STAT pin still TODO — this reports "charging" until 100%, then
+	 * "on USB, held" without the bolt. Good enough for the snow kit. */
+	bool charging = batt_vin && batt_cache != BATT_UNKNOWN &&
+			batt_cache < 100;
+	return batt_cache | (charging ? 0x80 : 0x00);
 }
 
 uint8_t ble_config_state_byte(void)
