@@ -6,7 +6,9 @@ set "NCSROOT=%NCS_DIR%"
 if "%NCSROOT%"=="" set "NCSROOT=C:\ncs"
 rem Locate the west workspace (the SDK version dir containing .west)
 set "WS="
-for /d %%D in ("%NCSROOT%\*") do if exist "%%D\.west" set "WS=%%D"
+rem 2026-10-23: FIRST match wins (v3.4.0) — last-match picked a broken
+rem v3.4.1 workspace ("unknown command build": no extension commands).
+for /d %%D in ("%NCSROOT%\*") do if not defined WS if exist "%%D\.west" set "WS=%%D"
 if "%WS%"=="" (
 echo [zbuild] ERROR: no west workspace ^(.west^) found under %NCSROOT%
 goto end
