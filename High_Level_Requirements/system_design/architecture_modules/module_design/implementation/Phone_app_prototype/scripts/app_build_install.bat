@@ -12,7 +12,7 @@ if "%1"=="" set "LOG=%LOGDIR%\appbuild_latest.log"
 echo === %date% %time% === > "%LOG%"
 
 cd /d "%REPO%" || goto fail
-git pull --ff-only ZioClaw master >> "%LOG%" 2>&1 || goto fail
+"C:\Program Files\Git\cmd\git.exe" pull --ff-only ZioClaw master >> "%LOG%" 2>&1 || goto fail
 echo PULL_OK >> "%LOG%"
 cd /d "%APP%" || goto fail
 set "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr"
