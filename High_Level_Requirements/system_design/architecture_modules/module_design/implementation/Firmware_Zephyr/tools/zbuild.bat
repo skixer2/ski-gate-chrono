@@ -32,8 +32,8 @@ rem Run west FROM the west workspace (apps may live anywhere, e.g. the repo)
 cd /d %WS%
 if exist "%BLD%" rmdir /s /q "%BLD%"
 if "%4"=="" goto plain
-west build -b %BRD% -d "%BLD%" "%SRC%" -- -DEXTRA_DTC_OVERLAY=%4
+west -z "%WS%\zephyr" build -b %BRD% -d "%BLD%" "%SRC%" -- -DEXTRA_DTC_OVERLAY=%4
 goto end
 :plain
-west build -b %BRD% -d "%BLD%" "%SRC%"
+west -z "%WS%\zephyr" build -b %BRD% -d "%BLD%" "%SRC%"
 :end
