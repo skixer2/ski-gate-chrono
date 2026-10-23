@@ -166,7 +166,13 @@
 ///          label = local date + daily ordinal ("2026-10-23 Run 2"); name
 ///          persisted in runs.json index, shown in list + detail header;
 ///          will ride along with cloud upload attribution later.
-const String APP_VERSION = '1.61.0';
+///   1.61.1 - CRASH FIX (JP bench, 2026-10-23): rename dialog Cancel crashed
+///          the app — TextEditingController was disposed in the caller right
+///          after pop while the dialog exit animation still held the
+///          TextField attached (use-after-dispose). Dialog is now its own
+///          StatefulWidget owning the controller (disposed only after the
+///          route is fully gone); pop returns the text or null on cancel.
+const String APP_VERSION = '1.61.1';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

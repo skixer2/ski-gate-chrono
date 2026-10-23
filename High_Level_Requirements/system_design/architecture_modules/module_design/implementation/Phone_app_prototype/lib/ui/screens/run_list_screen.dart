@@ -1250,38 +1250,23 @@ class _RunListScreenState extends State<RunListScreen>
   }
 
   /// F45: rename dialog. Empty input = back to default label.
+  /// 1.61.1 fix: the dialog owns its TextEditingController in a
+  /// StatefulWidget — disposing it in the caller right after pop crashed
+  /// the app on Cancel (exit animation still had the TextField attached:
+  /// use-after-dispose). Route widgets are disposed only AFTER the exit
+  /// animation completes, so the lifecycle is now correct by construction.
   Future<void> _promptRename(SavedRun run) async {
-    final ctrl = TextEditingController(text: run.name ?? '');
-    final saved = await showDialog<bool>(
+    final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Name this run'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLength: 40,
-          decoration: InputDecoration(
-            hintText: 'e.g. Race simulation · empty = ${_defaultRunLabel(run)}',
-          ),
-          onSubmitted: (_) => Navigator.pop(ctx, true),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save'),
-          ),
-        ],
+      builder: (ctx) => _RenameDialog(
+        initialName: run.name,
+        defaultHint: _defaultRunLabel(run),
       ),
     );
-    if (saved == true) {
-      await _storage.renameRun(run.fileName, ctrl.text);
+    if (result != null) {
+      await _storage.renameRun(run.fileName, result);
       await _loadLocalRuns();
     }
-    ctrl.dispose();
   }
 
   Widget _infoRow(String label, String value) {
@@ -1389,6 +1374,62 @@ class _ScanSheetState extends State<_ScanSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+/// F45 rename dialog (1.61.1): StatefulWidget so the TextEditingController
+/// lives and dies with the route widget — disposed only after the exit
+/// animation completes. Pops with the typed text (Save/Enter) or null
+/// (Cancel / back).
+class _RenameDialog extends StatefulWidget {
+  final String? initialName;
+  final String defaultHint;
+
+  const _RenameDialog({required this.initialName, required this.defaultHint});
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialName ?? '');
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Name this run'),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        maxLength: 40,
+        decoration: InputDecoration(
+          hintText: 'e.g. Race simulation · empty = ${widget.defaultHint}',
+        ),
+        onSubmitted: (_) => Navigator.pop(context, _ctrl.text),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }
