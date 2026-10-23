@@ -1043,15 +1043,27 @@ class _RunListScreenState extends State<RunListScreen>
                         Card(
                           child: ListTile(
                             leading: const Icon(Icons.merge_type),
-                            title: Text(
-                                'Run #${m['aId']} + #${m['bId']}'),
+                            title: Text(_mergeDisplayName(m)),
                             subtitle: Text(
+                                '${_mergeHasName(m) ? 'Run #${m['aId']} + #${m['bId']} · ' : ''}'
                                 '${(m['gates'] as List).length} gates impact-confirmed · dual device'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit,
+                                      size: 20, color: Colors.grey),
+                                  tooltip: 'Rename merged course',
+                                  onPressed: () => _promptRenameMerge(m),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    color: Colors.grey),
+                              ],
+                            ),
                             onTap: () =>
                                 Navigator.of(context).push(MaterialPageRoute(
                               builder: (_) => MergedRunScreen(
-                                title:
-                                    'Run #${m['aId']} + #${m['bId']}',
+                                title: _mergeDisplayName(m),
                                 gates: (m['gates'] as List)
                                     .cast<Map<String, dynamic>>(),
                                 baro: (m['baro'] as List?)
@@ -1059,6 +1071,7 @@ class _RunListScreenState extends State<RunListScreen>
                                     const [],
                               ),
                             )),
+                            onLongPress: () => _promptRenameMerge(m),
                           ),
                         ),
                       const SizedBox(height: 12),
@@ -1247,6 +1260,35 @@ class _RunListScreenState extends State<RunListScreen>
       });
     final n = sameDay.indexWhere((r) => r.fileName == run.fileName) + 1;
     return '$dayKey Run $n';
+  }
+
+  /// F45 (merged extension, JP 2026-10-23): user-editable name for merged
+  /// courses. Default label = the pair identity ("Run #12 + #13"); a set
+  /// name takes the title, the pair identity moves to the subtitle.
+  bool _mergeHasName(Map<String, dynamic> m) =>
+      (m['name'] as String?)?.isNotEmpty == true;
+
+  String _mergeDisplayName(Map<String, dynamic> m) =>
+      _mergeHasName(m) ? m['name'] as String : 'Run #${m['aId']} + #${m['bId']}';
+
+  Future<void> _promptRenameMerge(Map<String, dynamic> m) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _RenameDialog(
+        initialName: m['name'] as String?,
+        defaultHint: 'Run #${m['aId']} + #${m['bId']}',
+      ),
+    );
+    if (result == null) return;
+    final name = result.trim();
+    if (name.isEmpty) {
+      m.remove('name');
+    } else {
+      m['name'] = name;
+    }
+    // Same entry count — passes the monotonic shrink guard by design.
+    await _storage.saveMerges(_merges);
+    if (mounted) setState(() {});
   }
 
   /// F45: rename dialog. Empty input = back to default label.

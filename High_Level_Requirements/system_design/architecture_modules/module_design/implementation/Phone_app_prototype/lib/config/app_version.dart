@@ -172,7 +172,12 @@
 ///          TextField attached (use-after-dispose). Dialog is now its own
 ///          StatefulWidget owning the controller (disposed only after the
 ///          route is fully gone); pop returns the text or null on cancel.
-const String APP_VERSION = '1.61.1';
+///   1.62 - F45 EXTENSION (JP 2026-10-23 12:55): merged courses renameable
+///          too — same _RenameDialog, name persisted in merged_runs.json,
+///          default stays "Run #a + #b" (moves to subtitle when named),
+///          detail header follows the name. Same-count save passes the
+///          monotonic shrink guard by design.
+const String APP_VERSION = '1.62.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
