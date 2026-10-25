@@ -284,6 +284,11 @@ static ssize_t write_dev_name(struct bt_conn *conn,
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
 	}
 	ble_config_set_dev_name((const char *)buf, (uint8_t)len);
+	/* Keep the GAP Device Name characteristic in step with the
+	 * advertisement (generic scanners read either). */
+	if (bt_set_name(ble_config_dev_name()) != 0) {
+		printk("cfg: GAP name update failed\n");
+	}
 	printk("cfg: name <- '%s' (%u B)\n", ble_config_dev_name(), len);
 	return len;
 }
@@ -922,13 +927,24 @@ static const struct bt_data ad[] = {
 		sizeof(product_svc_uuid.val)),
 };
 
-static const struct bt_data sd[] = {
-	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME,
-		sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+/* v0.21.5: advertised name = F21-configured name, not the build
+ * constant. Built fresh on every pull_proto_sd() call: name writes
+ * arrive only while connected (advertising is down then), so the
+ * next re-advertise picks up renames with no in-connection restart.
+ * <=20 B name fits the 31-byte scan-response budget. */
+static struct bt_data sd_dyn[] = {
+	{ .type = BT_DATA_NAME_COMPLETE, .data_len = 0, .data = (const uint8_t *)"" },
 };
 
 const struct bt_data *pull_proto_ad(void)   { return ad; }
-const struct bt_data *pull_proto_sd(void)   { return sd; }
+const struct bt_data *pull_proto_sd(void)
+{
+	const char *n = ble_config_dev_name();
+
+	sd_dyn[0].data = (const uint8_t *)n;
+	sd_dyn[0].data_len = (uint8_t)strlen(n);
+	return sd_dyn;
+}
 uint8_t pull_proto_ad_len(void)             { return ARRAY_SIZE(ad); }
 uint8_t pull_proto_sd_len(void)             { return ARRAY_SIZE(sd); }
 

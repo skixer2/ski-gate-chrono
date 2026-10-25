@@ -21,6 +21,7 @@
 #include <zephyr/bluetooth/conn.h>
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
+#include "ble_config.h"
 
 static volatile bool connected;
 
@@ -137,8 +138,13 @@ static void bt_ready(int err)
 	}
 	printk("Bluetooth initialized\n");
 
+	/* v0.21.5: GAP name from persisted config (loaded in main
+	 * before ble_lifecycle_start) - matches the advertisement. */
+	if (bt_set_name(ble_config_dev_name()) != 0) {
+		printk("GAP name set failed\n");
+	}
 	start_advertising();
-	printk("Advertising as %s\n", CONFIG_BT_DEVICE_NAME);
+	printk("Advertising as %s\n", ble_config_dev_name());
 }
 
 void ble_lifecycle_start(void)
