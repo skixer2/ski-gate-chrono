@@ -92,8 +92,27 @@ class RunCreate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     visibility: Literal["full", "athlete_only", "denied"] | None = None
     course_id: int | None = None
+    # P1.5 (JP-approved 2026-10-26): merged-course provenance + lineage.
+    # run_type defaults to 'single'; merged runs MAY omit source_run_ids —
+    # the source runs can predate the cloud (contract allows absent/empty).
+    run_type: Literal["single", "merged"] = "single"
+    source_run_ids: list[int] | None = None
     timestamps: list[TimestampIn] = Field(default_factory=list)
     barometric_data: list[BarometricDataIn] = Field(default_factory=list)
+
+    @field_validator("source_run_ids", mode="before")
+    @classmethod
+    def _source_ids_are_ints(cls, v: object) -> object:
+        # Contract: entries must be ints if provided. mode="before" so the
+        # raw JSON values are checked — Pydantic lax mode would otherwise
+        # coerce "7"→7 and True→1 before an after-validator ever ran.
+        if v is None:
+            return v
+        if not isinstance(v, list) or not all(
+            isinstance(i, int) and not isinstance(i, bool) for i in v
+        ):
+            raise ValueError("source_run_ids must be a list of integers")
+        return v
 
     @field_validator("start_datetime")
     @classmethod
@@ -140,6 +159,10 @@ class RunOut(BaseModel):
     format_version: int
     lock_version: int
     course_id: int | None
+    # P1.5: returned verbatim on every run representation (list + detail).
+    # Pre-P1.5 rows read back as run_type="single", source_run_ids=null.
+    run_type: str
+    source_run_ids: list[int] | None
     already_exists: bool | None = None
 
 

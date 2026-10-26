@@ -183,3 +183,80 @@ def test_course_id_rejected_in_v1(client):
     payload = sample_run_payload("uuid-course-1")
     payload["course_id"] = 1
     assert _upload(client, tokens, payload).status_code == 422
+
+
+# --- P1.5: run_type + source_run_ids (merged-run lineage) -------------------
+
+
+def test_merged_upload_with_lineage_roundtrip(client):
+    """P1.5 contract: merged run + lineage survives upload → GET (detail AND
+    list items return run_type / source_run_ids verbatim)."""
+    tokens = register_and_login(client, name="merger")
+    src1 = _upload(client, tokens, sample_run_payload("uuid-src-1")).json()["id"]
+    src2 = _upload(client, tokens, sample_run_payload("uuid-src-2")).json()["id"]
+
+    payload = sample_run_payload("uuid-merged-1")
+    payload["run_type"] = "merged"
+    payload["source_run_ids"] = [src1, src2]
+    r = _upload(client, tokens, payload)
+    assert r.status_code == 201, r.text
+    merged_id = r.json()["id"]
+
+    detail = client.get(f"/v1/runs/{merged_id}", headers=auth_headers(tokens))
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["run_type"] == "merged"
+    assert body["source_run_ids"] == [src1, src2]
+
+    items = client.get("/v1/runs", headers=auth_headers(tokens)).json()["items"]
+    by_id = {i["id"]: i for i in items}
+    assert by_id[merged_id]["run_type"] == "merged"
+    assert by_id[merged_id]["source_run_ids"] == [src1, src2]
+    assert by_id[src1]["run_type"] == "single"
+    assert by_id[src1]["source_run_ids"] is None
+
+
+def test_run_type_defaults_to_single(client):
+    # No P1.5 fields in the payload — legacy-style upload stays valid.
+    tokens = register_and_login(client, name="defaulter")
+    run_id = _upload(client, tokens, sample_run_payload("uuid-default-1")).json()["id"]
+    body = client.get(f"/v1/runs/{run_id}", headers=auth_headers(tokens)).json()
+    assert body["run_type"] == "single"
+    assert body["source_run_ids"] is None
+
+    # Explicit values round-trip too; an explicitly empty lineage stays [].
+    payload = sample_run_payload("uuid-default-2")
+    payload["run_type"] = "single"
+    payload["source_run_ids"] = []
+    rid = _upload(client, tokens, payload).json()["id"]
+    body = client.get(f"/v1/runs/{rid}", headers=auth_headers(tokens)).json()
+    assert body["run_type"] == "single"
+    assert body["source_run_ids"] == []
+
+
+def test_merged_without_lineage_is_allowed(client):
+    # JP contract: sources may predate the cloud — merged + no lineage is OK.
+    tokens = register_and_login(client, name="legacy-merger")
+    payload = sample_run_payload("uuid-merged-nolineage")
+    payload["run_type"] = "merged"
+    rid = _upload(client, tokens, payload).json()["id"]
+    body = client.get(f"/v1/runs/{rid}", headers=auth_headers(tokens)).json()
+    assert body["run_type"] == "merged"
+    assert body["source_run_ids"] is None
+
+
+@pytest.mark.parametrize("bad_type", ["combo", "", "MERGED"])
+def test_invalid_run_type_422(client, bad_type):
+    tokens = register_and_login(client, name="badtype")
+    payload = sample_run_payload("uuid-badtype-1")
+    payload["run_type"] = bad_type
+    assert _upload(client, tokens, payload).status_code == 422
+
+
+@pytest.mark.parametrize("bad_ids", [["7"], [1.5], [True], ["x"], 7, "7"])
+def test_non_int_source_run_ids_422(client, bad_ids):
+    tokens = register_and_login(client, name="badids")
+    payload = sample_run_payload("uuid-badids-1")
+    payload["run_type"] = "merged"
+    payload["source_run_ids"] = bad_ids
+    assert _upload(client, tokens, payload).status_code == 422

@@ -16,6 +16,11 @@ Schema additions sanctioned by remote_db_architecture.md (flagged inline):
                                  v1 self-registration may have no club.
   * runs.client_run_uuid       — §4 idempotency key (F43 offline queue
                                  re-sends the same upload).
+  * runs.run_type + runs.source_run_ids — P1.5 (JP-approved 2026-10-26):
+                                 merged-course provenance + lineage. The
+                                 app uploads merged runs; existing rows
+                                 default to 'single' via migration
+                                 server_default (c4f81a9e2b67).
 
 Every child FK uses ON DELETE CASCADE so run deletion (F46 cloud leg),
 GDPR hard-delete (§9) and the nightly retention purge (§5) are single-row
@@ -25,6 +30,7 @@ deletes at the parent.
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -206,11 +212,33 @@ class Run(Base):
     # §4 idempotency key: client-generated UUID; a retry after a lost ACK
     # returns the existing run instead of duplicating it (F43).
     client_run_uuid: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    # P1.5 provenance (JP-approved 2026-10-26): 'single' = one device run;
+    # 'merged' = phone-combined multi-device run (merged-course flow).
+    # server_default backfills every pre-P1.5 row as 'single' (no data
+    # change); Pydantic enforces the vocabulary at the API edge, this CHECK
+    # is defense-in-depth for fresh ORM-created tables.
+    run_type: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="single",
+        server_default="single",
+    )
+    # P1.5 merged-run lineage: list of cloud run ids the merge drew from.
+    # Type choice: SQLAlchemy JSON — stored as JSON text on SQLite and as
+    # native JSON on PostgreSQL; both dialects round-trip Python list[int]
+    # and neither needs a dialect-specific type (no JSONB/ARRAY), so the §2
+    # SQLite→PostgreSQL portability guardrail holds. NULL = no lineage
+    # (single runs, or merged runs whose sources predate the cloud — the
+    # JP-approved contract explicitly allows that).
+    source_run_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
             "visibility IN ('full','athlete_only','denied') OR visibility IS NULL",
             name="ck_runs_visibility",
+        ),
+        CheckConstraint(
+            "run_type IN ('single','merged')", name="ck_runs_run_type"
         ),
         CheckConstraint(
             "format_version BETWEEN 0 AND 255", name="ck_runs_format_version"

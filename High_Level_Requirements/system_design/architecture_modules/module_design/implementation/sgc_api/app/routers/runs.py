@@ -43,6 +43,8 @@ def _run_out(run: Run, already_exists: bool | None = None) -> RunOut:
         format_version=run.format_version,
         lock_version=run.lock_version,
         course_id=run.course_id,
+        run_type=run.run_type,
+        source_run_ids=run.source_run_ids,
         already_exists=already_exists,
     )
 
@@ -101,6 +103,8 @@ def upload_run(
         format_version=payload.format_version,
         lock_version=1,  # server-owned, always starts at 1 (§4)
         course_id=None,  # §11.10: always null in v1
+        run_type=payload.run_type,  # P1.5: 'single' | 'merged'
+        source_run_ids=payload.source_run_ids,  # P1.5 merged lineage (may be None)
     )
     # One transaction for meta + children (§2 guardrail 4): nothing commits
     # until db.commit() below — a crash mid-upload leaves no partial run.

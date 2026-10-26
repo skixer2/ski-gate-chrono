@@ -72,15 +72,30 @@ bash scripts/smoke.sh 8901       # curl end-to-end vs throwaway SQLite DB
 | POST `/v1/auth/login`                | none       | access + refresh (rotated) |
 | POST `/v1/auth/refresh`              | refresh    | single-use refresh tokens |
 | GET/PUT `/v1/profile`                | JWT        | F20; PUT is activation-gated |
-| POST `/v1/runs`                      | JWT+gate   | meta + `timestamps[]` + `barometric_data[]` in ONE txn; idempotent on `client_run_uuid` (retry → 200 `already_exists`); `lock_version=1` server-set; 413 over row caps |
-| GET  `/v1/runs`                      | JWT        | own runs; `?athlete_id&from&to&limit&cursor` |
-| GET  `/v1/runs/{id}`                 | JWT        | `?include=timestamps,barometric_data` |
+| POST `/v1/runs`                      | JWT+gate   | meta + `timestamps[]` + `barometric_data[]` in ONE txn; idempotent on `client_run_uuid` (retry → 200 `already_exists`); `lock_version=1` server-set; 413 over row caps; P1.5: optional `run_type` (`single`\|`merged`, default `single`) + `source_run_ids` (list of cloud run ids, merged-run lineage) |
+| GET  `/v1/runs`                      | JWT        | own runs; `?athlete_id&from&to&limit&cursor`; items include `run_type` + `source_run_ids` verbatim (P1.5) |
+| GET  `/v1/runs/{id}`                 | JWT        | `?include=timestamps,barometric_data`; returns `run_type` + `source_run_ids` verbatim (P1.5) |
 | PUT  `/v1/runs/{id}`                 | JWT+gate   | rename (F45); `If-Match: <lock_version>` → 428 missing / 409 mismatch |
 | DELETE `/v1/runs/{id}`               | JWT        | 204; children cascade; **never activation-blocked** |
 | POST `/v1/me/gdpr-delete`            | JWT        | `{confirm: true}` → hard-delete user+runs+children+tokens; everything 404s after (§9) |
 | (cron) `python -m app.routers.retention` | —      | purge runs older than 365 d (§5, reqs v6.3) |
 
 Activation windows (§5, JP-decided): expired ⇒ **writes 403** (`activation_expired` / `club_expired`), reads + deletion always allowed.
+
+### Merged runs (P1.5, JP-approved 2026-10-26)
+
+POST `/v1/runs` accepts two optional fields: `run_type`
+(`"single"` \| `"merged"`, default `"single"`) and `source_run_ids`
+(list of cloud run ids — lineage of a merged run; may be absent/empty
+when the source runs predate the cloud). Validation: anything but
+`single`/`merged` ⇒ 422; non-integer lineage entries ⇒ 422; merged
+without `source_run_ids` is **allowed**. All run GETs return both
+fields verbatim; pre-P1.5 rows read back as `run_type="single"`,
+`source_run_ids=null` (migration `c4f81a9e2b67` server_default, no
+data change). Note: the DB-level CHECK on `run_type` exists only on
+tables created from the ORM models — SQLite cannot ADD CONSTRAINT via
+ALTER TABLE, so on migrated DBs the vocabulary is enforced by the
+Pydantic schema (422).
 
 ## Docker (P0 proto posture)
 
