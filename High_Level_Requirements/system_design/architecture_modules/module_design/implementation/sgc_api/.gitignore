@@ -9,3 +9,9 @@ data/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Secrets (prod) — never commit
+.env
+
+# Build artifact (committed by accident in 0f4630f — removed)
+sgc_api.egg-info/

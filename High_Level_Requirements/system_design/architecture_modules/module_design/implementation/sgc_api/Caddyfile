@@ -1,0 +1,11 @@
+# SGC-API reverse proxy (§3): TLS terminated here, auto Let's Encrypt.
+sgc-api.vytsolutions.com {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		# Minimal API hardening (§10)
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+	reverse_proxy sgc-api:8000
+}

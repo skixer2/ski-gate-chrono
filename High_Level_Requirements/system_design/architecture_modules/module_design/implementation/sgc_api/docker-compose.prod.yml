@@ -1,0 +1,54 @@
+# SGC-API production stack (P0, 2026-10-26) — app + Caddy TLS on the
+# Hostinger VPS. Domain: sgc-api.vytsolutions.com (JP DNS A record).
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#
+# Differences from the dev docker-compose.yml:
+#   - app NOT published on the host at all (Caddy reaches it on the
+#     internal compose network only)
+#   - Caddy publishes 80/443 (both were free on the VPS), auto-HTTPS via
+#     Let's Encrypt, HTTP->HTTPS redirect, HSTS (§3, §10)
+#
+# Secrets: .env (gitignored) provides SGC_API_SECRET_KEY.
+services:
+  sgc-api:
+    build: .
+    container_name: sgc-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SGC_API_DATABASE_URL: "sqlite:////data/sgc.db"
+    expose:
+      - "8000"
+    volumes:
+      - sgc-api-data:/data      # SQLite file + WAL survive container rebuilds
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: sgc-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"           # HTTP/3
+    volumes:
+      # Bind source is resolved by the DOCKER DAEMON on the host, where this
+      # workspace lives at /root/.openclaw/workspace/... — set SGC_API_HOST_DIR
+      # in .env (a relative ./Caddyfile only works when compose itself runs
+      # on the host, not from inside the gateway container).
+      - ${SGC_API_HOST_DIR:?set SGC_API_HOST_DIR in .env}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data        # certificates
+      - caddy-config:/config
+    depends_on:
+      - sgc-api
+
+volumes:
+  sgc-api-data:
+  caddy-data:
+  caddy-config:

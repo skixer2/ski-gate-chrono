@@ -7,10 +7,20 @@ RUN useradd --create-home --shell /usr/sbin/nologin appuser
 
 WORKDIR /srv/sgc-api
 
-# Install deps first for layer caching.
-COPY pyproject.toml ./
+# Install the package for real (deps + app + console entrypoints).
+# NOTE: app/ and alembic/ must be present BEFORE `pip install .` —
+# setuptools packages the source tree at install time, so installing
+# from a directory containing only pyproject.toml ships an EMPTY
+# package (bench 2026-10-26: alembic died with ModuleNotFoundError:
+# app). Layer caching for deps sacrificed deliberately (P0 image).
+COPY pyproject.toml alembic.ini ./
 COPY app ./app
+COPY alembic ./alembic
 RUN pip install --no-cache-dir .
+
+# SQLite home (named volume mounts here; seeded with this ownership on
+# first mount — appuser must own it or sqlite3 fails 'unable to open').
+RUN mkdir -p /data && chown appuser:appuser /data
 
 USER appuser
 
