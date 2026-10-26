@@ -8,7 +8,7 @@ class CourseSetupScreen extends StatefulWidget {
   final Course? existingCourse;
   /// Called when a course is saved (Mode A: new course created; Mode B: existing course updated).
   /// Pass `null` if the user cancelled without saving.
-  final void Function(Course)? onSave;
+  final void Function(Course?)? onSave;
 
   const CourseSetupScreen({
     super.key,

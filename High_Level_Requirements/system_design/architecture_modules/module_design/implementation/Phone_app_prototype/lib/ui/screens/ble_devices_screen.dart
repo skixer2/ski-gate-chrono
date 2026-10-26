@@ -110,9 +110,7 @@ class _BleDevicesScreenState extends State<BleDevicesScreen> {
                           TextStyle(fontSize: 18, color: Colors.grey)),
                   SizedBox(height: 8),
                   Text(
-                      'Connect a device to pair it — it then becomes an
-'
-                      'auto-sync target when the app is open.',
+                      'Connect a device to pair it — it then becomes an\nauto-sync target when the app is open.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey)),
                 ],

@@ -1363,9 +1363,10 @@ class _RunListScreenState extends State<RunListScreen>
     final d = DateTime.fromMillisecondsSinceEpoch(timestampSec * 1000,
             isUtc: true)
         .toLocal();
-    return '\${d.year.toString().padLeft(4, '0')}-'
-        '\${d.month.toString().padLeft(2, '0')}-'
-        '\${d.day.toString().padLeft(2, '0')}';
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
   }
 
   /// Distinct local dates present in the local run set (newest first).
