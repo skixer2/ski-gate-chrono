@@ -225,7 +225,29 @@
 ///          summary), Settings "Cloud Account"/"Cloud Runs" tiles (warn
 ///          when push on but signed out), profile age/category mirror on
 ///          save (name never PUT — it is the v1 login credential).
-const String APP_VERSION = '1.67.0';
+///   1.68 - MERGED COURSES TO THE CLOUD (JP-approved 2026-10-26 19:06:
+///          "upload everything: singles AND merged, as distinct types").
+///          UploadQueue entries gain run_type (single|merged) + a merged
+///          lane: deterministic RFC-4122-SHAPED uuid v5-style from the
+///          merge identity (namespace const + aId|bId|aFile|bFile,
+///          hand-rolled FNV-1a cascade — no crypto dep) so the
+///          idempotency key is stable across restarts/queue rebuilds;
+///          SyncWorker backfills every persisted merge each pass,
+///          processes singles BEFORE merged, and DEFERS a merged upload
+///          (fixed 2-min backoff, no attempt inflation) until both
+///          sources are DONE — sources permanently POISONED or deleted
+///          upload without their lineage id. Merged payload = blended
+///          confirmed gates (ms/side/estimated → timestamp_ms/arm_side/
+///          guessed) + averaged 10 Hz baro (ms/alt → time_offset_ms/
+///          altitude_m/speed_mps derivative), start = source-a header
+///          datetime, run_number = aId, name = merge name, + new server
+///          fields run_type="merged" and source_run_ids=[a,b].
+///          Cloud Runs: Merged badge + All/Single/Merged filter
+///          (client-side over loaded pages); Cloud detail: Type row,
+///          "Merged from runs #a + #b" lineage, Merged app-bar badge.
+///          Trigger: merge pass completion (new merges or baro
+///          backfill) + the existing app-start pass (idempotent).
+const String APP_VERSION = '1.68.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

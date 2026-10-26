@@ -35,7 +35,37 @@ class _CloudRunDetailScreenState extends State<CloudRunDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cloud Run Detail')),
+      appBar: AppBar(
+        // 1.68: the merged-ness is only known after the fetch — the
+        // badge rides on the same (memoized) future as the body.
+        title: FutureBuilder<Map<String, dynamic>>(
+          future: _future,
+          builder: (context, snap) {
+            final isMerged = snap.hasData &&
+                (snap.data!['run_type'] as String? ?? 'single') == 'merged';
+            return Row(children: [
+              const Text('Cloud Run Detail'),
+              if (isMerged) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    border:
+                        Border.all(color: Colors.deepPurple.shade300),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text('Merged',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.deepPurple.shade400,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ]);
+          },
+        ),
+      ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: _future,
         builder: (context, snap) {
@@ -64,6 +94,14 @@ class _CloudRunDetailScreenState extends State<CloudRunDetailScreen> {
               (run['timestamps'] as List<dynamic>? ?? const []).cast<Map<String, dynamic>>();
           final baro =
               (run['barometric_data'] as List<dynamic>? ?? const []).cast<Map<String, dynamic>>();
+          // 1.68: lineage — cloud ids of the source runs this merged
+          // course was blended from (empty/absent for singles and for
+          // merged rows uploaded before the lineage was resolvable).
+          final sourceIds = [
+            for (final v in run['source_run_ids'] as List<dynamic>? ?? const [])
+              if (v is num) v.toInt(),
+          ];
+          final runType = run['run_type'] as String? ?? 'single';
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -90,6 +128,10 @@ class _CloudRunDetailScreenState extends State<CloudRunDetailScreen> {
                       ]),
                       const SizedBox(height: 12),
                       _row('Cloud ID', '${run['id']}'),
+                      _row('Type', runType == 'merged' ? 'Merged course' : 'Single run'),
+                      if (sourceIds.isNotEmpty)
+                        _row('Merged from',
+                            'runs ${sourceIds.map((id) => '#$id').join(' + ')}'),
                       _row('Date', dateStr),
                       _row('Run number', '${run['run_number'] ?? '—'}'),
                       _row('Format version', '${run['format_version'] ?? '—'}'),

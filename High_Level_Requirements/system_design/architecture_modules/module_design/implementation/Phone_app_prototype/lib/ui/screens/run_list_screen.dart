@@ -429,16 +429,28 @@ class _RunListScreenState extends State<RunListScreen>
         inMerge.add(b.fileName);
       }
     }
+    bool newMerges = false;
     if (merged.length != _merges.length) {
       await _storage.saveMerges(merged);
       _merges = merged;
+      newMerges = true;
       if (mounted) setState(() {});
     }
     // Backfill: entries created before 1.59 lack the averaged baro profile.
-    await _backfillMergedBaro();
+    final baroBackfilled = await _backfillMergedBaro();
+
+    // 1.68: new (or baro-backfilled) merges go to the cloud too — upload
+    // everything, singles AND merged, as distinct types (JP 2026-10-26
+    // 19:06). The kick is idempotent: the worker's merged backfill keys
+    // entries by the merge identity, so existing merges never re-enqueue.
+    if (newMerges || baroBackfilled) {
+      // ignore: unawaited_futures
+      SyncWorker.instance.kick('merge pass saved new merges');
+    }
   }
 
-  Future<void> _backfillMergedBaro() async {
+  /// Returns true when at least one merge gained its baro profile.
+  Future<bool> _backfillMergedBaro() async {
     final byFile = {for (final r in _localRuns) r.fileName: r};
     var changed = false;
     for (final m in _merges) {
@@ -466,6 +478,7 @@ class _RunListScreenState extends State<RunListScreen>
       await _storage.saveMerges(_merges);
       if (mounted) setState(() {});
     }
+    return changed;
   }
 
   /// Gate estimate for a saved run (cached; computed in an isolate).
