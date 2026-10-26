@@ -1,0 +1,27 @@
+# SGC-API P0 compose — single container, SQLite on a volume, proto posture:
+# published ONLY on the host loopback (§3: TLS terminates at the VPS reverse
+# proxy later; the DB port is never published).
+services:
+  sgc-api:
+    build: .
+    container_name: sgc-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # proto bind — reverse proxy joins later
+    environment:
+      # Secrets come from the environment — set SGC_API_SECRET_KEY before up.
+      SGC_API_SECRET_KEY: "${SGC_API_SECRET_KEY:?set SGC_API_SECRET_KEY in your shell or .env}"
+      SGC_API_DATABASE_URL: "sqlite:////data/sgc.db"
+      SGC_API_API_BASE: "${SGC_API_API_BASE:-http://127.0.0.1:8000}"
+      SGC_API_MIN_APP_VERSION: "1.65"
+    volumes:
+      - sgc-api-data:/data      # SQLite file + WAL survive container rebuilds
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  sgc-api-data:

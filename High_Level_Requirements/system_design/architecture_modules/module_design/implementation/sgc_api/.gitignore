@@ -1,0 +1,11 @@
+# Local SQLite databases (dev/smoke) — never commit.
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
