@@ -20,6 +20,9 @@ dependencies:
   crclib: ^3.0.0                    # CRC32 verification
   freezed_annotation: ^2.4.0        # Immutable data classes
   json_annotation: ^4.9.0           # JSON serialization
+  http: ^1.2.0                      # Cloud REST client (P1: F23/F43/F48/F50)
+  flutter_secure_storage: ^9.2.2    # Auth tokens at rest (NOT SharedPreferences)
+  connectivity_plus: ^6.0.0         # Sync-worker trigger on connectivity regained
 
 dev_dependencies:
   flutter_test:

@@ -1101,17 +1101,19 @@ class _RunListScreenState extends State<RunListScreen>
                       ),
                     ],
                     const SizedBox(height: 12),
-                    if (_merges.isNotEmpty) ...[
+                    if (_filteredMerges.isNotEmpty) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 4, vertical: 4),
-                        child: Text('Merged Courses (${_merges.length})',
+                        child: Text(
+                            'Merged Courses (${_filteredMerges.length}'
+                            '${_dateFilter == null ? '' : ' of ${_merges.length}'})',
                             style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.grey.shade700)),
                       ),
-                      for (final m in _merges)
+                      for (final m in _filteredMerges)
                         Card(
                           child: ListTile(
                             leading: const Icon(Icons.merge_type),
@@ -1382,6 +1384,19 @@ class _RunListScreenState extends State<RunListScreen>
       : _localRuns
           .where((r) => _dayKeyOf(r.timestamp) == _dateFilter)
           .toList();
+
+  /// JP 2026-10-26 15:13: merged courses follow the date filter too — a
+  /// merge's day = the day of its first source run (aFile lookup). If the
+  /// source run is no longer on the phone, never hide the merge.
+  bool _mergeMatchesDateFilter(Map<String, dynamic> m) {
+    if (_dateFilter == null) return true;
+    final src = _localRuns.where((r) => r.fileName == m['aFile']).toList();
+    if (src.isEmpty) return true;
+    return _dayKeyOf(src.first.timestamp) == _dateFilter;
+  }
+
+  List<Map<String, dynamic>> get _filteredMerges =>
+      _merges.where(_mergeMatchesDateFilter).toList();
 
   /// F45 (JP 2026-10-26 #8 revision): default label = 1-based ordinal
   /// that day (ordered by timestamp, then id). Deterministic from the

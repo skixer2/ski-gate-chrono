@@ -202,7 +202,11 @@
 ///          (3) F45 label revision: default run name = plain 'Run N'
 ///          (date stays visible on the tile); new date filter in the app
 ///          bar (popup, distinct local dates).
-const String APP_VERSION = '1.66.0';
+///   1.66.1 - JP BENCH 2026-10-26 15:13: merged courses follow the active
+///          date filter (merge day = first source run's day via aFile
+///          lookup; missing-source merges are never hidden). Header shows
+///          "n of N" while filtered.
+const String APP_VERSION = '1.66.1';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 
