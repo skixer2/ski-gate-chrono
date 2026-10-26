@@ -349,46 +349,6 @@ class ApiClient {
   }) async {
     await ready;
 
-    Future<Map<String, dynamic>> attempt(String? token) async {
-      final uri = Uri.parse('$_apiBase$path');
-      final headers = <String, String>{
-        'Accept': 'application/json',
-        if (jsonBody != null) 'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
-      };
-      http.Response resp;
-      try {
-        final req = http.Request(method, uri)..headers.addAll(headers);
-        if (jsonBody != null) req.body = jsonEncode(jsonBody);
-        resp =
-            await http.Response.fromStream(await _http.send(req))
-                .timeout(const Duration(seconds: 30));
-      } on SocketException catch (e) {
-        throw NetworkException('No connection: ${e.message}');
-      } on HttpException catch (e) {
-        throw NetworkException('Network error: ${e.message}');
-      } on TimeoutException {
-        throw NetworkException('Request timed out');
-      } catch (e) {
-        // http ClientException and friends — transport-level, retryable.
-        throw NetworkException('Network error: $e');
-      }
-
-      // 401 → exactly one refresh+retry happens OUTSIDE attempt (below).
-      if (resp.statusCode >= 400) {
-        final decoded = _tryDecode(resp.body);
-        final msg = CloudException.extractDetail(decoded, resp.body);
-        _throwForStatus(resp.statusCode, msg);
-      }
-      if (expectStatus != null && resp.statusCode != expectStatus) {
-        throw CloudException(
-            'Unexpected status ${resp.statusCode} (expected $expectStatus)',
-            statusCode: resp.statusCode);
-      }
-      final decoded = _tryDecode(resp.body);
-      return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-    }
-
     String? token;
     if (authed) {
       if (accessTokenOverride != null) {
@@ -402,16 +362,67 @@ class ApiClient {
       }
     }
 
-    var result = await attempt(token);
-    if (authed && accessTokenOverride == null && _lastWasAuthError) {
-      // Never actually set — see below; kept for clarity of control flow.
+    try {
+      return await _attempt(method, path, jsonBody, token, expectStatus);
+    } on AuthException {
+      // One automatic retry through /v1/auth/refresh. Only for the normal
+      // authed path — never for login/register/refresh themselves, and
+      // never when the caller pinned a specific token.
+      if (!authed || accessTokenOverride != null) rethrow;
+      final refreshed = await refreshTokens();
+      if (!refreshed) {
+        throw const AuthException('Session expired — sign in again',
+            statusCode: 401);
+      }
+      final session = await _auth.load();
+      return await _attempt(
+          method, path, jsonBody, session?.accessToken, expectStatus);
     }
-    return result;
   }
 
-  // Sentinel placeholder — removed (see _requestAuthed for the real
-  // 401-retry flow). Kept private-unused to be deleted in review.
-  static const bool _lastWasAuthError = false;
+  Future<Map<String, dynamic>> _attempt(
+    String method,
+    String path,
+    Object? jsonBody,
+    String? token,
+    int? expectStatus,
+  ) async {
+    final uri = Uri.parse('$_apiBase$path');
+    final headers = <String, String>{
+      'Accept': 'application/json',
+      if (jsonBody != null) 'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+    http.Response resp;
+    try {
+      final req = http.Request(method, uri)..headers.addAll(headers);
+      if (jsonBody != null) req.body = jsonEncode(jsonBody);
+      resp = await http.Response.fromStream(await _http.send(req))
+          .timeout(const Duration(seconds: 30));
+    } on SocketException catch (e) {
+      throw NetworkException('No connection: ${e.message}');
+    } on HttpException catch (e) {
+      throw NetworkException('Network error: ${e.message}');
+    } on TimeoutException {
+      throw NetworkException('Request timed out');
+    } catch (e) {
+      // http ClientException and friends — transport-level, retryable.
+      throw NetworkException('Network error: $e');
+    }
+
+    if (resp.statusCode >= 400) {
+      final decoded = _tryDecode(resp.body);
+      final msg = CloudException.extractDetail(decoded, resp.body);
+      _throwForStatus(resp.statusCode, msg);
+    }
+    if (expectStatus != null && resp.statusCode != expectStatus) {
+      throw CloudException(
+          'Unexpected status ${resp.statusCode} (expected $expectStatus)',
+          statusCode: resp.statusCode);
+    }
+    final decoded = _tryDecode(resp.body);
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+  }
 
   void _throwForStatus(int status, String msg) {
     switch (status) {

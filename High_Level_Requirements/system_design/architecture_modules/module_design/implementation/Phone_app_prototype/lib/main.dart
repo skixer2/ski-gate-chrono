@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
+import 'cloud/api_client.dart';
+import 'cloud/sync_worker.dart';
 import 'ui/screens/home_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // P1 cloud (F23/F43/F48/F50): bootstrap indirection (I07) loads the
+  // cached api_base and refreshes /bootstrap-info in the background; the
+  // sync worker loads the durable upload queue, arms the connectivity
+  // trigger and kicks the first pass (3 s in, after first frame).
+  // Both are fire-and-forget — offline start must never block the UI.
+  ApiClient.instance.init();
+  SyncWorker.instance.init();
   runApp(const SGCApp());
 }
 

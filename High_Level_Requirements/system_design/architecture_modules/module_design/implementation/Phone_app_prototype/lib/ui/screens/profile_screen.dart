@@ -1,6 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../cloud/api_client.dart';
+import '../../cloud/auth_store.dart';
 
 /// F20 (2026-10-23): athlete profile — read/write, persisted locally in
 /// SharedPreferences. These fields ride along with cloud upload
@@ -59,6 +64,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await p.setBool(_kPush, _push);
     if (!mounted) return;
     setState(() => _status = 'Saved ${DateTime.now().toString().substring(11, 19)} UTC');
+    unawaited(_pushProfileToCloud());
+  }
+
+  /// F20/P1: mirror the profile to the cloud when signed in —
+  /// fire-and-forget (a network hiccup must not block the local save).
+  /// Only age + category are sent: the server's `users.name` IS the login
+  /// credential in v1, and PUT /v1/profile would RENAME the account (the
+  /// next sign-in with the old name would fail). Club/group have no
+  /// server-side field yet (P2 schema).
+  Future<void> _pushProfileToCloud() async {
+    if (!await AuthStore.instance.isSignedIn()) return;
+    final age = int.tryParse(_age.text.trim());
+    final category =
+        _category.text.trim().isEmpty ? null : _category.text.trim();
+    if (age == null && category == null) return; // nothing the server stores
+    try {
+      await ApiClient.instance.updateProfile(age: age, category: category);
+      debugPrint('[Profile] pushed to cloud (age/category)');
+    } on CloudException catch (e) {
+      debugPrint('[Profile] cloud push failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Profile not synced to cloud: ${e.message}'),
+        backgroundColor: Colors.orange,
+      ));
+    } catch (e) {
+      debugPrint('[Profile] cloud push failed: $e');
+    }
   }
 
   @override
@@ -114,7 +147,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   subtitle: const Text(
                       'Attribution uses this profile (remote DB arc — stored for now)'),
                   value: _push,
-                  onChanged: (v) => setState(() => _push = v),
+                  // P1: toggling ON while signed out nudges towards login —
+                  // the queue simply waits until an account exists.
+                  onChanged: (v) async {
+                    setState(() => _push = v);
+                    if (v && !await AuthStore.instance.isSignedIn() && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Push is on — sign in via Settings → '
+                            'Cloud Account to start uploading'),
+                      ));
+                    }
+                  },
                 ),
                 const SizedBox(height: 8),
                 FilledButton.icon(

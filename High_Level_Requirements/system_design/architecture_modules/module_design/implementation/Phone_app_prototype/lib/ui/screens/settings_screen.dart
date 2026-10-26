@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_version.dart';
+import '../../cloud/auth_store.dart';
+import '../../cloud/upload_queue.dart';
 import 'profile_screen.dart';
 import 'ble_devices_screen.dart';
+import 'cloud_account_screen.dart';
+import 'cloud_runs_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,6 +19,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _pairedCount = 0;
   String _profileName = '';
   bool _push = true;   // F20: bound to the profile's push toggle
+  String _cloudName = '';   // P1: signed-in account name ('' = not signed in)
+  int _pendingUploads = 0;
 
   static const _prefsAutoSync = 'sgc.autosync';
   static const _prefsPairedMacs = 'sgc.paired_macs';
@@ -29,12 +35,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    final session = await AuthStore.instance.load();
+    await UploadQueue.instance.load();
     if (!mounted) return;
     setState(() {
       _autoSync = prefs.getBool(_prefsAutoSync) ?? true;
       _pairedCount = (prefs.getStringList(_prefsPairedMacs) ?? []).length;
       _push = prefs.getBool(_prefsPush) ?? true;
       _profileName = prefs.getString(_prefsProfileName) ?? '';
+      _cloudName = session?.user.name ?? '';
+      _pendingUploads = UploadQueue.instance.pendingCount;
     });
   }
 
@@ -101,6 +111,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 setState(() => _push = v);
               },
             ),
+          ),
+          ListTile(
+            leading: Icon(
+              _cloudName.isEmpty && _push
+                  ? Icons.cloud_off
+                  : Icons.cloud_outlined,
+              color: _cloudName.isEmpty && _push ? Colors.orange : null,
+            ),
+            title: const Text('Cloud Account'),
+            subtitle: Text(_cloudName.isEmpty
+                ? (_push
+                    ? '⚠ Push is ON but not signed in — runs queue locally. '
+                        'Tap to sign in or register'
+                    : 'Not signed in')
+                : '$_cloudName · $_pendingUploads run(s) queued'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const CloudAccountScreen()));
+              _load();   // refresh name / queue depth on return
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_sync_outlined),
+            title: const Text('Cloud Runs'),
+            subtitle: const Text('Browse your uploaded runs (read-only)'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CloudRunsScreen()));
+            },
           ),
           const Divider(),
           ListTile(

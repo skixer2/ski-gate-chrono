@@ -206,7 +206,26 @@
 ///          date filter (merge day = first source run's day via aFile
 ///          lookup; missing-source merges are never hidden). Header shows
 ///          "n of N" while filtered.
-const String APP_VERSION = '1.66.1';
+///   1.67 - P1 CLOUD INTEGRATION (F20/F23/F43/F48/F50 + arch §8) against
+///          the deployed sgc-api (https://sgc-api.vytsolutions.com):
+///          ApiClient (I07 bootstrap — app follows api_base, bearer attach,
+///          single mutex'd refresh-on-401 retry, typed exceptions),
+///          AuthStore (tokens in flutter_secure_storage, never
+///          SharedPreferences), UploadQueue (durable upload_queue.json,
+///          atomic temp+rename, uuid-v4 idempotency keys, exponential
+///          backoff 1m→…→1h cap, POISONED only on 413/validation),
+///          SyncWorker (single-flight; triggers: app start, connectivity
+///          regained, every run save, manual; respects push_to_cloud),
+///          upload payload built in an isolate from the SAME decode the
+///          UI shows (GateTimeEstimator timestamps + 10 Hz baro/vertical
+///          speed), Cloud Account screen (register athlete/master + login
+///          + logout + F50 GDPR typed-confirmation hard delete → local
+///          logout + queue wipe), Cloud Runs browser (paged GET /v1/runs,
+///          lazy load-more) + read-only detail (timestamps list + baro
+///          summary), Settings "Cloud Account"/"Cloud Runs" tiles (warn
+///          when push on but signed out), profile age/category mirror on
+///          save (name never PUT — it is the v1 login credential).
+const String APP_VERSION = '1.67.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

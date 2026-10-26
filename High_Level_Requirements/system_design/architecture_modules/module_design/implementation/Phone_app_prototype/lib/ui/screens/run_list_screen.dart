@@ -14,9 +14,11 @@ import '../../processing/decompressor.dart';
 import '../../processing/run_merger.dart';
 import '../../storage/local_storage.dart';
 import '../../config/app_version.dart';
+import '../../cloud/sync_worker.dart';
 import '../../models/device_config.dart';
 import 'run_detail_screen.dart';
 import 'merged_run_screen.dart';
+import 'cloud_runs_screen.dart';
 
 /// Top-level decompression entry point for compute() — runs in a background
 /// isolate so the BLE platform channel is not blocked during multi-run
@@ -316,6 +318,9 @@ class _RunListScreenState extends State<RunListScreen>
               );
               saved++;
               await _loadLocalRuns();
+              // P1 cloud: run landed locally → queue it for upload.
+              // ignore: unawaited_futures
+              SyncWorker.instance.kick('auto-sync run saved');
             } catch (e) {
               debugPrint('[AUTO] save error run #$runId: $e');
             }
@@ -797,6 +802,9 @@ class _RunListScreenState extends State<RunListScreen>
           // Keep the missing-run identity current while the batch is still
           // running; also makes a later cancel leave an accurate screen.
           await _loadLocalRuns();
+          // P1 cloud: run landed locally → queue it for upload.
+          // ignore: unawaited_futures
+          SyncWorker.instance.kick('run saved');
         }
       }
       await _loadLocalRuns();
@@ -939,6 +947,9 @@ class _RunListScreenState extends State<RunListScreen>
           );
           saved++;
           await _loadLocalRuns();
+          // P1 cloud: run landed locally → queue it for upload.
+          // ignore: unawaited_futures
+          SyncWorker.instance.kick('native run saved');
         } catch (e) {
           debugPrint('[SGC-NATIVE] decompress/save error for run #$runId: $e');
           payloadFailed.add(runId);
@@ -1022,6 +1033,44 @@ class _RunListScreenState extends State<RunListScreen>
     }
   }
 
+  /// P1 cloud section: live upload status + entry to the F48 cloud-runs
+  /// browser. Shown in both the connected and saved-runs views so users
+  /// always see the sync state where they think about their runs.
+  Widget _buildCloudCard() {
+    return Card(
+      child: Column(children: [
+        ValueListenableBuilder<SyncStatus>(
+          valueListenable: SyncWorker.instance.status,
+          builder: (context, sync, _) => ListTile(
+            leading: sync.busy
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.cloud_sync),
+            title: const Text('Cloud Sync'),
+            subtitle: Text(sync.text.isEmpty
+                ? 'Runs upload while signed in (Settings → Cloud Account)'
+                : sync.text),
+            trailing: IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Sync now',
+              onPressed: () => SyncWorker.instance.kick('manual'),
+            ),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.folder_shared),
+          title: const Text('Cloud Runs'),
+          subtitle: const Text('Browse your uploaded runs (read-only)'),
+          trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const CloudRunsScreen())),
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isConnected = _sgc != null;
@@ -1089,6 +1138,7 @@ class _RunListScreenState extends State<RunListScreen>
                         ]),
                       ),
                     ),
+                    _buildCloudCard(),
                     if (_autoEnabled) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -1306,6 +1356,9 @@ class _RunListScreenState extends State<RunListScreen>
             onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRunsNative : null,
           ),
         ),
+        // ── Cloud section (P1: sync status + F48 browser entry) ──
+        const SizedBox(height: 12),
+        _buildCloudCard(),
         // ── Local runs section ──
         if (_localRuns.isNotEmpty) ...[
           const SizedBox(height: 16),
