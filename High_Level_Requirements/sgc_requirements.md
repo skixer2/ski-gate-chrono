@@ -243,6 +243,10 @@ ski_clubs ──< users >──< users2athletes (many-to-many, self-ref)
 3. **Friend → Athlete:** Added by a parent (or by the athlete themselves if master). View-only access to the athlete's runs.
 4. **Master → Self:** An adult athlete (master) is responsible for themselves. They can add parents and friends to their own athlete record without needing a trainer.
 
+### Data Retention (JP 2026-10-26)
+
+Cloud-side run data (runs + timestamps + barometric_data) older than **1 year** is deleted automatically by a nightly server-side purge job. Phone-local copies (including raw 100 Hz data) are unaffected — the purge applies to cloud storage only. Deletion of expired accounts' data remains possible at any time (reads allowed, writes blocked after activation expiry — deletion always allowed).
+
 ---
 
 ## V-Model Traceability
@@ -298,6 +302,7 @@ REQ-HW  (H01–H14)   ◄─────────────── ENVIRONME
 | 2026-09-29 | v6.1 | **Zephyr storage arc (SGL2/SGL3, implemented + hardware-proven):** F08 Zephyr note; **F62** discipline-driven run budget (SL 90/GS-SG 120/DH 150/custom 60-600 s @ 1 KB/s doc rate; persisted; sizes the erase runway — run length unknown at start by design); **F63** capacity estimate (`{"free":N}`, own protocol line). Non-goal "no phone app changes" superseded 09-28/29 by JP GO (App 1.47/1.48 stream watchdogs, settle 0.5 s; download-loop root cause = fixed 10 s wall clock). Design: module_design/SGL_STORAGE_DESIGN.md; ledger 2026-09-28/29. |
 | 2026-09-10 | v6.0 | **Piezo-button era sync (JP directives — DOC-ONLY, code untouched):** F02/F05 rewritten to Flash pre-roll reality (10 s = 1000 samples; ARM cap 30 s/3000 slots; drain = pop-2 + push-1 live, net −1/10 ms → ~10 s merge). F03 arm = single piezo-button press (LDC1612 removed from board 2026-08-22; inductive dropped — metallic poles unmanageable). F03a PROPOSED: one-press-arms-both via advertising flag. F04 drop-only start trigger (> 2.0 m from P₀; descent-speed mode removed). F12 SLEEP immediately + System Off after 1 h (SLEEP_SYSTEM_OFF_MS=3600000; BLE holds SLEEP). F13 button wake (System-On instant; System Off cold boot). F14 no beeper — DNP footprint only. F38/P08 MTU: request 517, ≥ 500 B payload target (pull redesign IR-3; 247 fallback = 2×244 B notifications). F42 factory reset = 5 presses in 3 s (FACTORY_PRESS_COUNT). F51 N/A (BMM150 unused). H03 sealed button + USB-C cap. H08 N/A. H10 Qi → sealable USB-C (GCT USB4085 → BQ25120). H14/I12 reed → piezo button. I03 LDC removed. I08 beeper DNP. I09 USB-C charging path. R01/R02/R03 button-era wording. Wake-from-Sleep + Arming sections rewritten; cross-arm section marked historical. |
 | 2026-10-23 | v6.2 | **F31/F33 color convention = code reality (JP-confirmed, doc-only):** charts already render gate markers blue = LEFT gate, red = RIGHT gate (+ grey + asterisk for estimated) on both speed (F31) and altitude (F33) charts — App has shipped this for weeks. Green/red wording replaced with blue/red (better separation, red-green colorblind friendly). No code change. |
+| 2026-10-26 | v6.3 | **REQ-DB:** added Data Retention — cloud run data older than 1 year purged server-side (nightly); phone copies unaffected (JP directive 2026-10-26, folded from remote_db_architecture.md §5). Activation-window semantics decided: expired = writes blocked, reads + deletion allowed. |
 
 ---
 

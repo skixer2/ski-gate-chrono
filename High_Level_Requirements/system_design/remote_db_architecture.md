@@ -1,6 +1,6 @@
 # SGC — Remote Database Architecture (DRAFT for JP review)
 
-*2026-10-25 — v0.1 draft. Requirement source: `sgc_requirements.md` v6.2 (§REQ-DB, F20/F22/F23/F25/F32/F34/F35/F36/F43/F46/F48/F50, I07). Status: PROPOSAL — under JP review. Nothing implemented.*
+*2026-10-26 — v0.2. Requirement source: `sgc_requirements.md` v6.3 (§REQ-DB, F20/F22/F23/F25/F32/F34/F35/F36/F43/F46/F48/F50, I07). Status: APPROVED-IN-PROGRESS — JP answered §11 on 2026-10-26 (8 of 10 resolved; #3 and #7 clarified). P0 scaffold authorized.*
 
 ---
 
@@ -79,7 +79,8 @@ All paths prefixed `/v1`. Auth = `Authorization: Bearer <JWT>` unless noted. `fo
 - **Server-side accounts** (REQ-DB `users` table is a cloud table — there is no phone-local account concept in the schema). v1 flow: athlete registers on the phone → server creates `users` row → JWT issued. Profile continues to live in SharedPreferences locally (F20) and mirrors to `users` on login.
 - **Credential storage gap:** REQ-DB `users` has **no password/credential field**. Proposal: add `password_hash` (argon2id) — schema addition requires JP sign-off → Open Question #2.
 - **Token:** JWT access token, 60 min, + refresh token, 30 d, revocable (server-side denylist). v1 could ship access-only 30 d JWT for simplicity, but refresh+revoke is strongly preferred before any non-author user holds tokens (P2).
-- **Activation windows** (`ski_clubs.activation_start/end_date`, `users.activation_start/end_date`): enforced at **token issuance** (login/refresh) — expired club or user ⇒ `403` with reason code; **and** at write endpoints via a dependency check (a valid unexpired access token from before expiry gets read-only, uploads rejected). Proposal: reads stay allowed during grace, writes blocked — needs JP confirmation → Open Question #6.
+- **Activation windows** (`ski_clubs.activation_start/end_date`, `users.activation_start/end_date`): enforced at **token issuance** (login/refresh) — expired club or user ⇒ `403` with reason code; **and** at write endpoints via a dependency check. **DECIDED (JP 2026-10-26):** expired ⇒ **writes blocked; reads and deletion still allowed**. Deletion stays open so an expired user can still erase their data.
+- **Retention (JP 2026-10-26, new):** cloud run data older than **1 year** is deleted server-side (nightly purge job: `runs` with `start_datetime` older than 365 d cascade-delete their `timestamps` + `barometric_data` rows). Phone-local copies are unaffected — only cloud data is purged.
 - **user_type** (`athlete, trainer, parent, friend, master`) rides in the JWT claims but is **re-checked against the DB** on each request (claims are stale-able; the DB is truth).
 
 ## 6. Sync Flow (Run Lifecycle)
@@ -154,18 +155,18 @@ Current state: LocalStorage JSON persistence for runs; SharedPreferences for pro
 - **Server hardening:** non-root container user, read-only FS except data volume, dependency scanning in CI, per-IP rate limit on `/auth/*`, request size caps on `/runs`.
 - **No third-party analytics/trackers** in the API stack.
 
-## 11. Open Questions for JP
+## 11. Decisions (JP 2026-10-26) + remaining open items
 
-1. **SQLite-proto vs PostgreSQL day 1** — recommendation: SQLite for P0/P1 behind SQLAlchemy, flip at P2 (§2). Accept the small P2 migration exercise?
-2. **Account model + credentials** — REQ-DB `users` has no credential field. OK to add `password_hash` (argon2id)? And v1 onboarding: athlete/master self-registration only (trainer/parent/friend created via P2 trainer flows)?
-3. **Hosting domain + bootstrap address** — which domain hosts `sgc-api` and the hardcoded I07 bootstrap JSON (and where is the bootstrap JSON hosted — same VPS? static host?)?
-4. **F48 vs access matrix tension** — confirm cross-athlete cloud comparison is trainer/parent-only in practice; athletes compare own runs only (plus master `full`-group cases)?
-5. **v1 scope cut** — confirm F25 trainer viewing, F35/F36 visibility, and relationship management are **P2**, leaving v1 = upload/browse/delete-own/GDPR only?
-6. **Activation-window semantics** — after `ski_clubs` window expiry: hard block everything, or read-only grace with writes rejected (proposal)?
-7. **GDPR erasure depth** — hard-delete the `users` row vs anonymize-and-retain a tombstone (blocks re-registration abuse, breaks strict "all records 404" only if user row counted — runs/timestamps/barometric always hard-deleted)?
-8. **`run_number` uniqueness** — REQ v3 note says daily phone-set counter; propose server constraint UNIQUE(athlete_id, date, run_number)?
-9. **Backup retention vs GDPR** — accept 30-day backup rotation as the documented purge mechanism?
-10. **Course auto-match timing** — REQ-DB assigns `course_id` phone-side on first upload ("±2h, same group via trainer"); since groups arrive at P2, confirm v1 uploads `course_id = null` and matching activates with P2/P3?
+1. **SQLite-proto → PostgreSQL at P2** — ✅ ACCEPTED.
+2. **Account model + credentials** — ✅ ACCEPTED: add `password_hash` (argon2id); v1 onboarding = athlete/master self-registration only.
+3. **Hosting** — ✅ HOSTINGER VPS CONFIRMED for proto+v1 (capacity verified 2026-10-26: 5.4 GB RAM free, 48 GB disk, 80/443 free). ⏳ REMAINING: pick the domain/subdomain (recommendation: proto on a vytsolutions.com subdomain now; product domain before real users — the I07 bootstrap indirection makes the later move painless) + Hostinger panel firewall must allow 80/443 inbound.
+4. **F48 cross-athlete comparison** — ✅ ACCEPTED (trainer/parent capability). JP: rules will be redefined with real use.
+5. **v1 scope cut** — ✅ ACCEPTED (upload / browse own / delete-own / GDPR; trainer viewing, visibility, relationships → P2).
+6. **Activation-window semantics** — ✅ DECIDED: writes blocked after expiry; reads + deletion allowed. Plus NEW: 1-year server-side retention purge (see §5).
+7. **GDPR erasure depth** — ⏳ CLARIFIED, awaiting JP nod: v1 = full hard-delete (user row included — everything 404s). If re-registration abuse ever appears, add an email-hash denylist later (not personal data; compatible).
+8. **Run identity** — ✅ DECIDED: server run ID unique (primary key). The daily `run_number` stays an informational label — no server uniqueness constraint (phone deletions can legitimately renumber).
+9. **Backups vs GDPR** — ✅ RESOLVED: 30-day backup rotation = documented purge mechanism (privacy note states deleted data vanishes from backups within ≤30 days).
+10. **course_id = null in v1** — ✅ ACCEPTED (auto-match activates with P2 groups).
 
 ## 12. Phased Rollout
 
