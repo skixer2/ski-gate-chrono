@@ -134,7 +134,7 @@ Current state: LocalStorage JSON persistence for runs; SharedPreferences for pro
 | **Bootstrap client (I07)** | Fetch bootstrap JSON on app start + on sync failure with stale `api_base`; cache last-known-good |
 | **Auth module** | Register/login screens (v1: athlete/master), secure token storage — **flutter_secure_storage, NOT SharedPreferences** (§10) |
 | **Sync worker** | Background-triggered (app start, `connectivity_plus` regained, post-run-save); single-flight (no parallel uploads); respects backoff; surfaces queue status on a small sync indicator |
-| **F48 browse UI** | New "Cloud runs" list: server-paged `GET /runs`, filters (athlete, date range), multi-select 1–2 runs → hand to existing comparison screens. Runs render through the same decoders, switching on `format_version` (REQ-DB `runs` note) |
+| **F48 browse UI** | New "Cloud runs" list: server-paged `GET /runs`, filters (athlete, date range), multi-select 1–2 runs → hand to existing comparison screens. JP 2026-10-26 #8: date must be visible + filterable; default run label = plain "Run N" (no date prefix — date is its own field) | Runs render through the same decoders, switching on `format_version` (REQ-DB `runs` note) |
 | **Delete flow (F46)** | Confirmation dialog; orchestrates 3-way delete: device Flash (BLE), phone LocalStorage, `DELETE /runs/{id}` — cloud leg order: cloud first, then local, so a crash can't orphan a cloud run the user believes deleted |
 | **GDPR UI (F50)** | Warning screen enumerating exactly what will be deleted (runs, timestamps, barometric_data, profile), typed confirmation, §9 |
 
@@ -159,11 +159,11 @@ Current state: LocalStorage JSON persistence for runs; SharedPreferences for pro
 
 1. **SQLite-proto → PostgreSQL at P2** — ✅ ACCEPTED.
 2. **Account model + credentials** — ✅ ACCEPTED: add `password_hash` (argon2id); v1 onboarding = athlete/master self-registration only.
-3. **Hosting** — ✅ HOSTINGER VPS CONFIRMED for proto+v1 (capacity verified 2026-10-26: 5.4 GB RAM free, 48 GB disk, 80/443 free). ⏳ REMAINING: pick the domain/subdomain (recommendation: proto on a vytsolutions.com subdomain now; product domain before real users — the I07 bootstrap indirection makes the later move painless) + Hostinger panel firewall must allow 80/443 inbound.
+3. **Hosting** — ✅ DECIDED (JP 2026-10-26 12:18): Hostinger VPS, domain = **sgc-api.vytsolutions.com**. ⏳ REMAINING: DNS A record → VPS IP + Hostinger panel firewall 80/443 inbound.
 4. **F48 cross-athlete comparison** — ✅ ACCEPTED (trainer/parent capability). JP: rules will be redefined with real use.
 5. **v1 scope cut** — ✅ ACCEPTED (upload / browse own / delete-own / GDPR; trainer viewing, visibility, relationships → P2).
 6. **Activation-window semantics** — ✅ DECIDED: writes blocked after expiry; reads + deletion allowed. Plus NEW: 1-year server-side retention purge (see §5).
-7. **GDPR erasure depth** — ⏳ CLARIFIED, awaiting JP nod: v1 = full hard-delete (user row included — everything 404s). If re-registration abuse ever appears, add an email-hash denylist later (not personal data; compatible).
+7. **GDPR erasure depth** — ✅ DECIDED (JP 2026-10-26 12:18): v1 = full hard-delete (user row included — everything 404s). Email-hash denylist only if abuse appears later.
 8. **Run identity** — ✅ DECIDED: server run ID unique (primary key). The daily `run_number` stays an informational label — no server uniqueness constraint (phone deletions can legitimately renumber).
 9. **Backups vs GDPR** — ✅ RESOLVED: 30-day backup rotation = documented purge mechanism (privacy note states deleted data vanishes from backups within ≤30 days).
 10. **course_id = null in v1** — ✅ ACCEPTED (auto-match activates with P2 groups).

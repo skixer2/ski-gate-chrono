@@ -194,7 +194,15 @@
 ///          SharedPreferences persistence) wired to Settings; Cloud Sync
 ///          switch bound to the same pref. SGCService gains writeArmSide +
 ///          writeDiscipline.
-const String APP_VERSION = '1.65.0';
+///   1.66 - JP BENCH FEEDBACK 2026-10-26 12:18: (1) Course setup Cancel —
+///          AppBar close button mid-definition, warning + confirmation,
+///          onSave(null) per contract. (2) Settings > BLE Devices was a
+///          dead tile — new BleDevicesScreen (list paired auto-sync
+///          targets, remove one / remove all, SharedPreferences-backed).
+///          (3) F45 label revision: default run name = plain 'Run N'
+///          (date stays visible on the tile); new date filter in the app
+///          bar (popup, distinct local dates).
+const String APP_VERSION = '1.66.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

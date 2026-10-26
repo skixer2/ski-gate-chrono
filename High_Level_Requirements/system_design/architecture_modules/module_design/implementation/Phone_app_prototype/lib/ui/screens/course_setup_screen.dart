@@ -44,6 +44,40 @@ class _CourseSetupScreenState extends State<CourseSetupScreen> {
     });
   }
 
+  /// JP 2026-10-26: quit course definition — warning + explicit
+  /// confirmation, then discard recorded gates. Honours the widget
+  /// contract: onSave(null) = cancelled without saving.
+  Future<void> _confirmCancel() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard course setup?'),
+        content: Text(_gates.isEmpty
+            ? 'Quit course definition without saving?'
+            : 'Quit course definition? The ${_gates.length} recorded '
+                'gate(s) will be lost and the course will not be saved.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep going'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (discard != true || !mounted) return;
+    widget.onSave?.call(null); // null = cancelled without saving
+    setState(() {
+      _mode = SetupMode.none;
+      _gateCount = 0;
+      _gates.clear();
+    });
+  }
+
   void _recordGate() {
     setState(() {
       _gateCount++;
@@ -106,6 +140,18 @@ class _CourseSetupScreenState extends State<CourseSetupScreen> {
             : _mode == SetupMode.newCourse
                 ? 'New Course ($_gateCount gates)'
                 : 'Update Course ($_gateCount gates)'),
+        // JP 2026-10-26: a Cancel affordance is required mid-setup —
+        // before this there was no way out except Finish or deleting
+        // gates one by one.
+        actions: _mode == SetupMode.none
+            ? null
+            : [
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Cancel course setup',
+                  onPressed: _confirmCancel,
+                ),
+              ],
       ),
       body: _mode == SetupMode.none ? _buildModeSelector() : _buildSetupActive(),
       floatingActionButton: _mode == SetupMode.none ? null : _buildFAB(),

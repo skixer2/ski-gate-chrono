@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/app_version.dart';
 import 'profile_screen.dart';
+import 'ble_devices_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -78,7 +79,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('BLE Devices'),
             subtitle: Text('$_pairedCount paired (auto-sync targets)'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const BleDevicesScreen()));
+              _load();   // refresh paired count on return
+            },
           ),
           const Divider(),
           ListTile(

@@ -94,6 +94,7 @@ class _RunListScreenState extends State<RunListScreen>
   bool _appResumed = true;
   DateTime? _lastAutoScan;   // Android scan-throttle guard
   Set<String> _pairedMacs = {};
+  String? _dateFilter;   // JP 2026-10-26 #8: filter runs by date
   List<Map<String, dynamic>> _merges = [];
   final Map<String, List<Map<String, dynamic>>> _gateCache = {};
   static const _prefsAutoSync = 'sgc.autosync';
@@ -1035,15 +1036,30 @@ class _RunListScreenState extends State<RunListScreen>
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontWeight: FontWeight.normal)),
           ],
         ),
-        actions: isConnected
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.bluetooth_connected, color: Colors.green),
-                  tooltip: 'Disconnect',
-                  onPressed: _disconnect,
-                ),
-              ]
-            : null,
+        actions: [
+          if (_localRuns.isNotEmpty)
+            PopupMenuButton<String?>(
+              tooltip: 'Filter by date',
+              icon: Icon(Icons.filter_list,
+                  color: _dateFilter == null
+                      ? null
+                      : Theme.of(context).colorScheme.primary),
+              initialValue: _dateFilter,
+              onSelected: (v) => setState(() =>
+                  _dateFilter = (v == null || v.isEmpty) ? null : v),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: null, child: Text('All dates')),
+                ..._dateOptions.map((d) =>
+                    PopupMenuItem(value: d, child: Text(d))),
+              ],
+            ),
+          if (isConnected)
+            IconButton(
+              icon: const Icon(Icons.bluetooth_connected, color: Colors.green),
+              tooltip: 'Disconnect',
+              onPressed: _disconnect,
+            ),
+        ],
       ),
       body: isConnected
           ? _buildConnectedView()
@@ -1134,10 +1150,10 @@ class _RunListScreenState extends State<RunListScreen>
                     ],
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      child: Text('Saved Runs (${_localRuns.length})',
+                      child: Text('Saved Runs (${_dateFilter == null ? _localRuns.length : _filteredLocalRuns.length}${_dateFilter == null ? '' : ' of ${_localRuns.length}'})',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                     ),
-                    ..._localRuns.map(_buildLocalRunTile),
+                    ..._filteredLocalRuns.map(_buildLocalRunTile),
                   ],
                 ),
       floatingActionButton: _isConnecting
@@ -1293,10 +1309,10 @@ class _RunListScreenState extends State<RunListScreen>
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Text('Saved Runs (${_localRuns.length})',
+            child: Text('Saved Runs (${_dateFilter == null ? _localRuns.length : _filteredLocalRuns.length}${_dateFilter == null ? '' : ' of ${_localRuns.length}'})',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
           ),
-          ..._localRuns.map(_buildLocalRunTile),
+          ..._filteredLocalRuns.map(_buildLocalRunTile),
         ],
       ],
     );
@@ -1342,7 +1358,31 @@ class _RunListScreenState extends State<RunListScreen>
     );
   }
 
-  /// F45: default label = local date + 1-based ordinal of the run within
+  /// Local calendar-day key (YYYY-MM-DD) of a run's start time.
+  String _dayKeyOf(int timestampSec) {
+    final d = DateTime.fromMillisecondsSinceEpoch(timestampSec * 1000,
+            isUtc: true)
+        .toLocal();
+    return '\${d.year.toString().padLeft(4, '0')}-'
+        '\${d.month.toString().padLeft(2, '0')}-'
+        '\${d.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Distinct local dates present in the local run set (newest first).
+  List<String> get _dateOptions => _localRuns
+      .map((r) => _dayKeyOf(r.timestamp))
+      .toSet()
+      .toList()
+      ..sort((a, b) => b.compareTo(a));
+
+  /// Local runs after the active date filter (null = all).
+  List<SavedRun> get _filteredLocalRuns => _dateFilter == null
+      ? _localRuns
+      : _localRuns
+          .where((r) => _dayKeyOf(r.timestamp) == _dateFilter)
+          .toList();
+
+  /// F45 (JP 2026-10-26 #8 revision): default label = 1-based ordinal
   /// that day (ordered by timestamp, then id). Deterministic from the
   /// current run set — no extra storage.
   String _defaultRunLabel(SavedRun run) {
@@ -1363,7 +1403,9 @@ class _RunListScreenState extends State<RunListScreen>
         return c != 0 ? c : a.id.compareTo(b.id);
       });
     final n = sameDay.indexWhere((r) => r.fileName == run.fileName) + 1;
-    return '$dayKey Run $n';
+    // JP 2026-10-26 #8: date is visible on the tile + filterable, so the
+    // default name carries just the daily run number.
+    return 'Run $n';
   }
 
   /// F45 (merged extension, JP 2026-10-23): user-editable name for merged
