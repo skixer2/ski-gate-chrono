@@ -946,7 +946,7 @@ const struct bt_data *pull_proto_sd(void)
 	return sd_dyn;
 }
 uint8_t pull_proto_ad_len(void)             { return ARRAY_SIZE(ad); }
-uint8_t pull_proto_sd_len(void)             { return ARRAY_SIZE(sd); }
+uint8_t pull_proto_sd_len(void)             { return ARRAY_SIZE(sd_dyn); }
 
 /* ── Lifecycle hooks ─────────────────────────────────────────────── */
 
