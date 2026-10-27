@@ -2,6 +2,8 @@
 
 Current version: **0.22.1** (`src/main.c` → `APP_VERSION`; bump on every change).
 
+**State machine diagram** (FW 0.23.x sleep era): [`system_design/diagrams/device_state_machine.html`](../../../../diagrams/device_state_machine.html) — SYSTEM_OFF / SLEEP / CONNECTED / ARMED / LOGGING / POST_RUN with the LED language.
+
 Product console service over BLE, wire-compatible with the phone app (App ≥ 1.46):
 
 | Handle | Purpose |

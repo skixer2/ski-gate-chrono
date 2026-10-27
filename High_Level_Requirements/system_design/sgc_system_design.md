@@ -280,6 +280,8 @@ vs. raw 20 bytes/frame → **60.0% compression**. 2-min DH run (worst case) → 
 
 ### Connection Handshake
 
+*Device state machine (FW 0.23.x): see `diagrams/device_state_machine.html` — SLEEP/SYSTEM_OFF/ARMED/LOGGING/POST_RUN with LED language and sleep guards.*
+
 On every BLE connection, the phone pushes UTC time to the device **before any other GATT operation**. The device's RTC survives sleep (System ON with RAM retention), but the 32 kHz crystal drifts at ±20 ppm (~1.7 s/day). Syncing on each connection eliminates cumulative drift.
 
 **BLE parameters:**
