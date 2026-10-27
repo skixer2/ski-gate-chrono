@@ -323,6 +323,21 @@ class ApiClient {
     await _request('DELETE', '/v1/runs/$runId', expectStatus: 204);
   }
 
+  /// PUT /v1/runs/{id} — rename (F45 propagation, 1.70). Server contract
+  /// (sgc_api app/routers/runs.py): rename is a WRITE gated by optimistic
+  /// concurrency — `If-Match: <lock_version>` header REQUIRED (missing ⇒
+  /// 428, mismatch ⇒ 409, hit ⇒ lock_version += 1). Returns the updated
+  /// RunOut (fresh lock_version). Body: {"name": "..."} (1..200 chars).
+  Future<Map<String, dynamic>> renameRun(
+    int runId, {
+    required String name,
+    required int ifMatch,
+  }) async {
+    return _request('PUT', '/v1/runs/$runId',
+        jsonBody: {'name': name},
+        extraHeaders: {'If-Match': '$ifMatch'});
+  }
+
   // ── GDPR (F50) ────────────────────────────────────────────────────────
 
   /// POST /v1/me/gdpr-delete {confirm: true} → 204. Hard-deletes the user
@@ -346,6 +361,7 @@ class ApiClient {
     bool authed = true,
     String? accessTokenOverride,
     int? expectStatus,
+    Map<String, String> extraHeaders = const {},
   }) async {
     await ready;
 
@@ -363,7 +379,8 @@ class ApiClient {
     }
 
     try {
-      return await _attempt(method, path, jsonBody, token, expectStatus);
+      return await _attempt(method, path, jsonBody, token, expectStatus,
+          extraHeaders);
     } on AuthException {
       // One automatic retry through /v1/auth/refresh. Only for the normal
       // authed path — never for login/register/refresh themselves, and
@@ -376,7 +393,8 @@ class ApiClient {
       }
       final session = await _auth.load();
       return await _attempt(
-          method, path, jsonBody, session?.accessToken, expectStatus);
+          method, path, jsonBody, session?.accessToken, expectStatus,
+          extraHeaders);
     }
   }
 
@@ -386,12 +404,14 @@ class ApiClient {
     Object? jsonBody,
     String? token,
     int? expectStatus,
+    Map<String, String> extraHeaders,
   ) async {
     final uri = Uri.parse('$_apiBase$path');
     final headers = <String, String>{
       'Accept': 'application/json',
       if (jsonBody != null) 'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
+      ...extraHeaders,
     };
     http.Response resp;
     try {

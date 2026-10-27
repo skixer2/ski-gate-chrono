@@ -271,7 +271,46 @@
 ///          default — singles and merged alike); cloud list title = row
 ///          name (legacy-nameless rows fall back to "Single run" /
 ///          "Merged run"), replacing the cloud-id title logic.
-const String APP_VERSION = '1.69.0';
+///   1.70 - SNOW-READINESS PAIR (JP GO 2026-10-27 11:04): F45 rename
+///          propagation to the cloud + F46 delete UI (phone+cloud legs).
+///          (1) Rename outbox: pending cloud renames persist in
+///          rename_queue.json (atomic temp+rename); enqueued on every
+///          successful local rename (single AND merged) when the run/merge
+///          is already uploaded (DONE queue entry with cloud id); a newer
+///          rename supersedes a pending one. UploadQueue.markDone now
+///          captures the server lock_version from the upload response.
+///          (2) SyncWorker delivers due renames BEFORE the push-toggle
+///          gate (renames are explicit user actions on already-uploaded
+///          rows): PUT /v1/runs/{id} + If-Match <lock_version>; 409 → GET
+///          fresh → retry ONCE → still 409 = rename loses, entry dropped
+///          + surfaced ("rename conflict — cloud kept its name"); 404
+///          (row deleted) drops silently; legacy pre-1.70 entries GET the
+///          lock_version first; 401 stops the pass, 403/network/5xx retry
+///          with the shared exponential backoff; validation/other 4xx
+///          drop + surface. Identity-based removal so a rename queued
+///          mid-flight survives an older entry's completion; retry timer
+///          arms from the rename schedule too. New ApiClient.renameRun
+///          (PUT + If-Match header, contract per sgc_api runs.py: 428
+///          missing / 409 mismatch / hit bumps lock_version).
+///          (3) F46 delete: long-press a run tile or merged tile → menu
+///          (rename/delete) → confirmation with honest scoping —
+///          "Delete from phone" + "Delete from cloud" (default-checked
+///          only when uploaded; disabled + explained when not); device
+///          flash copy explicitly NOT deleted (recycles automatically;
+///          per-run device deletion comes with a firmware update);
+///          deleting a merge source keeps merged courses' data.
+///          Execution order per arch §8: cloud DELETE first (failure →
+///          abort + snackbar, everything kept), then local: runs.json +
+///          run file + queue entry + rename outbox entries; merges leave
+///          merged_runs.json via allowShrink: true (reserved path used)
+///          + queue/outbox cleanup so the merged backfill cannot
+///          resurrect them. Deleting from the cloud only keeps the local
+///          copy and its DONE queue entry (no re-upload resurrection).
+///          (4) Counter labels clarified on the connected card:
+///          "On device (flash slots)" (ABC run count) vs "Downloaded
+///          (phone)" (local index); download-tile subtitle now reads
+///          "On device: N · Downloaded: N · Not downloaded: N".
+const String APP_VERSION = '1.70.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

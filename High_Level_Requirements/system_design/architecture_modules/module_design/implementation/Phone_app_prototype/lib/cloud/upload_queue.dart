@@ -38,6 +38,11 @@ class UploadEntry {
   final String? lastError;
   final int queuedAtMs;
   final UploadRunType runType; // 1.68: single (default) | merged
+  // 1.70: server lock_version captured from the upload response — the
+  // precondition for propagating a later rename (PUT + If-Match). Null for
+  // entries uploaded before 1.70; the rename worker then GETs the run
+  // fresh to learn the current lock_version.
+  final int? lockVersion;
 
   const UploadEntry({
     required this.clientRunUuid,
@@ -49,6 +54,7 @@ class UploadEntry {
     this.lastError,
     required this.queuedAtMs,
     this.runType = UploadRunType.single,
+    this.lockVersion,
   });
 
   UploadEntry copyWith({
@@ -59,6 +65,7 @@ class UploadEntry {
     String? lastError,
     bool clearLastError = false,
     UploadRunType? runType,
+    int? lockVersion,
   }) =>
       UploadEntry(
         clientRunUuid: clientRunUuid,
@@ -70,6 +77,7 @@ class UploadEntry {
         lastError: clearLastError ? null : (lastError ?? this.lastError),
         queuedAtMs: queuedAtMs,
         runType: runType ?? this.runType,
+        lockVersion: lockVersion ?? this.lockVersion,
       );
 
   Map<String, dynamic> toJson() => {
@@ -82,6 +90,7 @@ class UploadEntry {
         if (lastError != null) 'lastError': lastError,
         'queuedAtMs': queuedAtMs,
         'runType': runType.name,
+        if (lockVersion != null) 'lockVersion': lockVersion,
       };
 
   factory UploadEntry.fromJson(Map<String, dynamic> json) => UploadEntry(
@@ -100,6 +109,81 @@ class UploadEntry {
           (t) => t.name == json['runType'],
           orElse: () => UploadRunType.single,
         ),
+        lockVersion: json['lockVersion'] as int?,
+      );
+}
+
+/// 1.70: what a pending cloud rename points at — a plain device run
+/// (localKey = run fileName) or a merged course (localKey =
+/// [UploadQueue.mergedQueueKey] of its two source files).
+enum RenameTarget { single, merged }
+
+/// 1.70 rename propagation (F45 → cloud): one undelivered rename of a
+/// cloud row. Entries exist ONLY while undelivered — success or a
+/// permanent failure removes them, so an empty outbox is the steady
+/// state. [lockVersion] is the caller's known cloud lock_version at
+/// enqueue time (null only for runs uploaded before 1.70, where the
+/// worker GETs the run fresh before the PUT).
+class RenameEntry {
+  final RenameTarget target;
+  final String localKey;
+  final int cloudRunId;
+  final int? lockVersion;
+  final String newName;
+  final int attempts;
+  final int nextAttemptAtMs; // epoch ms; 0 = due immediately
+  final String? lastError;
+
+  const RenameEntry({
+    required this.target,
+    required this.localKey,
+    required this.cloudRunId,
+    this.lockVersion,
+    required this.newName,
+    this.attempts = 0,
+    this.nextAttemptAtMs = 0,
+    this.lastError,
+  });
+
+  RenameEntry copyWith({
+    int? attempts,
+    int? nextAttemptAtMs,
+    String? lastError,
+  }) =>
+      RenameEntry(
+        target: target,
+        localKey: localKey,
+        cloudRunId: cloudRunId,
+        lockVersion: lockVersion,
+        newName: newName,
+        attempts: attempts ?? this.attempts,
+        nextAttemptAtMs: nextAttemptAtMs ?? this.nextAttemptAtMs,
+        lastError: lastError ?? this.lastError,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'target': target.name,
+        'localKey': localKey,
+        'cloudRunId': cloudRunId,
+        if (lockVersion != null) 'lockVersion': lockVersion,
+        'newName': newName,
+        'attempts': attempts,
+        'nextAttemptAtMs': nextAttemptAtMs,
+        if (lastError != null) 'lastError': lastError,
+      };
+
+  factory RenameEntry.fromJson(Map<String, dynamic> json) => RenameEntry(
+        target: RenameTarget.values.firstWhere(
+          (t) => t.name == json['target'],
+          orElse: () => RenameTarget.single,
+        ),
+        localKey: json['localKey'] as String,
+        cloudRunId: json['cloudRunId'] as int,
+        lockVersion: json['lockVersion'] as int?,
+        newName: json['newName'] as String,
+        attempts: json['attempts'] as int? ?? 0,
+        nextAttemptAtMs: json['nextAttemptAtMs'] as int? ?? 0,
+        lastError: json['lastError'] as String?,
       );
 }
 
@@ -108,6 +192,10 @@ class UploadQueue {
   UploadQueue._();
 
   static const _queueFile = 'upload_queue.json';
+  // 1.70: rename outbox lives as its own atomic file (same store
+  // discipline). Kept separate from upload_queue.json so the existing
+  // bare-list format stays compatible with entries written by 1.67–1.69.
+  static const _renamesFile = 'rename_queue.json';
 
   /// Exponential backoff: 1m → 2m → 4m → 8m → 16m → 32m → 1h cap.
   /// No attempt ceiling: transient outages (weeks on a mountain) must not
@@ -120,6 +208,9 @@ class UploadQueue {
   }
 
   List<UploadEntry> _entries = [];
+
+  /// 1.70: pending cloud renames (F45 propagation outbox).
+  List<RenameEntry> _renames = [];
 
   /// Unmodifiable view for the UI (queue depth indicators etc.).
   List<UploadEntry> get entries => List.unmodifiable(_entries);
@@ -178,6 +269,31 @@ class UploadQueue {
       debugPrint('[UploadQueue] load failed, starting empty: $e');
       _entries = [];
     }
+    // 1.70 rename outbox: a corrupt/missing file starts empty — the UI
+    // source of truth (runs.json / merged_runs.json) always holds the
+    // NEWEST name, so losing pending entries can at worst leave stale
+    // names in the cloud; it can never corrupt local data.
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final f = File('${dir.path}/$_renamesFile');
+      if (!await f.exists()) {
+        _renames = [];
+        return;
+      }
+      final list = jsonDecode(await f.readAsString()) as List<dynamic>;
+      final out = <RenameEntry>[];
+      for (final e in list) {
+        try {
+          out.add(RenameEntry.fromJson(e as Map<String, dynamic>));
+        } catch (err) {
+          debugPrint('[UploadQueue] skipping corrupt rename entry: $err');
+        }
+      }
+      _renames = out;
+    } catch (e) {
+      debugPrint('[UploadQueue] rename queue load failed, starting empty: $e');
+      _renames = [];
+    }
   }
 
   Future<void> _persist() async {
@@ -185,6 +301,18 @@ class UploadQueue {
     final f = File('${dir.path}/$_queueFile');
     final tmp = File('${f.path}.tmp');
     await tmp.writeAsString(jsonEncode(_entries.map((e) => e.toJson()).toList()),
+        flush: true);
+    await tmp.rename(f.path);
+  }
+
+  /// 1.70: atomic persist of the rename outbox (temp + rename, same
+  /// discipline as every other store file).
+  Future<void> _persistRenames() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final f = File('${dir.path}/$_renamesFile');
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(
+        jsonEncode(_renames.map((e) => e.toJson()).toList()),
         flush: true);
     await tmp.rename(f.path);
   }
@@ -225,10 +353,14 @@ class UploadQueue {
   }
 
   /// 2xx (including already_exists=true) — confirmed on the server.
-  Future<void> markDone(String uuid, int cloudRunId) async {
+  /// [lockVersion] (1.70) captures the server-owned lock_version from the
+  /// upload response so a later rename can build its If-Match precondition
+  /// without a fresh GET.
+  Future<void> markDone(String uuid, int cloudRunId, {int? lockVersion}) async {
     _replace(uuid, (e) => e.copyWith(
           status: UploadStatus.done,
           runId: cloudRunId,
+          lockVersion: lockVersion,
           clearLastError: true,
         ));
     await _persist();
@@ -280,6 +412,94 @@ class UploadQueue {
             e,
       ];
 
+  // ── 1.70 rename outbox (F45 → cloud propagation) ─────────────────
+
+  /// Unmodifiable view for diagnostics.
+  List<RenameEntry> get renames => List.unmodifiable(_renames);
+
+  int get pendingRenameCount => _renames.length;
+
+  /// Queue a cloud rename. A newer rename for the same localKey SUPERSEDES
+  /// a still-pending one (the outbox always carries the freshest target
+  /// name). Call only when the run/merge is confirmed uploaded (DONE
+  /// queue entry with a cloud id) — otherwise the next upload carries
+  /// the new name anyway.
+  Future<void> enqueueRename({
+    required RenameTarget target,
+    required String localKey,
+    required int cloudRunId,
+    required String newName,
+    int? lockVersion,
+  }) async {
+    _renames.removeWhere((r) => r.localKey == localKey);
+    _renames.add(RenameEntry(
+      target: target,
+      localKey: localKey,
+      cloudRunId: cloudRunId,
+      lockVersion: lockVersion,
+      newName: newName,
+    ));
+    await _persistRenames();
+    debugPrint('[UploadQueue] rename queued for $localKey → "$newName" '
+            '(cloud #$cloudRunId)');
+  }
+
+  /// Due renames (backoff elapsed). Entries have no status enum — an
+  /// entry EXISTS only while its rename is undelivered.
+  List<RenameEntry> dueRenames(DateTime now) => [
+        for (final r in _renames)
+          if (r.nextAttemptAtMs <= now.millisecondsSinceEpoch) r,
+      ];
+
+  /// Transient rename failure (network / 5xx / 403 activation):
+  /// exponential backoff, same curve as uploads. [newName] guards against
+  /// a supersede race — if the pending entry was replaced while this
+  /// delivery was in flight, the retry bookkeeping is skipped (the new
+  /// entry keeps its own fresh schedule).
+  Future<void> markRenameRetry(String localKey, String newName,
+      String error) async {
+    for (int i = 0; i < _renames.length; i++) {
+      final r = _renames[i];
+      if (r.localKey != localKey || r.newName != newName) continue;
+      final attempts = r.attempts + 1;
+      _renames[i] = r.copyWith(
+        attempts: attempts,
+        nextAttemptAtMs: DateTime.now().millisecondsSinceEpoch +
+            _backoffFor(attempts - 1).inMilliseconds,
+        lastError: error.length > 300 ? error.substring(0, 300) : error,
+      );
+      await _persistRenames();
+      return;
+    }
+  }
+
+  /// Remove the EXACT delivered entry (identity comparison, not localKey):
+  /// a rename queued mid-flight for the same run must survive the older
+  /// entry's completion.
+  Future<void> removeRenameEntry(RenameEntry entry) async {
+    _renames.remove(entry);
+    await _persistRenames();
+  }
+
+  /// Drop every pending rename for [localKey] — the delete leg of F46
+  /// (nothing left to rename) and permanent rejection cleanup.
+  Future<void> removeRenamesForKey(String localKey) async {
+    _renames.removeWhere((r) => r.localKey == localKey);
+    await _persistRenames();
+  }
+
+  /// Earliest scheduled rename retry (null = nothing waiting) — feeds the
+  /// sync worker's retry timer alongside the upload schedule.
+  DateTime? get nextRenameRetryAt {
+    DateTime? out;
+    for (final r in _renames) {
+      if (r.nextAttemptAtMs == 0) continue;
+      final t = DateTime.fromMillisecondsSinceEpoch(r.nextAttemptAtMs);
+      if (out == null || t.isBefore(out)) out = t;
+    }
+    return out;
+  }
+
   /// Earliest scheduled retry among PENDING entries (null = nothing
   /// waiting) — the sync worker arms its retry timer from this.
   DateTime? get nextRetryAt {
@@ -308,10 +528,13 @@ class UploadQueue {
   }
 
   /// GDPR: wipe the whole queue (uploaded history is hard-deleted
-  /// server-side; pending entries must not resurrect it).
+  /// server-side; pending entries must not resurrect it). 1.70: pending
+  /// renames die with it — the rows they point at no longer exist.
   Future<void> clear() async {
     _entries = [];
+    _renames = [];
     await _persist();
+    await _persistRenames();
   }
 }
 

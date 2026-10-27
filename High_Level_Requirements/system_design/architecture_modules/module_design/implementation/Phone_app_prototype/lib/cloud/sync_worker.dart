@@ -95,6 +95,9 @@ class SyncStatus {
   const SyncStatus({this.busy = false, this.text = ''});
 }
 
+/// Outcome of a rename pass (1.70) — folded into the pass summary text.
+enum RenamePassNote { conflict, rejected }
+
 /// F43 sync worker: drains the UploadQueue to POST /v1/runs.
 ///
 /// Single-flight (concurrent kicks coalesce), triggered by:
@@ -104,7 +107,10 @@ class SyncStatus {
 ///   - the exponential-backoff retry timer.
 ///
 /// Never enqueues when the profile push_to_cloud toggle is off; never
-/// uploads when signed out (entries just wait in the queue).
+/// uploads when signed out (entries just wait in the queue). 1.70:
+/// pending cloud RENAMES are delivered BEFORE the push-toggle gate —
+/// they are explicit user actions on already-uploaded rows, not new
+/// auto-uploads.
 class SyncWorker {
   static final SyncWorker instance = SyncWorker._();
   SyncWorker._();
@@ -178,11 +184,17 @@ class SyncWorker {
     await _queue.load();
     _retryTimer?.cancel();
 
+    // 1.70: deliver pending renames FIRST, before the push-toggle gate —
+    // a rename is an explicit user action on an already-uploaded row,
+    // not a new auto-upload. Not signed in → entries simply wait.
+    final renameNote = await _processDueRenames();
+
     final prefs = await SharedPreferences.getInstance();
     final push = prefs.getBool(_prefsPush) ?? true;
     if (!push) {
       _setText('Cloud push off — queue idle '
-          '(${_queue.pendingCount} pending, ${_queue.poisonedCount} blocked)');
+          '(${_queue.pendingCount} pending, ${_queue.poisonedCount} blocked)'
+          '${renameNote == null ? '' : ' · ${_renameNoteText(renameNote)}'}');
       return;
     }
 
@@ -221,7 +233,8 @@ class SyncWorker {
 
     if (!await AuthStore.instance.isSignedIn()) {
       _setText('Not signed in — ${_queue.pendingCount} run(s) waiting '
-          'to upload');
+          'to upload'
+          '${renameNote == null ? '' : ' · ${_renameNoteText(renameNote)}'}');
       return;
     }
 
@@ -382,7 +395,8 @@ class SyncWorker {
           };
 
           final resp = await ApiClient.instance.uploadRun(payload);
-          await _queue.markDone(entry.clientRunUuid, resp['id'] as int);
+          await _queue.markDone(entry.clientRunUuid, resp['id'] as int,
+              lockVersion: resp['lock_version'] as int?);
           ok++;
           continue;
         }
@@ -421,7 +435,8 @@ class SyncWorker {
 
         final resp = await ApiClient.instance.uploadRun(payload);
         await _queue.markDone(
-            entry.clientRunUuid, resp['id'] as int);
+            entry.clientRunUuid, resp['id'] as int,
+            lockVersion: resp['lock_version'] as int?);
         ok++;
       } on TooLargeException catch (e) {
         await _queue.markPoisoned(entry.clientRunUuid, e.message);
@@ -459,14 +474,128 @@ class SyncWorker {
         '${retried > 0 ? ' · $retried retrying' : ''}'
         '${deferred > 0 ? ' · $deferred waiting for sources' : ''}'
         '${poisoned > 0 ? ' · $poisoned blocked' : ''}'
-        '${pendingLeft > 0 ? ' · $pendingLeft left' : ''}');
+        '${pendingLeft > 0 ? ' · $pendingLeft left' : ''}'
+        '${renameNote == null ? '' : ' · ${_renameNoteText(renameNote)}'}');
     _armRetryTimer();
+  }
+
+  String _renameNoteText(RenamePassNote note) {
+    switch (note) {
+      case RenamePassNote.conflict:
+        return 'rename conflict — cloud kept its name';
+      case RenamePassNote.rejected:
+        return 'rename rejected by server — dropped';
+    }
+  }
+
+  /// 1.70: deliver due cloud renames (F45 propagation). PUT /v1/runs/{id}
+  /// with If-Match: <lock_version>; on 409 the run is GET'd fresh and the
+  /// PUT retried ONCE — a second 409 means this rename lost the race, so
+  /// the entry is dropped and the loss surfaced in the sync status.
+  /// 404 = the cloud row is gone (F46 cloud delete): drop silently.
+  /// Legacy entries uploaded before 1.70 carry no lockVersion — one fresh
+  /// GET supplies it. Removal is by IDENTITY (removeRenameEntry) so a
+  /// rename queued mid-flight for the same run survives the older
+  /// entry's completion.
+  Future<RenamePassNote?> _processDueRenames() async {
+    final due = _queue.dueRenames(DateTime.now());
+    if (due.isEmpty) return null;
+    if (!await AuthStore.instance.isSignedIn()) return null; // wait silently
+    RenamePassNote? note;
+    int ok = 0, retried = 0;
+    for (final entry in due) {
+      // GDPR can sign us out mid-pass — stop, entries wait in the outbox.
+      if (await AuthStore.instance.isSignedIn() != true) {
+        _setText('Signed out — sync stopped');
+        return note;
+      }
+      try {
+        var lock = entry.lockVersion;
+        if (lock == null) {
+          // Uploaded before 1.70 (no stored lock_version): fetch fresh.
+          final fresh = await ApiClient.instance
+              .getRun(entry.cloudRunId, include: '');
+          final lv = fresh['lock_version'];
+          if (lv is int) lock = lv;
+        }
+        if (lock == null) {
+          // Server rows always carry lock_version — unreachable against a
+          // conforming API; drop rather than spin.
+          await _queue.removeRenamesForKey(entry.localKey);
+          continue;
+        }
+        try {
+          await ApiClient.instance.renameRun(entry.cloudRunId,
+              name: entry.newName, ifMatch: lock);
+        } on ConflictException {
+          // Someone wrote the row elsewhere since our upload: take the
+          // fresh lock_version and retry ONCE. Still 409 → this rename
+          // loses; the cloud keeps its (newer) name.
+          final fresh = await ApiClient.instance
+              .getRun(entry.cloudRunId, include: '');
+          final lv = fresh['lock_version'];
+          if (lv is! int) {
+            throw ConflictException('rename conflict — no lock_version',
+                statusCode: 409);
+          }
+          try {
+            await ApiClient.instance.renameRun(entry.cloudRunId,
+                name: entry.newName, ifMatch: lv);
+          } on ConflictException {
+            await _queue.removeRenamesForKey(entry.localKey);
+            note = RenamePassNote.conflict;
+            continue;
+          }
+        }
+        await _queue.removeRenameEntry(entry);
+        ok++;
+      } on AuthException {
+        // Refresh already attempted inside the client and failed — the
+        // session is dead. Entries stay queued for the next sign-in.
+        _setText('Sign-in expired — sign in again to sync');
+        return note;
+      } on ActivationException catch (e) {
+        await _queue.markRenameRetry(entry.localKey, entry.newName, e.message);
+        retried++;
+      } on NetworkException catch (e) {
+        await _queue.markRenameRetry(entry.localKey, entry.newName, e.message);
+        retried++;
+      } on ServerException catch (e) {
+        await _queue.markRenameRetry(entry.localKey, entry.newName, e.message);
+        retried++;
+      } on CloudException catch (e) {
+        if (e.statusCode == 404) {
+          // Cloud run deleted (F46): nothing to rename — drop silently.
+          await _queue.removeRenamesForKey(entry.localKey);
+          continue;
+        }
+        // Any other definitive 4xx (400/413/428 or an unhandled 409)
+        // repeats identically with the same bytes — drop + surface.
+        await _queue.removeRenamesForKey(entry.localKey);
+        note = RenamePassNote.rejected;
+        debugPrint('[SyncWorker] rename for ${entry.localKey} rejected '
+            '(${e.statusCode}): ${e.message}');
+      } catch (e) {
+        await _queue.markRenameRetry(
+            entry.localKey, entry.newName, e.toString());
+        retried++;
+      }
+    }
+    if (ok > 0 || retried > 0) {
+      debugPrint('[SyncWorker] renames: $ok delivered, $retried retrying');
+    }
+    return note;
   }
 
   /// Arm the timer for the earliest scheduled retry so a fully offline
   /// pass still re-fires later without connectivity/save events.
+  /// 1.70: rename retries feed the same timer.
   void _armRetryTimer() {
-    final next = _queue.nextRetryAt;
+    var next = _queue.nextRetryAt;
+    final renameNext = _queue.nextRenameRetryAt;
+    if (renameNext != null && (next == null || renameNext.isBefore(next))) {
+      next = renameNext;
+    }
     if (next == null) return;
     final delay = next.difference(DateTime.now());
     _retryTimer = Timer(

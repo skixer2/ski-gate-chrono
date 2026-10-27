@@ -17,6 +17,8 @@ import '../../storage/local_storage.dart';
 import '../../storage/device_registry.dart';
 import '../../config/app_version.dart';
 import '../../cloud/sync_worker.dart';
+import '../../cloud/upload_queue.dart';
+import '../../cloud/api_client.dart';
 import '../../models/device_config.dart';
 import 'run_detail_screen.dart';
 import 'merged_run_screen.dart';
@@ -1264,7 +1266,7 @@ class _RunListScreenState extends State<RunListScreen>
                                     const [],
                               ),
                             )),
-                            onLongPress: () => _promptRenameMerge(m),
+                            onLongPress: () => _showMergeActions(m),
                           ),
                         ),
                       const SizedBox(height: 12),
@@ -1357,7 +1359,15 @@ class _RunListScreenState extends State<RunListScreen>
                       style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
                     ),
                   ),
-                _infoRow('Runs on Device', _runCount?.toString() ?? '? (read failed)'),
+                // 1.70 (JP, counter labels): the two counters below are
+                // DIFFERENT sources for device-stored runs — the flash-slot
+                // count (sgc.getRunCount(), ABC characteristic) and the FT
+                // run list (_deviceRuns.length, shown as "On device:" in the
+                // download tile). They should agree; a mismatch means one
+                // read is stale. "Downloaded (phone)" is the local index.
+                _infoRow('On device (flash slots)',
+                    _runCount?.toString() ?? '? (read failed)'),
+                _infoRow('Downloaded (phone)', _localRuns.length.toString()),
                 _infoRow('Not Downloaded', _missingRuns.length.toString()),
                 _infoRow('Battery', _batteryPct == null
                     ? '— (unknown)'
@@ -1405,7 +1415,9 @@ class _RunListScreenState extends State<RunListScreen>
                             style: const TextStyle(fontSize: 12)),
                     ],
                   )
-                : Text('${_deviceRuns.length} on device · ${_missingRuns.length} not downloaded'),
+                : Text('On device: ${_deviceRuns.length} · '
+                    'Downloaded: ${_localRuns.length} · '
+                    'Not downloaded: ${_missingRuns.length}'),
             trailing: const Icon(Icons.chevron_right),
             // onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
             onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRunsNative : null,
@@ -1490,7 +1502,9 @@ class _RunListScreenState extends State<RunListScreen>
           ],
         ),
         onTap: () => _openLocalRun(run),
-        onLongPress: () => _promptRename(run),
+        // 1.70 F46: long-press opens the action menu (rename OR delete);
+        // the edit icon keeps going straight to rename.
+        onLongPress: () => _showRunActions(run),
       ),
     );
   }
@@ -1616,6 +1630,362 @@ class _RunListScreenState extends State<RunListScreen>
     // Same entry count — passes the monotonic shrink guard by design.
     await _storage.saveMerges(_merges);
     if (mounted) setState(() {});
+    // 1.70: propagate to the cloud when this merge is already uploaded.
+    // Clearing the label propagates the recomputed default
+    // ("<A#x> + <A#y>"), mirroring what the phone now displays.
+    final key = UploadQueue.mergedQueueKey(
+        m['aFile'] as String, m['bFile'] as String);
+    final entry = UploadQueue.instance.forFile(key);
+    if (entry == null ||
+        entry.status != UploadStatus.done ||
+        entry.runId == null) {
+      return; // not uploaded (yet) — the next upload carries the name
+    }
+    final newName = name.isEmpty
+        ? await _storage.defaultMergeName(m)
+        : name;
+    await UploadQueue.instance.enqueueRename(
+      target: RenameTarget.merged,
+      localKey: key,
+      cloudRunId: entry.runId!,
+      lockVersion: entry.lockVersion,
+      newName: newName,
+    );
+    // ignore: unawaited_futures
+    SyncWorker.instance.kick('merged course renamed');
+  }
+
+  // ── F46 delete (1.70): phone + cloud legs, device flash NEVER touched ──
+
+  /// Cloud upload state of a single run: its DONE queue entry, or null
+  /// when not uploaded (no cloud copy to delete).
+  UploadEntry? _cloudEntryForRun(SavedRun run) {
+    final e = UploadQueue.instance.forFile(run.fileName);
+    if (e == null || e.status != UploadStatus.done || e.runId == null) {
+      return null;
+    }
+    return e;
+  }
+
+  /// Cloud upload state of a merged course (queue key = merge identity).
+  UploadEntry? _cloudEntryForMerge(Map<String, dynamic> m) {
+    final key = UploadQueue.mergedQueueKey(
+        m['aFile'] as String, m['bFile'] as String);
+    final e = UploadQueue.instance.forFile(key);
+    if (e == null || e.status != UploadStatus.done || e.runId == null) {
+      return null;
+    }
+    return e;
+  }
+
+  /// Long-press menu for a local run tile (rename stays available; delete
+  /// joins it — long-press previously went straight to rename).
+  Future<void> _showRunActions(SavedRun run) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Rename'),
+              onTap: () => Navigator.pop(ctx, 'rename'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete…'),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'rename') {
+      await _promptRename(run);
+    } else if (action == 'delete') {
+      await _confirmDeleteRun(run);
+    }
+  }
+
+  /// Long-press menu for a merged-course tile.
+  Future<void> _showMergeActions(Map<String, dynamic> m) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Rename'),
+              onTap: () => Navigator.pop(ctx, 'rename'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete…'),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'rename') {
+      await _promptRenameMerge(m);
+    } else if (action == 'delete') {
+      await _confirmDeleteMerge(m);
+    }
+  }
+
+  /// F46 confirmation for a single run: honest scoping of what is deleted
+  /// where. The device flash copy is NEVER deleted from the phone — it
+  /// recycles automatically; per-run device deletion needs a firmware
+  /// update. Deleting a run that sources a merge is allowed: the merge
+  /// keeps its stored gates/baro (and its cloud row).
+  Future<void> _confirmDeleteRun(SavedRun run) async {
+    final cloudEntry = _cloudEntryForRun(run);
+    final isMergeSource = _merges.any((m) =>
+        m['aFile'] == run.fileName || m['bFile'] == run.fileName);
+    var delPhone = true;
+    var delCloud = cloudEntry != null;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: const Text('Delete this run?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: delPhone,
+                onChanged: (v) => setD(() => delPhone = v ?? false),
+                title: const Text('Delete from phone'),
+              ),
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: cloudEntry != null && delCloud,
+                // Not uploaded → nothing to delete in the cloud.
+                onChanged:
+                    cloudEntry == null ? null : (v) => setD(() => delCloud = v ?? false),
+                title: const Text('Delete from cloud'),
+                subtitle: cloudEntry == null
+                    ? const Text('Not uploaded — no cloud copy')
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'The copy on the device flash is NOT deleted — device '
+                'storage recycles automatically; per-run device deletion '
+                'comes with a firmware update.',
+                style: TextStyle(fontSize: 12),
+              ),
+              if (isMergeSource)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Merged courses using this run keep their data.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: (delPhone || (delCloud && cloudEntry != null))
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _executeRunDelete(
+      run,
+      deleteFromPhone: delPhone,
+      deleteFromCloud: delCloud && cloudEntry != null,
+      cloudEntry: cloudEntry,
+    );
+  }
+
+  /// Execution order per arch §8: cloud DELETE first — a failure aborts
+  /// with a snackbar and keeps everything. Local leg: runs.json index +
+  /// run file + upload queue entry + rename outbox entries.
+  Future<void> _executeRunDelete(
+    SavedRun run, {
+    required bool deleteFromPhone,
+    required bool deleteFromCloud,
+    required UploadEntry? cloudEntry,
+  }) async {
+    if (deleteFromCloud && cloudEntry?.runId != null) {
+      try {
+        await ApiClient.instance.deleteRun(cloudEntry!.runId!);
+      } catch (e) {
+        debugPrint('[SGC] cloud delete failed for ${run.fileName}: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cloud delete failed — run kept. ($e)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+    if (deleteFromPhone) {
+      await _storage.delete(run);
+      await UploadQueue.instance.removeFile(run.fileName);
+      await UploadQueue.instance.removeRenamesForKey(run.fileName);
+      _gateCache.remove(run.fileName);
+      await _loadLocalRuns();
+      if (mounted) setState(() {});
+    }
+    if (mounted) {
+      final scope = deleteFromPhone && deleteFromCloud
+          ? 'Run deleted from phone and cloud'
+          : deleteFromCloud
+              ? 'Run deleted from cloud — phone copy kept'
+              : 'Run deleted from phone';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(scope)),
+      );
+    }
+  }
+
+  /// F46 confirmation for a merged course: phone = the merge entry itself
+  /// (its two source runs stay). Cloud = the merged cloud row.
+  Future<void> _confirmDeleteMerge(Map<String, dynamic> m) async {
+    final cloudEntry = _cloudEntryForMerge(m);
+    var delPhone = true;
+    var delCloud = cloudEntry != null;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: const Text('Delete this merged course?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: delPhone,
+                onChanged: (v) => setD(() => delPhone = v ?? false),
+                title: const Text('Delete from phone'),
+                subtitle: const Text(
+                    'The two source runs are kept'),
+              ),
+              CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: cloudEntry != null && delCloud,
+                onChanged:
+                    cloudEntry == null ? null : (v) => setD(() => delCloud = v ?? false),
+                title: const Text('Delete from cloud'),
+                subtitle: cloudEntry == null
+                    ? const Text('Not uploaded — no cloud copy')
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Only the merged course is removed — its two source runs '
+                'stay on the phone and on the device.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: (delPhone || (delCloud && cloudEntry != null))
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _executeMergeDelete(
+      m,
+      deleteFromPhone: delPhone,
+      deleteFromCloud: delCloud && cloudEntry != null,
+      cloudEntry: cloudEntry,
+    );
+  }
+
+  /// Cloud first, then the local merge entry — removed from
+  /// merged_runs.json with allowShrink: true (the reserved path, finally
+  /// used for its intended purpose: explicit user deletion). The merge's
+  /// queue entry + rename outbox entries are dropped so the sync worker's
+  /// merged backfill cannot resurrect it.
+  Future<void> _executeMergeDelete(
+    Map<String, dynamic> m, {
+    required bool deleteFromPhone,
+    required bool deleteFromCloud,
+    required UploadEntry? cloudEntry,
+  }) async {
+    if (deleteFromCloud && cloudEntry?.runId != null) {
+      try {
+        await ApiClient.instance.deleteRun(cloudEntry!.runId!);
+      } catch (e) {
+        debugPrint('[SGC] cloud delete failed for merge: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cloud delete failed — merged course kept. ($e)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+    if (deleteFromPhone) {
+      // Reload from disk before shrinking: the in-memory list can be
+      // stale (auto-sync merge pass) — never persist a blind shrink.
+      final merges = await _storage.loadMerges();
+      final aFile = m['aFile'] as String;
+      final bFile = m['bFile'] as String;
+      merges.removeWhere(
+          (e) => e['aFile'] == aFile && e['bFile'] == bFile);
+      await _storage.saveMerges(merges, allowShrink: true);
+      _merges = merges;
+      final key = UploadQueue.mergedQueueKey(aFile, bFile);
+      await UploadQueue.instance.removeFile(key);
+      await UploadQueue.instance.removeRenamesForKey(key);
+      await _refreshDerivedState(_localRuns);
+      if (mounted) setState(() {});
+    }
+    if (mounted) {
+      final scope = deleteFromPhone && deleteFromCloud
+          ? 'Merged course deleted from phone and cloud'
+          : deleteFromCloud
+              ? 'Merged course deleted from cloud — phone copy kept'
+              : 'Merged course deleted from phone';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(scope)),
+      );
+    }
   }
 
   /// F45: rename dialog. Empty input = back to default label.
@@ -1624,6 +1994,10 @@ class _RunListScreenState extends State<RunListScreen>
   /// the app on Cancel (exit animation still had the TextField attached:
   /// use-after-dispose). Route widgets are disposed only AFTER the exit
   /// animation completes, so the lifecycle is now correct by construction.
+  /// 1.70: when the run is confirmed uploaded (DONE queue entry with a
+  /// cloud id), the rename is propagated via the persistent rename
+  /// outbox + sync worker; clearing the label propagates the COMPUTED
+  /// default name so the cloud row keeps matching the phone.
   Future<void> _promptRename(SavedRun run) async {
     final result = await showDialog<String>(
       context: context,
@@ -1635,7 +2009,32 @@ class _RunListScreenState extends State<RunListScreen>
     if (result != null) {
       await _storage.renameRun(run.fileName, result);
       await _loadLocalRuns();
+      await _propagateRunRename(run, result.trim());
     }
+  }
+
+  /// 1.70: queue a cloud rename when this run already lives in the cloud.
+  /// [trimmedName] empty = the user cleared the custom label — the cloud
+  /// then receives the computed default ("A#32"), mirroring the phone.
+  Future<void> _propagateRunRename(SavedRun run, String trimmedName) async {
+    final entry = UploadQueue.instance.forFile(run.fileName);
+    if (entry == null ||
+        entry.status != UploadStatus.done ||
+        entry.runId == null) {
+      return; // not uploaded (yet) — the next upload carries the name
+    }
+    final newName = trimmedName.isEmpty
+        ? await _storage.defaultRunName(run)
+        : trimmedName;
+    await UploadQueue.instance.enqueueRename(
+      target: RenameTarget.single,
+      localKey: run.fileName,
+      cloudRunId: entry.runId!,
+      lockVersion: entry.lockVersion,
+      newName: newName,
+    );
+    // ignore: unawaited_futures
+    SyncWorker.instance.kick('run renamed');
   }
 
   // ── F21: device param editors (write via BLE, re-read, confirm) ──
@@ -1753,7 +2152,9 @@ class _RunListScreenState extends State<RunListScreen>
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SizedBox(width: 120, child: Text(label, style: const TextStyle(color: Colors.grey))),
+          // 1.70: widened from 120 — labels now distinguish storage
+          // locations ("On device (flash slots)" / "Downloaded (phone)").
+          SizedBox(width: 160, child: Text(label, style: const TextStyle(color: Colors.grey))),
           Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
         ],
       ),
