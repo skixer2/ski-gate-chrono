@@ -16,6 +16,10 @@ cd /d "%REPO%" || goto fail
 echo PULL_OK >> "%LOG%"
 cd /d "%APP%" || goto fail
 set "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr"
+echo ANALYZE_START >> "%LOG%"
+call C:\Users\v17ni\develop\flutter\bin\flutter.bat analyze --no-pub >> "%LOG%" 2>&1 || (echo ANALYZE_FAILED >> "%LOG%" & echo ANALYZE_FAILED & exit /b 1)
+echo ANALYZE_OK >> "%LOG%"
+
 call C:\Users\v17ni\develop\flutter\bin\flutter.bat build apk --debug >> "%LOG%" 2>&1 || goto fail
 echo BUILD_OK >> "%LOG%"
 set "ADB=C:\Users\v17ni\AppData\Local\Android\Sdk\platform-tools\adb.exe"
