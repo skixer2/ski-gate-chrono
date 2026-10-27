@@ -1,5 +1,5 @@
 /*
- * SGC Zephyr — App 03: pull-protocol product app (v0.20.0)
+ * SGC Zephyr — App 03: pull-protocol product app (v0.22.0)
  * ==================================================================
  * Wiring only (step 3c split; v0.20.0 producer-merge cleanup removed
  * the retired scaffolding — bp_ref oracle, boot self-test, demo_svc,
@@ -31,7 +31,7 @@
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
 
-#define APP_VERSION "0.21.5"
+#define APP_VERSION "0.22.0"   /* F46: per-run delete over BLE ('d <id>', serial too) — index-only mark, lazy data reclaim */
 
 int main(void)
 {

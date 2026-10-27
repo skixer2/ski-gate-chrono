@@ -14,6 +14,11 @@
  *                          per run + {"d_end":n}
  *   "s <id> <off> <len>" → [seq:2B LE][len:1B][payload ≤240 B] frames
  *                          paced 25 ms, END marker FF FF 00
+ *   "d <id>"             → delete run <id> (F46, v0.22.0): INDEX-only,
+ *                          lazy data reclaim. "OK deleted N" |
+ *                          "OK already gone" (idempotent retry) |
+ *                          "E 5" busy (recording) | "E 4" transfer
+ *                          | "E 3" malformed (digits only)
  *   "E n"                → 1 bad run · 2 bad off/len · 3 malformed
  *                          · 4 unknown/busy
  *
@@ -576,6 +581,38 @@ static int parse_three_l(const char *p, long *id, long *off, long *len)
 	return 0;
 }
 
+/* Parse " <id>" — STRICT digits-only (F46): optional leading spaces,
+ * one or more decimal digits, optional trailing spaces, END. Any
+ * sign, hex letter or other junk is malformed — a phone retry must
+ * never half-delete. Saturates far past MAX_INDEXED_RUNS so huge
+ * values simply answer "already gone". 0 on success. */
+static int parse_run_id(const char *p, uint32_t *id)
+{
+	uint32_t v = 0;
+
+	while (*p == ' ') {
+		p++;
+	}
+	if (*p < '0' || *p > '9') {
+		return -1;
+	}
+	while (*p >= '0' && *p <= '9') {
+		v = v * 10u + (uint32_t)(*p - '0');
+		if (v > 0xFFFFFFu) {
+			v = 0xFFFFFFu;	/* saturate: past any real id */
+		}
+		p++;
+	}
+	while (*p == ' ') {
+		p++;
+	}
+	if (*p != '\0') {
+		return -1;
+	}
+	*id = v;
+	return 0;
+}
+
 void sensor_prod_golden_arm(void);
 
 /* ── Directory job (paced, TX-pool-safe) ───────────────────────────
@@ -812,6 +849,36 @@ static void cmd_work_handler(struct k_work *w)
 
 			snprintf(ok, sizeof(ok), "OK budget %lu B",
 				 (unsigned long)store_run_budget());
+			console_emit(ok);
+		}
+	} else if (cmd == 'd') {
+		/* F46 per-run delete (v0.22.0, JP GO 2026-10-27): remove one
+		 * run from the INDEX ONLY — instant, no data erase; the run's
+		 * sectors reclaim lazily when the runway top-up walks over
+		 * them (post-wipe semantics). Both transports land here via
+		 * the shared capture: serial "d 12" or a BLE write of "d 12"
+		 * to the ABCA console char; the reply goes back on the same
+		 * console_emit path as every other command. */
+		uint32_t id;
+
+		if (parse_run_id(&req[1], &id) != 0) {
+			console_emit("E 3");		/* malformed */
+		} else if (recorder_state_idx() != 0) {
+			console_emit("E 5");  /* ARMED/LOGGING/POST_RUN */
+		} else if (dir_active || job_active) {
+			/* Transfer in flight: ids are positional — they must
+			 * not shift under a live listing/stream (same guard
+			 * as 'D'). */
+			console_emit("E 4");
+		} else if (id >= store_run_count()) {
+			console_emit("OK already gone");  /* idempotent retry */
+		} else if (!store_run_delete((uint8_t)id)) {
+			console_emit("E 5");   /* record/top-up in flight */
+		} else {
+			char ok[24];
+
+			snprintf(ok, sizeof(ok), "OK deleted %u",
+				 (uint8_t)id);
 			console_emit(ok);
 		}
 	} else if (cmd == 'x') {

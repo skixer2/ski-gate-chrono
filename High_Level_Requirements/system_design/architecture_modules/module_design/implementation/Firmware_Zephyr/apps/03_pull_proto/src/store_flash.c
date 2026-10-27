@@ -941,6 +941,44 @@ void store_init(void)
 	schedule_topup("boot");
 }
 
+/* ── F46 per-run delete (v0.22.0, JP GO 2026-10-27) ────────────
+ * INDEX-ONLY: the entry leaves the RAM index and the persisted
+ * index sector; the run's data bytes stay on flash. Nothing reads
+ * them — every access path is list-driven (D directory lines,
+ * ABC9 JSON, 's' stream, 'H' hexdump all validate
+ * id < store_run_count()) — and the orphaned sectors are reclaimed
+ * IN PLACE when a runway top-up later walks over them: with the
+ * entry gone, reclaim_victims has nothing to preserve, the erase
+ * simply passes through. Post-wipe semantics, zero erase work
+ * here — the command stays instant and can never stall a critical
+ * path (SGL2 doctrine). Boot consistency is structural: the
+ * removal is persisted like any other index commit (same
+ * single-sector rewrite as run-close and budget-set, no new crash
+ * window), so a reboot loads an index that already lacks the run.
+ * Idempotent: an id past the end is success ("already gone") —
+ * phone retries after a dropped notify are safe. Wire ids are
+ * POSITIONAL (the JSON 'id' IS the array index), so later runs
+ * shift down one slot; the phone re-lists (ABC9 rebuilds per
+ * read). */
+bool store_run_delete(uint8_t id)
+{
+	if (store_busy()) {
+		return false;
+	}
+	if (id >= entry_count) {
+		return true;	/* already gone — idempotent */
+	}
+	printk("store: delete id=%u (run_id=%u, %lu B) — index only, "
+	       "data reclaims lazily\n",
+	       id, entries[id].run_id,
+	       (unsigned long)(BLOB_OVERHEAD + entries[id].payload_len));
+	memmove(&entries[id], &entries[id + 1],
+		(entry_count - id - 1) * sizeof(entries[0]));
+	entry_count--;
+	persist_index();
+	return true;
+}
+
 
 void store_wipe(void)
 {

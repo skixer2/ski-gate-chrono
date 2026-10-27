@@ -83,6 +83,20 @@ uint32_t store_run_budget(void);
 /* How many FULL budget runs still fit (athlete-facing estimate). */
 uint32_t store_free_full_runs(void);
 
+/* ── F46 per-run delete (v0.22.0, JP GO 2026-10-27) ────────────────
+ * Remove one run from the INDEX only (id = the positional id the
+ * listings serve). Instant and erase-free: the run's flash sectors
+ * join the lazy reclamation pool — nothing reads them (every access
+ * path is list-driven: D directory, ABC9, 's' stream, 'H' hexdump
+ * all validate id < store_run_count()), and the runway top-up erases
+ * them in place when the log wraps over them, exactly like post-wipe
+ * garbage. Idempotent: an unknown id is success ("already gone") so
+ * phone retries are safe. Ids are POSITIONAL, so later runs shift
+ * down one slot — the phone re-lists (ABC9 rebuilds per read).
+ * Returns false only when the store is busy (record/top-up in
+ * flight): caller refuses with a busy error, retry then. */
+bool store_run_delete(uint8_t id);
+
 /* Bench reset: erase the index, restart the log empty. Re-tops the
  * runway in the background (SGL2: a wipe leaves flash dirty; the
  * top-up makes the first 244 KiB clean again). */
