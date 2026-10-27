@@ -107,6 +107,22 @@ SGC_API_SECRET_KEY=real-secret-here docker compose up -d --build
 
 Non-root container, healthcheck on `/healthz`, DB port never published.
 
+## One-time run-name reconciliation (JP naming scheme v2, 2026-10-27)
+
+Backfills `runs.name` from `runs.run_number` / `runs.source_run_ids`:
+single = `A#<run_number>`, merged = `A#x + A#y` (source order). Idempotent;
+touches only rows whose name is NULL or already auto-generated
+(`^A#\d+( \+ A#\d+)*$`) — custom user names are NEVER overwritten. Merged
+rows with missing/empty lineage are skipped and logged.
+
+The image must include `scripts/` (Dockerfile COPY added 2026-10-27), so
+rebuild once, then run against the live volume:
+
+```bash
+docker exec sgc-api python -m scripts.reconcile_names --dry-run   # preview
+docker exec sgc-api python -m scripts.reconcile_names             # apply
+```
+
 ## P0 decisions embedded in code (worth a JP glance)
 
 1. **Login identifier = `users.name`** (unique). REQ-DB has no email

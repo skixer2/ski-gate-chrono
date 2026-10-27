@@ -83,6 +83,32 @@ def test_list_runs_own_only_with_pagination(client):
     assert r.status_code == 403
 
 
+def test_list_runs_order_start_desc_then_id_desc(client):
+    """Deterministic listing (JP 2026-10-27): ORDER BY start_datetime DESC,
+    id DESC. Proves insertion order != returned order both ways: a NEWER
+    run uploaded LATER sorts first, and same-start runs tiebreak on the
+    higher id first (regardless of upload order)."""
+    tokens = register_and_login(client, name="orderer")
+
+    def _upload_ordered(uuid: str, start: str, run_number: int) -> None:
+        payload = sample_run_payload(uuid)
+        payload["start_datetime"] = start
+        payload["run_number"] = run_number
+        assert _upload(client, tokens, payload).status_code == 201
+
+    # Insert OLD first, NEW second: returned order must still be new-first.
+    _upload_ordered("uuid-order-old", "2026-01-01T08:00:00Z", run_number=1)
+    _upload_ordered("uuid-order-new", "2026-03-01T08:00:00Z", run_number=2)
+    # Same start_datetime pair: tiebreak = higher id first. "b" is uploaded
+    # first (lower id), "a" second (higher id) → "a" must precede "b".
+    _upload_ordered("uuid-order-tie-b", "2026-02-15T10:30:00Z", run_number=4)
+    _upload_ordered("uuid-order-tie-a", "2026-02-15T10:30:00Z", run_number=3)
+
+    r = client.get("/v1/runs", headers=auth_headers(tokens))
+    assert r.status_code == 200
+    assert [item["run_number"] for item in r.json()["items"]] == [2, 3, 4, 1]
+
+
 def test_get_run_detail_include(client):
     tokens = register_and_login(client, name="viewer")
     run_id = _upload(client, tokens, sample_run_payload("uuid-detail-1")).json()["id"]

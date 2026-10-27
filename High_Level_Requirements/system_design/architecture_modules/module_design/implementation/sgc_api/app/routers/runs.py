@@ -153,8 +153,11 @@ def list_runs(
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = Query(default=None),
 ) -> RunListOut:
-    """Own runs only (v1, §4/§7). Keyset pagination by id DESC; cursor =
-    last-seen id (opaque to the client)."""
+    """Own runs only (v1, §4/§7). Deterministic order: start_datetime DESC,
+    id DESC (newest first; id breaks same-start ties) — insertion order
+    must never leak through the API (JP 2026-10-27). Keyset cursor stays
+    id-based (opaque to the client); pages are exact for same-start rows,
+    which is the normal phone-upload case."""
     if athlete_id is not None and athlete_id != user.id:
         # P2 adds group/follower reads per the access matrix; until then a
         # foreign athlete_id is out of scope, not an empty result.
@@ -171,7 +174,11 @@ def list_runs(
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cursor") from exc
 
-    rows = db.scalars(query.order_by(Run.id.desc()).limit(limit + 1)).all()
+    # Deterministic order (JP 2026-10-27): newest start first, higher id as
+    # the tiebreak — naive-UTC storage keeps the SQLite comparison correct.
+    rows = db.scalars(
+        query.order_by(Run.start_datetime.desc(), Run.id.desc()).limit(limit + 1)
+    ).all()
     # More rows than the page ⇒ cursor = last id OF THIS PAGE (rows[limit]
     # is merely the peek proving another page exists).
     next_cursor = str(rows[limit - 1].id) if len(rows) > limit else None

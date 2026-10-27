@@ -16,6 +16,7 @@ WORKDIR /srv/sgc-api
 COPY pyproject.toml alembic.ini ./
 COPY app ./app
 COPY alembic ./alembic
+COPY scripts ./scripts
 RUN pip install --no-cache-dir .
 
 # SQLite home (named volume mounts here; seeded with this ownership on
