@@ -246,8 +246,32 @@
 ///          (client-side over loaded pages); Cloud detail: Type row,
 ///          "Merged from runs #a + #b" lineage, Merged app-bar badge.
 ///          Trigger: merge pass completion (new merges or baro
-///          backfill) + the existing app-start pass (idempotent).
-const String APP_VERSION = '1.68.0';
+///          backfill) + the existing app-start pass (idempotent).///   1.69 - JP NAMING SCHEME v2 (confirmed 2026-10-27 10:18): stable
+///          device-letter registry + computed run names + day pager.///          (1) DeviceRegistry (device_registry.json, atomic temp+rename):
+///          every distinct BLE MAC gets a permanent letter — first ever
+///          MAC = A, new MACs at pair/save time take the next free
+///          letter (A..Z, rolls to AA.. if a 27th device ever appears);
+///          re-pairing a known MAC keeps its letter. First-launch
+///          migration seeds from sgc.paired_macs in stored order, so
+///          today's single device lands on A.
+///          (2) SavedRun gains sourceMac (stamped on all three download
+///          paths; pre-1.69 rows keep null and resolve to letter A).
+///          (3) Default run name = "<letter>#<device run id>" ("A#32"),
+///          COMPUTED not stored; custom F45 names still override.
+///          (4) Day pager replaces the date-filter popup: AppBar ◀ /
+///          "Sun 26 Oct" / ▶ moves one day at a time (launch = newest
+///          day with runs, arrows disabled at the ends); runs within the
+///          day sorted (timestamp, R-before-L, id) and numbered 1..N in
+///          a display-only circle avatar; merged courses stay scoped to
+///          the same day.
+///          (5) Merged default name = "<A#x> + <A#y>" from the two
+///          sources' default names (dev case "A#32 + A#33"); custom
+///          merge name overrides.
+///          (6) Upload payloads ALWAYS carry 'name' (custom or computed
+///          default — singles and merged alike); cloud list title = row
+///          name (legacy-nameless rows fall back to "Single run" /
+///          "Merged run"), replacing the cloud-id title logic.
+const String APP_VERSION = '1.69.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/gate_side.dart';
 import '../../ble/ble_manager.dart' hide ScanResult;
@@ -13,6 +14,7 @@ import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
 import '../../processing/run_merger.dart';
 import '../../storage/local_storage.dart';
+import '../../storage/device_registry.dart';
 import '../../config/app_version.dart';
 import '../../cloud/sync_worker.dart';
 import '../../models/device_config.dart';
@@ -96,7 +98,14 @@ class _RunListScreenState extends State<RunListScreen>
   bool _appResumed = true;
   DateTime? _lastAutoScan;   // Android scan-throttle guard
   Set<String> _pairedMacs = {};
-  String? _dateFilter;   // JP 2026-10-26 #8: filter runs by date
+  // 1.69 day pager: the ONE local day currently displayed (YYYY-MM-DD key).
+  // null = nothing to show yet; the first load snaps to the newest day
+  // having runs.
+  String? _displayDay;
+  // 1.69 display-only default names, recomputed whenever the run set
+  // changes: fileName → "A#32"; merge key (aFile|bFile) → "A#32 + A#33".
+  Map<String, String> _defaultNames = {};
+  Map<String, String> _mergeDefaultNames = {};
   List<Map<String, dynamic>> _merges = [];
   final Map<String, List<Map<String, dynamic>>> _gateCache = {};
   static const _prefsAutoSync = 'sgc.autosync';
@@ -169,6 +178,8 @@ class _RunListScreenState extends State<RunListScreen>
     _autoEnabled = prefs.getBool(_prefsAutoSync) ?? true;
     _pairedMacs = (prefs.getStringList(_prefsPairedMacs) ?? []).toSet();
     _merges = await _storage.loadMerges();
+    // Runs may not be loaded yet (initState race) — refresh names only.
+    await _refreshDerivedState(_localRuns, clampDay: false);
     if (mounted) setState(() {});
   }
 
@@ -315,6 +326,7 @@ class _RunListScreenState extends State<RunListScreen>
                 compressedData: data,
                 result: decoded,
                 deviceName: 'SGC',
+                sourceMac: address, // 1.69: stamp recording device
               );
               saved++;
               await _loadLocalRuns();
@@ -434,6 +446,9 @@ class _RunListScreenState extends State<RunListScreen>
       await _storage.saveMerges(merged);
       _merges = merged;
       newMerges = true;
+      // 1.69: recompute the composed merge labels ("A#32 + A#33") so the
+      // new entries never flash the legacy "Run #a + #b" fallback.
+      await _refreshDerivedState(_localRuns, clampDay: false);
       if (mounted) setState(() {});
     }
     // Backfill: entries created before 1.59 lack the averaged baro profile.
@@ -572,6 +587,10 @@ class _RunListScreenState extends State<RunListScreen>
       await _ble.connectToDevice(device);
       _device = device;  // V1.22: keep for per-run reconnect
       _rememberPaired(device.remoteId.str);  // v1.58: auto-sync pairing
+      // 1.69: pair-time letter assignment — a newly paired device gets its
+      // registry letter here, even before its first run is downloaded.
+      // ignore: unawaited_futures
+      DeviceRegistry.instance.letterFor(device.remoteId.str);
       final sgc = SGCService(_ble);
 
       // Dump discovered services so we can see what the device actually exposes
@@ -703,7 +722,39 @@ class _RunListScreenState extends State<RunListScreen>
 
   Future<void> _loadLocalRuns() async {
     final runs = await _storage.listAll();
+    await _refreshDerivedState(runs);
     if (mounted) setState(() => _localRuns = runs);
+  }
+
+  /// 1.69: recompute everything derived from the run set — pager day
+  /// clamp, per-run default names ("A#32"), per-merge default names
+  /// ("A#32 + A#33"). Runs whenever the local index changes.
+  /// [clampDay] false when [runs] is a possibly-stale snapshot (auto-prefs
+  /// load can race ahead of the first index read) — names refresh, but a
+  /// valid displayed day is never clobbered by an empty list.
+  Future<void> _refreshDerivedState(List<SavedRun> runs,
+      {bool clampDay = true}) async {
+    final options = _dayOptionsOf(runs);
+    if (options.isNotEmpty) {
+      if (_displayDay == null || !options.contains(_displayDay)) {
+        // First load / displayed day deleted → snap to the newest day.
+        _displayDay = options.first;
+      }
+    } else if (clampDay) {
+      _displayDay = null;
+    }
+    final byFile = {for (final r in runs) r.fileName: r};
+    final names = <String, String>{};
+    for (final r in runs) {
+      names[r.fileName] = await _storage.defaultRunName(r);
+    }
+    _defaultNames = names;
+    final mnames = <String, String>{};
+    for (final m in _merges) {
+      mnames[_mergeKeyOf(m)] =
+          await _storage.defaultMergeName(m, byFile: byFile);
+    }
+    _mergeDefaultNames = mnames;
   }
 
   /// Device runs not yet present in local storage.
@@ -810,6 +861,7 @@ class _RunListScreenState extends State<RunListScreen>
             compressedData: data,
             result: decoded,
             deviceName: _config?.deviceName ?? 'SGC',
+            sourceMac: _device?.remoteId.str, // 1.69: stamp recording device
           );
           ok++;
           // Keep the missing-run identity current while the batch is still
@@ -957,6 +1009,7 @@ class _RunListScreenState extends State<RunListScreen>
             compressedData: data,
             result: decoded,
             deviceName: _config?.deviceName ?? 'SGC',
+            sourceMac: dev.remoteId.str, // 1.69: stamp recording device
           );
           saved++;
           await _loadLocalRuns();
@@ -1099,22 +1152,25 @@ class _RunListScreenState extends State<RunListScreen>
           ],
         ),
         actions: [
+          // 1.69 day pager (JP): one day at a time — ◀ older · label · ▶
+          // newer. Replaces the 1.66 date-filter popup. Disabled at the
+          // ends of the available day range.
           if (_localRuns.isNotEmpty)
-            PopupMenuButton<String?>(
-              tooltip: 'Filter by date',
-              icon: Icon(Icons.filter_list,
-                  color: _dateFilter == null
-                      ? null
-                      : Theme.of(context).colorScheme.primary),
-              initialValue: _dateFilter,
-              onSelected: (v) => setState(() =>
-                  _dateFilter = (v == null || v.isEmpty) ? null : v),
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: null, child: Text('All dates')),
-                ..._dateOptions.map((d) =>
-                    PopupMenuItem(value: d, child: Text(d))),
-              ],
-            ),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Older day',
+                onPressed: _canGoOlder ? _goOlderDay : null,
+              ),
+              Text(_displayDay == null ? '' : _dayLabel(_displayDay!),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600)),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Newer day',
+                onPressed: _canGoNewer ? _goNewerDay : null,
+              ),
+            ]),
           if (isConnected)
             IconButton(
               icon: const Icon(Icons.bluetooth_connected, color: Colors.green),
@@ -1164,19 +1220,19 @@ class _RunListScreenState extends State<RunListScreen>
                       ),
                     ],
                     const SizedBox(height: 12),
-                    if (_filteredMerges.isNotEmpty) ...[
+                    if (_dayMerges.isNotEmpty) ...[
                       Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 4, vertical: 4),
                         child: Text(
-                            'Merged Courses (${_filteredMerges.length}'
-                            '${_dateFilter == null ? '' : ' of ${_merges.length}'})',
+                            'Merged Courses (${_dayMerges.length}'
+                            '${_dayMerges.length == _merges.length ? '' : ' of ${_merges.length}'})',
                             style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.grey.shade700)),
                       ),
-                      for (final m in _filteredMerges)
+                      for (final m in _dayMerges)
                         Card(
                           child: ListTile(
                             leading: const Icon(Icons.merge_type),
@@ -1215,10 +1271,13 @@ class _RunListScreenState extends State<RunListScreen>
                     ],
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                      child: Text('Saved Runs (${_dateFilter == null ? _localRuns.length : _filteredLocalRuns.length}${_dateFilter == null ? '' : ' of ${_localRuns.length}'})',
+                      child: Text('Saved Runs (${_dayRuns.length}${_dayRuns.length == _localRuns.length ? '' : ' of ${_localRuns.length}'})',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
                     ),
-                    ..._filteredLocalRuns.map(_buildLocalRunTile),
+                    ...[
+                      for (int i = 0; i < _dayRuns.length; i++)
+                        _buildLocalRunTile(_dayRuns[i], i + 1),
+                    ],
                   ],
                 ),
       floatingActionButton: _isConnecting
@@ -1377,34 +1436,44 @@ class _RunListScreenState extends State<RunListScreen>
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            child: Text('Saved Runs (${_dateFilter == null ? _localRuns.length : _filteredLocalRuns.length}${_dateFilter == null ? '' : ' of ${_localRuns.length}'})',
+            child: Text('Saved Runs (${_dayRuns.length}${_dayRuns.length == _localRuns.length ? '' : ' of ${_localRuns.length}'})',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
           ),
-          ..._filteredLocalRuns.map(_buildLocalRunTile),
+          ...[
+            for (int i = 0; i < _dayRuns.length; i++)
+              _buildLocalRunTile(_dayRuns[i], i + 1),
+          ],
         ],
       ],
     );
   }
 
-  Widget _buildLocalRunTile(SavedRun run) {
+  Widget _buildLocalRunTile(SavedRun run, int dayNumber) {
     final dateStr = DateTime.fromMillisecondsSinceEpoch(run.timestamp * 1000, isUtc: true)
         .toLocal().toString().substring(0, 16);
     final durStr = '${(run.durationSec ~/ 60).toString().padLeft(2, '0')}:'
         '${(run.durationSec % 60).toStringAsFixed(1).padLeft(4, '0')}';
-    // F45: user name if set, else default "date + run_number" label.
+    // 1.69 (JP naming v2): default name = "<deviceLetter>#<device run id>"
+    // (computed from the source device's registry letter); a custom F45
+    // name always wins.
     final hasName = run.name != null && run.name!.isNotEmpty;
-    final title = hasName
-        ? run.name!
-        : '${_defaultRunLabel(run)} — $durStr';
-    final subtitle = hasName
-        ? 'Run #${run.id} · $durStr · $dateStr · ${run.frameCount} frames · ${run.deviceName}'
-        : '$dateStr · ${run.frameCount} frames · ${run.deviceName}';
+    final defaultName = _defaultNames[run.fileName] ?? 'A#${run.id}';
+    final title = hasName ? run.name! : defaultName;
+    final subtitle = 'Run #${run.id} · $durStr · '
+        '${run.side == 'right' ? 'Right' : 'Left'} · $dateStr · '
+        '${run.frameCount} frames · ${run.deviceName}';
 
     return Card(
       child: ListTile(
-        leading: Icon(
-          run.side == 'right' ? Icons.arrow_forward : Icons.arrow_back,
-          color: Colors.blue.shade400,
+        // 1.69 day pager: per-day ordinal 1..N — DISPLAY-ONLY (circle
+        // avatar), never stored or uploaded.
+        leading: CircleAvatar(
+          backgroundColor: Colors.blue.shade100,
+          child: Text('$dayNumber',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue.shade800)),
         ),
         title: Text(title,
             style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -1437,74 +1506,104 @@ class _RunListScreenState extends State<RunListScreen>
     return '$y-$m-$day';
   }
 
-  /// Distinct local dates present in the local run set (newest first).
-  List<String> get _dateOptions => _localRuns
+  /// Distinct local days present in [runs] (newest first). Backs the
+  /// day pager; [_dayOptions] is the current-run-set view of it.
+  List<String> _dayOptionsOf(List<SavedRun> runs) => runs
       .map((r) => _dayKeyOf(r.timestamp))
       .toSet()
       .toList()
       ..sort((a, b) => b.compareTo(a));
 
-  /// Local runs after the active date filter (null = all).
-  List<SavedRun> get _filteredLocalRuns => _dateFilter == null
-      ? _localRuns
-      : _localRuns
-          .where((r) => _dayKeyOf(r.timestamp) == _dateFilter)
-          .toList();
+  List<String> get _dayOptions => _dayOptionsOf(_localRuns);
 
-  /// JP 2026-10-26 15:13: merged courses follow the date filter too — a
-  /// merge's day = the day of its first source run (aFile lookup). If the
-  /// source run is no longer on the phone, never hide the merge.
-  bool _mergeMatchesDateFilter(Map<String, dynamic> m) {
-    if (_dateFilter == null) return true;
+  // ── 1.69 day pager (JP): one day at a time ───────────────────────
+
+  int get _dayIndex =>
+      _displayDay == null ? -1 : _dayOptions.indexOf(_displayDay!);
+
+  /// ▶ enabled unless already showing the newest day with runs.
+  bool get _canGoNewer => _dayIndex > 0;
+
+  /// ◀ enabled unless already showing the oldest day with runs.
+  bool get _canGoOlder => _dayIndex >= 0 && _dayIndex < _dayOptions.length - 1;
+
+  void _goNewerDay() {
+    final i = _dayIndex;
+    if (i <= 0) return;
+    setState(() => _displayDay = _dayOptions[i - 1]);
+  }
+
+  void _goOlderDay() {
+    final i = _dayIndex;
+    if (i < 0 || i >= _dayOptions.length - 1) return;
+    setState(() => _displayDay = _dayOptions[i + 1]);
+  }
+
+  /// "Sun 26 Oct"-style label for a YYYY-MM-DD key (device-local day).
+  String _dayLabel(String key) => DateFormat('EEE d MMM').format(
+      DateTime.parse(key));
+
+  /// Runs of the displayed day in numbered order:
+  /// (timestamp, R-before-L tiebreak, id). The 1-based ordinal is applied
+  /// by the tile builder and is DISPLAY-ONLY — never stored or uploaded.
+  List<SavedRun> get _dayRuns {
+    final day = _displayDay;
+    if (day == null) return const [];
+    return _localRuns
+        .where((r) => _dayKeyOf(r.timestamp) == day)
+        .toList()
+      ..sort(_runDayOrder);
+  }
+
+  int _runDayOrder(SavedRun a, SavedRun b) {
+    final c = a.timestamp.compareTo(b.timestamp);
+    if (c != 0) return c;
+    final aR = a.side == 'right';
+    final bR = b.side == 'right';
+    if (aR != bR) return aR ? -1 : 1; // R before L on identical starts
+    return a.id.compareTo(b.id);
+  }
+
+  /// Merged courses follow the pager's day — a merge's day = the day of
+  /// its first source run (aFile lookup). If the source run is no longer
+  /// on the phone, never hide the merge (JP 2026-10-26 15:13 rule).
+  bool _mergeMatchesDay(Map<String, dynamic> m) {
+    final day = _displayDay;
+    if (day == null) return false;
     final src = _localRuns.where((r) => r.fileName == m['aFile']).toList();
     if (src.isEmpty) return true;
-    return _dayKeyOf(src.first.timestamp) == _dateFilter;
+    return _dayKeyOf(src.first.timestamp) == day;
   }
 
-  List<Map<String, dynamic>> get _filteredMerges =>
-      _merges.where(_mergeMatchesDateFilter).toList();
+  List<Map<String, dynamic>> get _dayMerges =>
+      _merges.where(_mergeMatchesDay).toList();
 
-  /// F45 (JP 2026-10-26 #8 revision): default label = 1-based ordinal
-  /// that day (ordered by timestamp, then id). Deterministic from the
-  /// current run set — no extra storage.
-  String _defaultRunLabel(SavedRun run) {
-    final day = DateTime.fromMillisecondsSinceEpoch(run.timestamp * 1000, isUtc: true)
-        .toLocal();
-    final dayKey = '${day.year.toString().padLeft(4, '0')}-'
-        '${day.month.toString().padLeft(2, '0')}-'
-        '${day.day.toString().padLeft(2, '0')}';
-    final sameDay = _localRuns.where((r) {
-      final d = DateTime.fromMillisecondsSinceEpoch(r.timestamp * 1000, isUtc: true)
-          .toLocal();
-      return '${d.year.toString().padLeft(4, '0')}-'
-              '${d.month.toString().padLeft(2, '0')}-'
-              '${d.day.toString().padLeft(2, '0')}' == dayKey;
-    }).toList()
-      ..sort((a, b) {
-        final c = a.timestamp.compareTo(b.timestamp);
-        return c != 0 ? c : a.id.compareTo(b.id);
-      });
-    final n = sameDay.indexWhere((r) => r.fileName == run.fileName) + 1;
-    // JP 2026-10-26 #8: date is visible on the tile + filterable, so the
-    // default name carries just the daily run number.
-    return 'Run $n';
-  }
+  /// Stable identity of a merge entry (same identity the merged uuid and
+  /// queue key derive from).
+  String _mergeKeyOf(Map<String, dynamic> m) =>
+      '${m['aFile']}|${m['bFile']}';
 
   /// F45 (merged extension, JP 2026-10-23): user-editable name for merged
-  /// courses. Default label = the pair identity ("Run #12 + #13"); a set
-  /// name takes the title, the pair identity moves to the subtitle.
+  /// courses. 1.69 default = the two sources' default names joined
+  /// ("A#32 + A#33"; production dual-device will read "A#12 + B#7"); a
+  /// set name takes the title, the pair identity moves to the subtitle.
   bool _mergeHasName(Map<String, dynamic> m) =>
       (m['name'] as String?)?.isNotEmpty == true;
 
-  String _mergeDisplayName(Map<String, dynamic> m) =>
-      _mergeHasName(m) ? m['name'] as String : 'Run #${m['aId']} + #${m['bId']}';
+  String _mergeDefaultNameOf(Map<String, dynamic> m) =>
+      _mergeDefaultNames[_mergeKeyOf(m)] ??
+      'Run #${m['aId']} + #${m['bId']}';
+
+  String _mergeDisplayName(Map<String, dynamic> m) => _mergeHasName(m)
+      ? m['name'] as String
+      : _mergeDefaultNameOf(m);
 
   Future<void> _promptRenameMerge(Map<String, dynamic> m) async {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => _RenameDialog(
         initialName: m['name'] as String?,
-        defaultHint: 'Run #${m['aId']} + #${m['bId']}',
+        defaultHint: _mergeDefaultNameOf(m),
       ),
     );
     if (result == null) return;
@@ -1530,7 +1629,7 @@ class _RunListScreenState extends State<RunListScreen>
       context: context,
       builder: (ctx) => _RenameDialog(
         initialName: run.name,
-        defaultHint: _defaultRunLabel(run),
+        defaultHint: _defaultNames[run.fileName] ?? 'A#${run.id}',
       ),
     );
     if (result != null) {

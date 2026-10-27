@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../processing/decompressor.dart';
 import '../models/run.dart';
+import 'device_registry.dart';
 
 /// Metadata for a locally saved run.
 class SavedRun {
@@ -16,7 +17,10 @@ class SavedRun {
   final String deviceName;
   final String fileName;    // e.g. "run_3_1719000000.bin"
   final DateTime savedAt;
-  final String? name;       // F45: user-editable label; null = default (date + run #)
+  final String? name;       // F45: user-editable label; null = default (device letter # run id)
+  // 1.69: BLE MAC of the device that recorded the run. Null for runs saved
+  // before 1.69 — those resolve to device letter A (only one device exists).
+  final String? sourceMac;
 
   const SavedRun({
     required this.id,
@@ -28,6 +32,7 @@ class SavedRun {
     required this.fileName,
     required this.savedAt,
     this.name,
+    this.sourceMac,
   });
 
   Map<String, dynamic> toJson() => {
@@ -40,6 +45,7 @@ class SavedRun {
     'fileName': fileName,
     'savedAt': savedAt.toIso8601String(),
     if (name != null) 'name': name,
+    if (sourceMac != null) 'sourceMac': sourceMac,
   };
 
   factory SavedRun.fromJson(Map<String, dynamic> json) => SavedRun(
@@ -52,6 +58,7 @@ class SavedRun {
     fileName: json['fileName'] as String,
     savedAt: DateTime.parse(json['savedAt'] as String),
     name: json['name'] as String?,
+    sourceMac: json['sourceMac'] as String?,
   );
 }
 
@@ -70,12 +77,23 @@ class LocalStorage {
   }
 
   /// Save a downloaded run's raw compressed data + metadata.
+  ///
+  /// [sourceMac] (1.69) stamps the run with the recording device's BLE MAC
+  /// and guarantees its registry letter exists before any default name is
+  /// computed — a brand-new device gets its letter at first save.
   Future<SavedRun> save({
     required int runId,
     required Uint8List compressedData,
     required DecompressResult result,
     required String deviceName,
+    String? sourceMac,
   }) async {
+    if (sourceMac != null && sourceMac.isNotEmpty) {
+      // Assign-on-first-sight: a brand-new device gets its letter before
+      // the first default name is ever computed. Known MACs return early
+      // (no disk write), so this is free for every subsequent run.
+      await DeviceRegistry.instance.letterFor(sourceMac);
+    }
     final dir = await _dir;
     debugPrint('[LocalStorage] Storage dir: ${dir.path}');
     final fileName = 'run_${runId}_${result.header.startTimestamp}.bin';
@@ -91,6 +109,7 @@ class LocalStorage {
       deviceName: deviceName,
       fileName: fileName,
       savedAt: DateTime.now(),
+      sourceMac: sourceMac,
     );
 
     // Update index.
@@ -175,6 +194,38 @@ class LocalStorage {
   }
 
   static const _mergesFile = 'merged_runs.json';
+
+  // ── JP naming scheme v2 (1.69): computed default names ────────────
+
+  /// Default run name: "<deviceLetter>#<device run id>" (e.g. "A#32").
+  /// COMPUTED, never stored — the letter follows the run's source device
+  /// in the registry, so a registry rebuild re-labels consistently.
+  /// A custom name (SavedRun.name) always overrides in the UI and in
+  /// upload payloads.
+  Future<String> defaultRunName(SavedRun run) async {
+    final letter = await DeviceRegistry.instance.letterForMac(run.sourceMac);
+    return '$letter#${run.id}';
+  }
+
+  /// Default merged-course name: "<A#x> + <A#y>" — the two sources'
+  /// default names joined with ' + ' (dev case "A#32 + A#33"; production
+  /// dual-device will read "A#12 + B#7"). [byFile] may pass a run lookup
+  /// the caller already holds; sources missing from storage (deleted)
+  /// fall back to letter A — same convention as legacy runs.
+  Future<String> defaultMergeName(Map<String, dynamic> merge,
+      {Map<String, SavedRun>? byFile}) async {
+    final lookup = byFile ??
+        {for (final r in await listAll()) r.fileName: r};
+    final aRun = merge['aFile'] == null ? null : lookup[merge['aFile'] as String];
+    final bRun = merge['bFile'] == null ? null : lookup[merge['bFile'] as String];
+    final a = aRun != null
+        ? await defaultRunName(aRun)
+        : 'A#${merge['aId'] ?? '?'}';
+    final b = bRun != null
+        ? await defaultRunName(bRun)
+        : 'A#${merge['bId'] ?? '?'}';
+    return '$a + $b';
+  }
 
   /// F45: assign a user-editable name to a saved run. Empty/whitespace
   /// name clears the label (back to the default). Rewrites the index

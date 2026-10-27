@@ -115,15 +115,14 @@ class _CloudRunsScreenState extends State<CloudRunsScreen> {
       ? _items
       : _items.where((r) => _typeOf(r) == _typeFilter).toList();
 
+  /// 1.69 (JP): title = the row's name — every upload now always carries
+  /// one (custom name or computed default "A#x" / "A#x + A#y"). The old
+  /// "Merged #id + #id" cloud-id title logic is gone. Fallback for
+  /// legacy rows uploaded before 1.69 without a name: generic type label.
   static String _titleOf(Map<String, dynamic> run) {
     final name = run['name'] as String?;
     if (name != null && name.isNotEmpty) return name;
-    if (_typeOf(run) == 'merged') {
-      final ids = _sourceIdsOf(run);
-      if (ids.length == 2) return 'Merged #${ids[0]} + #${ids[1]}';
-      return 'Merged run #${run['run_number'] ?? run['id']}';
-    }
-    return 'Run #${run['run_number'] ?? run['id']}';
+    return _typeOf(run) == 'merged' ? 'Merged run' : 'Single run';
   }
 
   /// 1.68: small "Merged" chip for merged tiles.

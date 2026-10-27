@@ -361,13 +361,20 @@ class SyncWorker {
             });
           }
 
-          final mergeName = merge['name'] as String? ?? '';
+          // 1.69: label = custom merge name if set, else the composed
+          // default ("<A#x> + <A#y>") — always present in the payload so
+          // every cloud row has a readable name.
+          final customMergeName = merge['name'] as String?;
+          final mergeLabel =
+              (customMergeName != null && customMergeName.isNotEmpty)
+                  ? customMergeName
+                  : await _storage.defaultMergeName(merge, byFile: byFile);
           final payload = <String, dynamic>{
             'client_run_uuid': entry.clientRunUuid,
             'format_version': hdrPart['format_version'],
             'start_datetime': startIso, // aware UTC ("Z")
             'run_number': (merge['aId'] as num).toInt(),
-            if (mergeName.isNotEmpty) 'name': mergeName,
+            'name': mergeLabel,
             'run_type': 'merged',
             if (sourceIds.isNotEmpty) 'source_run_ids': sourceIds,
             'timestamps': timestamps,
@@ -395,13 +402,19 @@ class SyncWorker {
         final startUtc = DateTime.fromMillisecondsSinceEpoch(
             saved.timestamp * 1000,
             isUtc: true);
+        // 1.69: label = custom name if set, else the computed default
+        // ("<deviceLetter>#<device run id>") — always present so the cloud
+        // row matches what the local list shows.
+        final customName = saved.name;
+        final runLabel = (customName != null && customName.isNotEmpty)
+            ? customName
+            : await _storage.defaultRunName(saved);
         final payload = <String, dynamic>{
           'client_run_uuid': entry.clientRunUuid,
           'format_version': decodedPart['format_version'],
           'start_datetime': startUtc.toIso8601String(), // aware UTC ("Z")
           'run_number': saved.id, // informational device run id
-          if (saved.name != null && saved.name!.isNotEmpty)
-            'name': saved.name, // F45 label rides along (1.61 note)
+          'name': runLabel,
           'timestamps': decodedPart['timestamps'],
           'barometric_data': decodedPart['barometric_data'],
         };
