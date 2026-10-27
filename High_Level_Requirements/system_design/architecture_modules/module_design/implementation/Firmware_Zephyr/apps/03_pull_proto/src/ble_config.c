@@ -122,7 +122,6 @@ void ble_config_set_discipline(uint8_t v)
 static const struct device *bqi2c;
 static uint8_t batt_cache = BATT_UNKNOWN;
 static bool batt_vin;          /* VIN present at last good read (USB power) */
-static bool batt_warned_batt_mode;
 
 static int bq_read(uint8_t reg, uint8_t *val)
 {
@@ -139,6 +138,8 @@ static int bq_write(uint8_t reg, uint8_t val)
 /* Nicla_System.cpp getBatteryVoltagePercentage() — verbatim port.
  * -1 no battery / -2 unreadable / -3 skipped (battery mode) /
  * -4 I2C dead; else 0..100. */
+static bool bq_on_vin = true;   /* 0.23.2: VIN state from FAULTS, refreshed per read */
+
 static int bq_battery_pct(void)
 {
 	uint8_t faults;
@@ -157,36 +158,49 @@ static int bq_battery_pct(void)
 	if (faults & 0x20) {            /* BAT_UVLO: not connected / too low */
 		return -1;
 	}
-	if (faults & 0x40) {            /* VIN_UV: running on battery */
-		/* CD-pin high-Z dance NOT ported (pin unverified; a wrong
-		 * GPIO could disable charging — see header). Report unknown. */
-		return -3;
-	}
 
-	/* Pause charging for an accurate reading (datasheet 9.3.4). */
-	uint8_t fastchg;
-
-	if (bq_read(BQ_FAST_CHG, &fastchg) != 0) {
-		return -4;
-	}
-	bool was_charging = (fastchg & 0x02) == 0;
-
-	if (was_charging && bq_write(BQ_FAST_CHG, fastchg | 0x02) != 0) {
-		return -4;
-	}
-	int rc = bq_write(BQ_BATT_MON, 0x80);   /* VBMON_READ */
-	k_msleep(3);
-	if (was_charging) {
-		bq_write(BQ_FAST_CHG, fastchg);     /* restore */
-	}
-	if (rc != 0) {
-		return -4;
-	}
+	const bool on_battery = (faults & 0x40) != 0;
+	bq_on_vin = !on_battery;
 
 	uint8_t data;
 
-	if (bq_read(BQ_BATT_MON, &data) != 0) {
-		return -4;
+	if (on_battery) {
+		/* 0.23.2 (JP bench 2026-10-27: battery % showed "unknown" the
+		 * first time the device ran on battery): with VIN absent nothing
+		 * is charging, so the datasheet 9.3.4 charge-pause dance is
+		 * unnecessary — trigger VBMON directly and read it. The 0.21.4
+		 * "CD-pin dance not ported" caveat only ever applied to reads
+		 * taken while VIN was present. */
+		if (bq_write(BQ_BATT_MON, 0x80) != 0) {   /* VBMON_READ */
+			return -4;
+		}
+		k_msleep(3);
+		if (bq_read(BQ_BATT_MON, &data) != 0) {
+			return -4;
+		}
+	} else {
+		/* Pause charging for an accurate reading (datasheet 9.3.4). */
+		uint8_t fastchg;
+
+		if (bq_read(BQ_FAST_CHG, &fastchg) != 0) {
+			return -4;
+		}
+		bool was_charging = (fastchg & 0x02) == 0;
+
+		if (was_charging && bq_write(BQ_FAST_CHG, fastchg | 0x02) != 0) {
+			return -4;
+		}
+		int rc = bq_write(BQ_BATT_MON, 0x80);   /* VBMON_READ */
+		k_msleep(3);
+		if (was_charging) {
+			bq_write(BQ_FAST_CHG, fastchg);     /* restore */
+		}
+		if (rc != 0) {
+			return -4;
+		}
+		if (bq_read(BQ_BATT_MON, &data) != 0) {
+			return -4;
+		}
 	}
 	if ((data & 0xFC) == 0) {
 		return -2;
@@ -207,12 +221,8 @@ static void batt_work_handler(struct k_work *w)
 
 	switch (pct) {
 	case -3:
-		batt_vin = false;   /* VIN_UV: on battery */
-		if (!batt_warned_batt_mode) {
-			batt_warned_batt_mode = true;
-			printk("batt: battery-mode read skipped "
-			       "(CD pin port pending)\n");
-		}
+		/* no longer produced (0.23.2) — defensive */
+		batt_vin = false;
 		batt_cache = BATT_UNKNOWN;
 		break;
 	case -4:
@@ -225,7 +235,10 @@ static void batt_work_handler(struct k_work *w)
 		break;
 	default:
 		batt_cache = (uint8_t)(pct & 0x7F);
-		batt_vin = true;    /* successful read ⇒ VIN present (USB) */
+		/* 0.23.2: VIN state now comes from the FAULTS register
+		 * (bq_on_vin), NOT from read success — battery-mode reads
+		 * succeed too, so bit7 (charging) stays false on battery. */
+		batt_vin = bq_on_vin;
 		break;
 	}
 	k_work_reschedule(d, K_SECONDS(30));
