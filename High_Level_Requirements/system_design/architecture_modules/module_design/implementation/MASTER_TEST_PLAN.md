@@ -1,6 +1,13 @@
-# SGC — Master Test Plan (v1.0)
+# SGC — Master Test Plan (v1.1)
 
 *2026-06-24 — Initial release. Covers all v1 testing: firmware (Nicla), phone (Flutter/Dart), and cloud.*
+
+## Revision History
+
+| Date | Ver | Changes |
+|---|---|---|
+| 2026-06-24 | v1.0 | Initial release |
+| 2026-10-27 | v1.1 | §8 added — test levels by subsystem for the Oct 2026 wave: **CLOUD** (pytest 38+ checks, smoke.sh vs prod, nightly ops job), **APP** (analyze gate in build lane; unit tests PLANNED for pure-logic modules; JP on-phone passes as acceptance practice, 1.66–1.72 history), **DEVICE** (Zephyr-era suite PLANNED; Arduino-era S03–S06 scripts marked stale-superseded). Encodes FW 0.22.1 / FW 0.23.0-in-flight / App 1.72.0 / sgc-api live state. |
 
 ---
 
@@ -213,7 +220,42 @@ python ../../scripts/run_phone_tests.py
 
 ---
 
-## 7. Glossary
+## 7. Test Levels by Subsystem (2026-10-27 update)
+
+Current verification practice per subsystem, encoding the deployed state: **sgc-api LIVE**, **App 1.72.0**, **FW 0.22.1** (0.23.0 in implementation). Requirement sources: reqs v6.3–v6.5; cloud detail `remote_db_architecture.md` v0.3.
+
+### 7.1 CLOUD — sgc-api (LIVE)
+
+| Aspect | Practice |
+|---|---|
+| **Automated suite** | pytest (fresh migrated DB per test — runs the real Alembic migration, not `create_all`): **38+ checks** across `test_auth.py`, `test_runs.py` (incl. `run_type {single, merged}` + `source_run_ids` lineage, `start_datetime DESC, id DESC` ordering), `test_reconcile_names.py` (custom-name protection), `test_gdpr_retention.py` (GDPR hard delete + 1-year retention purge). Location: `implementation/sgc_api/tests/`. |
+| **Smoke vs prod** | `scripts/smoke.sh` — curl end-to-end against the live deployment (register → login → upload → list → delete) on `sgc-api.vytsolutions.com`. |
+| **Nightly ops job** | Retention purge (`python -m app.routers.retention` — runs older than 365 d) + WAL-safe SQLite backup, 30-day retention (reqs v6.3, AD-027). |
+| **Reconciliation** | One-time `reconcile_names.py` backfill — idempotent, `--dry-run` supported, 42 tests green at ship (AD-026). |
+| **Status** | ✅ Live + green. |
+
+### 7.2 APP — Phone (Flutter, App 1.72.0)
+
+| Aspect | Practice |
+|---|---|
+| **Analyze gate** | `flutter analyze` runs inside the build lane (`scripts/app_build_install.bat`: pull → analyze → build → adb install) — analyze-clean is a build precondition. |
+| **Unit tests** | **PLANNED** for pure-logic modules (decompressor, merger, device-registry lettering, queue/backlog state machines, name computation). Legacy Dart unit tests exist for the processing pipeline (F16/F17/F18/F26 — see TEST_COVERAGE_MATRIX §2); the 1.69–1.72 cloud/naming/delete features are covered by on-phone acceptance, not yet by automated tests. |
+| **On-phone passes** | **JP on-phone verification is the current acceptance practice.** Pass history: 1.66 (cloud list/compare baseline) · 1.67 (upload queue hardening) · 1.68 (deterministic FNV-uuid idempotency for merged uploads) · 1.69 (naming + day pager + cloud name parity) · 1.70 (delete triad v2 — phone+device legs, offline backlog) · 1.71 (delete end-to-end "works really well", TC-2026-10-27-002) · 1.72 (Synch-as-state redesign, orphans, no-resurrection). |
+| **Status** | ✅ Acceptance-verified per release; ⬜ automated unit suite planned. |
+
+### 7.3 DEVICE — Zephyr app-03 `pull_proto` (FW 0.22.1)
+
+| Aspect | Practice |
+|---|---|
+| **Hosted unit tests** | `tests/` in the app dir (store/bitpacker/protocol parsing) — run on host. |
+| **Device suite** | **PLANNED** (Zephyr-era): boot + banner/version · `D` listing integrity (stable ids, holes) · delete lifecycle (`d` idempotency, hole persistence across reboot, lazy reclaim) · synth-download CRC (`S` generator → `s` stream → phone-side CRC) · budget/runway (`b`, F62/F63) · **sleep (F12/F13)** — blocked on FW 0.23.0. |
+| **Verified evidence** | TC-2026-10-27-002: FW 0.22.1 stable run-id addressing + `d` delete — bench (listing 0..18,20..38, hole at 19, zero shift; repeat delete idempotent) + App 1.71 on-phone end-to-end. |
+| **Stale (superseded)** | Arduino-era S03–S06 scripts in `system_tests/` (`test_s03_stream_run.py`, `test_s04_bhy2_rate.py`, `test_s05_ring_fill.py`, `test_s06_ring_drain.py`, `run_device_suite.py`) target the Nicla/Mbed FW and **do not run against the Zephyr app-03 console** (different commands, no `?` status). Kept as history only — do not execute against current hardware. |
+| **Status** | ⬜ Zephyr suite planned; TC-2026-10-27-002 covers ids+delete; sleep pending 0.23.0. |
+
+---
+
+## 8. Glossary
 
 | Term | Definition |
 |------|-----------|

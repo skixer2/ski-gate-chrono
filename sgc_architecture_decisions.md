@@ -512,3 +512,112 @@ FW V5.19; SLEEP → ARMED directly on button press).
 
 **Docs:** sgc_architecture_hardware.md v2.4, sgc_production_strategy.md
 v1.6, sgc_bom.md note, sgc_system_design.md (IDLE note), HLR v6.0 (F13).
+
+## AD-021: Stable Monotonic Run-Ids on the Wire, Deletes Leave Holes
+
+**Date:** 2026-10-27 · **Status:** accepted (implemented FW 0.22.1, bench + phone verified — TC-2026-10-27-002)
+
+**Decision:** Every wire id in the app-03 `pull_proto` protocol — the 0xABC9 listing `"id"`, the `D` directory `"run"` field, and the `s`/`H`/`d` arguments — is the device's **monotonic run_id** assigned at record time, never the `entries[]` position. Per-run delete (`d <id>`) is index-only removal with lazy sector reclaim: ids never shift, holes in the sequence are expected and permanent, and the command is idempotent (unknown id → `OK already gone`, same reply on repeat). Requests resolve via `store_run_pos()`; unknown ids take the not-found paths.
+
+**Rationale:**
+- Position-based addressing made a mid-transfer delete shift what the phone was about to download — a structural race. Stable ids remove the hazard entirely (the `E 4` transfer-busy guard remains as defense in depth).
+- Erasing on the delete critical path is unnecessary: sectors are reclaimed lazily by the existing budget/runway logic (F62).
+- Idempotency makes the phone's offline delete backlog safe to replay (any-time application cannot double-delete or hit the wrong run — backlog entries are also mac-stamped, AD-025).
+
+**Evidence:** bench listing 0..18, 20..38 with hole at 19, zero shift after `d 19`; repeat `d 19` → `OK already gone`; `s` streams by run_id. Ledger TC-2026-10-27-002.
+
+## AD-022: Naming Convention — Device Letters + letter#counter + Display-Only Day Numbering
+
+**Date:** 2026-10-27 · **Status:** accepted (JP design; reqs v6.5 §Naming Convention; implemented App 1.69/1.72)
+
+**Decision:** Two numbers, two jobs. (1) **Device letters:** every newly paired device gets a permanent letter (A, B, C…, strictly increasing per NEW device, rollover past Z); a re-paired known device keeps its letter; side detection is NOT identity — the assigned letter is. (2) **Run default name** = `<letter>#<device_counter>` (e.g. `A#123`), computed from the firmware's per-device run id, never stored; a custom F45 name overrides locally, and the effective name is uploaded in the cloud `name` field so local and cloud display the identical string by construction. (3) **Device run list** shows one day at a time (day pager) with per-day numbering 1..N assigned **at display time only** — never stored, never uploaded, renumbered on delete, R-before-L tiebreak. (4) **Merged default name** = `<A#x> + <B#y>` from the sources' defaults. (5) **Cloud ids are never displayed**; cloud list orders newest-first.
+
+**Rationale:**
+- Side detection is unreliable in slalom; a burned-in letter is a stable identity the athlete can read on the enclosure.
+- The device run-id is already unique and monotonic (AD-021) — reusing it in the name gives every run a human-speakable handle (`A#32`) at zero storage cost.
+- Display-only per-day numbering keeps storage clean (renumbering on delete would otherwise churn flash/cloud rows) while giving the athlete a stable mental model per day.
+- Carrying the effective name in the upload payload kills the local/cloud title mismatch class of bugs.
+
+**Spec of record:** `sgc_requirements.md` v6.5 §Naming Convention; implementation detail `remote_db_architecture.md` §13.
+
+## AD-023: Synch-as-State — Per-Run Cloud State, Desync as Sole Cloud-Exit, No Implicit Resurrection
+
+**Date:** 2026-10-27 · **Status:** accepted (JP redesign 13:45; implemented App 1.72.0)
+
+**Decision:** "Synch to cloud" is a first-class **per-run state** (checked = the run IS on the cloud), not a delete option. Rules:
+1. **Desync (ON→OFF) is the only cloud-removal path:** cloud `DELETE`, the durable queue entry moves to DESYNCED (dead — the backfill worker can never re-upload), pending rename-outbox entries are dropped; phone + device copies are untouched.
+2. **Re-sync (OFF→ON) is an explicit narrow upload:** same `client_run_uuid` → the server creates a **NEW row** (the old id is never resurrected); only that run is uploaded, bypassing the global `push_to_cloud` gate (F20 must not veto a direct per-run command).
+3. **Delete never touches the cloud:** phone + device legs only (AD-025). Unsynced run → strong total-loss double-confirm; synced run → honest "cloud copy is kept" scoping.
+4. **Cloud Runs screen:** every row carries a Synch switch; **orphan rows** (no local copy behind the `client_run_uuid`) can never re-sync — they get a delete icon + definitive warning.
+5. **No implicit resurrection anywhere:** deleting a cloud-only run leaves the local DONE queue entry silent; the merged backfill skips shrunk entries; auto-retries never bypass the push gate.
+
+**Rationale:**
+- App 1.71's delete-with-cloud-checkbox conflated two orthogonal decisions ("remove from phone/device" vs "remove from cloud"), produced dishonest confirmations, and stranded cloud rows. A state switch models reality: cloud membership is a boolean the user can flip both ways.
+- Making desync the sole cloud-exit gives exactly one code path that removes cloud data — auditable, and compatible with GDPR intent (explicit, confirmed, irreversible).
+- New-row-on-resync (no id resurrection) keeps lineage and audit semantics honest: a re-uploaded run is a new cloud object, even if it carries the same client uuid.
+
+**Spec:** `remote_db_architecture.md` §14.3.
+
+## AD-024: Upload-Everything Policy — Singles and Merged as Distinct Types with Lineage
+
+**Date:** 2026-10-26 · **Status:** accepted (JP directive "Go!!" 19:06; reqs v6.4; deployed)
+
+**Decision:** The phone uploads **all** runs — every single AND every merged run — to the cloud. Merged runs are a distinct `run_type = "merged"` (vs `"single"`) carrying `source_run_ids` lineage pointing at the cloud ids of their source singles (may be empty if the sources were never uploaded or were deleted).
+
+**Rationale:**
+- Merges are derived data: keeping the singles server-side allows future re-derivation with better algorithms without re-fetching from devices.
+- Single-run analyses (cross-arm technique comparison) need singles anyway; a merged-only cloud would lose information.
+- Distinct typing beats one blended blob: the API can order/filter by type, and the lineage list makes provenance queryable instead of guessable.
+
+**Schema:** `runs.run_type ∈ {single, merged}` (default single), `runs.source_run_ids` — reqs v6.3/v6.4 REQ-DB; API behavior `remote_db_architecture.md` §4/§15.
+
+## AD-025: Phone-Initiated Device Deletion with Offline Backlog (mac-stamped, applied pre-listing)
+
+**Date:** 2026-10-27 · **Status:** accepted (implemented App 1.70–1.72 + FW 0.22.0/0.22.1)
+
+**Decision:** The device leg of the delete triad is initiated by the phone via the BLE console `d <id>`. When the device is not connected, the delete lands in a durable `device_delete_backlog.json`, stamped with the **target device MAC**, and is applied on **every connect before any listing/download batch**. Backlog application is idempotent (AD-021) so replays are harmless.
+
+**Rationale:**
+- Delete must work offline: an athlete deletes in the evening, connects at the slope tomorrow. Late application after a listing/download would re-download the very run the user asked to erase — hence strictly pre-listing ordering.
+- The mac stamp means a recycled run id on a *different* device can never consume the wrong backlog entry.
+- Phone-initiated (device executes) keeps the UI single-surface: one Delete action fans out to the legs it can reach now, queues what it cannot.
+
+**Legs:** cloud first (`DELETE /v1/runs/{id}`; 404/410 = already gone = success) → phone local removal → device live-or-backlog. Full table: `remote_db_architecture.md` §14.1.
+
+## AD-026: One-Time Name Reconciliation with Custom-Name Protection
+
+**Date:** 2026-10-27 · **Status:** accepted (implemented `sgc-api/scripts/reconcile_names.py`, 42 tests green)
+
+**Decision:** A one-time, idempotent server-side backfill stamps machine-generated names (`A#x` / `A#x + A#y`, AD-022) onto cloud rows uploaded before the phone started sending names. It touches **only** rows whose `name` IS NULL or already matches the machine-generated pattern; a **custom user name is never matched, hence never overwritten**. Merged rows are recomposed from each source's `run_number` resolved via `source_run_ids`; empty/incomplete lineage leaves the row untouched and logged. Ships in the `sgc-api` image with `--dry-run` support.
+
+**Rationale:**
+- Legacy rows predate App 1.69's name-in-payload; without a backfill the cloud list shows a mix of named and nameless rows forever.
+- Server-side (not a phone migration) means it runs once against the live DB regardless of which phone versions ever connected.
+- The narrow match pattern makes the operation safe-by-construction on user data: F45 custom names are exactly the rows the regex cannot match.
+
+## AD-027: Cloud Retention — 1-Year Nightly Purge + Nightly WAL-Safe Backups (30 d)
+
+**Date:** 2026-10-26/27 · **Status:** accepted (JP directive; reqs v6.3; deployed as nightly ops job)
+
+**Decision:** Cloud run data (runs + timestamps + barometric_data) older than **1 year** is purged by a **nightly server-side job** (`app.routers.retention`); phone-local copies (including raw 100 Hz data) are unaffected. Independently, the SQLite database is backed up nightly (WAL-safe copy) with **30-day retention**. Activation-window semantics for expired accounts: writes blocked, reads + deletion always allowed.
+
+**Rationale:**
+- The cloud stores small derived data (F23) whose value decays — a season-old trace has little training utility; the purge caps storage growth and GDPR exposure deterministically.
+- WAL mode makes a plain file copy racy; the nightly backup uses the WAL-safe checkpoint/copy path so a backup never tears a transaction.
+- Retention and backup cadence are deliberately decoupled: purge governs the live DB, the 30-day backup window governs recoverability.
+
+**Spec:** `sgc_requirements.md` v6.3 REQ-DB §Data Retention; `remote_db_architecture.md` §5.
+
+## AD-028: Cloud Deployment — Caddy + sgc-api Container on the Hostinger VPS, Bootstrap Indirection (I07)
+
+**Date:** 2026-10-27 · **Status:** accepted (LIVE: sgc-api.vytsolutions.com)
+
+**Decision:** The cloud backend runs as the **`sgc-api` container** (FastAPI + SQLAlchemy + SQLite WAL) on the existing Hostinger VPS, fronted by **Caddy** for automatic Let's Encrypt TLS — HTTPS-only per I07, HTTP → redirect. The DB port is never published; the API listens on the internal proxy network. The app resolves the API base via **bootstrap indirection**: a static JSON at the hardcoded bootstrap address (`{"api_base": …, "min_app_version": …}`) so the API can move host/domain without an app release. Nightly ops inside the same host: retention purge (AD-027) + WAL-safe backups.
+
+**Rationale:**
+- The VPS already exists; one more container with no published DB port is the lowest-ops footprint that still gives TLS, isolation, and `docker compose` lifecycle.
+- Caddy beats nginx+certbot for a single-service host: zero-config renewal, HTTP/3 for free.
+- SQLite WAL is sufficient for the P1 single-writer profile; the ORM keeps the PostgreSQL flip (P2) a config + migration run, not a rewrite.
+- Bootstrap indirection decouples the hardest-coded constant in the system (the bootstrap URL in the app) from everything that may move.
+
+**Deployed state:** `remote_db_architecture.md` §3; runbook `implementation/sgc_api/README.md`.

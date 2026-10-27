@@ -1,5 +1,6 @@
-# SGC — Test Coverage Matrix (v1.0)
+# SGC — Test Coverage Matrix (v1.1)
 
+*2026-10-27 — v1.1: §9 added — feature-level coverage for the Oct 2026 wave (App 1.72.0, FW 0.22.1, sgc-api live). §1–§8 below are the original requirement-level matrix (Arduino-era device rows); for current subsystem practice see MASTER_TEST_PLAN §7.*
 *2026-06-24 — Complete requirement-to-test mapping for all v1 requirements.*
 *Covers: Device Functional (F01-F51), Phone Functional (F15-F57.4), Performance (P01-P08), Hardware (H01-H13), Interface (I01-I11), Robustness (R01-R08). v2-only requirements (F52-F61, P09, H11-H12, I10) are excluded.*
 
@@ -236,6 +237,26 @@
 | Phase 7 (Cloud — Phase 2+) | F23-F25, F35-F36, F43, F46, F48, F50, I07 | ⬜ 10/10 |
 | Phase 8 (End-to-End — Phase 3) | F10, F11, F15, F21, F37, F39, F40, F46, F50, I05, R06, R08 | ⬜ 7/12 (5 already covered) |
 | Phase 9 (Hardware + Environmental) | F03, F13-F14, F38, F41-F42, P01-P05, P07-P08, H01-H10, H13, I01-I03, I06, I08-I09, I11, R01-R04, R07 | 🔧 30/30 |
+
+---
+
+## 9. Feature Coverage — Oct 2026 Wave (App 1.72.0 / FW 0.22.1 / sgc-api live)
+
+One row per shipped feature. Requirement refs per `sgc_requirements.md` v6.3–v6.5 + REQ-DB; deployed-state detail `remote_db_architecture.md` §13–§15. Evidence: TC = test-ledger case, pytest = cloud suite, "JP pass <ver>" = on-phone acceptance pass of that app version.
+
+| Feature | Requirement ref | Verification method | Status | Evidence | Gaps / deferred |
+|---|---|---|---|---|---|
+| Naming scheme (`<letter>#<counter>`, device letters A–Z, merged `<A#x> + <B#y>`, cloud-id suppression) | Naming Convention (reqs v6.5, AD-022) | On-phone (JP) + pytest (`test_reconcile_names.py`) | ✅ VERIFIED | JP pass 1.69 + 1.72; pytest 3 passed (AD-026 reconcile) | Pre-1.69 local rows resolve to letter A (documented legacy behavior) |
+| Day pager + display-only per-day numbering | Naming Convention (reqs v6.5); F45 adjacent | On-phone (JP) | ✅ VERIFIED | JP pass 1.69/1.72 (list day scope, renumber-on-delete, R-before-L tiebreak) | Tie-at-same-timestamp corner (same side) arbitrary by spec — not unit-tested |
+| Rename propagation (local → cloud via `If-Match`) | F45 + REQ-DB `runs.lock_version`; remote_db §4 | On-phone + live API | ✅ VERIFIED | JP pass 1.69+ (SyncWorker renames-then-pushes; rename outbox durable) | Conflict path (409 on stale lock) exercised by pytest suite only, not on-phone |
+| Delete triad — cloud / phone / device legs | F46 v2; remote_db §14.1; AD-025 | End-to-end on-phone + FW bench | ✅ VERIFIED | **TC-2026-10-27-002** (bench: stable ids, hole at 19, idempotent `d`; JP on-phone 1.71 "works really well") + JP pass 1.72 (scoped confirms, backlog pre-listing) | `E 4` mid-transfer guard untested (defensive); reboot hole-persistence implied by design (index persisted), covered implicitly by JP session |
+| Synch-as-state (per-run cloud switch, desync = sole cloud-exit, orphan handling, no resurrection) | F43/F46/F50 adjacent; remote_db §14.3; AD-023 | On-phone (JP) + queue-state logic | ✅ VERIFIED | JP pass 1.72 (desync→DELETE→DESYNCED dead state; re-sync = new row; orphan delete + warning) | Auto-path warning arm: backfill/retry never bypassing push gate verified by code review + 1.72 pass, no dedicated automated case yet |
+| Merged upload + lineage | F22/F23/F32/F34 + REQ-DB `runs.source_run_ids` (reqs v6.4); AD-024 | On-phone + live API (pytest-adjacent) | ✅ VERIFIED | JP pass 1.68 (deterministic FNV-uuid idempotency) + 1.69/1.72 (merged name, day scoping) | Incomplete-lineage merged row (deleted source) left untouched + logged — covered in reconcile tests, not upload tests |
+| `run_type {single, merged}` | REQ-DB `runs` (reqs v6.4) | pytest | ✅ VERIFIED | pytest `test_runs.py` (15 test fns: type default, distinct handling) | — |
+| Cloud browse (list ordering newest-first, detail w/ timestamps+baro) | F48 + F22/F32/F34; remote_db §15 | pytest + on-phone | ✅ VERIFIED | pytest `test_runs.py` (ordering `start_datetime DESC, id DESC`); JP pass 1.66/1.69 (cloud list/compare) | Pagination cursor exercised in pytest only |
+| GDPR hard delete | F50; remote_db §9 | pytest | ✅ VERIFIED | pytest `test_gdpr_retention.py` (7 test fns: 404 post-delete, cascade) | — |
+| Retention (1-year nightly purge + WAL-safe backups 30 d) | REQ-DB Data Retention (reqs v6.3); AD-027 | pytest + nightly ops job | ✅ VERIFIED | pytest `test_gdpr_retention.py` (purge job); ops job scheduled on VPS | Backup-restore drill (restore-from-copy) not yet rehearsed |
+| Reconciliation (one-time name backfill, custom-name protection) | AD-026; remote_db §15 | pytest (idempotency, dry-run) | ✅ VERIFIED | `test_reconcile_names.py` (3 test fns: idempotency, custom-name protection); 42 tests green at ship; applied on prod | — |
 
 ---
 

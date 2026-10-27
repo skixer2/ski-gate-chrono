@@ -1,5 +1,6 @@
-# SGC — System Design (v2.1)
+# SGC — System Design (v5.0)
 
+*2026-10-27 — v5.0: Cloud subsystem chapter added (§6.0 — sgc-api LIVE on sgc-api.vytsolutions.com; detail source `remote_db_architecture.md` v0.3). Phone-app subsystem brought current (§5.1 — App 1.72.0: cloud client + durable F43 queue, Synch-as-state, naming convention per reqs v6.5, day pager, delete triad). Device FW section annotated (§7.1 — Zephyr app-03 `pull_proto` 0.22.1: stable monotonic run-ids D/s/H/d, per-run delete; 0.23.0 SLEEP/System-Off in implementation). Arduino-era sections below retained as design reference.*
 *2026-06-28 — v2.4: Phase 11 — Delta-baro encoding. Baro moved from uncompressed header into delta-encoded payload (Pa/2, 2 Pa/LSB). Header 4→2 bytes. Average 8.0 bytes/frame (was 9.55). LDC1612 EWMA auto-recalibration + dead-baseline guard + factory reset 3s confirmation.*
 *2026-06-27 — v2.2: Start detection simplified to drop-only (cumulative vertical descent > 2.0 m from arming P₀). Speed mode removed — BMP390 quantization noise (~0.78 Pa/LSB) caused false triggers at 1.5 m/s threshold. Drain algorithm changed to data-driven (pop N = min(2, ring.count)) instead of fixed 500-cycle — works correctly regardless of ring fill level at LOGGING start.*
 *2026-06-14 — v2.1: Battery budget cleanup — removed RFID/UWB hardware subsections (already in devices architecture §12). Power states table now v1-only with footnote for RFID. H02 confirmed met without RFID. RFIDReader interface condensed with v2-only banner.*
@@ -453,9 +454,37 @@ Compressed file ──────► Decompressor ──────► 100 Hz 
                (full cache)         (ts + baro)   │
 ```
 
+### 5.1 Phone App — Current Implementation (App 1.72.0, 2026-10-27)
+
+The Flutter structure above is the original design decomposition. The shipped app (single source of truth: `Phone_app_prototype/README.md`; version in `lib/config/app_version.dart`) implements the BLE pull lane, the cloud client, and the run-lifecycle model as follows:
+
+**Cloud client.** `ApiClient` (I07 bootstrap indirection, refresh-token mutex, typed errors), `AuthStore` (flutter_secure_storage), durable offline upload queue (`upload_queue.dart` — F43: uuid idempotency, backoff 1 m→1 h, survives app restarts) and a single-flight `SyncWorker` that pushes renames before run payloads (rename outbox).
+
+**Synch-as-state (App 1.72, AD-023).** Per run/merge: Rename / Synch-to-cloud switch / Delete. Checked = the run IS on the cloud. **Desync (ON→OFF) is the only cloud-removal path** (cloud `DELETE`, queue entry → dead DESYNCED state, pending renames dropped). Re-sync = explicit narrow upload creating a NEW cloud row (no id resurrection). **Delete = phone + device legs only** — never the cloud; unsynced runs get a total-loss double-confirm, synced runs an honest "cloud copy is kept" confirm. Orphan cloud rows (no local copy) can never re-sync — delete icon + definitive warning. No implicit resurrection anywhere.
+
+**Naming convention (reqs v6.5 — spec of record; AD-022).** Every newly paired device gets a permanent letter A–Z (re-pair keeps it; side detection is not identity). Default run name = `<letter>#<device_counter>` — computed, never stored; custom F45 names override; the effective name is uploaded so local and cloud titles match. Device list = day pager (one day at a time, launch = newest day) with display-only per-day numbering (deletes renumber, R-before-L tiebreak, never stored/uploaded). Merged default name = `<A#x> + <B#y>`.
+
+**Delete triad (F46 v2, AD-025).** Cloud leg first (404/410 = already gone = success) → phone local removal (runs, files, queue + outbox entries) → device leg: live BLE `d <id>` or the durable mac-stamped `device_delete_backlog`, applied on every connect **before** listing/download. Device ids are stable monotonic run-ids (§7.1) so backlog replay is safe.
+
+**Day pager + charts.** Run list screens (`run_list`, `cloud_runs`, `merged_run`, `cloud_run_detail`, `cloud_account`) with altitude/speed chart widgets and the gate timestamp table.
+
 ---
 
 ## 6. Cloud API
+
+### 6.0 Cloud Subsystem — Deployed (2026-10-27)
+
+The cloud is no longer a reference design: **sgc-api is LIVE at `https://sgc-api.vytsolutions.com`** (FastAPI + SQLAlchemy + SQLite WAL on the Hostinger VPS, Caddy TLS/Let's Encrypt, HTTPS-only per I07; bootstrap indirection for the API base URL). Deployed scope:
+
+- **Auth:** JWT access + refresh, argon2id password hashing; activation-window enforcement at login/refresh.
+- **Runs:** batch upload (metadata + timestamps + barometric_data, F23 payload only) with `client_run_uuid` idempotency; `run_type ∈ {single, merged}` + `source_run_ids` lineage (AD-024); list ordering `start_datetime DESC, id DESC` (newest first); rename/visibility via `If-Match: lock_version` optimistic concurrency (rename propagation to cloud).
+- **Delete:** `DELETE /v1/runs/{id}` — cloud leg of the triad (F46 v2); 404/410 treated as success.
+- **GDPR (F50):** hard delete of all athlete data, confirmed request; **Retention (reqs v6.3):** nightly purge of cloud run data older than 1 year + nightly WAL-safe backups (30-day retention) — AD-027.
+- **Ops:** one-time name reconciliation script (`reconcile_names.py`, custom-name-protected — AD-026); curl smoke test vs prod; pytest suite green.
+
+> **Detail source of truth:** `remote_db_architecture.md` (v0.3) — §13 Naming, §14 Delete semantics + Synch-as-state, §15 Reconciliation & Ordering; §3 Stack & Deployment. Requirements: `sgc_requirements.md` v6.3–v6.5 (REQ-DB + Naming Convention).
+
+### 6.1 API Contract — Original Reference Design (retained)
 
 > ⚠️ **Reference design.** The API contract below defines the interface between the phone app and the cloud backend. Endpoints marked with ⚠️ are placeholders to be finalized during cloud development. The phone app codes against this contract — the cloud backend can be built independently by a different team/stack as long as it implements the same request/response shapes. Detailed endpoints (courses, per-run deletion, user profiles, club management) will be added when the cloud development phase begins. The device and phone app do not depend on a live cloud server.
 
@@ -527,6 +556,16 @@ DELETE /v1/athletes/{id}  →  permanently deletes all athlete data
 ---
 
 ## 7. Nicla Firmware Module Decomposition
+
+> 📌 **Implementation lane note (2026-10-27):** the Arduino/Mbed decomposition below is the original design reference. The active firmware lane is the **Zephyr app-03 `pull_proto`** (§7.1). Original console semantics (`?` status, JSON-lines) do not apply to the Zephyr console — see the app-03 README.
+
+### 7.1 Zephyr Firmware — app-03 `pull_proto` (current, 2026-10-27)
+
+Product console + pull protocol, wire-compatible with the phone (App ≥ 1.46). Source of truth: `Firmware_Zephyr/apps/03_pull_proto/README.md`; version in `src/main.c` (`APP_VERSION`, bump on every change).
+
+- **FW 0.22.1 (deployed):** **stable monotonic run-id addressing** — the 0xABC9 listing `"id"`, the `D` directory `"run"` field, and the `s`/`H`/`d` arguments all address the per-device monotonic run_id assigned at record time (AD-021). **Per-run delete `d <id>`** (F46 device leg): index-only removal + lazy sector reclaim — no erase in the critical path; deletes leave holes in the id sequence (expected, permanent); idempotent (`OK already gone`). Verified bench + phone end-to-end (TC-2026-10-27-002).
+- **FW 0.23.0 (in implementation):** F12/F13 power model — SLEEP as primary waiting state + System Off after 1 h unconnected, piezo-button wake. Marked in-implementation; not yet on a verified tag.
+- Console (0xABCA): `D` directory · `s <id> <off> <len>` payload stream · `d <id>` delete · `H` hexdump (serial) · `a/g/e` recorder · `b <bytes>` run budget (F62) · bench `S`/`w` generators. Errors `E 1..5`.
 
 ```
 src/
