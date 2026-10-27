@@ -1,6 +1,6 @@
-# SGC — Remote Database Architecture (DRAFT for JP review)
+# SGC — Remote Database Architecture
 
-*2026-10-26 — v0.2. Requirement source: `sgc_requirements.md` v6.3 (§REQ-DB, F20/F22/F23/F25/F32/F34/F35/F36/F43/F46/F48/F50, I07). Status: APPROVED-IN-PROGRESS — JP answered §11 on 2026-10-26 (8 of 10 resolved; #3 and #7 clarified). P0 scaffold authorized.*
+*2026-10-27 — v0.3. Requirement source: `sgc_requirements.md` v6.5 (§REQ-DB + Naming Convention; F20/F22/F23/F25/F32/F34/F35/F36/F43/F45/F46/F48/F50, I07). Status: **P1 + P1.5 + naming + delete semantics SHIPPED** — sgc-api live (sgc-api.vytsolutions.com), App 1.72.0, FW app-03 0.22.1. This doc now reflects what is DEPLOYED (§13–§15); §1–§12 keep the original design rationale.*
 
 ---
 
@@ -179,4 +179,55 @@ Current state: LocalStorage JSON persistence for runs; SharedPreferences for pro
 
 ---
 
-*Draft ends. Nothing committed; awaiting JP review — especially §11 items 1–5.*
+*Rollout status: P0 + P1 + P1.5 SHIPPED (2026-10-26/27); naming convention + delete semantics SHIPPED on top (see §13–§15). P2/P3 pending.*
+
+---
+
+## 13. Naming Convention (implemented — reqs v6.5, App 1.69/1.72)
+
+Two numbers, two jobs. Full spec: `sgc_requirements.md` §Naming Convention (v6.5).
+
+| Element | Rule | Implementation |
+|---|---|---|
+| **Device letters** | Each newly paired device gets a permanent letter (A, B, C…; strictly increasing per NEW device; rolls to AA, AB… past Z). A re-paired known device keeps its letter. Side detection is NOT identity — the assigned letter is. | Phone-side `DeviceRegistry` (`device_registry.json`, atomic temp+rename); distinct BLE MAC → letter at pair/save time; first-launch migration seeds from `sgc.paired_macs` (current device = A). `lib/storage/device_registry.dart` |
+| **Run default name** | `<letter>#<device_counter>` (e.g. `A#32`). The counter is the firmware's per-device run id (rollover at 9999 acceptable). Computed, never stored; a custom F45 name overrides locally. | `SavedRun.sourceMac` (stamped on all three download paths; pre-1.69 rows resolve to A) + device run id → effective name at render/upload time |
+| **Cloud name parity** | The upload payload always carries the effective name (custom or computed) in `runs.name`, so local and cloud display the identical string by construction. | App 1.69: payloads always carry `name`; cloud list title = row `name` (legacy nameless rows fall back to "Single run" / "Merged run") |
+| **Day pager (device list)** | ONE day at a time (◀ EEE d MMM ▶); launch = newest day with runs; arrows disabled at the ends. Within a day, runs sorted (timestamp, R-before-L, id) and numbered 1..N **at display time only** — never stored, never uploaded; deletions renumber. Merged courses stay scoped to their first source run's day. | App 1.69 day pager replaces the date-filter popup; display-only CircleAvatar numbering; delete-snap + race guard |
+| **Merged runs** | Default name = `<A#x> + <B#y>` from the sources' default names. Same-letter merges (`A#x + A#y`) occur only in bench emulation, never in production (production merges are always two devices). Custom merge name overrides. Merged desync/delete acts on the merged cloud row only. | App 1.69 §(5); merge identity → deterministic FNV-uuid idempotency key (App 1.68) |
+| **Cloud ids** | Internal database ids are unique and permanent but NEVER displayed in labels. | Cloud-id title logic removed in App 1.69 |
+
+## 14. Delete Semantics (implemented — F46 v2, App 1.70–1.72, FW 0.22.0/0.22.1)
+
+### 14.1 Three legs
+
+| Leg | Mechanism | Order |
+|---|---|---|
+| **Cloud** | `DELETE /v1/runs/{id}`. **404/410 = already gone = success** (fixes the stranded-phone-copy bug); only network/5xx/other-4xx abort with everything kept. | FIRST — a crash can never leave a cloud row the user believes deleted |
+| **Phone** | Local removal: `runs.json` + run file + upload-queue entry + rename-outbox entries; merged entries leave `merged_runs.json` via the reserved `allowShrink` path (so the merged backfill cannot resurrect them). | SECOND |
+| **Device** | BLE console `d <id>` (US-ASCII write to 0xABCA, reply NOTIFIED back). Index-only removal + lazy sector reclaim — no erase in the critical path. Idempotent: unknown id → `OK already gone`. | Live when connected; otherwise the {runId, fileName, mac} entry lands in the durable `device_delete_backlog.json` (mac-stamped so a recycled id can never hit the wrong device) and is applied on EVERY connect **before** any listing/download batch — applied late it would re-download the run it was meant to erase |
+
+### 14.2 Stable run-ids with holes
+
+Since FW 0.22.1 every wire id — the 0xABC9 listing `"id"`, the `D` listing `"run"`, and the `s`/`H`/`d` arguments — is the device's **monotonic run_id** assigned at record time, never the `entries[]` position. Deletes leave holes; ids never shift; requests resolve via `store_run_pos()` and unknown ids take the not-found paths. A mid-transfer delete can no longer shift what the phone sees (that hazard is structurally gone; the `E 4` transfer-busy guard remains as defense).
+
+### 14.3 Synch-as-state (App 1.72 — JP redesign 2026-10-27 13:45)
+
+"Synch to cloud" is a first-class per-run state (checked = the run IS on the cloud), not a delete option:
+
+- **Desync (ON→OFF) is the ONLY cloud-removal path.** Light confirm → cloud `DELETE`; queue entry → new **DESYNCED (DEAD)** state the sync worker's backfill can never re-upload; pending rename-outbox entries dropped. Phone + device copies untouched.
+- **Re-sync (OFF→ON) = explicit narrow upload.** The entry reactivates with the SAME `client_run_uuid` — the old server row is gone, the server creates a **NEW row** (no resurrection of the old id) — and `SyncWorker.kick(explicitUuids:…)` uploads ONLY that run, bypassing the global `push_to_cloud` gate (F20 must not veto a direct per-run command). Merged re-sync: lineage deferral is ratified (source ids resolved at upload time).
+- **Delete never touches the cloud anymore.** Phone + device legs only (§14.1). Unsynced run → strong definitive double-confirm ("no copy will remain anywhere"); synced run → honestly scoped confirm ("the cloud copy is kept — use Synch to cloud to remove it"). Merges mirror this with no device leg.
+- **Cloud Runs screen:** every row carries a Synch switch (a cloud row IS synced by definition). Uncheck on a row with a local copy = desync. **Orphan rows** (client_run_uuid chain finds no local copy — the phone copy was deleted) can never re-sync: they get a DELETE icon + strong definitive warning, then cloud delete.
+- **No auto-resurrection anywhere:** deleting cloud-only keeps the local copy's DONE queue entry silent (no re-upload); the merged backfill skips entries removed via `allowShrink`; auto-retries never bypass the push gate.
+
+## 15. Reconciliation & Ordering (implemented — sgc-api, App 1.69+)
+
+- **Cloud list ordering:** `GET /v1/runs` returns `start_datetime DESC, id DESC` (newest first; JP finding #1). The legacy `run_number` label is informational only — server ids are the identity (§11 #8).
+- **`reconcile_names.py`** (ships in the `sgc-api` image; `implementation/sgc_api/scripts/`): one-time backfill of `A#x` / `A#x + A#y` names onto rows uploaded before the phone started sending names.
+  - Touches ONLY rows whose `name` IS NULL or already machine-generated (`^A#\d+( \+ A#\d+)*$`) — a **custom user name is never matched, hence never overwritten**.
+  - Merged rows recomposed from each source's `run_number`, resolved via `source_run_ids` in list order; empty/incomplete lineage (pre-cloud or deleted source) → row left untouched and logged.
+  - Idempotent (names are a pure function of run_number + lineage); `--dry-run` / apply via `docker exec sgc-api python -m scripts.reconcile_names`. 42 tests green at ship.
+
+---
+
+*v0.3 ends. §1–§12 = design record (superseded only where §13–§15 describe shipped behavior); live spec of record for naming = `sgc_requirements.md` v6.5.*
