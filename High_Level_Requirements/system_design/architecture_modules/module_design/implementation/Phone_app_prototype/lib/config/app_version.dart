@@ -351,7 +351,48 @@
 ///          (5) Memory indication removal (JP): verified — no
 ///          remaining-memory/flash-% readout exists on the device card;
 ///          the ABC7 value powers only the warning logic.
-const String APP_VERSION = '1.71.0';
+///   1.72 - SYNC AS A PER-RUN STATE (JP redesign 2026-10-27 13:45;
+///          fixes the two UX problems he hit). "Synch to cloud" is no
+///          longer a delete option — it is a first-class state per run:
+///          checked = the run IS on the cloud; unchecked = it is not.
+///          (1) LOCAL MENU (runs AND merged courses): long-press becomes
+///          Rename / Synch to cloud [switch] / Delete. ON→OFF on a synced
+///          run = DESYNC: light confirm ("Remove from cloud? Phone and
+///          device copies stay."), cloud DELETE, queue entry marked
+///          DESYNCED (new DEAD queue state — the sync worker's backfill
+///          can never re-upload it automatically) + pending rename
+///          outbox entries dropped. Phone + device untouched. OFF→ON on
+///          an unsynced run = upload NOW: EXPLICIT user intent — the
+///          entry is reactivated (same client_run_uuid: the old row is
+///          gone, the server creates a NEW row) and SyncWorker.kick
+///          carries explicitUuids so that pass uploads ONLY this run and
+///          IGNORES the global push_to_cloud preference (the F20 master
+///          toggle must not veto a direct per-run command; it also must
+///          not drag the whole queue along).
+///          (2) DELETE NEVER TOUCHES THE CLOUD ANYMORE — desync is the
+///          only cloud-removal path; the 1.71 Synch checkbox inside the
+///          delete dialog is removed. Delete = phone + device legs only
+///          (1.71: live 'd <id>' or durable backlog). Run NOT synced →
+///          STRONG definitive warning + double confirm: "This deletes
+///          the run completely — no copy will remain anywhere (not on
+///          this phone, not on the device, not in the cloud). This
+///          cannot be undone." Run synced → regular confirm, honestly
+///          scoped ("the cloud copy is kept — use Synch to cloud to
+///          remove it"). Merges mirror this (no device leg; source runs
+///          always stay).
+///          (3) CLOUD RUNS screen: every row gets a trailing Synch
+///          switch — a cloud row IS synced by definition, starts
+///          checked. Uncheck on a row that still exists locally
+///          (client_run_uuid → queue entry → fileName → local file /
+///          merged entry) = desync (light confirm → cloud DELETE, local
+///          queue entry dead). Orphan rows (chain finds no local copy —
+///          the phone copy was deleted) can never re-sync: they get a
+///          DELETE ICON instead of a switch, STRONG definitive warning
+///          first ("no copy will remain anywhere"), then cloud DELETE;
+///          the row disappears on next refresh (removed from the loaded
+///          list immediately). Merged rows get the same treatment
+///          (merged desync = cloud delete of the merged row only).
+const String APP_VERSION = '1.72.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

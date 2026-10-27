@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../cloud/api_client.dart';
+import '../../cloud/upload_queue.dart';
+import '../../storage/local_storage.dart';
 import 'cloud_run_detail_screen.dart';
 
 /// F48 (P1 slice): browse YOUR OWN uploaded runs (GET /v1/runs, keyset-
@@ -14,6 +16,18 @@ import 'cloud_run_detail_screen.dart';
 /// CLIENT-SIDE over the LOADED pages only — pages not yet fetched via
 /// "Load more" are not visible to it (server-side run_type query param
 /// is a P2 candidate).
+///
+/// 1.72 (JP redesign): every row gets a trailing Synch switch — a cloud
+/// row IS synced by definition, so the switch starts checked.
+///  * Uncheck on a row that STILL EXISTS locally (client_run_uuid →
+///    queue entry → fileName → local file/merge entry) = desync: light
+///    confirm, cloud DELETE, the local queue entry becomes DESYNCED
+///    (dead — no auto re-upload). The local archive stays.
+///  * Orphan rows (no local copy anywhere along that chain — the phone
+///    copy was deleted) can never re-sync, so they show a delete icon
+///    instead of a switch: STRONG definitive warning first ("no copy
+///    will remain anywhere"), then cloud DELETE. The row disappears on
+///    the next refresh (removed from the loaded list immediately).
 class CloudRunsScreen extends StatefulWidget {
   const CloudRunsScreen({super.key});
   @override
@@ -26,6 +40,16 @@ class _CloudRunsScreenState extends State<CloudRunsScreen> {
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
+
+  /// 1.72 local presence, refreshed on every (re)load: local run
+  /// fileNames (runs.json) and merged queue keys (merged_runs.json).
+  /// Backs the orphan detection for the per-row Synch switch.
+  Set<String> _localSingleFiles = const {};
+  Set<String> _localMergeKeys = const {};
+
+  /// 1.72: a desync/delete API call in flight for a row — the switch is
+  /// disabled meanwhile (single-flight per row, no double DELETEs).
+  final Set<int> _busyRowIds = {};
 
   /// 1.68 type filter: 'all' | 'single' | 'merged' (client-side over
   /// loaded pages — see class doc).
@@ -42,6 +66,10 @@ class _CloudRunsScreenState extends State<CloudRunsScreen> {
       _loading = true;
       _error = null;
     });
+    // 1.72: queue + local presence must be current before any row renders
+    // its switch (orphan detection reads the queue). Idempotent + cheap.
+    await UploadQueue.instance.load();
+    await _refreshLocalPresence();
     try {
       final page = await ApiClient.instance.listRuns(limit: 50);
       if (!mounted) return;
@@ -123,6 +151,197 @@ class _CloudRunsScreenState extends State<CloudRunsScreen> {
     final name = run['name'] as String?;
     if (name != null && name.isNotEmpty) return name;
     return _typeOf(run) == 'merged' ? 'Merged run' : 'Single run';
+  }
+
+  // ── 1.72: per-row Synch switch / orphan delete ────────────────────
+
+  /// Refresh the local-presence sets (runs.json + merged_runs.json).
+  Future<void> _refreshLocalPresence() async {
+    final runs = await LocalStorage().listAll();
+    final merges = await LocalStorage().loadMerges();
+    if (!mounted) return;
+    setState(() {
+      _localSingleFiles = {for (final r in runs) r.fileName};
+      _localMergeKeys = {
+        for (final m in merges)
+          if (m['aFile'] is String && m['bFile'] is String)
+            UploadQueue.mergedQueueKey(
+                m['aFile'] as String, m['bFile'] as String),
+      };
+    });
+  }
+
+  /// Orphan detection (1.72). A cloud row still has a local source when
+  /// the chain client_run_uuid → queue entry → fileName → local copy
+  /// resolves: singles by fileName in runs.json, merged by the merged
+  /// key in merged_runs.json. Anything else (row without a usable uuid,
+  /// pruned/corrupt queue, or the local copy deleted) = ORPHAN: no
+  /// re-sync source exists, so the row gets a delete icon instead of a
+  /// switch and deleting it is definitive.
+  bool _hasLocalCopy(Map<String, dynamic> run) {
+    final uuid = run['client_run_uuid'];
+    if (uuid is! String || uuid.isEmpty) return false;
+    final entry = UploadQueue.instance.forUuid(uuid);
+    if (entry == null) return false;
+    return entry.runType == UploadRunType.merged
+        ? _localMergeKeys.contains(entry.fileName)
+        : _localSingleFiles.contains(entry.fileName);
+  }
+
+  UploadEntry? _entryFor(Map<String, dynamic> run) {
+    final uuid = run['client_run_uuid'];
+    if (uuid is! String || uuid.isEmpty) return null;
+    return UploadQueue.instance.forUuid(uuid);
+  }
+
+  /// Trailing widget: non-orphans get the Synch switch (a cloud row IS
+  /// synced by definition — starts checked), orphans get a delete icon.
+  Widget _trailingFor(Map<String, dynamic> run) {
+    if (!_hasLocalCopy(run)) {
+      final busy = _busyRowIds.contains(run['id'] as int);
+      return IconButton(
+        icon: const Icon(Icons.delete_outline, color: Colors.red),
+        tooltip: 'Delete from cloud (no local copy left)',
+        onPressed: busy ? null : () => _deleteOrphanFromCloud(run),
+      );
+    }
+    return Switch(
+      value: true,
+      onChanged: _busyRowIds.contains(run['id'] as int)
+          ? null
+          : (_) => _desyncFromCloud(run),
+    );
+  }
+
+  /// Desync from the CLOUD surface (Synch switch ON→OFF on a row that
+  /// still exists locally): light confirm → cloud DELETE → local queue
+  /// entry marked DESYNCED (dead: the sync worker can never re-upload it
+  /// automatically) + pending renames dropped. The local archive and the
+  /// device copy stay; re-syncing from the Runs screen creates a NEW row.
+  Future<void> _desyncFromCloud(Map<String, dynamic> run) async {
+    final rowId = run['id'] as int;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove from cloud?'),
+        content: const Text('Phone and device copies stay.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busyRowIds.add(rowId));
+    try {
+      try {
+        await ApiClient.instance.deleteRun(rowId);
+      } on CloudException catch (e) {
+        // 404/410 "already gone" = desynced all the same.
+        if (e.statusCode != 404 && e.statusCode != 410) rethrow;
+        debugPrint('[CloudRuns] row #$rowId already gone '
+            '(HTTP ${e.statusCode}) — marking desynced');
+      }
+      final entry = _entryFor(run);
+      if (entry != null) {
+        await UploadQueue.instance.markDesynced(entry.clientRunUuid);
+        await UploadQueue.instance.removeRenamesForKey(entry.fileName);
+      }
+      if (!mounted) return;
+      setState(() {
+        _items.remove(run);
+        _busyRowIds.remove(rowId);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Removed from cloud — phone and device copies kept')));
+    } on CloudException catch (e) {
+      if (!mounted) return;
+      setState(() => _busyRowIds.remove(rowId));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Cloud delete failed — row kept. ($e)'),
+          backgroundColor: Colors.red));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busyRowIds.remove(rowId));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Cloud delete failed — row kept. ($e)'),
+          backgroundColor: Colors.red));
+    }
+  }
+
+  /// ORPHAN delete (no local copy left): the STRONG definitive warning
+  /// first — with the phone copy gone, this removes the last copy
+  /// anywhere — then the cloud DELETE. No queue bookkeeping applies (no
+  /// local copy ⇒ usually no entry; a stale one is removed for hygiene).
+  Future<void> _deleteOrphanFromCloud(Map<String, dynamic> run) async {
+    final rowId = run['id'] as int;
+    final isMerged = _typeOf(run) == 'merged';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete "${_titleOf(run)}" from the cloud?'),
+        content: Text(
+          '⚠ This deletes it completely — no copy will remain anywhere '
+          '(the copy on this phone was already deleted). This cannot be '
+          'undone.${isMerged ? '\n\nOnly this merged cloud row is removed.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete forever'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busyRowIds.add(rowId));
+    try {
+      try {
+        await ApiClient.instance.deleteRun(rowId);
+      } on CloudException catch (e) {
+        if (e.statusCode != 404 && e.statusCode != 410) rethrow;
+        debugPrint('[CloudRuns] orphan row #$rowId already gone '
+            '(HTTP ${e.statusCode})');
+      }
+      // Hygiene: a stale queue entry (file deleted elsewhere) must not
+      // linger — the run no longer exists on EITHER side.
+      final entry = _entryFor(run);
+      if (entry != null) {
+        await UploadQueue.instance.removeFile(entry.fileName);
+        await UploadQueue.instance.removeRenamesForKey(entry.fileName);
+      }
+      if (!mounted) return;
+      setState(() {
+        _items.remove(run);
+        _busyRowIds.remove(rowId);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Deleted from the cloud — no copy remains')));
+    } on CloudException catch (e) {
+      if (!mounted) return;
+      setState(() => _busyRowIds.remove(rowId));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Cloud delete failed — row kept. ($e)'),
+          backgroundColor: Colors.red));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busyRowIds.remove(rowId));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Cloud delete failed — row kept. ($e)'),
+          backgroundColor: Colors.red));
+    }
   }
 
   /// 1.68: small "Merged" chip for merged tiles.
@@ -244,11 +463,11 @@ class _CloudRunsScreenState extends State<CloudRunsScreen> {
               ]),
               subtitle: Text(
                   '$dateStr · cloud id #${run['id']}'
+                  '${_hasLocalCopy(run) ? '' : ' · no local copy'}'
                   '${isMerged ? ' · merged from ${_sourceIdsOf(run).map((id) => '#$id').join(' + ')}' : ''}'
                   ' · ${run['format_version'] ?? '?'}'
                   ' fmt'),
-              trailing: const Icon(Icons.chevron_right,
-                  color: Colors.grey),
+              trailing: _trailingFor(run),
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(

@@ -1888,10 +1888,12 @@ class _RunListScreenState extends State<RunListScreen>
     SyncWorker.instance.kick('merged course renamed');
   }
 
-  // ── F46 delete (1.70): phone + cloud legs, device flash NEVER touched ──
+  // ── F46 delete (1.70) / 1.72 sync-state helpers ──────────────────
 
-  /// Cloud upload state of a single run: its DONE queue entry, or null
-  /// when not uploaded (no cloud copy to delete).
+  /// Synch state of a single run (1.72: a PER-RUN STATE, not a delete
+  /// option): its DONE queue entry with a cloud id, or null when the run
+  /// is NOT on the cloud. Drives the long-press switch, the delete
+  /// dialog's warning level, and the half-memory sync warning.
   UploadEntry? _cloudEntryForRun(SavedRun run) {
     final e = UploadQueue.instance.forFile(run.fileName);
     if (e == null || e.status != UploadStatus.done || e.runId == null) {
@@ -1900,7 +1902,7 @@ class _RunListScreenState extends State<RunListScreen>
     return e;
   }
 
-  /// Cloud upload state of a merged course (queue key = merge identity).
+  /// Synch state of a merged course (queue key = merge identity).
   UploadEntry? _cloudEntryForMerge(Map<String, dynamic> m) {
     final key = UploadQueue.mergedQueueKey(
         m['aFile'] as String, m['bFile'] as String);
@@ -1911,9 +1913,169 @@ class _RunListScreenState extends State<RunListScreen>
     return e;
   }
 
-  /// Long-press menu for a local run tile (rename stays available; delete
-  /// joins it — long-press previously went straight to rename).
+  /// Light confirm used by every DESYNC (Synch switch ON→OFF, both
+  /// surfaces). Deliberately lightweight: nothing irreversible happens —
+  /// the cloud row goes, phone + device copies stay, and the switch can
+  /// always be flipped back on (new cloud row).
+  Future<bool> _confirmDesync(String what) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove from cloud?'),
+        content: Text('Phone and device copies stay.'
+            '${what.isEmpty ? '' : '\n\n$what'}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  /// 1.72: Synch switch OFF on a local run — DESYNC. Deletes the cloud
+  /// row (404/410 "already gone" = desynced all the same), marks the
+  /// queue entry DESYNCED (dead: the sync worker's backfill can never
+  /// re-upload it automatically) and drops pending rename outbox entries
+  /// (nothing left to rename). Phone + device copies untouched.
+  Future<void> _desyncRun(SavedRun run) async {
+    final entry = _cloudEntryForRun(run);
+    if (entry == null) return; // not synced — nothing to remove
+    try {
+      await ApiClient.instance.deleteRun(entry.runId!);
+    } on CloudException catch (e) {
+      if (e.statusCode != 404 && e.statusCode != 410) {
+        debugPrint('[SGC] desync cloud delete failed for ${run.fileName}: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cloud delete failed — run stays synced. ($e)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      debugPrint('[SGC] cloud row already gone (HTTP ${e.statusCode}) '
+          '— marking desynced');
+    }
+    await UploadQueue.instance.markDesynced(entry.clientRunUuid);
+    await UploadQueue.instance.removeRenamesForKey(run.fileName);
+    if (mounted) setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Removed from cloud — phone and device copies stay')),
+      );
+    }
+  }
+
+  /// 1.72: Synch switch ON on an unsynced local run — upload NOW. This is
+  /// EXPLICIT user intent: the queue entry is (re)activated and the sync
+  /// worker is kicked with explicitUuids so this pass uploads exactly this
+  /// run and IGNORES the global push_to_cloud preference (the F20 master
+  /// toggle must not veto a direct per-run command). A previously
+  /// desynced/cloud-deleted run gets a NEW cloud row (same
+  /// client_run_uuid is fine — the old row is gone).
+  Future<void> _syncRunNow(SavedRun run) async {
+    await UploadQueue.instance.load();
+    final existing = UploadQueue.instance.forFile(run.fileName);
+    final entry = existing ?? await UploadQueue.instance.enqueue(run.fileName);
+    if (entry.status != UploadStatus.done) {
+      await UploadQueue.instance.markPending(entry.clientRunUuid);
+    }
+    // ignore: unawaited_futures
+    SyncWorker.instance.kick('synch switch on',
+        explicitUuids: {entry.clientRunUuid});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Queued for upload — syncing now')),
+      );
+    }
+  }
+
+  /// 1.72: merged-course variants of the switch legs (desync = cloud
+  /// delete of the merged row ONLY — the two source runs keep their own
+  /// cloud rows; re-sync = new merged row from the same merge identity).
+  Future<void> _desyncMerge(Map<String, dynamic> m) async {
+    final key = UploadQueue.mergedQueueKey(
+        m['aFile'] as String, m['bFile'] as String);
+    final entry = _cloudEntryForMerge(m);
+    if (entry == null) return;
+    try {
+      await ApiClient.instance.deleteRun(entry.runId!);
+    } on CloudException catch (e) {
+      if (e.statusCode != 404 && e.statusCode != 410) {
+        debugPrint('[SGC] desync cloud delete failed for merge: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Cloud delete failed — merged course stays synced. ($e)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      debugPrint('[SGC] merged cloud row already gone '
+          '(HTTP ${e.statusCode}) — marking desynced');
+    }
+    await UploadQueue.instance.markDesynced(entry.clientRunUuid);
+    await UploadQueue.instance.removeRenamesForKey(key);
+    if (mounted) setState(() {});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Removed from cloud — the merged course stays on '
+                'the phone, its source runs keep their cloud rows')),
+      );
+    }
+  }
+
+  Future<void> _syncMergeNow(Map<String, dynamic> m) async {
+    final key = UploadQueue.mergedQueueKey(
+        m['aFile'] as String, m['bFile'] as String);
+    await UploadQueue.instance.load();
+    var entry = UploadQueue.instance.forFile(key);
+    if (entry == null) {
+      final aId = (m['aId'] as num).toInt();
+      final bId = (m['bId'] as num).toInt();
+      entry = await UploadQueue.instance.enqueueMerged(
+        key,
+        mergedRunUuid(
+            aId: aId,
+            bId: bId,
+            aFile: m['aFile'] as String,
+            bFile: m['bFile'] as String),
+      );
+    }
+    if (entry.status != UploadStatus.done) {
+      await UploadQueue.instance.markPending(entry.clientRunUuid);
+    }
+    // ignore: unawaited_futures
+    SyncWorker.instance.kick('synch switch on (merged)',
+        explicitUuids: {entry.clientRunUuid});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Queued for upload — syncing now')),
+      );
+    }
+  }
+
+  /// Long-press menu for a local run tile — 1.72 (JP redesign): THREE
+  /// items. Rename / Synch to cloud [switch] / Delete. The switch IS the
+  /// run's sync state: checked = the run IS on the cloud. ON→OFF desyncs
+  /// (light confirm → cloud delete; phone + device stay). OFF→ON uploads
+  /// now (explicit intent, ignores the global push preference).
   Future<void> _showRunActions(SavedRun run) async {
+    final isSynced = _cloudEntryForRun(run) != null;
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -1924,6 +2086,15 @@ class _RunListScreenState extends State<RunListScreen>
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Rename'),
               onTap: () => Navigator.pop(ctx, 'rename'),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.cloud_sync_outlined),
+              title: const Text('Synch to cloud'),
+              subtitle: Text(isSynced
+                  ? 'Checked: this run is on the cloud'
+                  : 'Unchecked: this run is not on the cloud'),
+              value: isSynced,
+              onChanged: (v) => Navigator.pop(ctx, v ? 'syncon' : 'syncoff'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
@@ -1937,13 +2108,23 @@ class _RunListScreenState extends State<RunListScreen>
     if (!mounted || action == null) return;
     if (action == 'rename') {
       await _promptRename(run);
+    } else if (action == 'syncon') {
+      await _syncRunNow(run);
+    } else if (action == 'syncoff') {
+      if (await _confirmDesync('The run stays on this phone and on the '
+          'device. Flipping the switch back on re-uploads it.')) {
+        await _desyncRun(run);
+      }
     } else if (action == 'delete') {
       await _confirmDeleteRun(run);
     }
   }
 
-  /// Long-press menu for a merged-course tile.
+  /// Long-press menu for a merged-course tile — same three-item 1.72
+  /// structure. Merged desync removes ONLY the merged cloud row; the two
+  /// source runs keep their own cloud rows.
   Future<void> _showMergeActions(Map<String, dynamic> m) async {
+    final isSynced = _cloudEntryForMerge(m) != null;
     final action = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -1954,6 +2135,15 @@ class _RunListScreenState extends State<RunListScreen>
               leading: const Icon(Icons.edit_outlined),
               title: const Text('Rename'),
               onTap: () => Navigator.pop(ctx, 'rename'),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.cloud_sync_outlined),
+              title: const Text('Synch to cloud'),
+              subtitle: Text(isSynced
+                  ? 'Checked: this merged course is on the cloud'
+                  : 'Unchecked: not on the cloud'),
+              value: isSynced,
+              onChanged: (v) => Navigator.pop(ctx, v ? 'syncon' : 'syncoff'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
@@ -1967,68 +2157,50 @@ class _RunListScreenState extends State<RunListScreen>
     if (!mounted || action == null) return;
     if (action == 'rename') {
       await _promptRenameMerge(m);
+    } else if (action == 'syncon') {
+      await _syncMergeNow(m);
+    } else if (action == 'syncoff') {
+      if (await _confirmDesync('Only the merged cloud row is removed — the '
+          'merged course stays on the phone and its two source runs keep '
+          'their cloud rows.')) {
+        await _desyncMerge(m);
+      }
     } else if (action == 'delete') {
       await _confirmDeleteMerge(m);
     }
   }
 
-  /// F46 delete confirmation v2 (1.71, JP spec 2026-10-27). Scoping is
-  /// now: Phone ☑ FIXED — the phone copy always goes; the device copy is
-  /// removed too (live when connected, durable backlog when offline).
-  /// Synch ☑/☐ — default = actual cloud state; checked ALSO deletes the
-  /// cloud row, unchecked leaves the cloud untouched (archive-to-cloud-
-  /// only deletion). Deleting a run that sources a merge is allowed: the
-  /// merge keeps its stored gates/baro (and its cloud row).
+  /// F46 delete confirmation v3 (1.72, JP redesign 2026-10-27 13:45).
+  /// The 1.71 Synch checkbox is GONE — delete never touches the cloud;
+  /// desync (the Synch switch) is the ONLY cloud-removal path.
+  ///  * Run IS synced → regular confirm, honestly scoped: phone + device
+  ///    go, the cloud copy is kept.
+  ///  * Run NOT synced → STRONG definitive warning + double confirm: with
+  ///    no cloud copy this deletion removes the run EVERYWHERE and cannot
+  ///    be undone.
+  /// Deleting a run that sources a merge stays allowed: the merge keeps
+  /// its stored gates/baro (and its cloud row).
   Future<void> _confirmDeleteRun(SavedRun run) async {
-    final cloudEntry = _cloudEntryForRun(run);
+    final isSynced = _cloudEntryForRun(run) != null;
     final isMergeSource = _merges.any((m) =>
         m['aFile'] == run.fileName || m['bFile'] == run.fileName);
     final hasName = run.name != null && run.name!.isNotEmpty;
     final displayName = hasName
         ? run.name!
         : (_defaultNames[run.fileName] ?? 'A#${run.id}');
-    var delCloud = cloudEntry != null;   // Synch default = actual cloud state
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: Text('Delete $displayName'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: true,
-                // FIXED: the phone copy always goes — cannot untick.
-                onChanged: null,
-                title: const Text('Delete from phone'),
-                subtitle: const Text(
-                    'Device copy is removed too (queued for next connection if offline)'),
-              ),
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: cloudEntry != null && delCloud,
-                // Not uploaded → nothing to delete in the cloud.
-                onChanged:
-                    cloudEntry == null ? null : (v) => setD(() => delCloud = v ?? false),
-                title: const Text('Synch — also delete from cloud'),
-                subtitle: cloudEntry == null
-                    ? const Text('Not uploaded — no cloud copy')
-                    : const Text(
-                        'Unchecked: the cloud copy is kept (archive)'),
-              ),
-              if (isMergeSource)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Merged courses using this run keep their data.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
-            ],
+    final mergeNote = isMergeSource
+        ? '\n\nMerged courses using this run keep their data.'
+        : '';
+    if (isSynced) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Delete $displayName?'),
+          content: Text(
+            'Deletes the phone copy. The device copy is removed too '
+            '(queued for the next connection if offline).\n\n'
+            'The cloud copy is kept — use Synch to cloud to remove it.'
+            '$mergeNote',
           ),
           actions: [
             TextButton(
@@ -2042,120 +2214,120 @@ class _RunListScreenState extends State<RunListScreen>
             ),
           ],
         ),
+      );
+      if (confirmed != true || !mounted) return;
+      await _executeRunDelete(run);
+      return;
+    }
+    // NOT synced → this deletion is definitive. STRONG warning, then a
+    // second confirmation (double-confirm pattern).
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete $displayName?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '⚠ This deletes the run completely — no copy will remain '
+              'anywhere (not on this phone, not on the device, not in the '
+              'cloud). This cannot be undone.',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            if (isMergeSource)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Merged courses using this run keep their data.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    await _executeRunDelete(
-      run,
-      deleteFromCloud: delCloud && cloudEntry != null,
-      cloudEntry: cloudEntry,
+    if (first != true || !mounted) return;
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Really delete $displayName?'),
+        content: const Text(
+          'Final confirmation: the run will be gone forever. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete forever'),
+          ),
+        ],
+      ),
     );
+    if (second != true || !mounted) return;
+    await _executeRunDelete(run);
   }
 
-  /// Execution order per arch §8: cloud DELETE first, then local, then the
-  /// device leg.
-  /// 1.71: a cloud DELETE answering 404/410 ("already gone" — the row was
-  /// deleted elsewhere, e.g. cloud-deleted-then-delete-both) is SUCCESS:
-  /// the local + device legs proceed instead of stranding the phone copy.
-  /// Only network / 5xx / other-4xx (401/403/…) abort with everything kept.
-  Future<void> _executeRunDelete(
-    SavedRun run, {
-    required bool deleteFromCloud,
-    required UploadEntry? cloudEntry,
-  }) async {
-    var cloudGone = false;
-    if (deleteFromCloud && cloudEntry?.runId != null) {
-      try {
-        await ApiClient.instance.deleteRun(cloudEntry!.runId!);
-      } on CloudException catch (e) {
-        cloudGone = e.statusCode == 404 || e.statusCode == 410;
-        if (!cloudGone) {
-          debugPrint('[SGC] cloud delete failed for ${run.fileName}: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Cloud delete failed — run kept. ($e)'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
-        debugPrint('[SGC] cloud row already gone '
-            '(HTTP ${e.statusCode}) — proceeding');
-      }
-    }
-    // Phone leg (fixed in the v2 dialog): index + file + queue entry +
-    // rename outbox entries.
+  /// Delete = PHONE + DEVICE legs only (1.72: the cloud is NEVER touched
+  /// by delete — desync via the Synch switch is the only cloud-removal
+  /// path). Phone leg: index + file + queue entry (dead or alive — the
+  /// run is gone, nothing may resurrect it) + rename outbox entries.
+  /// Device leg (1.71): ALWAYS — live 'd' when connected, durable backlog
+  /// otherwise, applied before any listing on the next connect.
+  Future<void> _executeRunDelete(SavedRun run) async {
+    final wasSynced = _cloudEntryForRun(run) != null;
     await _storage.delete(run);
     await UploadQueue.instance.removeFile(run.fileName);
     await UploadQueue.instance.removeRenamesForKey(run.fileName);
     _gateCache.remove(run.fileName);
-    // Device leg (1.71): ALWAYS. Live 'd' when connected, durable backlog
-    // otherwise — applied on the next connect before any listing.
     final deviceDeleted = await _deleteFromDevice(run);
     await _loadLocalRuns();
     if (mounted) setState(() {});
     if (mounted) {
-      final scope = deleteFromCloud
-          ? (cloudGone
-              ? 'Run deleted from phone — cloud copy was already gone'
-              : 'Run deleted from phone and cloud')
-          : 'Run deleted from phone (cloud copy kept)';
       final deviceNote = deviceDeleted
           ? 'device copy removed'
           : 'device copy queued for removal';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$scope · $deviceNote')),
+        SnackBar(content: Text('Run deleted from phone '
+            '${wasSynced ? '· cloud copy kept' : '· no cloud copy existed'} '
+            '· $deviceNote')),
       );
     }
   }
 
-  /// F46 confirmation for a merged course, v2 checkbox structure (1.71):
-  /// phone fixed, Synch optional. A merge has NO device copy (it is a
-  /// phone-local blend), so no device note/leg here — phone = the merge
-  /// entry itself (its two source runs stay), cloud = the merged cloud row.
+  /// F46 confirmation for a merged course, v3 (1.72): the Synch checkbox
+  /// is gone — delete removes ONLY the phone merge entry (its two source
+  /// runs stay) + the device note never applies (a merge has no device
+  /// copy). Synced → regular confirm (cloud row kept); NOT synced →
+  /// STRONG definitive warning + double confirm.
   Future<void> _confirmDeleteMerge(Map<String, dynamic> m) async {
-    final cloudEntry = _cloudEntryForMerge(m);
-    var delCloud = cloudEntry != null;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: const Text('Delete this merged course?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: true,
-                // FIXED: the merge entry always goes — cannot untick.
-                onChanged: null,
-                title: const Text('Delete from phone'),
-                subtitle: const Text(
-                    'The two source runs are kept'),
-              ),
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: cloudEntry != null && delCloud,
-                onChanged:
-                    cloudEntry == null ? null : (v) => setD(() => delCloud = v ?? false),
-                title: const Text('Synch — also delete from cloud'),
-                subtitle: cloudEntry == null
-                    ? const Text('Not uploaded — no cloud copy')
-                    : const Text(
-                        'Unchecked: the cloud copy is kept (archive)'),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Only the merged course is removed — its two source runs '
-                'stay on the phone and on the device.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
+    final isSynced = _cloudEntryForMerge(m) != null;
+    final displayName = _mergeDisplayName(m);
+    if (isSynced) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Delete "$displayName"?'),
+          content: const Text(
+            'Only the merged course is removed — its two source runs stay '
+            'on the phone. The cloud copy of the merged course is kept — '
+            'use Synch to cloud to remove it.',
           ),
           actions: [
             TextButton(
@@ -2169,50 +2341,67 @@ class _RunListScreenState extends State<RunListScreen>
             ),
           ],
         ),
+      );
+      if (confirmed != true || !mounted) return;
+      await _executeMergeDelete(m);
+      return;
+    }
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete "$displayName"?'),
+        content: const Text(
+          '⚠ This deletes the merged course completely — no copy will '
+          'remain anywhere (not on this phone, not in the cloud). Its two '
+          'source runs stay. This cannot be undone.',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    await _executeMergeDelete(
-      m,
-      deleteFromCloud: delCloud && cloudEntry != null,
-      cloudEntry: cloudEntry,
+    if (first != true || !mounted) return;
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Really delete this merged course?'),
+        content: const Text(
+          'Final confirmation: the merged course will be gone forever. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete forever'),
+          ),
+        ],
+      ),
     );
+    if (second != true || !mounted) return;
+    await _executeMergeDelete(m);
   }
 
-  /// Cloud first, then the local merge entry — removed from
-  /// merged_runs.json with allowShrink: true (the reserved path, finally
-  /// used for its intended purpose: explicit user deletion). The merge's
-  /// queue entry + rename outbox entries are dropped so the sync worker's
-  /// merged backfill cannot resurrect it.
-  /// 1.71: 404/410 on the cloud DELETE = "already gone" = SUCCESS (same
-  /// rule as single runs); network/5xx/other-4xx aborts, everything kept.
-  Future<void> _executeMergeDelete(
-    Map<String, dynamic> m, {
-    required bool deleteFromCloud,
-    required UploadEntry? cloudEntry,
-  }) async {
-    var cloudGone = false;
-    if (deleteFromCloud && cloudEntry?.runId != null) {
-      try {
-        await ApiClient.instance.deleteRun(cloudEntry!.runId!);
-      } on CloudException catch (e) {
-        cloudGone = e.statusCode == 404 || e.statusCode == 410;
-        if (!cloudGone) {
-          debugPrint('[SGC] cloud delete failed for merge: $e');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Cloud delete failed — merged course kept. ($e)'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
-        debugPrint('[SGC] merged cloud row already gone '
-            '(HTTP ${e.statusCode}) — proceeding');
-      }
-    }
+  /// Phone-only leg for a merged course — removed from merged_runs.json
+  /// with allowShrink: true (the reserved explicit-deletion path). The
+  /// merge's queue entry + rename outbox entries are dropped so the sync
+  /// worker's merged backfill cannot resurrect it. 1.72: NO cloud leg —
+  /// delete never touches the cloud.
+  Future<void> _executeMergeDelete(Map<String, dynamic> m) async {
+    final wasSynced = _cloudEntryForMerge(m) != null;
     // Reload from disk before shrinking: the in-memory list can be
     // stale (auto-sync merge pass) — never persist a blind shrink.
     final merges = await _storage.loadMerges();
@@ -2228,13 +2417,9 @@ class _RunListScreenState extends State<RunListScreen>
     await _refreshDerivedState(_localRuns);
     if (mounted) setState(() {});
     if (mounted) {
-      final scope = deleteFromCloud
-          ? (cloudGone
-              ? 'Merged course deleted from phone — cloud copy was already gone'
-              : 'Merged course deleted from phone and cloud')
-          : 'Merged course deleted from phone (cloud copy kept)';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(scope)),
+        SnackBar(content: Text('Merged course deleted from phone '
+            '${wasSynced ? '· cloud copy kept' : '· no cloud copy existed'}')),
       );
     }
   }

@@ -110,7 +110,10 @@ enum RenamePassNote { conflict, rejected }
 /// uploads when signed out (entries just wait in the queue). 1.70:
 /// pending cloud RENAMES are delivered BEFORE the push-toggle gate —
 /// they are explicit user actions on already-uploaded rows, not new
-/// auto-uploads.
+/// auto-uploads. 1.72: [kick] accepts `explicitUuids` — a pass carrying
+/// them uploads ONLY those runs and SKIPS the push-toggle gate: flipping
+/// a run's Synch switch ON is a direct per-run command, which the F20
+/// master toggle must not veto (and must not drag the whole queue along).
 class SyncWorker {
   static final SyncWorker instance = SyncWorker._();
   SyncWorker._();
@@ -126,6 +129,9 @@ class SyncWorker {
 
   bool _busy = false;
   bool _pendingKick = false;
+  // 1.72: explicit per-run re-sync uuids accumulated while a pass is in
+  // flight — unioned into the coalesced follow-up pass.
+  final Set<String> _pendingExplicit = {};
   bool _initialized = false;
   Timer? _retryTimer;
   StreamSubscription<List<ConnectivityResult>>? _connSub;
@@ -154,9 +160,16 @@ class SyncWorker {
 
   /// Trigger a pass. Single-flight: if a pass is running, remember the
   /// kick and run exactly one follow-up pass afterwards (no queue spin).
-  Future<void> kick(String reason) async {
+  ///
+  /// 1.72: [explicitUuids] narrows the pass to exactly these queue entries
+  /// (client_run_uuids) AND bypasses the global push_to_cloud preference —
+  /// used by the per-run Synch switch (OFF→ON = "upload this run now").
+  /// Explicit intent covers ONLY the named runs: nothing else in the queue
+  /// uploads behind a push-off preference.
+  Future<void> kick(String reason, {Set<String> explicitUuids = const {}}) async {
     if (_busy) {
       _pendingKick = true;
+      _pendingExplicit.addAll(explicitUuids);
       return;
     }
     _busy = true;
@@ -164,7 +177,7 @@ class SyncWorker {
     // progress spinner.
     status.value = SyncStatus(busy: true, text: status.value.text);
     try {
-      await _runPass(reason);
+      await _runPass(reason, explicitUuids: explicitUuids);
     } catch (e, st) {
       debugPrint('[SyncWorker] pass crashed: $e\n$st');
       _setText('Cloud sync error: $e');
@@ -173,13 +186,16 @@ class SyncWorker {
     }
     if (_pendingKick) {
       _pendingKick = false;
+      final pendingExplicit = Set<String>.of(_pendingExplicit);
+      _pendingExplicit.clear();
       // Coalesced re-run (e.g. a save landed mid-pass).
       // ignore: unawaited_futures
-      kick('coalesced');
+      kick('coalesced', explicitUuids: pendingExplicit);
     }
   }
 
-  Future<void> _runPass(String reason) async {
+  Future<void> _runPass(String reason,
+      {Set<String> explicitUuids = const {}}) async {
     await ApiClient.instance.ready;
     await _queue.load();
     _retryTimer?.cancel();
@@ -191,7 +207,11 @@ class SyncWorker {
 
     final prefs = await SharedPreferences.getInstance();
     final push = prefs.getBool(_prefsPush) ?? true;
-    if (!push) {
+    // 1.72: an explicit per-run re-sync uploads EVEN IF push is off — the
+    // Synch switch is direct user intent for THAT run. The pass is then
+    // narrowed to those uuids below, so the master toggle stays respected
+    // for everything else.
+    if (!push && explicitUuids.isEmpty) {
       _setText('Cloud push off — queue idle '
           '(${_queue.pendingCount} pending, ${_queue.poisonedCount} blocked)'
           '${renameNote == null ? '' : ' · ${_renameNoteText(renameNote)}'}');
@@ -239,7 +259,24 @@ class SyncWorker {
     }
 
     final due = _queue.dueEntries(DateTime.now());
-    if (due.isEmpty) {
+    // 1.72: narrow an explicit re-sync pass to the requested runs only —
+    // with push off, the backfill above still leaves every local run
+    // PENDING; those must NOT ride along on one run's explicit command.
+    final wanted = explicitUuids.isNotEmpty
+        ? due
+            .where((e) => explicitUuids.contains(e.clientRunUuid))
+            .toList()
+        : due;
+    if (wanted.isEmpty) {
+      if (explicitUuids.isNotEmpty) {
+        // The requested run(s) are neither pending nor due (still done,
+        // desynced without revival, or unknown) — say so instead of the
+        // misleading global status. The retry timer still re-arms so any
+        // OTHER pending entries keep their schedule.
+        _setText('Nothing to upload for the selected run(s)');
+        _armRetryTimer();
+        return;
+      }
       final waiting = _queue.pendingCount;
       _setText(waiting > 0
           ? 'Cloud: $waiting pending · retry scheduled'
@@ -248,17 +285,17 @@ class SyncWorker {
       return;
     }
 
-    debugPrint('[SyncWorker] pass "$reason": ${due.length} due');
+    debugPrint('[SyncWorker] pass "$reason": ${wanted.length} due');
     // 1.68: singles FIRST — merged lineage resolves from DONE single
     // entries, so processing singles first lets a same-pass merged run
     // upload immediately instead of deferring to the next pass.
-    due.sort((a, b) {
+    wanted.sort((a, b) {
       final am = a.runType == UploadRunType.merged ? 1 : 0;
       final bm = b.runType == UploadRunType.merged ? 1 : 0;
       return am.compareTo(bm);
     });
     int ok = 0, retried = 0, poisoned = 0, deferred = 0;
-    for (final entry in due) {
+    for (final entry in wanted) {
       // GDPR can sign us out mid-pass — stop immediately, queue is cleared.
       if (await AuthStore.instance.isSignedIn() != true) {
         _setText('Signed out — sync stopped');

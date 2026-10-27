@@ -19,11 +19,20 @@ import 'package:path_provider/path_provider.dart';
 ///   POISONED  — the server rejected the payload definitively (413 /
 ///               validation): a retry with the same bytes can never
 ///               succeed, so we stop retrying and surface it in the UI.
-///
-/// Monotonic-shrink guard: deliberately NOT applied here — the queue is
-/// allowed to shrink (DONE pruning, GDPR clear), unlike the merge index.
-enum UploadStatus { pending, done, poisoned }
+///   DESYNCED  — 1.72: the user desynced the run (Synch switch OFF): the
+///               cloud row was deleted, the local copy STAYS. The entry
+///               remains as a DEAD marker — the sync worker's backfill
+///               only enqueues runs with NO entry, so the dead entry is
+///               exactly what prevents automatic re-upload — and it is
+///               never picked up (dueEntries returns PENDING only).
+///               Only an explicit Synch switch ON ([markPending]) revives
+///               it (same client_run_uuid: the old row is gone, so the
+///               server creates a NEW row on the next upload).
+enum UploadStatus { pending, done, poisoned, desynced }
 
+/// Monotonic-shrink guard: deliberately NOT applied to the queue — it is
+/// allowed to shrink (DONE pruning, GDPR clear), unlike the merge index.
+///
 /// 1.68: kind of run behind the entry — plain device recording or a
 /// dual-device merged course. Values match the server's `run_type`.
 enum UploadRunType { single, merged }
@@ -371,6 +380,43 @@ class UploadQueue {
     _replace(uuid, (e) => e.copyWith(
           status: UploadStatus.poisoned,
           lastError: error.length > 300 ? error.substring(0, 300) : error,
+        ));
+    await _persist();
+  }
+
+  /// 1.72: the run was explicitly DESYNCED (Synch switch OFF → cloud row
+  /// deleted, local + device copies kept). The entry becomes a DEAD marker:
+  /// kept so the worker's backfill never re-enqueues the run, but excluded
+  /// from every upload pass. All upload progress (attempts / backoff /
+  /// cloud id / lock_version) is dropped — the cloud relationship is over.
+  Future<void> markDesynced(String uuid) async {
+    String fileName = '';
+    _replace(uuid, (e) {
+      fileName = e.fileName;
+      return UploadEntry(
+        clientRunUuid: e.clientRunUuid,
+        fileName: e.fileName,
+        status: UploadStatus.desynced,
+        queuedAtMs: e.queuedAtMs,
+        runType: e.runType,
+      );
+    });
+    await _persist();
+    debugPrint('[UploadQueue] desynced $uuid ($fileName)');
+  }
+
+  /// 1.72: explicit re-sync (Synch switch OFF→ON) — reactivate a desynced
+  /// / poisoned / backoff-scheduled entry for upload NOW. The client_run_uuid
+  /// is deliberately KEPT: a desynced run's cloud row no longer exists, so
+  /// the idempotency key is free again and POST /v1/runs creates a NEW row
+  /// (JP: "same client_run_uuid is fine — the old row is gone").
+  /// Call only for non-DONE entries — a DONE entry already IS synced.
+  Future<void> markPending(String uuid) async {
+    _replace(uuid, (e) => e.copyWith(
+          status: UploadStatus.pending,
+          attempts: 0,
+          nextAttemptAtMs: 0,
+          clearLastError: true,
         ));
     await _persist();
   }
