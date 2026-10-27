@@ -25,6 +25,17 @@ void store_init(void);
 
 uint8_t  store_run_count(void);
 
+/* ── Stable run-id addressing (v0.22.1, JP 2026-10-27) ─────────────
+ * Wire ids (ABC9 "id", D "run", s/H/d arguments) are the per-run
+ * run_id assigned at record time — monotonic u16, NOT the entries[]
+ * position. Deletes leave holes; no wire id ever shifts. Listings
+ * read ids via store_run_id(); requests resolve a wire id to its
+ * current position via store_run_pos() (-1 = unknown run id → the
+ * protocol's not-found replies: E 1 / "already gone"). The read
+ * accessors below take the POSITION. */
+uint16_t store_run_id(uint8_t pos);           /* wire id at position */
+int16_t  store_run_pos(uint16_t run_id);      /* position, -1 = none */
+
 /* Full blob size: 16 B header + payload + 6 B trailer. This is the `sz`
  * the D command reports (NOTE: ABC9's JSON "size" is payload-only —
  * two surfaces, two sizes, both ArduinoFW-verbatim). */
@@ -83,19 +94,21 @@ uint32_t store_run_budget(void);
 /* How many FULL budget runs still fit (athlete-facing estimate). */
 uint32_t store_free_full_runs(void);
 
-/* ── F46 per-run delete (v0.22.0, JP GO 2026-10-27) ────────────────
- * Remove one run from the INDEX only (id = the positional id the
- * listings serve). Instant and erase-free: the run's flash sectors
- * join the lazy reclamation pool — nothing reads them (every access
- * path is list-driven: D directory, ABC9, 's' stream, 'H' hexdump
- * all validate id < store_run_count()), and the runway top-up erases
- * them in place when the log wraps over them, exactly like post-wipe
- * garbage. Idempotent: an unknown id is success ("already gone") so
- * phone retries are safe. Ids are POSITIONAL, so later runs shift
- * down one slot — the phone re-lists (ABC9 rebuilds per read).
+/* ── F46 per-run delete (v0.22.0; v0.22.1 stable-id resolution) ────
+ * Remove one run from the INDEX only. Instant and erase-free: the
+ * run's flash sectors join the lazy reclamation pool — nothing reads
+ * them (every access path is list-driven: D directory, ABC9, 's'
+ * stream, 'H' hexdump all resolve the wire run_id via
+ * store_run_pos()), and the runway top-up erases them in place when
+ * the log wraps over them, exactly like post-wipe garbage.
+ * `pos` = the entries[] POSITION from store_run_pos(), not the wire
+ * id. Idempotent defense: a pos past the end is success ("already
+ * gone") so phone retries are safe. Internally the array still
+ * compacts (positions shift down one slot) — wire ids do NOT (stable
+ * run_ids, holes expected); callers resolve fresh per request.
  * Returns false only when the store is busy (record/top-up in
  * flight): caller refuses with a busy error, retry then. */
-bool store_run_delete(uint8_t id);
+bool store_run_delete(uint8_t pos);
 
 /* Bench reset: erase the index, restart the log empty. Re-tops the
  * runway in the background (SGL2: a wipe leaves flash dirty; the

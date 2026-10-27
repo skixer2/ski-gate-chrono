@@ -189,6 +189,28 @@ uint8_t store_run_count(void)
 	return (uint8_t)entry_count;   /* capped at 64, fits u8 */
 }
 
+/* v0.22.1 stable run-id addressing (JP 2026-10-27): the wire id is
+ * the entry's run_id (assigned at record time, monotonic u16), not
+ * the entries[] index. store_run_id() serves the listings;
+ * store_run_pos() resolves a requested wire id by linear scan
+ * (entry_count ≤ MAX_INDEXED_RUNS, tiny) — -1 means "no such run"
+ * and maps to the protocol's existing not-found replies (E 1 /
+ * "already gone"). */
+uint16_t store_run_id(uint8_t pos)
+{
+	return entries[pos].run_id;
+}
+
+int16_t store_run_pos(uint16_t run_id)
+{
+	for (uint16_t i = 0; i < entry_count; i++) {
+		if (entries[i].run_id == run_id) {
+			return (int16_t)i;
+		}
+	}
+	return -1;
+}
+
 uint32_t store_run_payload_len(uint8_t id)
 {
 	return entries[id].payload_len;
@@ -941,12 +963,12 @@ void store_init(void)
 	schedule_topup("boot");
 }
 
-/* ── F46 per-run delete (v0.22.0, JP GO 2026-10-27) ────────────
+/* ── F46 per-run delete (v0.22.0; v0.22.1 stable-id resolution) ─
  * INDEX-ONLY: the entry leaves the RAM index and the persisted
  * index sector; the run's data bytes stay on flash. Nothing reads
  * them — every access path is list-driven (D directory lines,
- * ABC9 JSON, 's' stream, 'H' hexdump all validate
- * id < store_run_count()) — and the orphaned sectors are reclaimed
+ * ABC9 JSON, 's' stream, 'H' hexdump all resolve the wire run_id
+ * via store_run_pos()) — and the orphaned sectors are reclaimed
  * IN PLACE when a runway top-up later walks over them: with the
  * entry gone, reclaim_victims has nothing to preserve, the erase
  * simply passes through. Post-wipe semantics, zero erase work
@@ -955,25 +977,29 @@ void store_init(void)
  * removal is persisted like any other index commit (same
  * single-sector rewrite as run-close and budget-set, no new crash
  * window), so a reboot loads an index that already lacks the run.
- * Idempotent: an id past the end is success ("already gone") —
- * phone retries after a dropped notify are safe. Wire ids are
- * POSITIONAL (the JSON 'id' IS the array index), so later runs
- * shift down one slot; the phone re-lists (ABC9 rebuilds per
- * read). */
-bool store_run_delete(uint8_t id)
+ * v0.22.1 (JP 2026-10-27): wire ids are STABLE per-run run_ids —
+ * a delete leaves a hole and shifts NO wire id, so the phone's
+ * addressing cannot go stale (the v0.22.0 positional-shift hazard
+ * is structurally gone). `pos` is the entries[] position the
+ * caller resolved via store_run_pos(); the array still compacts
+ * internally, which upstream guards (E 4) keep away from in-
+ * flight transfers. Idempotent defense: a pos past the end is
+ * success ("already gone") — phone retries after a dropped
+ * notify are safe. */
+bool store_run_delete(uint8_t pos)
 {
 	if (store_busy()) {
 		return false;
 	}
-	if (id >= entry_count) {
+	if (pos >= entry_count) {
 		return true;	/* already gone — idempotent */
 	}
-	printk("store: delete id=%u (run_id=%u, %lu B) — index only, "
+	printk("store: delete pos=%u (run_id=%u, %lu B) — index only, "
 	       "data reclaims lazily\n",
-	       id, entries[id].run_id,
-	       (unsigned long)(BLOB_OVERHEAD + entries[id].payload_len));
-	memmove(&entries[id], &entries[id + 1],
-		(entry_count - id - 1) * sizeof(entries[0]));
+	       pos, entries[pos].run_id,
+	       (unsigned long)(BLOB_OVERHEAD + entries[pos].payload_len));
+	memmove(&entries[pos], &entries[pos + 1],
+		(entry_count - pos - 1) * sizeof(entries[0]));
 	entry_count--;
 	persist_index();
 	return true;

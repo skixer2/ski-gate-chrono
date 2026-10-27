@@ -12,6 +12,11 @@
  *
  *   "D"                  → one {"run":id,"ts":..,"sz":TOTAL,..} line
  *                          per run + {"d_end":n}
+ *   v0.22.1 (JP 2026-10-27): every wire id — ABC9 "id", D "run", the
+ *   s/H/d arguments — is the run's STABLE run_id (assigned at record
+ *   time, monotonic u16), never the entries[] position. Deletes leave
+ *   holes; ids never shift. Requests resolve run_id → position via
+ *   store_run_pos(); unknown ids take the existing not-found paths.
  *   "s <id> <off> <len>" → [seq:2B LE][len:1B][payload ≤240 B] frames
  *                          paced 25 ms, END marker FF FF 00
  *   "d <id>"             → delete run <id> (F46, v0.22.0): INDEX-only,
@@ -131,12 +136,16 @@ static void rebuild_listing(bool log_it)
 
 		pos += snprintf(&run_list_json[pos],
 				sizeof(run_list_json) - pos, "[");
+		/* wire id = stable per-run id (holes after delete are
+		 * expected — JP 2026-10-27); loop index i stays positional
+		 * for the store accessors below. */
 		for (int16_t i = (int16_t)n - 1; i >= 0; i--) {
 			char entry[80];
 			int el = snprintf(entry, sizeof(entry),
 					  "%s{\"id\":%u,\"ts\":%lu,\"size\":%lu,"
 					  "\"side\":\"%s\"}",
-					  (pos > 1 ? "," : ""), (uint8_t)i,
+					  (pos > 1 ? "," : ""),
+					  (unsigned)store_run_id((uint8_t)i),
 					  (unsigned long)store_run_ts(i),
 					  (unsigned long)store_run_payload_len(i),
 					  store_run_side(i) ? "right" : "left");
@@ -465,7 +474,8 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 static uint32_t job_off;    /* next blob byte to send            */
 static uint32_t job_end;    /* off + len                         */
 static uint16_t job_seq;
-static uint8_t  job_run;
+static uint8_t  job_run;    /* entries[] POSITION — v0.22.1: resolved
+			     * from the wire run_id at stream start */
 static bool     job_active;
 static uint32_t job_t0;     /* k_uptime_get_32() at stream start */
 static bool     job_via_ble;  /* stream origin: serial streams must not
@@ -585,7 +595,9 @@ static int parse_three_l(const char *p, long *id, long *off, long *len)
  * one or more decimal digits, optional trailing spaces, END. Any
  * sign, hex letter or other junk is malformed — a phone retry must
  * never half-delete. Saturates far past MAX_INDEXED_RUNS so huge
- * values simply answer "already gone". 0 on success. */
+ * values simply answer "already gone" (v0.22.1: wire ids are the
+ * stable u16 run_ids — anything past 0xFFFF matches nothing).
+ * 0 on success. */
 static int parse_run_id(const char *p, uint32_t *id)
 {
 	uint32_t v = 0;
@@ -657,9 +669,12 @@ static void dir_work_handler(struct k_work *w)
 	req_via_ble = dir_via_ble;
 
 	if (dir_idx < dir_n) {
+		/* run field = stable per-run id (see rebuild_listing);
+		 * dir_idx stays an entries[] position for the accessors. */
 		snprintf(line, sizeof(line),
 			 "{\"run\":%u,\"ts\":%lu,\"sz\":%lu,\"side\":%u}",
-			 dir_idx, (unsigned long)store_run_ts(dir_idx),
+			 (unsigned)store_run_id(dir_idx),
+			 (unsigned long)store_run_ts(dir_idx),
 			 (unsigned long)store_run_total(dir_idx),
 			 store_run_side(dir_idx));
 	} else {
@@ -720,25 +735,27 @@ static void cmd_work_handler(struct k_work *w)
 		k_work_schedule(&dir_work, K_NO_WAIT);
 	} else if (cmd == 's') {
 		long id, off, len;
+		int16_t pos = -1;
 
 		if (parse_three_l(&req[1], &id, &off, &len) != 0 ||
 		    id < 0 || off < 0 || len <= 0) {
 			console_emit("E 3");            /* malformed */
-		} else if ((uint32_t)id >= store_run_count()) {
-			console_emit("E 1");            /* bad run */
-		} else if ((uint32_t)off >= store_run_total((uint8_t)id)) {
+		} else if (id > 0xFFFF ||
+			   (pos = store_run_pos((uint16_t)id)) < 0) {
+			console_emit("E 1");            /* unknown run_id */
+		} else if ((uint32_t)off >= store_run_total((uint8_t)pos)) {
 			console_emit("E 2");            /* bad off/len */
 		} else if (job_active || dir_active) {
 			/* one stream at a time; the phone never does this */
 			console_emit("E 4");
 		} else {
-			uint32_t total = store_run_total((uint8_t)id);
+			uint32_t total = store_run_total((uint8_t)pos);
 			uint32_t remain = total - (uint32_t)off;
 
 			if ((uint32_t)len > remain) {
 				len = remain;           /* clamp, as ArduinoFW */
 			}
-			job_run = (uint8_t)id;
+			job_run = (uint8_t)pos;  /* internal positional handle */
 			job_off = (uint32_t)off;
 			job_end = job_off + (uint32_t)len;
 			job_seq = 0;
@@ -758,15 +775,19 @@ static void cmd_work_handler(struct k_work *w)
 		bhy2_probe_rearm();
 	} else if (cmd == 'H') {
 		/* B3 bench: dump one run's payload as hexdump lines (IDLE only).
-		 * Payload only — header/CRC excluded. 24 B/line. */
-		uint8_t id = (uint8_t)atoi(req + 2);
+		 * Payload only — header/CRC excluded. 24 B/line.
+		 * v0.22.1: <id> is the stable run_id — resolve to the entry;
+		 * unknown ids take the bad_id path (never a wrong run). */
+		long hid = strtol(req + 2, NULL, 10);
+		int16_t pos = (hid < 0 || hid > 0xFFFF)
+				    ? (int16_t)-1 : store_run_pos((uint16_t)hid);
 
-		if (id < store_run_count()) {
-			uint32_t pay = store_run_payload_len(id);
+		if (pos >= 0) {
+			uint32_t pay = store_run_payload_len((uint8_t)pos);
 			uint32_t off = 16;   /* blob: 16 B header first */
 
 			printk("{\"ev\":\"rh_begin\",\"id\":%u,\"payload\":%u}\n",
-			       id, pay);
+			       (unsigned)hid, pay);
 			for (uint32_t o = 0; o < pay; o += 24) {
 				uint8_t buf[24];
 				uint32_t n = pay - o;
@@ -774,14 +795,14 @@ static void cmd_work_handler(struct k_work *w)
 				if (n > 24) {
 					n = 24;
 				}
-				store_read_blob(id, off + o, buf, n);
+				store_read_blob((uint8_t)pos, off + o, buf, n);
 				printk("{\"ev\":\"rh\",\"off\":%u,\"hex\":\"", o);
 				for (uint32_t i = 0; i < n; i++) {
 					printk("%02x", buf[i]);
 				}
 				printk("\"}\n");
 			}
-			printk("{\"ev\":\"rh_end\",\"id\":%u}\n", id);
+			printk("{\"ev\":\"rh_end\",\"id\":%u}\n", (unsigned)hid);
 		} else {
 			printk("{\"ev\":\"rh_err\",\"why\":\"bad_id\"}\n");
 		}
@@ -860,25 +881,31 @@ static void cmd_work_handler(struct k_work *w)
 		 * to the ABCA console char; the reply goes back on the same
 		 * console_emit path as every other command. */
 		uint32_t id;
+		int16_t pos = -1;
 
 		if (parse_run_id(&req[1], &id) != 0) {
 			console_emit("E 3");		/* malformed */
 		} else if (recorder_state_idx() != 0) {
 			console_emit("E 5");  /* ARMED/LOGGING/POST_RUN */
 		} else if (dir_active || job_active) {
-			/* Transfer in flight: ids are positional — they must
-			 * not shift under a live listing/stream (same guard
-			 * as 'D'). */
+			/* v0.22.1: wire ids are STABLE — a mid-transfer
+			 * delete can no longer shift what the phone sees
+			 * (that hazard is structurally gone). Guard kept as
+			 * defense: an in-flight transfer holds internal
+			 * entries[] POSITIONS (job_run/dir_idx) and the
+			 * index still compacts on delete (same guard as
+			 * 'D'). */
 			console_emit("E 4");
-		} else if (id >= store_run_count()) {
+		} else if (id > 0xFFFF ||
+			   (pos = store_run_pos((uint16_t)id)) < 0) {
 			console_emit("OK already gone");  /* idempotent retry */
-		} else if (!store_run_delete((uint8_t)id)) {
+		} else if (!store_run_delete((uint8_t)pos)) {
 			console_emit("E 5");   /* record/top-up in flight */
 		} else {
 			char ok[24];
 
 			snprintf(ok, sizeof(ok), "OK deleted %u",
-				 (uint8_t)id);
+				 (unsigned)id);
 			console_emit(ok);
 		}
 	} else if (cmd == 'x') {
