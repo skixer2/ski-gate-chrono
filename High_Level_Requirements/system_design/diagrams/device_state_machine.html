@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SGC Device State Machine — FW 0.23.x</title>
+<style>
+  body { margin:0; padding:24px; background:#fafafa; font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; color:#222; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.sub { font-size:13px; color:#666; margin:0 0 16px; }
+  svg { background:#fff; border:1px solid #e2e2e2; border-radius:8px; }
+  .foot { font-size:12px; color:#555; margin-top:12px; max-width:1000px; }
+</style>
+</head>
+<body>
+<h1>SGC device state machine — firmware 0.23.x (sleep era)</h1>
+<p class="sub">LED colors are the athlete-facing language: the diagram teaches what each color means. Wire states: SLEEP reports in the old IDLE slot (RC 0).</p>
+<svg width="1020" height="560" viewBox="0 0 1020 560" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/>
+    </marker>
+  </defs>
+
+  <!-- connectors (drawn before nodes so arrows sit behind) -->
+  <!-- OFF -> SLEEP -->
+  <path d="M 150 268 L 292 268" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- SLEEP -> OFF (1h, curved below) -->
+  <path d="M 292 306 C 240 360, 200 360, 152 306" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- SLEEP -> ARMED -->
+  <path d="M 475 268 L 552 268" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- ARMED -> SLEEP (timeout, curved above) -->
+  <path d="M 552 232 C 515 185, 510 185, 474 232" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- ARMED -> LOGGING -->
+  <path d="M 738 268 L 792 268" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- LOGGING -> POST_RUN -->
+  <path d="M 860 318 C 860 400, 780 420, 720 408" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- POST_RUN -> SLEEP -->
+  <path d="M 545 392 C 470 370, 430 330, 400 306" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- SLEEP -> CONNECTED -->
+  <path d="M 388 216 L 388 152" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- CONNECTED -> SLEEP -->
+  <path d="M 352 152 L 352 216" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- edge labels -->
+  <g font-size="12" fill="#444" text-anchor="middle">
+    <text x="221" y="256">button press</text>
+    <text x="221" y="256" dy="0"></text>
+    <text x="222" y="384">1 h unconnected</text>
+    <text x="513" y="244" text-anchor="start"></text>
+    <text x="512" y="292">button hold 1 s</text>
+    <text x="512" y="306" font-size="11" fill="#777">(instant — no reboot)</text>
+    <text x="552" y="172">20 s timeout</text>
+    <text x="765" y="254">baro drop</text>
+    <text x="765" y="292" font-size="11" fill="#777">≥ 2 m (F04)</text>
+    <text x="852" y="380" text-anchor="end">end detector</text>
+    <text x="852" y="396" text-anchor="end" font-size="11" fill="#777">5 s flatline</text>
+    <text x="448" y="378">~10 s cooldown</text>
+    <text x="448" y="394" font-size="11" fill="#777">slot erase + prep</text>
+    <text x="418" y="178">phone connects</text>
+    <text x="418" y="192" font-size="11" fill="#777">adv stops · off-timer paused</text>
+    <text x="304" y="192" text-anchor="end">disconnect</text>
+    <text x="304" y="206" text-anchor="end" font-size="11" fill="#777">1 h restarts</text>
+  </g>
+
+  <!-- nodes -->
+  <!-- SYSTEM_OFF -->
+  <g>
+    <rect x="30" y="216" width="120" height="104" rx="10" fill="#3a3f46"/>
+    <text x="90" y="248" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">SYSTEM OFF</text>
+    <text x="90" y="268" text-anchor="middle" fill="#cfd4da" font-size="11">deep shutdown (~µA)</text>
+    <text x="90" y="288" text-anchor="middle" fill="#cfd4da" font-size="11">LED dark</text>
+    <text x="90" y="306" text-anchor="middle" fill="#9aa1a9" font-size="10">wake: button only (cold boot, rr:4)</text>
+  </g>
+
+  <!-- SLEEP -->
+  <g>
+    <rect x="296" y="216" width="178" height="104" rx="10" fill="#e8f1fb" stroke="#2e6da4" stroke-width="2"/>
+    <text x="385" y="246" text-anchor="middle" fill="#1b4f72" font-size="15" font-weight="700">SLEEP</text>
+    <text x="385" y="266" text-anchor="middle" fill="#1b4f72" font-size="11">primary idle state</text>
+    <circle cx="340" cy="286" r="6" fill="#2f7bd8"/>
+    <text x="352" y="290" fill="#1b4f72" font-size="11">LED: 100 ms pulse / 2 s</text>
+    <text x="385" y="308" text-anchor="middle" fill="#5d7a96" font-size="10">slow 2 s advertising · sensors parked</text>
+  </g>
+
+  <!-- CONNECTED -->
+  <g>
+    <rect x="296" y="48" width="178" height="104" rx="10" fill="#e9f7ec" stroke="#3c8a4e" stroke-width="2" stroke-dasharray="6 3"/>
+    <text x="385" y="78" text-anchor="middle" fill="#22582f" font-size="14" font-weight="700">CONNECTED</text>
+    <text x="385" y="96" text-anchor="middle" fill="#22582f" font-size="11">SLEEP + phone link</text>
+    <circle cx="340" cy="116" r="6" fill="#37b24d"/>
+    <text x="352" y="120" fill="#22582f" font-size="11">LED: solid green</text>
+    <text x="385" y="140" text-anchor="middle" fill="#5d7a96" font-size="10">never powers off while linked</text>
+  </g>
+
+  <!-- ARMED -->
+  <g>
+    <rect x="556" y="216" width="182" height="104" rx="10" fill="#fdf6e3" stroke="#c99700" stroke-width="2"/>
+    <text x="647" y="246" text-anchor="middle" fill="#7a5c00" font-size="15" font-weight="700">ARMED</text>
+    <text x="647" y="266" text-anchor="middle" fill="#7a5c00" font-size="11">waiting for the drop</text>
+    <circle cx="602" cy="286" r="6" fill="#ffd43b"/>
+    <text x="614" y="290" fill="#7a5c00" font-size="11">LED: solid yellow</text>
+    <text x="647" y="308" text-anchor="middle" fill="#8d7a4d" font-size="10">stays awake · radio quiet</text>
+  </g>
+
+  <!-- LOGGING -->
+  <g>
+    <rect x="796" y="216" width="182" height="104" rx="10" fill="#fdecec" stroke="#c0392b" stroke-width="2"/>
+    <text x="887" y="246" text-anchor="middle" fill="#7b241c" font-size="15" font-weight="700">LOGGING</text>
+    <text x="887" y="266" text-anchor="middle" fill="#7b241c" font-size="11">recording 100 Hz + baro</text>
+    <circle cx="842" cy="286" r="6" fill="#ff6b6b"/>
+    <text x="854" y="290" fill="#7b241c" font-size="11">LED: solid red</text>
+    <text x="887" y="308" text-anchor="middle" fill="#a07772" font-size="10">10 s pre-roll · radio down</text>
+  </g>
+
+  <!-- POST_RUN -->
+  <g>
+    <rect x="548" y="368" width="182" height="96" rx="10" fill="#f4f0fa" stroke="#6f5bb5" stroke-width="2"/>
+    <text x="639" y="398" text-anchor="middle" fill="#3d3480" font-size="14" font-weight="700">POST_RUN</text>
+    <text x="639" y="418" text-anchor="middle" fill="#3d3480" font-size="11">cooldown · next slot prepared</text>
+    <text x="639" y="438" text-anchor="middle" fill="#6f639b" font-size="10">LED: follows link state</text>
+    <text x="639" y="454" text-anchor="middle" fill="#6f639b" font-size="10">runs kept · CRC sealed</text>
+  </g>
+
+  <!-- guards footnote box -->
+  <g>
+    <rect x="30" y="488" width="960" height="52" rx="8" fill="#f7f7f7" stroke="#ddd"/>
+    <text x="50" y="510" font-size="12" fill="#444" font-weight="600">Never sleeps while: connected · armed · logging · POST_RUN · mid-transfer.</text>
+    <text x="50" y="528" font-size="12" fill="#444">Command guards: E4 = busy (transfer/directory in flight) · E5 = armed/logging refuses mutations. Boot → SLEEP directly. Factory reset: 5 presses / 3 s from any awake state (F42).</text>
+  </g>
+</svg>
+<p class="foot">FW 0.22.x and earlier: no SLEEP/SYSTEM OFF — the device stayed always-on (LED toggled blue 1 s on / 1 s off while advertising). The 100 ms/2 s heartbeat arrives with 0.23.1.</p>
+</body>
+</html>
