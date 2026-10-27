@@ -310,7 +310,48 @@
 ///          "On device (flash slots)" (ABC run count) vs "Downloaded
 ///          (phone)" (local index); download-tile subtitle now reads
 ///          "On device: N · Downloaded: N · Not downloaded: N".
-const String APP_VERSION = '1.70.0';
+///   1.71 - DELETE SEMANTICS V2 + SYNC WARNING (JP 2026-10-27 12:06,
+///          design approved with exact spec; FW side = 0.22.0/0.22.1
+///          'd <id>' per-run delete + stable wire ids).
+///          (1) 404-on-cloud-delete = SUCCESS: cloud DELETE answering
+///          404/410 ("already gone") proceeds with the local + device
+///          legs instead of aborting — fixes the stranded-phone-copy bug
+///          (cloud-deleted run then delete-both errored out). Only
+///          network/5xx/other-4xx abort with everything kept.
+///          (2) PHONE-DELETE ⇒ DEVICE-DELETE, ALWAYS: after local
+///          deletion the run's stable device id is sent via the 'd <id>'
+///          console command (US-ASCII to the ABCA console char, reply
+///          NOTIFIED back — same framing as the native engine's "D"/"s";
+///          SGCService.deleteRun). Device offline / busy (E 5 recording,
+///          E 4 transfer) / write failure ⇒ the {runId, fileName, mac}
+///          entry lands in device_delete_backlog.json (atomic). The
+///          backlog applies on EVERY connect BEFORE any listing/download
+///          batch (order critical: a backlogged run is missing locally —
+///          applied late it would be re-downloaded first): live Flutter
+///          path in _selectDevice, new native deleteRuns lane (one
+///          connection per batch) in the auto-sync cycle. 'd' is
+///          idempotent — unknown id = "OK already gone" = entry resolved.
+///          Entries carry the run's sourceMac so a recycled id can never
+///          delete the WRONG device's run (null mac = pre-1.69 era,
+///          applies on any device). Backlog size surfaces in the sync
+///          status line ("N device deletions pending").
+///          (3) Delete dialog v2: "Delete A#x" — Phone ☑ FIXED (cannot
+///          untick; device note "Device copy is removed too (queued for
+///          next connection if offline)"); Synch ☑/☐ default = actual
+///          cloud state — ☑ also deletes the cloud row, ☐ leaves the
+///          cloud untouched (archive-to-cloud-only deletion). Merges:
+///          same structure, no device leg (no device copy exists).
+///          (4) Half-memory sync warning: from the device listing + ABC7
+///          used-pct, capacity ≈ Σ listing payload sizes / usedPct;
+///          unsynced = Σ payload sizes of device runs without a DONE
+///          cloud upload; ≥ 50% of capacity ⇒ persistent amber banner
+///          "⚠ N runs not synced — sync to avoid losses" on the Runs
+///          screen (both views), dismissable per session. ABC7 is read
+///          but NEVER displayed.
+///          (5) Memory indication removal (JP): verified — no
+///          remaining-memory/flash-% readout exists on the device card;
+///          the ABC7 value powers only the warning logic.
+const String APP_VERSION = '1.71.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

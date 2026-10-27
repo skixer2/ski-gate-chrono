@@ -466,4 +466,48 @@ class NordicBleDownloader(private val context: Context) {
             shutdownManager(manager)
         }
     }
+
+    /**
+     * 1.71 (F46 v2): apply device-delete backlog entries — "d <id>" console
+     * command per id, ONE connection for the whole batch (same shape as
+     * downloadRuns). Replies (same console char): "OK deleted <id>" /
+     * "OK already gone" = ok (both remove the backlog entry — the command
+     * is idempotent), "E 5"/"E 4" = busy (entry stays for next connect),
+     * "E 3"/timeout/transport = failure (entry stays).
+     */
+    fun deleteRuns(address: String, runIds: List<Int>): DeleteResult {
+        val done = mutableListOf<Int>()
+        val failed = mutableListOf<FailedRun>()
+        val manager = newConnectedManager(address)
+        try {
+            for (runId in runIds) {
+                try {
+                    manager.consolePackets.clear()
+                    manager.sendRequest("d $runId")
+                    val deadline = System.currentTimeMillis() + 5_000L
+                    var reply: String? = null
+                    while (System.currentTimeMillis() < deadline) {
+                        val pkt = manager.consolePackets.poll(20, TimeUnit.MILLISECONDS)
+                            ?: continue
+                        val text = String(pkt, Charsets.US_ASCII).trim()
+                        /* Ignore echo lines ("d ..."), accept the first reply. */
+                        if (!text.startsWith("d ")) { reply = text; break }
+                    }
+                    when {
+                        reply == null -> failed.add(FailedRun(runId, "delete timeout"))
+                        reply.startsWith("OK") -> done.add(runId)
+                        else -> failed.add(FailedRun(runId, "device reply $reply"))
+                    }
+                } catch (e: Exception) {
+                    failed.add(FailedRun(runId, e.message ?: e.javaClass.simpleName))
+                }
+                Thread.sleep(300)
+            }
+        } finally {
+            shutdownManager(manager)
+        }
+        return DeleteResult(done, failed)
+    }
+
+    data class DeleteResult(val ok: List<Int>, val failed: List<FailedRun>)
 }

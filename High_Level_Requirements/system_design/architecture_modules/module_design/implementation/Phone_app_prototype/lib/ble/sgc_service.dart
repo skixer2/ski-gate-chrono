@@ -202,6 +202,52 @@ class SGCService {
   Future<int> getSensorStatus() async => ((await _readByte(charDeviceState)) >> 5) & 0x07;
   Future<int> getFlashUsed() async => await _readByte(charFlashUsed);
 
+  /// 1.71 (F46 v2): delete one run on the device — the 'd <id>' console
+  /// command (FW 0.22.0+, per-run delete). Wire framing is EXACTLY the
+  /// established console pattern (pull_proto.c / NordicBleDownloader
+  /// sendRequest): plain US-ASCII "d <id>" written to the ABCA console
+  /// characteristic WITH response; the device NOTIFYs the reply line back
+  /// on the SAME characteristic (console notify, attrs[5]) — so we must
+  /// subscribe first (console_subscribed gates the notify in the FW):
+  ///   "OK deleted <id>"   → [deleted]
+  ///   "OK already gone"   → [alreadyGone] (unknown/stable id — idempotent)
+  ///   "E 5"               → [busy] (ARMED/LOGGING/POST_RUN or top-up)
+  ///   "E 4"               → [busy] (directory/stream in flight)
+  ///   "E 3"               → [error] (malformed — app bug, never retried blind)
+  /// [runId] is the STABLE device run id (v0.22.1 wire addressing; =
+  /// SavedRun.id), never an entries[] position. Throws on transport
+  /// failure — callers convert to a backlog entry.
+  Future<DeviceDeleteResult> deleteRun(int runId) async {
+    final console = _findChar(charFtRequest);
+    if (console == null) {
+      throw CharAccessException(_shortUuid(charFtRequest),
+          'console characteristic not found — device delete DROPPED');
+    }
+    await console.setNotifyValue(true);
+    final completer = Completer<String>();
+    final sub = console.onValueReceived.listen((v) {
+      if (v.isEmpty || completer.isCompleted) return;
+      completer.complete(String.fromCharCodes(v.where((b) => b != 0)));
+    });
+    try {
+      final cmd = Uint8List.fromList('d $runId'.codeUnits);
+      await console.write(cmd, withoutResponse: false);
+      final reply = await completer.future
+          .timeout(const Duration(seconds: 5));
+      final line = reply.trim();
+      debugPrint('[SGC] device delete #$runId reply: "$line"');
+      if (line.startsWith('OK already gone')) return DeviceDeleteResult.alreadyGone;
+      if (line.startsWith('OK deleted')) return DeviceDeleteResult.deleted;
+      if (line.startsWith('E 5') || line.startsWith('E 4')) {
+        return DeviceDeleteResult.busy;
+      }
+      return DeviceDeleteResult.error;
+    } finally {
+      await sub.cancel();
+      try { await console.setNotifyValue(false); } catch (_) {}
+    }
+  }
+
   Future<void> sendFtAck() async {
     await _writeChar(charFtRequest, Uint8List.fromList([0x01]));
   }
@@ -373,6 +419,21 @@ class SGCService {
   }
 }
 
+
+/// 1.71: outcome of a device 'd <id>' delete (F46 v2).
+enum DeviceDeleteResult {
+  /// Device confirmed "OK deleted <id>".
+  deleted,
+
+  /// Device answered "OK already gone" — idempotent success.
+  alreadyGone,
+
+  /// Device busy ("E 5" recording / "E 4" transfer) — retry on next connect.
+  busy,
+
+  /// Transport failure or unexpected reply — retry on next connect.
+  error,
+}
 
 /// v1.50: a characteristic access failure that MUST surface (audit A1/A2).
 class CharAccessException implements Exception {

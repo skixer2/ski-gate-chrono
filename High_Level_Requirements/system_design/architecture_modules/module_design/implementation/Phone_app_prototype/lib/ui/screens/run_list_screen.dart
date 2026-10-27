@@ -14,6 +14,7 @@ import '../../ble/file_transfer.dart';
 import '../../processing/decompressor.dart';
 import '../../processing/run_merger.dart';
 import '../../storage/local_storage.dart';
+import '../../storage/device_delete_backlog.dart';
 import '../../storage/device_registry.dart';
 import '../../config/app_version.dart';
 import '../../cloud/sync_worker.dart';
@@ -79,6 +80,15 @@ class _RunListScreenState extends State<RunListScreen>
   bool _isConnecting = false;
   bool _isScanning = false;
   bool _isDownloading = false;
+  // 1.71 (F46 v2): device-delete backlog size — surfaced in the sync status
+  // line ("N device deletions pending").
+  int _backlogPending = 0;
+  // 1.71: half-memory sync warning. ABC7 used-pct + device listing are the
+  // inputs; computed on every listing refresh, dismissed per session.
+  int? _flashUsedPct;      // null = unknown (read failed / FW too old)
+  int _unsyncedRuns = 0;
+  bool _syncWarningActive = false;
+  bool _syncWarningDismissed = false;
   String _downloadStatus = '';  // progress text for UI
   int _downloadCurrent = 0;    // current run being downloaded
   int _downloadTotal = 0;      // total runs to download
@@ -158,6 +168,7 @@ class _RunListScreenState extends State<RunListScreen>
       _runCount = null;
       _batteryPct = null;
       _batteryCharging = false;
+      _flashUsedPct = null;
       _deviceRuns = [];
       _isConnecting = false;
       _isDownloading = false;
@@ -277,6 +288,10 @@ class _RunListScreenState extends State<RunListScreen>
   /// One full auto cycle: read listing → download missing → merge → quiet.
   Future<void> _autoCycle(BluetoothDevice dev) async {
     final address = dev.remoteId.str;
+    // 1.71 (F46 v2): apply the device-delete backlog BEFORE the listing —
+    // a backlogged run is missing locally and would otherwise be
+    // re-downloaded by this very cycle. ORDER IS CRITICAL.
+    await _applyBacklogNative(address);
     if (mounted) setState(() => _autoStatus = 'Auto: reading $address…');
     final raw = await NativeBleDownloader().readRunList(address: address);
     if (raw.isEmpty) throw Exception('device returned 0-byte run list');
@@ -530,6 +545,7 @@ class _RunListScreenState extends State<RunListScreen>
           _runCount = null;
           _batteryPct = null;
           _batteryCharging = false;
+          _flashUsedPct = null;
           _deviceRuns = [];
         });
       }
@@ -595,6 +611,13 @@ class _RunListScreenState extends State<RunListScreen>
       DeviceRegistry.instance.letterFor(device.remoteId.str);
       final sgc = SGCService(_ble);
 
+      // 1.71 (F46 v2): apply the device-delete backlog BEFORE ANYTHING
+      // else — certainly before the run-list read below — so a backlogged
+      // run (missing locally, waiting for its device 'd') can never be
+      // re-downloaded or re-appear in this session's listing. ORDER IS
+      // CRITICAL (JP spec 2026-10-27).
+      await _applyDeviceDeleteBacklog(sgc, device.remoteId.str);
+
       // Dump discovered services so we can see what the device actually exposes
       sgc.debugLogServices();
 
@@ -626,8 +649,19 @@ class _RunListScreenState extends State<RunListScreen>
           _batteryPct = null;
           _batteryCharging = false;
         }
+        // 1.71: ABC7 used-pct — input for the half-memory sync warning.
+        // Never DISPLAYED (JP: no remaining-memory readouts on the card);
+        // own try so a failed read never masks the run list (warning just
+        // stays off — unknown capacity).
+        try {
+          _flashUsedPct = await sgc.getFlashUsed();
+        } catch (e) {
+          debugPrint('[SGC] flash-used read failed: $e');
+          _flashUsedPct = null;
+        }
         final ft = FileTransfer(sgc);
         _deviceRuns = await ft.getRunList();
+        _recomputeSyncWarning();
         debugPrint('[SGC] device runs: ${_deviceRuns.length}');
       } catch (e, stack) {
         // v1.50 (audit A6): setup failures SURFACE — orange banner + card
@@ -638,6 +672,7 @@ class _RunListScreenState extends State<RunListScreen>
         _runCount = null;
         _batteryPct = null;
         _batteryCharging = false;
+        _flashUsedPct = null;
         _deviceRuns = [];
       }
 
@@ -717,6 +752,7 @@ class _RunListScreenState extends State<RunListScreen>
         _runCount = null;
         _batteryPct = null;
         _batteryCharging = false;
+        _flashUsedPct = null;
         _deviceRuns = [];
       });
     }
@@ -767,6 +803,194 @@ class _RunListScreenState extends State<RunListScreen>
   List<RunMetadata> get _missingRuns {
     final localKeys = _localRuns.map((r) => (r.id, r.timestamp)).toSet();
     return _deviceRuns.where((r) => !localKeys.contains((r.id, r.timestamp))).toList();
+  }
+
+  // ── 1.71 (F46 v2): device-delete legs + backlog ──────────────────
+
+  void _refreshBacklogCount() {
+    _backlogPending = DeviceDeleteBacklog.instance.count;
+    if (mounted) setState(() {});
+  }
+
+  /// Apply the device-delete backlog over the LIVE Flutter BLE connection
+  /// (manual connect path). MUST run before any listing/download batch —
+  /// a backlogged run is missing locally, so a listing taken before the
+  /// backlog is applied would offer it for re-download. 'd' is idempotent
+  /// (unknown id = "OK already gone" = entry resolved); busy (E 5/E 4)
+  /// and transport failures keep the entry for the next connect.
+  Future<void> _applyDeviceDeleteBacklog(SGCService sgc, String mac) async {
+    await DeviceDeleteBacklog.instance.load();
+    final todo = DeviceDeleteBacklog.instance.forDevice(mac);
+    for (final e in todo) {
+      try {
+        final res = await sgc.deleteRun(e.runId);
+        if (res == DeviceDeleteResult.deleted ||
+            res == DeviceDeleteResult.alreadyGone) {
+          await DeviceDeleteBacklog.instance.remove(e);
+          debugPrint('[SGC] backlog applied: device delete #${e.runId}');
+        } else {
+          debugPrint('[SGC] backlog deferred: device delete #${e.runId} ($res)');
+        }
+      } catch (err) {
+        debugPrint('[SGC] backlog apply failed for #${e.runId}: $err');
+      }
+    }
+    _refreshBacklogCount();
+  }
+
+  /// Apply the device-delete backlog over the NATIVE engine (auto-sync
+  /// path — the radio is Kotlin's there, the Flutter SGCService has no
+  /// connection). Same ordering contract as the live path: runs before
+  /// the listing. One connection for the whole batch.
+  Future<void> _applyBacklogNative(String address) async {
+    await DeviceDeleteBacklog.instance.load();
+    final todo = DeviceDeleteBacklog.instance.forDevice(address);
+    if (todo.isEmpty) return;
+    try {
+      final ok = await NativeBleDownloader().deleteRuns(
+        address: address,
+        runIds: todo.map((e) => e.runId).toList(),
+      );
+      for (final e in todo) {
+        if (ok.contains(e.runId)) {
+          await DeviceDeleteBacklog.instance.remove(e);
+          debugPrint('[AUTO] backlog applied: device delete #${e.runId}');
+        }
+      }
+    } catch (e) {
+      debugPrint('[AUTO] backlog apply failed (kept for next connect): $e');
+      return;
+    }
+    _refreshBacklogCount();
+  }
+
+  /// Remove this run's copy from the DEVICE — ALWAYS attempted after a
+  /// successful phone deletion (1.71, JP: phone-delete ⇒ device-delete).
+  /// Live 'd <id>' when the recording device is connected; the sourceMac
+  /// guard (run came from THIS device; null = pre-1.69 single-device era)
+  /// prevents deleting the wrong device's run on a recycled id. Everything
+  /// else — device offline, busy, write failure — lands in the durable
+  /// device-delete backlog, which every connect applies before its listing.
+  /// Returns true when the device confirmed the delete NOW.
+  Future<bool> _deleteFromDevice(SavedRun run) async {
+    final connectedMac = _device?.remoteId.str;
+    final sgc = _sgc;
+    final live = sgc != null &&
+        connectedMac != null &&
+        (run.sourceMac == null || run.sourceMac == connectedMac);
+    if (live) {
+      try {
+        final res = await sgc.deleteRun(run.id);
+        if (res == DeviceDeleteResult.deleted ||
+            res == DeviceDeleteResult.alreadyGone) {
+          // Keep the connected-card listing honest without re-reading it.
+          _deviceRuns.removeWhere(
+              (r) => r.id == run.id && r.timestamp == run.timestamp);
+          return true;
+        }
+        debugPrint('[SGC] device delete #${run.id} deferred ($res) — backlogging');
+      } catch (e) {
+        debugPrint('[SGC] device delete #${run.id} failed: $e — backlogging');
+      }
+    }
+    try {
+      await DeviceDeleteBacklog.instance.add(
+        runId: run.id,
+        fileName: run.fileName,
+        mac: run.sourceMac,
+      );
+    } catch (e) {
+      debugPrint('[SGC] backlog persist failed for #${run.id}: $e');
+    }
+    _refreshBacklogCount();
+    return false;
+  }
+
+  // ── 1.71: half-memory sync warning ─────────────────────────────
+
+  /// A device run is safe when its local copy is CONFIRMED uploaded
+  /// (DONE queue entry). Match by composite identity (id + timestamp),
+  /// then the queue entry via the local fileName.
+  bool _deviceRunUploaded(RunMetadata r) {
+    for (final s in _localRuns) {
+      if (s.id == r.id && s.timestamp == r.timestamp) {
+        final e = UploadQueue.instance.forFile(s.fileName);
+        return e != null && e.status == UploadStatus.done;
+      }
+    }
+    return false;
+  }
+
+  /// Half-memory sync warning (JP spec 2026-10-27).
+  ///
+  /// Capacity formula, derived ONLY from data the app already has:
+  ///   usedPct   = ABC7 store_used_pct() — % of the device's log flash
+  ///               region occupied by live runs.
+  ///   liveBytes ≈ Σ listing payload sizes (the listing covers every live
+  ///               run; the ~22 B/run blob overhead is ignored).
+  ///   capacity  ≈ liveBytes / (usedPct / 100)
+  ///   unsynced  = Σ payload sizes of listing runs with no DONE cloud
+  ///               upload (see [_deviceRunUploaded])
+  ///   warn when unsynced ≥ 0.5 × capacity
+  /// usedPct ≤ 0 or unreadable → capacity unknown → warning stays off.
+  void _recomputeSyncWarning() {
+    final pct = _flashUsedPct;
+    if (pct == null || pct <= 0 || _deviceRuns.isEmpty) {
+      _unsyncedRuns = 0;
+      _syncWarningActive = false;
+      return;
+    }
+    var totalBytes = 0;
+    var unsyncedBytes = 0;
+    var unsynced = 0;
+    for (final r in _deviceRuns) {
+      totalBytes += r.size;
+      if (!_deviceRunUploaded(r)) {
+        unsyncedBytes += r.size;
+        unsynced++;
+      }
+    }
+    _unsyncedRuns = unsynced;
+    final capacity = totalBytes * 100 / pct;
+    _syncWarningActive = capacity > 0 && unsyncedBytes >= capacity / 2;
+    if (_syncWarningActive) {
+      debugPrint('[SGC] ⚠ sync warning ON: $unsynced runs not synced, '
+          'span $unsyncedBytes B ≥ 50% of ~${capacity.toStringAsFixed(0)} B');
+    }
+  }
+
+  /// Persistent amber banner (Runs screen, both views). Dismissable per
+  /// session only — it must come back next launch until the runs sync.
+  Widget _syncWarningBanner() {
+    if (!_syncWarningActive || _syncWarningDismissed || _unsyncedRuns <= 0) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      color: Colors.orange.shade100,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
+        child: Row(children: [
+          Icon(Icons.warning_amber_rounded,
+              color: Colors.orange.shade900, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '⚠ $_unsyncedRuns runs not synced — sync to avoid losses',
+              style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            tooltip: 'Dismiss (until next app start)',
+            onPressed: () =>
+                setState(() => _syncWarningDismissed = true),
+          ),
+        ]),
+      ),
+    );
   }
 
   Future<void> _openLocalRun(SavedRun run) async {
@@ -1104,7 +1328,13 @@ class _RunListScreenState extends State<RunListScreen>
   /// P1 cloud section: live upload status + entry to the F48 cloud-runs
   /// browser. Shown in both the connected and saved-runs views so users
   /// always see the sync state where they think about their runs.
+  /// 1.71: the sync status line also surfaces the device-delete backlog
+  /// ("N device deletions pending") — those fire on the next connect.
   Widget _buildCloudCard() {
+    final backlogNote = _backlogPending > 0
+        ? ' · $_backlogPending device deletion'
+            '${_backlogPending == 1 ? '' : 's'} pending'
+        : '';
     return Card(
       child: Column(children: [
         ValueListenableBuilder<SyncStatus>(
@@ -1117,9 +1347,10 @@ class _RunListScreenState extends State<RunListScreen>
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.cloud_sync),
             title: const Text('Cloud Sync'),
-            subtitle: Text(sync.text.isEmpty
-                ? 'Runs upload while signed in (Settings → Cloud Account)'
-                : sync.text),
+            subtitle: Text((sync.text.isEmpty
+                    ? 'Runs upload while signed in (Settings → Cloud Account)'
+                    : sync.text)
+                + backlogNote),
             trailing: IconButton(
               icon: const Icon(Icons.refresh),
               tooltip: 'Sync now',
@@ -1197,6 +1428,7 @@ class _RunListScreenState extends State<RunListScreen>
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
+                    _syncWarningBanner(),
                     Card(
                       color: Colors.blue.shade50,
                       child: const Padding(
@@ -1300,6 +1532,7 @@ class _RunListScreenState extends State<RunListScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _syncWarningBanner(),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -1739,22 +1972,27 @@ class _RunListScreenState extends State<RunListScreen>
     }
   }
 
-  /// F46 confirmation for a single run: honest scoping of what is deleted
-  /// where. The device flash copy is NEVER deleted from the phone — it
-  /// recycles automatically; per-run device deletion needs a firmware
-  /// update. Deleting a run that sources a merge is allowed: the merge
-  /// keeps its stored gates/baro (and its cloud row).
+  /// F46 delete confirmation v2 (1.71, JP spec 2026-10-27). Scoping is
+  /// now: Phone ☑ FIXED — the phone copy always goes; the device copy is
+  /// removed too (live when connected, durable backlog when offline).
+  /// Synch ☑/☐ — default = actual cloud state; checked ALSO deletes the
+  /// cloud row, unchecked leaves the cloud untouched (archive-to-cloud-
+  /// only deletion). Deleting a run that sources a merge is allowed: the
+  /// merge keeps its stored gates/baro (and its cloud row).
   Future<void> _confirmDeleteRun(SavedRun run) async {
     final cloudEntry = _cloudEntryForRun(run);
     final isMergeSource = _merges.any((m) =>
         m['aFile'] == run.fileName || m['bFile'] == run.fileName);
-    var delPhone = true;
-    var delCloud = cloudEntry != null;
+    final hasName = run.name != null && run.name!.isNotEmpty;
+    final displayName = hasName
+        ? run.name!
+        : (_defaultNames[run.fileName] ?? 'A#${run.id}');
+    var delCloud = cloudEntry != null;   // Synch default = actual cloud state
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) => AlertDialog(
-          title: const Text('Delete this run?'),
+          title: Text('Delete $displayName'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1762,9 +2000,12 @@ class _RunListScreenState extends State<RunListScreen>
               CheckboxListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                value: delPhone,
-                onChanged: (v) => setD(() => delPhone = v ?? false),
+                value: true,
+                // FIXED: the phone copy always goes — cannot untick.
+                onChanged: null,
                 title: const Text('Delete from phone'),
+                subtitle: const Text(
+                    'Device copy is removed too (queued for next connection if offline)'),
               ),
               CheckboxListTile(
                 dense: true,
@@ -1773,17 +2014,11 @@ class _RunListScreenState extends State<RunListScreen>
                 // Not uploaded → nothing to delete in the cloud.
                 onChanged:
                     cloudEntry == null ? null : (v) => setD(() => delCloud = v ?? false),
-                title: const Text('Delete from cloud'),
+                title: const Text('Synch — also delete from cloud'),
                 subtitle: cloudEntry == null
                     ? const Text('Not uploaded — no cloud copy')
-                    : null,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'The copy on the device flash is NOT deleted — device '
-                'storage recycles automatically; per-run device deletion '
-                'comes with a firmware update.',
-                style: TextStyle(fontSize: 12),
+                    : const Text(
+                        'Unchecked: the cloud copy is kept (archive)'),
               ),
               if (isMergeSource)
                 const Padding(
@@ -1801,9 +2036,7 @@ class _RunListScreenState extends State<RunListScreen>
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: (delPhone || (delCloud && cloudEntry != null))
-                  ? () => Navigator.pop(ctx, true)
-                  : null,
+              onPressed: () => Navigator.pop(ctx, true),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete'),
             ),
@@ -1814,62 +2047,76 @@ class _RunListScreenState extends State<RunListScreen>
     if (confirmed != true || !mounted) return;
     await _executeRunDelete(
       run,
-      deleteFromPhone: delPhone,
       deleteFromCloud: delCloud && cloudEntry != null,
       cloudEntry: cloudEntry,
     );
   }
 
-  /// Execution order per arch §8: cloud DELETE first — a failure aborts
-  /// with a snackbar and keeps everything. Local leg: runs.json index +
-  /// run file + upload queue entry + rename outbox entries.
+  /// Execution order per arch §8: cloud DELETE first, then local, then the
+  /// device leg.
+  /// 1.71: a cloud DELETE answering 404/410 ("already gone" — the row was
+  /// deleted elsewhere, e.g. cloud-deleted-then-delete-both) is SUCCESS:
+  /// the local + device legs proceed instead of stranding the phone copy.
+  /// Only network / 5xx / other-4xx (401/403/…) abort with everything kept.
   Future<void> _executeRunDelete(
     SavedRun run, {
-    required bool deleteFromPhone,
     required bool deleteFromCloud,
     required UploadEntry? cloudEntry,
   }) async {
+    var cloudGone = false;
     if (deleteFromCloud && cloudEntry?.runId != null) {
       try {
         await ApiClient.instance.deleteRun(cloudEntry!.runId!);
-      } catch (e) {
-        debugPrint('[SGC] cloud delete failed for ${run.fileName}: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Cloud delete failed — run kept. ($e)'),
-              backgroundColor: Colors.red,
-            ),
-          );
+      } on CloudException catch (e) {
+        cloudGone = e.statusCode == 404 || e.statusCode == 410;
+        if (!cloudGone) {
+          debugPrint('[SGC] cloud delete failed for ${run.fileName}: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Cloud delete failed — run kept. ($e)'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
         }
-        return;
+        debugPrint('[SGC] cloud row already gone '
+            '(HTTP ${e.statusCode}) — proceeding');
       }
     }
-    if (deleteFromPhone) {
-      await _storage.delete(run);
-      await UploadQueue.instance.removeFile(run.fileName);
-      await UploadQueue.instance.removeRenamesForKey(run.fileName);
-      _gateCache.remove(run.fileName);
-      await _loadLocalRuns();
-      if (mounted) setState(() {});
-    }
+    // Phone leg (fixed in the v2 dialog): index + file + queue entry +
+    // rename outbox entries.
+    await _storage.delete(run);
+    await UploadQueue.instance.removeFile(run.fileName);
+    await UploadQueue.instance.removeRenamesForKey(run.fileName);
+    _gateCache.remove(run.fileName);
+    // Device leg (1.71): ALWAYS. Live 'd' when connected, durable backlog
+    // otherwise — applied on the next connect before any listing.
+    final deviceDeleted = await _deleteFromDevice(run);
+    await _loadLocalRuns();
+    if (mounted) setState(() {});
     if (mounted) {
-      final scope = deleteFromPhone && deleteFromCloud
-          ? 'Run deleted from phone and cloud'
-          : deleteFromCloud
-              ? 'Run deleted from cloud — phone copy kept'
-              : 'Run deleted from phone';
+      final scope = deleteFromCloud
+          ? (cloudGone
+              ? 'Run deleted from phone — cloud copy was already gone'
+              : 'Run deleted from phone and cloud')
+          : 'Run deleted from phone (cloud copy kept)';
+      final deviceNote = deviceDeleted
+          ? 'device copy removed'
+          : 'device copy queued for removal';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(scope)),
+        SnackBar(content: Text('$scope · $deviceNote')),
       );
     }
   }
 
-  /// F46 confirmation for a merged course: phone = the merge entry itself
-  /// (its two source runs stay). Cloud = the merged cloud row.
+  /// F46 confirmation for a merged course, v2 checkbox structure (1.71):
+  /// phone fixed, Synch optional. A merge has NO device copy (it is a
+  /// phone-local blend), so no device note/leg here — phone = the merge
+  /// entry itself (its two source runs stay), cloud = the merged cloud row.
   Future<void> _confirmDeleteMerge(Map<String, dynamic> m) async {
     final cloudEntry = _cloudEntryForMerge(m);
-    var delPhone = true;
     var delCloud = cloudEntry != null;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1883,8 +2130,9 @@ class _RunListScreenState extends State<RunListScreen>
               CheckboxListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                value: delPhone,
-                onChanged: (v) => setD(() => delPhone = v ?? false),
+                value: true,
+                // FIXED: the merge entry always goes — cannot untick.
+                onChanged: null,
                 title: const Text('Delete from phone'),
                 subtitle: const Text(
                     'The two source runs are kept'),
@@ -1895,10 +2143,11 @@ class _RunListScreenState extends State<RunListScreen>
                 value: cloudEntry != null && delCloud,
                 onChanged:
                     cloudEntry == null ? null : (v) => setD(() => delCloud = v ?? false),
-                title: const Text('Delete from cloud'),
+                title: const Text('Synch — also delete from cloud'),
                 subtitle: cloudEntry == null
                     ? const Text('Not uploaded — no cloud copy')
-                    : null,
+                    : const Text(
+                        'Unchecked: the cloud copy is kept (archive)'),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -1914,9 +2163,7 @@ class _RunListScreenState extends State<RunListScreen>
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: (delPhone || (delCloud && cloudEntry != null))
-                  ? () => Navigator.pop(ctx, true)
-                  : null,
+              onPressed: () => Navigator.pop(ctx, true),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete'),
             ),
@@ -1927,7 +2174,6 @@ class _RunListScreenState extends State<RunListScreen>
     if (confirmed != true || !mounted) return;
     await _executeMergeDelete(
       m,
-      deleteFromPhone: delPhone,
       deleteFromCloud: delCloud && cloudEntry != null,
       cloudEntry: cloudEntry,
     );
@@ -1938,50 +2184,55 @@ class _RunListScreenState extends State<RunListScreen>
   /// used for its intended purpose: explicit user deletion). The merge's
   /// queue entry + rename outbox entries are dropped so the sync worker's
   /// merged backfill cannot resurrect it.
+  /// 1.71: 404/410 on the cloud DELETE = "already gone" = SUCCESS (same
+  /// rule as single runs); network/5xx/other-4xx aborts, everything kept.
   Future<void> _executeMergeDelete(
     Map<String, dynamic> m, {
-    required bool deleteFromPhone,
     required bool deleteFromCloud,
     required UploadEntry? cloudEntry,
   }) async {
+    var cloudGone = false;
     if (deleteFromCloud && cloudEntry?.runId != null) {
       try {
         await ApiClient.instance.deleteRun(cloudEntry!.runId!);
-      } catch (e) {
-        debugPrint('[SGC] cloud delete failed for merge: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Cloud delete failed — merged course kept. ($e)'),
-              backgroundColor: Colors.red,
-            ),
-          );
+      } on CloudException catch (e) {
+        cloudGone = e.statusCode == 404 || e.statusCode == 410;
+        if (!cloudGone) {
+          debugPrint('[SGC] cloud delete failed for merge: $e');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Cloud delete failed — merged course kept. ($e)'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
         }
-        return;
+        debugPrint('[SGC] merged cloud row already gone '
+            '(HTTP ${e.statusCode}) — proceeding');
       }
     }
-    if (deleteFromPhone) {
-      // Reload from disk before shrinking: the in-memory list can be
-      // stale (auto-sync merge pass) — never persist a blind shrink.
-      final merges = await _storage.loadMerges();
-      final aFile = m['aFile'] as String;
-      final bFile = m['bFile'] as String;
-      merges.removeWhere(
-          (e) => e['aFile'] == aFile && e['bFile'] == bFile);
-      await _storage.saveMerges(merges, allowShrink: true);
-      _merges = merges;
-      final key = UploadQueue.mergedQueueKey(aFile, bFile);
-      await UploadQueue.instance.removeFile(key);
-      await UploadQueue.instance.removeRenamesForKey(key);
-      await _refreshDerivedState(_localRuns);
-      if (mounted) setState(() {});
-    }
+    // Reload from disk before shrinking: the in-memory list can be
+    // stale (auto-sync merge pass) — never persist a blind shrink.
+    final merges = await _storage.loadMerges();
+    final aFile = m['aFile'] as String;
+    final bFile = m['bFile'] as String;
+    merges.removeWhere(
+        (e) => e['aFile'] == aFile && e['bFile'] == bFile);
+    await _storage.saveMerges(merges, allowShrink: true);
+    _merges = merges;
+    final key = UploadQueue.mergedQueueKey(aFile, bFile);
+    await UploadQueue.instance.removeFile(key);
+    await UploadQueue.instance.removeRenamesForKey(key);
+    await _refreshDerivedState(_localRuns);
+    if (mounted) setState(() {});
     if (mounted) {
-      final scope = deleteFromPhone && deleteFromCloud
-          ? 'Merged course deleted from phone and cloud'
-          : deleteFromCloud
-              ? 'Merged course deleted from cloud — phone copy kept'
-              : 'Merged course deleted from phone';
+      final scope = deleteFromCloud
+          ? (cloudGone
+              ? 'Merged course deleted from phone — cloud copy was already gone'
+              : 'Merged course deleted from phone and cloud')
+          : 'Merged course deleted from phone (cloud copy kept)';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(scope)),
       );

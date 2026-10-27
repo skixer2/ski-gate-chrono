@@ -108,6 +108,33 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     }
+                    "deleteRuns" -> {
+                        /* 1.71 (F46 v2): apply the device-delete backlog before
+                           any listing/download — one connection for the batch. */
+                        val address = call.argument<String>("address")
+                        val runIds = call.argument<List<Int>>("runIds") ?: emptyList()
+                        if (address.isNullOrBlank() || runIds.isEmpty()) {
+                            result.error("bad_args", "address and runIds are required", null)
+                            return@setMethodCallHandler
+                        }
+                        val engine = downloader ?: run {
+                            result.error("not_ready", "native BLE downloader not initialized", null)
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            try {
+                                val res = engine.deleteRuns(address, runIds)
+                                postSuccess(result, mapOf(
+                                    "ok" to res.ok,
+                                    "failed" to res.failed.map {
+                                        mapOf("id" to it.id, "reason" to it.reason)
+                                    },
+                                ))
+                            } catch (e: Exception) {
+                                postError(result, "native_ble", e.message ?: e.javaClass.simpleName, null)
+                            }
+                        }.start()
+                    }
                     "cancel" -> {
                         downloader?.cancel()
                         result.success(null)

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'cloud/api_client.dart';
 import 'cloud/sync_worker.dart';
+import 'storage/device_delete_backlog.dart';
 import 'ui/screens/home_screen.dart';
 
 void main() {
@@ -12,6 +13,10 @@ void main() {
   // Both are fire-and-forget — offline start must never block the UI.
   ApiClient.instance.init();
   SyncWorker.instance.init();
+  // 1.71 (F46 v2): device-delete backlog — durable "delete on device"
+  // queue applied on every connect before any listing/download. Same
+  // fire-and-forget discipline (every consumer awaits load() anyway).
+  DeviceDeleteBacklog.instance.load();
   runApp(const SGCApp());
 }
 

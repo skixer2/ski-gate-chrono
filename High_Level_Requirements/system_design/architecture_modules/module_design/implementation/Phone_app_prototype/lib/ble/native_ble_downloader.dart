@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class NativeDownloadedRun {
@@ -119,6 +120,28 @@ class NativeBleDownloader {
   Future<String> readRunList({required String address}) async {
     final res = await _channel.invokeMethod<String>('readRunList', {'address': address});
     return res ?? '';
+  }
+
+  /// 1.71 (F46 v2): apply device-delete backlog entries before any
+  /// listing/download. Returns the ids the device CONFIRMED deleted (or
+  /// "already gone" — both resolve the entry); failures stay backlogged.
+  Future<Set<int>> deleteRuns({
+    required String address,
+    required List<int> runIds,
+  }) async {
+    if (runIds.isEmpty) return {};
+    final res = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+      'deleteRuns',
+      {'address': address, 'runIds': runIds},
+    );
+    final ok = (res?['ok'] as List<dynamic>? ?? const [])
+        .map((e) => (e as num).toInt())
+        .toSet();
+    for (final f in (res?['failed'] as List<dynamic>? ?? const [])) {
+      final m = f as Map<dynamic, dynamic>;
+      debugPrint('[DeleteBacklog] native delete #${m['id']} failed: ${m['reason']}');
+    }
+    return ok;
   }
 
   Future<void> cancel() => _channel.invokeMethod<void>('cancel');
