@@ -24,6 +24,17 @@ static const struct device *led =
 
 static struct k_work        led_work;
 static struct k_timer       led_timer;
+/* SLEEP pulse off-edge (JP 2026-10-27: 100 ms blue every 2 s). Timer
+ * expiry runs in ISR context — I2C writes must go through sysworkq. */
+static struct k_work        led_off_work;
+static struct k_timer       led_off_timer;
+
+static void led_off_work_handler(struct k_work *w)
+{
+	const uint8_t off[3] = { 0x00, 0x00, 0x00 };
+
+	led_set_color(led, 0, 3, off);
+}
 
 static void led_work_handler(struct k_work *w)
 {
@@ -46,17 +57,31 @@ static void led_work_handler(struct k_work *w)
 		const uint8_t green[3] = { 0x00, 0xFF, 0x00 };
 		led_set_color(led, 0, 3, green);
 	} else {
-		static bool on;
-		const uint8_t blue[3] = { on ? 0xFF : 0x00, 0x00, 0x00 };
+		/* SLEEP heartbeat (JP 2026-10-27): 100 ms blue pulse every
+		 * 2 s (5% duty — findable in the dark, ~negligible current).
+		 * 1 s tick alternates pulse/dark slots -> 2 s period; the
+		 * 100 ms off-edge fires via the one-shot off-timer. */
+		static bool pulse_slot;
+		const uint8_t blue[3] = { 0xFF, 0x00, 0x00 };
 
-		led_set_color(led, 0, 3, blue);
-		on = !on;
+		if (pulse_slot) {
+			led_set_color(led, 0, 3, blue);
+			k_timer_start(&led_off_timer, K_MSEC(100), K_FOREVER);
+		} else {
+			led_set_color(led, 0, 3, (const uint8_t[3]){ 0 });
+		}
+		pulse_slot = !pulse_slot;
 	}
 }
 
 static void led_timer_expiry(struct k_timer *t)
 {
 	k_work_submit(&led_work);
+}
+
+static void led_off_timer_expiry(struct k_timer *t)
+{
+	k_work_submit(&led_off_work);
 }
 
 int led_state_init(void)
@@ -66,7 +91,9 @@ int led_state_init(void)
 		return -1;
 	}
 	k_work_init(&led_work, led_work_handler);
+	k_work_init(&led_off_work, led_off_work_handler);
 	k_timer_init(&led_timer, led_timer_expiry, NULL);
+	k_timer_init(&led_off_timer, led_off_timer_expiry, NULL);
 	k_timer_start(&led_timer, K_SECONDS(1), K_SECONDS(1));
 	return 0;
 }

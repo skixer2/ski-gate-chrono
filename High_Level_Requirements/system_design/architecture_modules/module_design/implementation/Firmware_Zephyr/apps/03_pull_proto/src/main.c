@@ -34,7 +34,7 @@
 #include "pull_proto.h"
 #include "power_state.h"
 
-#define APP_VERSION "0.23.0"   /* F12/F13: SLEEP primary idle state (no IDLE),
+#define APP_VERSION "0.23.1"   /* +LED sleep heartbeat 100ms/2s (JP); F12/F13: SLEEP primary idle state (no IDLE),
  * slow 2 s adv in SLEEP, sensors parked, 1 h unconnected → System Off
  * with button-sense wake (rr:4 on the cold boot) */
 
