@@ -193,6 +193,16 @@ Each device operates independently; single-device operation is supported (R08) �
 
 ---
 
+## Naming Convention (JP 2026-10-27, supersedes earlier label schemes)
+
+**Two numbers, two jobs:**
+
+1. **Device letters:** each newly paired device gets a letter (A, B, C…, strictly increasing per NEW device, rollover at Z), assigned by the phone at pairing. A re-paired known device keeps its letter (letter burned only by a new distinct device). Side detection is NOT identity (unreliable in slalom); the assigned letter is.
+2. **Run default name = `<letter>#<device_counter>`** (e.g. `A#123`). The counter is the firmware's per-device run id (rollover at 9999 acceptable). The name is stamped like a given name: custom names override it locally, and the effective name is uploaded in the cloud `name` field — so local and cloud display the identical string by construction.
+3. **Run list (device):** shows ONE day at a time (◀ ▶ arrows, most recent day at launch). Within a day, runs are ordered by time and numbered 1..N **at display time only** — never stored, never uploaded; deletions renumber. Ties: right-side run first; same side + same time: arbitrary.
+4. **Merged runs:** default name = `<A#x> + <B#y>` from the sources' default names. Same-letter merges (`A#x + A#y`) occur only in bench emulation, never in production (production merges are always two devices).
+5. **Cloud:** internal database ids are unique and permanent but NEVER displayed in labels. Cloud run list is ordered `start_datetime DESC, id DESC` (newest first).
+
 ## REQ-DB — Cloud Database Schema
 
 ### Schema Overview
@@ -304,6 +314,7 @@ REQ-HW  (H01–H14)   ◄─────────────── ENVIRONME
 | 2026-10-23 | v6.2 | **F31/F33 color convention = code reality (JP-confirmed, doc-only):** charts already render gate markers blue = LEFT gate, red = RIGHT gate (+ grey + asterisk for estimated) on both speed (F31) and altitude (F33) charts — App has shipped this for weeks. Green/red wording replaced with blue/red (better separation, red-green colorblind friendly). No code change. |
 | 2026-10-26 | v6.3 | **REQ-DB:** added Data Retention — cloud run data older than 1 year purged server-side (nightly); phone copies unaffected (JP directive 2026-10-26, folded from remote_db_architecture.md §5). Activation-window semantics decided: expired = writes blocked, reads + deletion allowed. |
 | 2026-10-26 | v6.4 | **REQ-DB runs:** added `run_type` {single, merged} + `source_run_ids` lineage (JP directive 19:06 "Go!!" — upload policy = everything, distinct types; merged = phone-blended dual-device course). |
+| 2026-10-27 | v6.5 | **Naming Convention section added** (JP design, confirmed 10:18+08:48): device letters A–Z per new paired device (re-pair keeps letter); run name = `<letter>#<device_counter>` synced via name field; day-pager list with display-only per-day numbering (deletes renumber, R-before-L tiebreak); merged = `<A#x> + <B#y>`; cloud ids never displayed; cloud list ordered newest-first. |
 
 ---
 
