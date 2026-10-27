@@ -53,8 +53,10 @@ static const struct bt_le_adv_param *adv_param(void)
 
 /* bt_enable completion flag — the mode switch must not touch the HCI
  * layer before the stack is up (bt_ready() starts the first ad set
- * with whatever mode is current). */
-static volatile bool bt_ready;
+ * with whatever mode is current). Named bt_up, NOT bt_ready: the
+ * bt_enable callback is also called bt_ready (name collision broke
+ * the 0.23.0 build — bench 2026-10-27). */
+static volatile bool bt_up;
 
 bool ble_lifecycle_connected(void)
 {
@@ -166,7 +168,7 @@ static void bt_ready(int err)
 		return;
 	}
 	printk("Bluetooth initialized\n");
-	bt_ready = true;
+	bt_up = true;
 
 	/* v0.21.5: GAP name from persisted config (loaded in main
 	 * before ble_lifecycle_start) - matches the advertisement. */
@@ -233,7 +235,7 @@ void ble_lifecycle_set_adv_slow(bool slow)
 	}
 	adv_slow = slow;
 
-	if (!bt_ready || connected || suspended) {
+	if (!bt_up || connected || suspended) {
 		return;
 	}
 	int err = bt_le_adv_stop();
