@@ -15,6 +15,10 @@ void pull_proto_start(void);
  * request slot (stateless design — no session survives a link). */
 void pull_proto_on_disconnect(void);
 
+/* True while a stream ('s') or directory ('D') burst is in flight —
+ * SLEEP's System-Off guard uses it as defence in depth (F12). */
+bool pull_proto_busy(void);
+
 /* Advertisement payloads (defined here because the product service
  * UUID is the single source of truth in pull_proto.c — the ADV packet
  * names it, setAdvertisedService parity). */

@@ -1,7 +1,7 @@
 /*
  * button.c — piezo/monostable pushbutton arming (F03, JP 2026-10-14)
  * =================================================================
- *   IDLE + HOLD ≥ 1 s → ARMED   (same path as serial 'a')
+ *   SLEEP + HOLD ≥ 1 s → ARMED   (same path as serial 'a')
  *   ARMED/LOGGING/POST_RUN + press → ignored
  *
  * Hardware: monostable switch (JP's bench piece) or sealed piezo,
@@ -34,6 +34,9 @@ static struct k_timer hold_timer;
 
 static uint8_t btn_hold_ticks;
 
+/* The resting state is SLEEP (0) since v0.23.0 — the hold-gate arms
+ * straight out of it (F13 wake path; no re-init, < 100 ms to ISR→work
+ * even right after a tickless idle wake). */
 static void hold_tick(struct k_timer *t)
 {
 	if (gpio_pin_get_raw(btn, BTN_PIN) != 0) {
@@ -48,7 +51,8 @@ static void hold_tick(struct k_timer *t)
 	k_timer_stop(t);
 
 	uint8_t st = recorder_state_idx();
-	if (st == 0) {          /* IDLE → ARMED after a deliberate 1 s hold */
+
+	if (st == 0) {          /* SLEEP → ARMED after a deliberate 1 s hold */
 		printk("{\"ev\":\"button_arm\",\"hold_ms\":1000}\n");
 		recorder_arm();
 	} else {
@@ -68,7 +72,7 @@ static void debounce_expired(struct k_timer *t)
 		printk("button press in state %u ignored\n", st);
 		return;
 	}
-	/* Real press in IDLE — start the 1 s hold gate (arm at 10 ticks). */
+	/* Real press in SLEEP — start the 1 s hold gate (arm at 10 ticks). */
 	btn_hold_ticks = 0;
 	k_timer_start(&hold_timer, K_MSEC(HOLD_TICK_MS), K_MSEC(HOLD_TICK_MS));
 }
@@ -95,4 +99,18 @@ int button_init(void)
 	k_timer_init(&hold_timer, hold_tick, NULL);
 	printk("button: arming input P0.%02u ready (F03, hold 1 s)\n", BTN_PIN);
 	return 0;
+}
+
+void button_arm_systemoff_wake(void)
+{
+	/* System OFF wake (F12/F13): only the SENSE (level) pin config
+	 * survives System OFF — PIN_CNF.SENSE drives the DETECT signal
+	 * that wakes the nRF52 into a cold boot (rr:4). The edge config
+	 * above would NOT survive. Same recipe as the Zephyr
+	 * samples/boards/nordic/system_off GPIO wake ("input + interrupt
+	 * as level active to allow wake-up"); this button is active-LOW
+	 * (pull-up, switch to GND) → GPIO_INT_LEVEL_LOW. The wake cold
+	 * boot runs button_init() again and re-arms the normal edge. */
+	gpio_pin_configure(btn, BTN_PIN, GPIO_INPUT | GPIO_PULL_UP);
+	gpio_pin_interrupt_configure(btn, BTN_PIN, GPIO_INT_LEVEL_LOW);
 }

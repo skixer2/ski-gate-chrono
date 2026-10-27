@@ -46,9 +46,10 @@ void ble_config_set_discipline(uint8_t v);
  * 0x7F = unknown (no battery / I2C error / battery-mode read skipped). */
 uint8_t ble_config_battery_byte(void);
 
-/* ABC4: bits4-0 = recorder state (IDLE=0 ARMED=1 LOGGING=2 POST_RUN=3;
- * ArduinoFW mapped its waiting state to 0xFF — we have no SLEEP yet,
- * IDLE reports 0, documented), bits7-5 = sensor flags (0 — TODO BHI). */
+/* ABC4: bits4-0 = recorder state (SLEEP=0 ARMED=1 LOGGING=2 POST_RUN=3;
+ * v0.23.0: SLEEP is the waiting state — it reports 0, the slot the old
+ * IDLE occupied; ArduinoFW used 0xFF for waiting, we never did.
+ * Documented), bits7-5 = sensor flags (0 — TODO BHI). */
 uint8_t ble_config_state_byte(void);
 
 /* ABC7: % of LOG region occupied by live runs (logical bytes). */

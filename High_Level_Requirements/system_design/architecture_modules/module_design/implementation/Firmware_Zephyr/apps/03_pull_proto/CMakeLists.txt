@@ -12,6 +12,7 @@ target_sources(app PRIVATE
   src/pull_proto.c
   src/ble_config.c
   src/recorder.c
+  src/power_state.c
   src/sensor_prod.c
   src/sensor_synth.c
   src/bitpacker.c

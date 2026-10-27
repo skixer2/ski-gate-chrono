@@ -250,6 +250,61 @@ static const struct { uint8_t id; float rate; } cfgs[] = {
 	{ BHY2_SENSOR_ID_TEMP,   1.0f },
 };
 
+/* ---- SLEEP suspension (F12, v0.23.0) ----
+ * power_state parks the producer while the device sleeps: the drain
+ * thread first (no SPI traffic while the hub is reconfigured from
+ * another thread — the flash shares spi2 and the recorder may run
+ * right after the wake), then the hub virtual sensors via SensorConf
+ * with 0 Hz — the BHY2 firmware semantic for 'disabled': the hub
+ * simply stops generating FIFO events. The hub itself stays awake,
+ * so resume is two config writes, not a re-init (F13: no sensor
+ * re-init on wake). The bench b1_rate thread (CONFIG_SGC_BENCH)
+ * keeps ticking — it just prints zeros while parked, honestly. */
+static volatile bool prod_running;   /* set once drain thread started */
+
+void sensor_prod_suspend(void)
+{
+	if (!prod_running) {
+		return;   /* hub never came up — nothing to park */
+	}
+	k_thread_suspend(sensor_prod_tid);
+
+	struct bhy2_dev *dev = bhy2_zephyr_dev();
+
+	if (dev == NULL) {
+		return;
+	}
+	for (int i = 0; i < (int)ARRAY_SIZE(cfgs); i++) {
+		int8_t rslt = bhy2_set_virt_sensor_cfg(cfgs[i].id, 0.0f,
+						       0, dev);
+
+		printk("{\"ev\":\"b1_sleep\",\"sid\":%u,\"rslt\":%d}\n",
+		       cfgs[i].id, rslt);
+	}
+	printk("{\"ev\":\"sleep\",\"sensors\":\"parked\"}\n");
+}
+
+void sensor_prod_resume(void)
+{
+	if (!prod_running) {
+		return;
+	}
+	struct bhy2_dev *dev = bhy2_zephyr_dev();
+
+	if (dev != NULL) {
+		for (int i = 0; i < (int)ARRAY_SIZE(cfgs); i++) {
+			int8_t rslt = bhy2_set_virt_sensor_cfg(cfgs[i].id,
+							       cfgs[i].rate,
+							       0, dev);
+
+			printk("{\"ev\":\"b1_wake\",\"sid\":%u,"
+			       "\"rslt\":%d}\n", cfgs[i].id, rslt);
+		}
+	}
+	k_thread_resume(sensor_prod_tid);
+	printk("{\"ev\":\"wake\",\"sensors\":\"running\"}\n");
+}
+
 void sensor_prod_start(void)
 {
 	struct bhy2_dev *dev = bhy2_zephyr_dev();
@@ -280,5 +335,6 @@ void sensor_prod_start(void)
 #if IS_ENABLED(CONFIG_SGC_BENCH)
 	k_thread_start(sensor_prod_stats_tid);
 #endif
+	prod_running = true;
 	printk("{\"ev\":\"b1_cfg\",\"ok\":true}\n");
 }

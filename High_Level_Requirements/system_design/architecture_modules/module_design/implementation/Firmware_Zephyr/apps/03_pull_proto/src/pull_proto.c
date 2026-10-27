@@ -774,7 +774,7 @@ static void cmd_work_handler(struct k_work *w)
 		printk("BB probe rearm\n");
 		bhy2_probe_rearm();
 	} else if (cmd == 'H') {
-		/* B3 bench: dump one run's payload as hexdump lines (IDLE only).
+		/* B3 bench: dump one run's payload as hexdump lines (SLEEP or connected idle — recorder resting).
 		 * Payload only — header/CRC excluded. 24 B/line.
 		 * v0.22.1: <id> is the stable run_id — resolve to the entry;
 		 * unknown ids take the bad_id path (never a wrong run). */
@@ -1043,6 +1043,14 @@ uint8_t pull_proto_ad_len(void)             { return ARRAY_SIZE(ad); }
 uint8_t pull_proto_sd_len(void)             { return ARRAY_SIZE(sd_dyn); }
 
 /* ── Lifecycle hooks ─────────────────────────────────────────────── */
+
+/* F12 System-Off guard (defence in depth): true while a stream ('s')
+ * or directory ('D') burst is in flight. Both abort on disconnect, so
+ * this only matters for the seconds a transfer outlives its link. */
+bool pull_proto_busy(void)
+{
+	return job_active || dir_active;
+}
 
 void pull_proto_on_disconnect(void)
 {

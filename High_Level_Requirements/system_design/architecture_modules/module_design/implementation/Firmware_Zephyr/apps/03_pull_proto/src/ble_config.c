@@ -245,7 +245,7 @@ uint8_t ble_config_battery_byte(void)
 
 uint8_t ble_config_state_byte(void)
 {
-	/* recorder: IDLE=0 ARMED=1 LOGGING=2 POST_RUN=3; sensor flags 0
+	/* recorder: SLEEP=0 ARMED=1 LOGGING=2 POST_RUN=3; sensor flags 0
 	 * until the BHI status port. */
 	return recorder_state_idx() & 0x1F;
 }

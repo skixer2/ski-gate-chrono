@@ -4,10 +4,16 @@
  * Owns the ATHLETE-VISIBLE states; the SGL store stays a dumb storage
  * lifecycle. Drives the store's streaming append API.
  *
- *   IDLE ──'a'──► ARMED ──'g'──► LOGGING ──end──► POST_RUN ──► IDLE
- *                 │ 120 s timeout        │ 'e' or budget (truncate+flag)
- *                 ▼                      ▼
- *               IDLE                  POST_RUN
+ *   SLEEP ──'a'/btn-hold──► ARMED ──'g'/drop──► LOGGING ──end──► POST_RUN
+ *              │ 20 s timeout                    │ 'e' or budget       │
+ *              ▼                                 ▼                     ▼
+ *            SLEEP ◄──────────────────────── POST_RUN (store drained) ◄─┘
+ *
+ * SLEEP (F12/F13, v0.23.0) is the PRIMARY waiting state — no separate
+ * IDLE exists (ADR-004: IDLE eliminated). Entered at boot, at POST_RUN
+ * completion and on arm timeout. power_state.c gives it meaning
+ * physically (slow 2 s adv, sensors parked, 1 h unconnected → System
+ * Off); the button hold-gate arms straight from SLEEP with no re-init.
  *
  * ACQUISITION runs at 100 Hz from ARM through LOGGING (JP: even while
  * armed); the start-detector check is DECIMATED to 10 Hz (every 10th
@@ -17,11 +23,11 @@
  * PRE-ROLL RING — SPEC v4-FINAL (JP, 2026-10-05, supersedes F02/v6.0):
  *   Region 0x0000–0x13FFF (20 sectors, 4096 linear slots × 20 B).
  *   Bank A 0x0–0x9FFF  = 20 s PRE-trigger  max (ARM ≤ 20 s, absolute:
- *                        no trigger at 20 s → back to IDLE).
+ *                        no trigger at 20 s → back to SLEEP).
  *   Bank B 0xA000–0x13FFF = 20 s POST-trigger: order-preserving buffer
  *     for post-trigger frames that CANNOT be written directly to the run
  *     while pre-trigger frames still drain (would break timestamp order).
- *   INVARIANT: entering IDLE ⇒ both banks erased (boot, post-run,
+ *   INVARIANT: entering SLEEP ⇒ both banks erased (boot, post-run,
  *     arm-timeout — every ARM starts on clean banks).
  *   ARMED: 1 push/tick (forward fill, page-buffered, program-only).
  *   LOGGING: 2 pops/tick → pack(slot ts, arrival-stamped) → run append;
@@ -44,6 +50,7 @@
 #include "bitpacker.h"
 #include "ring.h"
 #include "ble_config.h"
+#include "power_state.h"
 
 /* DEDICATED workqueue (v0.10.1). Historical finding: the SHARED
  * sysworkq lost ~25% of 100 Hz ticks during LOGGING when the phone's
@@ -55,9 +62,9 @@
 static K_KERNEL_STACK_DEFINE(rec_q_stack, 1024);
 static struct k_work_q rec_q;
 
-enum rec_state { RC_IDLE, RC_ARMED, RC_LOGGING, RC_POST_RUN };
+enum rec_state { RC_SLEEP = 0, RC_ARMED, RC_LOGGING, RC_POST_RUN };
 
-static enum rec_state rc_state = RC_IDLE;
+static enum rec_state rc_state = RC_SLEEP;
 
 /* Tick-gap forensics (2026-10-05: 1 real >1 s stall seen in 30 s run —
  * release blocker, JP). Prints any inter-handler gap > 50 ms; localizes
@@ -215,9 +222,10 @@ static void rc_work_handler(struct k_work *w)
 	int intent = atomic_set(&cmd_intent, 0);
 	uint32_t now_ms = k_uptime_get_32();
 
-	/* Gap forensics: skip when idle (first tick after re-arm would
-	 * otherwise print a bogus giant gap from the previous session). */
-	if (rc_state != RC_IDLE && rc_prev_tick_ms &&
+	/* Gap forensics: skip when sleeping (first tick after re-arm
+	 * would otherwise print a bogus giant gap from the previous
+	 * session). */
+	if (rc_state != RC_SLEEP && rc_prev_tick_ms &&
 	    (now_ms - rc_prev_tick_ms) > 50u) {
 		printk("{\"ev\":\"tick_gap\",\"ms\":%u}\n",
 		       now_ms - rc_prev_tick_ms);
@@ -229,18 +237,20 @@ static void rc_work_handler(struct k_work *w)
 	/* Commands execute in-order with the machine, never beside it. */
 	switch (intent) {
 	case 1:
-		if (rc_state == RC_IDLE && !store_busy()) {
+		if (rc_state == RC_SLEEP && !store_busy()) {
 			rc_state = RC_ARMED;
 			ticks = 0;
-			rc_prev_tick_ms = 0;   /* no gap event across idle */
+			rc_prev_tick_ms = 0;   /* no gap event across sleep */
 			rc_stats_reset();
-			ring_arm_reset();   /* banks pre-erased (IDLE invariant) */
+			ring_arm_reset();   /* banks pre-erased (SLEEP invariant) */
 			sd_reset();         /* F04: P0 locks on first valid baro */
 			ble_lifecycle_suspend();   /* JP: no phone while armed */
+			power_state_on_sleep_exit();   /* F12/F13: leave SLEEP */
 			printk("{\"rec\":\"ARMED\"}\n");
+			printk("{\"ev\":\"sm\",\"from\":\"SLEEP\",\"to\":\"ARMED\"}\n");
 			k_timer_start(&rc_tick, K_MSEC(10), K_MSEC(10));
 		} else {
-			printk("{\"rec\":\"ERR\",\"why\":\"not_idle\"}\n");
+			printk("{\"rec\":\"ERR\",\"why\":\"not_sleep\"}\n");
 		}
 		break;
 	case 2:
@@ -294,11 +304,13 @@ static void rc_work_handler(struct k_work *w)
 			}
 		}
 		if (ticks >= 100 * 20) {    /* 20 s ARM cap (JP, spec v4) */
-			printk("{\"rec\":\"IDLE\",\"ev\":\"arm_timeout\"}\n");
-			rc_state = RC_IDLE;
+			printk("{\"rec\":\"SLEEP\",\"ev\":\"arm_timeout\"}\n");
+			printk("{\"ev\":\"sm\",\"from\":\"ARMED\","
+				       "\"to\":\"SLEEP\",\"why\":\"arm_timeout\"}\n");
+			rc_state = RC_SLEEP;
 			k_timer_stop(&rc_tick);
-			ring_erase_banks();   /* IDLE invariant */
-			ble_lifecycle_resume();
+			ring_erase_banks();   /* SLEEP invariant */
+			power_state_on_sleep_enter();
 		}
 		break;
 	}   /* RC_ARMED */
@@ -384,11 +396,13 @@ static void rc_work_handler(struct k_work *w)
 
 	case RC_POST_RUN:
 		if (!store_busy()) {
-			printk("{\"rec\":\"IDLE\",\"ev\":\"run_ready\"}\n");
-			rc_state = RC_IDLE;
+			printk("{\"rec\":\"SLEEP\",\"ev\":\"run_ready\"}\n");
+			printk("{\"ev\":\"sm\",\"from\":\"POST_RUN\","
+				       "\"to\":\"SLEEP\"}\n");
+			rc_state = RC_SLEEP;
 			k_timer_stop(&rc_tick);
-			ring_erase_banks();   /* IDLE invariant */
-			ble_lifecycle_resume();
+			ring_erase_banks();   /* SLEEP invariant */
+			power_state_on_sleep_enter();
 		}
 		break;
 
@@ -405,19 +419,19 @@ static void rc_timer_fn(struct k_timer *t)
 
 uint8_t recorder_state_idx(void)
 {
-	return (uint8_t)rc_state;   /* IDLE=0 ARMED=1 LOGGING=2 POST_RUN=3 */
+	return (uint8_t)rc_state;   /* SLEEP=0 ARMED=1 LOGGING=2 POST_RUN=3 */
 }
 
 const char *recorder_state_str(void)
 {
 	static const char *const names[] = {
-		"IDLE", "ARMED", "LOGGING", "POST_RUN"
+		"SLEEP", "ARMED", "LOGGING", "POST_RUN"
 	};
 
 	return names[rc_state];
 }
 
-void recorder_arm(void)
+void recorder_arm(void)   /* 'a'/button: SLEEP → ARMED (20 s timeout) */
 {
 	atomic_set(&cmd_intent, 1);
 	k_work_submit_to_queue(&rec_q, &rc_work);
@@ -443,5 +457,6 @@ void recorder_init(void)
 	k_thread_name_set(&rec_q.thread, "recorder");
 	k_work_init(&rc_work, rc_work_handler);
 	k_timer_init(&rc_tick, rc_timer_fn, NULL);
+	printk("{\"ev\":\"sm\",\"to\":\"SLEEP\",\"why\":\"boot\"}\n");
 	printk("recorder: ready (a=arm g=go e=end, own workqueue)\n");
 }

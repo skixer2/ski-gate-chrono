@@ -5,7 +5,7 @@
  * Bank A (slots 0–2047) = 20 s pre-trigger; Bank B (2048–4095) = 20 s
  * post-trigger order-preserving buffer. Linear within one ARM→run
  * cycle (never wraps — drain arithmetic guarantees tail ≤ 2×head-fill);
- * erased on EVERY entry to IDLE (boot, post-run, arm-timeout).
+ * erased on EVERY entry to SLEEP (boot, post-run, arm-timeout).
  *
  * Slot: [0..15] struct sgc_raw_frame (LE, as-packed order)
  *       [16..19] ts_ms little-endian (arrival stamp, NOT pop time)
@@ -36,7 +36,7 @@ bool ring_pop_oldest(struct sgc_raw_frame *f, uint32_t *ts_ms);
 
 uint32_t ring_count(void);
 
-/* Erase both banks (~20 × 45–100 ms sectors). Called on IDLE entry,
+/* Erase both banks (~20 × 45–100 ms sectors). Called on SLEEP entry,
  * after the state machine's timer stopped. */
 void ring_erase_banks(void);
 

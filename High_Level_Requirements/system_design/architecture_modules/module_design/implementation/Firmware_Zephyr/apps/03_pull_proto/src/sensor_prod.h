@@ -21,4 +21,10 @@ void sensor_prod_start(void);
 #include "bitpacker.h"
 bool sensor_prod_get_frame(struct sgc_raw_frame *out);
 
+/* SLEEP suspension (F12, v0.23.0): park the drain thread and disable
+ * the hub virtual sensors (SensorConf 0 Hz). No-ops if start() never
+ * ran. Resume re-enables at the configured rates and un-parks. */
+void sensor_prod_suspend(void);
+void sensor_prod_resume(void);
+
 #endif /* SGC_SENSOR_PROD_H */

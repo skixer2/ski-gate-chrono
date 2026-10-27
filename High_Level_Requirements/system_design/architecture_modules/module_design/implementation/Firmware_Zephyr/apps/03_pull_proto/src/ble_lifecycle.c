@@ -22,12 +22,39 @@
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
 #include "ble_config.h"
+#include "power_state.h"
 
 static volatile bool connected;
-
-/* Recording suspension state (see ble_lifecycle_suspend below). */
 static volatile bool suspended;
 static struct bt_conn *cur_conn;
+
+/* ── Advertising parameters ─────────────────────────────────────────
+ * F12 (v0.23.0): SLEEP advertises SLOW — 2 s interval. Zephyr 4.4's
+ * bluetooth.h ships NO connectable SLOW preset (only
+ * BT_LE_ADV_CONN_FAST_1/2), so SGC defines its own: 3200 units ×
+ * 0.625 ms = 2.0 s, connectable, name in the scan response — the
+ * same shape as FAST_1, one interval away. */
+#define ADV_INTERVAL_SLOW_2S 3200u
+
+static volatile bool adv_slow;
+static const struct bt_le_adv_param adv_fast_param =
+	BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_CONN,
+			     BT_GAP_ADV_FAST_INT_MIN_1,
+			     BT_GAP_ADV_FAST_INT_MAX_1, NULL);
+static const struct bt_le_adv_param adv_slow_param =
+	BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_CONN,
+			     ADV_INTERVAL_SLOW_2S, ADV_INTERVAL_SLOW_2S,
+			     NULL);
+
+static const struct bt_le_adv_param *adv_param(void)
+{
+	return adv_slow ? &adv_slow_param : &adv_fast_param;
+}
+
+/* bt_enable completion flag — the mode switch must not touch the HCI
+ * layer before the stack is up (bt_ready() starts the first ad set
+ * with whatever mode is current). */
+static volatile bool bt_ready;
 
 bool ble_lifecycle_connected(void)
 {
@@ -39,7 +66,7 @@ bool ble_lifecycle_connected(void)
 
 static void start_advertising(void)
 {
-	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+	int err = bt_le_adv_start(adv_param(),
 				  pull_proto_ad(), pull_proto_ad_len(),
 				  pull_proto_sd(), pull_proto_sd_len());
 	if (err && err != -EALREADY) {
@@ -53,14 +80,14 @@ static struct k_work_delayable adv_work;
 
 static void adv_work_handler(struct k_work *w)
 {
-	int err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_1,
+	int err = bt_le_adv_start(adv_param(),
 				  pull_proto_ad(), pull_proto_ad_len(),
 				  pull_proto_sd(), pull_proto_sd_len());
 	static uint8_t attempt;
 
 	if (err == 0 || err == -EALREADY) {
 		attempt = 0;
-		printk("advertising up\n");
+		printk("advertising up (%s)\n", adv_slow ? "slow 2s" : "fast");
 		return;
 	}
 	if (++attempt < 10) {
@@ -92,6 +119,7 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 		bt_conn_unref(cur_conn);
 	}
 	cur_conn = bt_conn_ref(conn);
+	power_state_on_connect();   /* F12: connected holds SLEEP, no off */
 	printk("connected: %s (LED -> solid green)\n", addr);
 }
 
@@ -110,6 +138,7 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 	/* Pull protocol owns stream state — let it abort cleanly
 	 * (stateless design, SR-2: a disconnect costs one reconnect). */
 	pull_proto_on_disconnect();
+	power_state_on_disconnect();   /* F12: fresh 1 h window if SLEEP */
 
 	if (suspended) {
 		printk("disconnected: %s (reason 0x%02x), SUSPENDED "
@@ -137,6 +166,7 @@ static void bt_ready(int err)
 		return;
 	}
 	printk("Bluetooth initialized\n");
+	bt_ready = true;
 
 	/* v0.21.5: GAP name from persisted config (loaded in main
 	 * before ble_lifecycle_start) - matches the advertisement. */
@@ -162,7 +192,7 @@ void ble_lifecycle_start(void)
  * While ARMED/LOGGING there is no phone business — the connection and
  * advertising are torn down so acquisition runs with maximal memory
  * and radio quiet. The disconnected callback must NOT re-advertise
- * while suspended. Resumed when the recorder returns to IDLE. */
+ * while suspended. Resumed when the recorder returns to SLEEP. */
 void ble_lifecycle_suspend(void)
 {
 	suspended = true;
@@ -187,5 +217,30 @@ void ble_lifecycle_resume(void)
 	suspended = false;
 	k_work_schedule(&adv_work, K_NO_WAIT);
 	printk("rec-resume: advertising\n");
+}
+
+/* ── SLEEP advertising mode (F12, v0.23.0) ─────────────────────────
+ * Slow 2 s while in SLEEP, fast when active. A live restart happens
+ * ONLY when the ad set should be up right now (stack ready, not
+ * connected, not recording-suspended); every other path — bt_ready's
+ * first start, the post-suspend resume, the disconnect restart —
+ * picks the current flag up naturally, so setting the mode during
+ * boot (before bt_enable) is safe and is the intended main() flow. */
+void ble_lifecycle_set_adv_slow(bool slow)
+{
+	if (adv_slow == slow) {
+		return;
+	}
+	adv_slow = slow;
+
+	if (!bt_ready || connected || suspended) {
+		return;
+	}
+	int err = bt_le_adv_stop();
+
+	if (err && err != -EALREADY) {
+		printk("adv mode switch: stop -> %d\n", err);
+	}
+	k_work_schedule(&adv_work, K_NO_WAIT);
 }
 
