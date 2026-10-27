@@ -2481,3 +2481,12 @@ Commits: 52aad27 (v0.10.6, comments only — flash on next build).
 - **D — pre-roll ring:** staging buffer + pop-2/push-1 drain + flash
   ring at 0x0000-0x13FFF (the documented architecture, 2026-09-30
   review); start detector gets real decimated baro (10 Hz) input.
+
+## TC-2026-10-27-002 — Delete triad + stable ids END-TO-END VERIFIED (JP on-phone + bench)
+
+**Date:** 2026-10-27 · **Scope:** FW 0.22.1 (stable run-id addressing + 'd' delete) × App 1.71.0 (delete semantics v2)
+
+- **FW bench (ZioClaw, serial COM3):** flash Verified OK; listing 0..18,20..38 = hole at 19, zero shift (stable ids PROVEN); 'd 19' repeat = "OK already gone"; unknown id = same (ratified: backlog-safe); 's 20 0 16' streams by run_id (29 ms). Logs: zflash_p0221a.log, b0221_dir1.log, b0221_d19b.log, b0221_final.log.
+- **App 1.71.0 (JP, on-phone 13:53):** "works really well" — full triad cloud→phone→device verified by user on live hardware. Kotlin native delete lane compiled clean (gradle 31 s).
+- **Open (1.72.0, building):** Synch-as-state redesign (JP 13:45): local menu Rename/Synch-switch/Delete; cloud-list row switches; orphan definitive-deletion warning; replaces 1.71 dialog checkbox.
+- **Known deferred:** E4 mid-transfer guard untested (defensive); reboot hole-persistence implied by design (index persisted) — covered implicitly by JP's session.
