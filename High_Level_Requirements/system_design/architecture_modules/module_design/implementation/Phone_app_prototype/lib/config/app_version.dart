@@ -392,7 +392,14 @@
 ///          the row disappears on next refresh (removed from the loaded
 ///          list immediately). Merged rows get the same treatment
 ///          (merged desync = cloud delete of the merged row only).
-const String APP_VERSION = '1.72.0';
+///   1.73 - JP BENCH 2026-10-27 17:18: (1) ONE download button — removed the
+///          duplicate "Native Download Missing" card (both invoked the same
+///          native engine since 1.31; the rich card with progress bar, KB
+///          counter and device/downloaded/missing counters survives).
+///          (2) Merged courses now visible WHILE CONNECTED too — the section
+///          was disconnected-view-only; extracted to _mergedSection() and
+///          rendered in both views, day-scoped.
+const String APP_VERSION = '1.73.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

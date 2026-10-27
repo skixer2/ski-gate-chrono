@@ -1454,55 +1454,7 @@ class _RunListScreenState extends State<RunListScreen>
                       ),
                     ],
                     const SizedBox(height: 12),
-                    if (_dayMerges.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 4),
-                        child: Text(
-                            'Merged Courses (${_dayMerges.length}'
-                            '${_dayMerges.length == _merges.length ? '' : ' of ${_merges.length}'})',
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700)),
-                      ),
-                      for (final m in _dayMerges)
-                        Card(
-                          child: ListTile(
-                            leading: const Icon(Icons.merge_type),
-                            title: Text(_mergeDisplayName(m)),
-                            subtitle: Text(
-                                '${_mergeHasName(m) ? 'Run #${m['aId']} + #${m['bId']} · ' : ''}'
-                                '${(m['gates'] as List).length} gates impact-confirmed · dual device'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit,
-                                      size: 20, color: Colors.grey),
-                                  tooltip: 'Rename merged course',
-                                  onPressed: () => _promptRenameMerge(m),
-                                ),
-                                const Icon(Icons.chevron_right,
-                                    color: Colors.grey),
-                              ],
-                            ),
-                            onTap: () =>
-                                Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => MergedRunScreen(
-                                title: _mergeDisplayName(m),
-                                gates: (m['gates'] as List)
-                                    .cast<Map<String, dynamic>>(),
-                                baro: (m['baro'] as List?)
-                                        ?.cast<Map<String, dynamic>>() ??
-                                    const [],
-                              ),
-                            )),
-                            onLongPress: () => _showMergeActions(m),
-                          ),
-                        ),
-                      const SizedBox(height: 12),
-                    ],
+                    ..._mergedSection(),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                       child: Text('Saved Runs (${_dayRuns.length}${_dayRuns.length == _localRuns.length ? '' : ' of ${_localRuns.length}'})',
@@ -1652,27 +1604,13 @@ class _RunListScreenState extends State<RunListScreen>
                     'Downloaded: ${_localRuns.length} · '
                     'Not downloaded: ${_missingRuns.length}'),
             trailing: const Icon(Icons.chevron_right),
-            // onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRuns : null,
+            // 1.73 (JP): single download button — the old Flutter-path card
+            // duplicated the native engine since 1.31; duplicate removed.
             onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRunsNative : null,
 
           ),
         ),
         const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: _isDownloading
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.memory),
-            title: Text(_isDownloading
-                ? 'Downloading…'
-                : 'Native Download Missing (${_missingRuns.length})'),
-            subtitle: Text(_isDownloading
-                ? _downloadStatus
-                : 'Android BluetoothGatt engine (beta)'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: (_missingRuns.isNotEmpty && !_isDownloading) ? _downloadRunsNative : null,
-          ),
-        ),
         // ── Cloud section (P1: sync status + F48 browser entry) ──
         const SizedBox(height: 12),
         _buildCloudCard(),
@@ -1688,9 +1626,70 @@ class _RunListScreenState extends State<RunListScreen>
             for (int i = 0; i < _dayRuns.length; i++)
               _buildLocalRunTile(_dayRuns[i], i + 1),
           ],
+          ..._mergedSection(),
         ],
       ],
     );
+  }
+
+
+  /// 1.73 (JP 2026-10-27 17:18): merged-courses section, rendered in BOTH
+  /// views — the disconnected home AND the connected view (the moment you
+  /// finish downloading is exactly when you want the merges visible).
+  /// Day-scoped (_dayMerges); empty day = no section.
+  List<Widget> _mergedSection() {
+    if (_dayMerges.isEmpty) return const [];
+    return [
+
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 4),
+                        child: Text(
+                            'Merged Courses (${_dayMerges.length}'
+                            '${_dayMerges.length == _merges.length ? '' : ' of ${_merges.length}'})',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700)),
+                      ),
+                      for (final m in _dayMerges)
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.merge_type),
+                            title: Text(_mergeDisplayName(m)),
+                            subtitle: Text(
+                                '${_mergeHasName(m) ? 'Run #${m['aId']} + #${m['bId']} · ' : ''}'
+                                '${(m['gates'] as List).length} gates impact-confirmed · dual device'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit,
+                                      size: 20, color: Colors.grey),
+                                  tooltip: 'Rename merged course',
+                                  onPressed: () => _promptRenameMerge(m),
+                                ),
+                                const Icon(Icons.chevron_right,
+                                    color: Colors.grey),
+                              ],
+                            ),
+                            onTap: () =>
+                                Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => MergedRunScreen(
+                                title: _mergeDisplayName(m),
+                                gates: (m['gates'] as List)
+                                    .cast<Map<String, dynamic>>(),
+                                baro: (m['baro'] as List?)
+                                        ?.cast<Map<String, dynamic>>() ??
+                                    const [],
+                              ),
+                            )),
+                            onLongPress: () => _showMergeActions(m),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                    
+    ];
   }
 
   Widget _buildLocalRunTile(SavedRun run, int dayNumber) {
