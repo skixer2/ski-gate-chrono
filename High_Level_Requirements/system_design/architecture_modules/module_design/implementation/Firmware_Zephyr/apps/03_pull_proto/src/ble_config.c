@@ -9,6 +9,7 @@
 #include <zephyr/drivers/i2c.h>
 #include <string.h>
 #include "ble_config.h"
+#include "ble_lifecycle.h"   /* 0.23.3: connected-aware battery poll rate */
 #include "store.h"
 #include "recorder.h"
 
@@ -241,7 +242,12 @@ static void batt_work_handler(struct k_work *w)
 		batt_vin = bq_on_vin;
 		break;
 	}
-	k_work_reschedule(d, K_SECONDS(30));
+	/* 0.23.3 (JP: charging indication should change live when USB is
+	 * plugged/unplugged): poll fast while a phone is linked — the app
+	 * refreshes every 5 s — and slow otherwise so SLEEP keeps its long
+	 * idle stretches (a 5 s poll would wake the SoC 12x/min for nothing). */
+	k_work_reschedule(d, K_SECONDS(
+		ble_lifecycle_connected() ? 5 : 30));
 }
 
 /* ── Status surfaces ──────────────────────────────────────────────── */
