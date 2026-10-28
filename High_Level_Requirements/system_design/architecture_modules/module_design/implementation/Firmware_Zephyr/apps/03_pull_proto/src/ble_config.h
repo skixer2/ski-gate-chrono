@@ -46,6 +46,11 @@ void ble_config_set_discipline(uint8_t v);
  * 0x7F = unknown (no battery / I2C error / battery-mode read skipped). */
 uint8_t ble_config_battery_byte(void);
 
+/* Bench debug (serial 'y', 0.23.4): one printk line with the RAW
+ * BATT_MON register before/after a production read + decoded values —
+ * latch test for the "always 92%" question (2026-10-28). */
+void ble_config_batt_debug(void);
+
 /* ABC4: bits4-0 = recorder state (SLEEP=0 ARMED=1 LOGGING=2 POST_RUN=3;
  * v0.23.0: SLEEP is the waiting state — it reports 0, the slot the old
  * IDLE occupied; ArduinoFW used 0xFF for waiting, we never did.

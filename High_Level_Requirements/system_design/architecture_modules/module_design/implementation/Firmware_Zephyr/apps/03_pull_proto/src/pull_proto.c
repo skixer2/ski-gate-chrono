@@ -908,6 +908,12 @@ static void cmd_work_handler(struct k_work *w)
 				 (unsigned)id);
 			console_emit(ok);
 		}
+	} else if (cmd == 'y') {
+		/* 0.23.4: battery debug — raw BATT_MON register around a
+		 * fresh production read ("always 92%" latch test, JP
+		 * 2026-10-28). Output: one batt_dbg printk line. */
+		ble_config_batt_debug();
+		console_emit("OK batt_dbg");
 	} else if (cmd == 'x') {
 		/* Bench reset: wipe the index sector and reboot the log to
 		 * empty (data sectors reclaim lazily on the next writes).

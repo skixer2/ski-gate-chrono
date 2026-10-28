@@ -273,6 +273,27 @@ uint8_t ble_config_state_byte(void)
 	return recorder_state_idx() & 0x1F;
 }
 
+void ble_config_batt_debug(void)
+{
+	/* 0.23.4 raw-register latch test (bench serial 'y', JP 2026-10-28
+	 * "always 92%, never another value"). mon_pre = the register as
+	 * the last conversion left it; pct = the full production read
+	 * (re-triggers a conversion, incl. the charge-pause on VIN);
+	 * mon_post = register after it. Across successive 'y' polls:
+	 * mon_* moving = conversions live (bands are just coarse);
+	 * mon_* frozen forever, especially while charging, = latched. */
+	uint8_t faults = 0, mon_pre = 0, mon_post = 0;
+	int fr = bq_read(BQ_FAULTS, &faults);
+	int mpre = bq_read(BQ_BATT_MON, &mon_pre);
+	int pct = bq_battery_pct();
+	int mpost = bq_read(BQ_BATT_MON, &mon_post);
+
+	printk("batt_dbg: fr=%d faults=0x%02x mon_pre=0x%02x(%d) "
+	       "pct=%d mon_post=0x%02x(%d) cache=0x%02x byte=0x%02x\n",
+	       fr, faults, mon_pre, mpre, pct, mon_post, mpost,
+	       batt_cache, ble_config_battery_byte());
+}
+
 uint8_t ble_config_flash_used_pct(void)
 {
 	return store_used_pct();
