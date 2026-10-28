@@ -232,7 +232,11 @@ static void batt_work_handler(struct k_work *w)
 		break;
 	case -1:
 	case -2:
-		batt_cache = BATT_UNKNOWN;
+		/* 0.23.3: floor code (-2) = voltage BELOW the lowest resolvable
+		 * band (~60%) — that is real information, not an error. Encode it
+		 * as the 0 sentinel; the app shows "< 60%". Real 0%% never occurs
+		 * (the encoding floor is 60). -1 (BAT_UVLO) stays unknown. */
+		batt_cache = (pct == -2) ? 0 : BATT_UNKNOWN;
 		break;
 	default:
 		batt_cache = (uint8_t)(pct & 0x7F);
