@@ -49,6 +49,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/drivers/uart.h>   /* serial command input (JP 09-25) */
 #include "sensor_synth.h"           /* bench 'S' synthetic runs */
+#include "app_version.h"
 #include "pull_proto.h"
 #include "store.h"
 #include "ble_config.h"
@@ -78,6 +79,9 @@ static struct bt_uuid_128 run_list_uuid =
 static struct bt_uuid_128 time_sync_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC0, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 fw_version_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC6, 0x0000, 0x1000,
+				    0x8000, 0x00805F9B34FB));
 static struct bt_uuid_128 console_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCA, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
@@ -366,6 +370,14 @@ static ssize_t read_state(struct bt_conn *conn,
 	return read_buf(&v, 1, buf, len, offset);
 }
 
+static ssize_t read_fw_version(struct bt_conn *conn,
+			       const struct bt_gatt_attr *attr,
+			       void *buf, uint16_t len, uint16_t offset)
+{
+	/* 0.23.6 (JP 21:36): ASCII, read-only, app displays verbatim. */
+	return read_buf(APP_VERSION, strlen(APP_VERSION), buf, len, offset);
+}
+
 static ssize_t read_battery(struct bt_conn *conn,
 			    const struct bt_gatt_attr *attr,
 			    void *buf, uint16_t len, uint16_t offset)
@@ -469,6 +481,12 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 			       BT_GATT_CHRC_READ,
 			       BT_GATT_PERM_READ,
 			       read_cal, NULL, NULL),
+	/* 0.23.6: ABC6 firmware version — appended LAST, attr indices
+	 * above are untouched. */
+	BT_GATT_CHARACTERISTIC(&fw_version_uuid.uuid,
+			       BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ,
+			       read_fw_version, NULL, NULL)
 );
 
 static uint32_t job_off;    /* next blob byte to send            */
