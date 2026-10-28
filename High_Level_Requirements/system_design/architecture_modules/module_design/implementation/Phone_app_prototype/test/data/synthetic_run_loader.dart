@@ -6,8 +6,8 @@
 library;
 
 import 'dart:convert';
-import '../../processing/decompressor.dart';
-import '../../models/sensor_frame.dart';
+import 'package:sgc_phone/processing/decompressor.dart';
+import 'package:sgc_phone/models/sensor_frame.dart';
 
 /// Load synthetic GS run from JSON and build a DecompressResult.
 class SyntheticRunLoader {
