@@ -1,4 +1,9 @@
-# SGC — Architecture: Hardware (v2.4 — Pole-Mount)
+# SGC — Architecture: Hardware (v2.5 — Pole-Mount)
+
+*2026-10-28 — v2.5 (doc-only): §7 adds the **v2 fuel gauge — MAX17048 @ 0x36** on the
+power-management bus (Zephyr `&i2c0`, P0.15/P0.16 — Arduino "Wire1"; AD-029).
+BQ25120A band-gauge demoted to fallback. §2 bus/address maps and §10 interconnection
+updated. No other pin changes, no PCB re-spin.*
 
 *2026-09-10 — v2.4 (JP): Custom board module = **ANNA-B402** (u-blox open CPU, nRF52833) — **open CPU = we run our own firmware**, the exact same code as the B112/Nicla line. The B412 was rejected because it is a **u-connect** module (u-blox's closed AT-command stack — cannot host our code). **Companion/carrier-PCB concept DROPPED**: no Nicla-on-carrier production phase — Nicla is the prototype platform (P0), the standalone custom PCB (ANNA-B402) carries all later phases. Pin-map sections below still describe the B112 pinout — revalidate against the B402 datasheet during the PCB redesign.*
 
@@ -192,7 +197,7 @@ Assigned to free ANNA-B112 GPIOs not consumed by the Nicla replica.
 | Internal SPI1 | P0.03 (SCK), P0.04 (MOSI), P0.05 (MISO) | `SPI1` | BHI260AP (CS P0.31), Flash U7 (CS P0.26) — BHY2-managed + SPIF BlockDevice |
 | User SPI | P0.11 (SCK), P0.27 (MOSI), P0.28 (MISO) | `SPI` | RFID v2 (CS P0.20), UWB v2 (CS P0.29) — Arduino SPI header |
 | I2C0 / Wire | P0.22 (SDA), P0.23 (SCL) | `Wire` | LDC1612 @ 0x2A — Nicla external I²C header |
-| I2C1 / Wire1 | P0.15 (SDA), P0.16 (SCL) | `Wire1` | BQ25120A PMIC, RGB LED IS31FL3194 @ 0x53 — Nicla internal |
+| I2C1 / Wire1 | P0.15 (SDA), P0.16 (SCL) | `Wire1` | BQ25120A PMIC, RGB LED IS31FL3194 @ 0x53, **MAX17048 fuel gauge @ 0x36 (v2)** — Nicla internal + gauge |
 
 ### I²C Bus Address Map
 
@@ -202,7 +207,9 @@ Assigned to free ANNA-B112 GPIOs not consumed by the Nicla replica.
 | BMP390 | *(via BHY2)* | BHI260AP sub-sensor | Internal to BHI260AP sensor hub |
 | LDC1612 | 0x2A | I2C0 / Wire (P0.22/P0.23) | SGC addition — external I²C header |
 | RGB LED | 0x53 | I2C1 / Wire1 (P0.15/P0.16) | IS31FL3194 driver (Nicla stock) |
-| BQ25120A | *(via Wire1)* | I2C1 / Wire1 (P0.15/P0.16) | PMIC charger IC (Nicla stock) |
+| BQ25120A | 0x6A | I2C1 / Wire1 (P0.15/P0.16) | PMIC charger IC (Nicla stock); its band-gauge = fallback on v2 |
+| **MAX17048 fuel gauge** | **0x36** | I2C1 / Wire1 (P0.15/P0.16) | **v2 addition (AD-029)** — ModelGauge SoC, preferred battery-% source |
+| RTC RV-3028-C7 | 0x52 | I2C0 / Wire (P0.22/P0.23) | Optional backup RTC — **DNP** footprint |
 
 ### Unused ANNA-B112 GPIOs (available for future)
 
@@ -640,6 +647,54 @@ LED draw ~15 mA @ 5V → ~85 mW load on battery (~23 mA @ 3.7V after efficiency)
 | Qi power detected | Charge regardless of state. If LOGGING: continue logging. BLE operations allowed. Charging status → GATT ...ABCF |
 | NTC over-temp | BQ25100 reduces charge current (JEITA profile) |
 
+### Fuel Gauge — MAX17048 (v2 custom PCB; Nicla P0 keeps BQ band-gauge)
+
+> 2026-10-28 (v2.5, AD-029): populated only on the standalone custom PCB (P1+).
+P0 Nicla prototypes have no gauge IC — the firmware falls back to the BQ25120A
+band-gauge automatically, so one binary serves both platforms.
+
+| Parameter | Value |
+|-----------|-------|
+| IC | **MAX17048G+T10** (Analog Devices/Maxim) — 1-cell Li+ ModelGauge™ |
+| Package | TDFN-8 (2 × 2 mm), −40…+85 °C |
+| Interface | I²C slave, fixed 7-bit address **0x36**, fast-mode capable |
+| Measurement | Voltage-based ModelGauge — **no external sense resistor**; RepSOC register 0x04 = true 1%-resolution SoC 0–100 |
+| Power | VDD = battery direct; **~3 µA (typ) hibernate** (auto-entered at low current, ~23 µA active) — negligible vs the ~55 µA SLEEP budget (≈ +3 µA all states, < 0.01 mAh/session) |
+| Why | Pairs naturally with the BQ25120A (same bus, industry-standard part, trivial 2-register driver). The BQ's own VBMON band-gauge is **demoted to fallback** — it resolves only 60–100% in 2% bands (bench: constant 92% across all states — information-free in our operating range; AD-029) |
+
+**Schematic connection notes (TDFN-8):**
+
+| Pin | Name | Connection |
+|-----|------|-----------|
+| 1 | CTG | GND |
+| 2 | CELL | GND — unused on the single-cell MAX17048 (datasheet: not internally connected; it is the MAX17049's second-cell sense input). **The sense input on this variant is VDD**, not "CELLP" |
+| 3 | VDD | **VBAT** (battery positive, battery side of the BQ25120A BAT pin) + 0.1 µF X7R decoupling to GND |
+| 4 | GND | GND (negative battery terminal) |
+| 5 | ALRT | Open-drain, active-low alert → 10 kΩ pull-up to VDD_nRF → **spare GPIO (TBD at PCB layout)**. Wired in the schematic for firmware freedom; use is v2-optional (low-SOC/voltage interrupt), firmware behavior TBD. Note: v1 has 4 spare GPIOs (P0.20/24/29/30) but v2 allocates all of them — the layout pass must re-validate spare availability against the B402 pin map |
+| 6 | QSTRT | GND (no hardware quick-start) |
+| 7 | SCL | i2c0 SCL — P0.16 |
+| 8 | SDA | i2c0 SDA — P0.15 |
+| EP | — | Exposed pad → GND |
+
+**Bus placement — the power-management bus (Zephyr `&i2c0`, P0.15/P0.16; Arduino
+naming: "Wire1").** All power peripherals stay on one bus: no new bus init, no
+sensor-path change, no acquisition-path change. Full address map — no conflict at 0x36:
+
+| Bus (Zephyr / Arduino) | Pins | Devices |
+|------------------------|------|---------|
+| `&i2c0` / "Wire1" — power | P0.15–16 | **0x36 MAX17048 fuel gauge (v2)** · 0x53 IS31FL3194 RGB LED · 0x6A BQ25120A charger |
+| `&i2c1` / "Wire" — sensors | P0.22–23 | 0x2A LDC1612 (DNP, v2 forearm guard) · 0x52 RV-3028-C7 RTC (DNP backup) — BHI260AP/BMP390 ride the BHY2 hub on SPI1, not this bus |
+
+**Firmware impact (one file):** `ble_config.c` only. The existing `batt_work_handler`
+(5 s poll while a phone is linked / 30 s idle) gains one I²C read at **0x36 on `i2c0`**:
+RepSOC (reg 0x04, 16-bit, 1/256 %/LSB → `raw >> 8` = 0–100) becomes the preferred SoC
+source; if the gauge NAKs (P0 Nicla — no gauge), the existing BQ25120A VBMON
+band-gauge chain runs unchanged as fallback. The charging bit stays sourced from the
+BQ FAULTS register. **The app needs zero changes** — the ABC5 battery characteristic
+keeps its byte semantics (bit7 = charging, bits6–0 = %); it simply carries true
+1%-resolution SoC over the full 0–100 range instead of the BQ's 60–100% / 2%-band
+encoding (the constant-92% bench artifact).
+
 ---
 
 ## 8. Enclosure — Pole Mount (v1 Primary)
@@ -832,7 +887,7 @@ Key additions for v2: LDC1612 cross-arm proximity arming, 200g shock rating, inj
 | BHI SPI1 | BHI260AP, Flash U7 | P0.03–05 (SCK/MOSI/MISO), P0.26 (Flash CS), P0.31 (BHI CS) | SPI Mode 0 | ≤ 8 MHz |
 | User SPI | RFID (v2), UWB (v2) | P0.11 (SCK), P0.27 (MOSI), P0.28 (MISO), P0.20 (RFID CS), P0.29 (UWB CS) | SPI Mode 0 | ≤ 8 MHz |
 | I2C0 / Wire | LDC1612 (⚠️ v2 only) | P0.22 (SDA), P0.23 (SCL) | I²C Fast-mode | 400 kHz |
-| I2C1 / Wire1 | RGB LED, BQ25120A | P0.15 (SDA), P0.16 (SCL) | I²C Fast-mode | 400 kHz |
+| I2C1 / Wire1 | RGB LED, BQ25120A, MAX17048 (v2) | P0.15 (SDA), P0.16 (SCL) | I²C Fast-mode | 400 kHz |
 | BLE | Phone | nRF52 internal RF | BLE 5.0, LE 2M PHY | ≤ 2 Mbps |
 | BHI260AP INT | nRF52832 | P0.14 | GPIO rising edge | Managed by BHY2 |
 | Piezo Button (v1) | Arming | P0.02 | GPIO IN, internal pull-up, edge interrupt | Pulse 20–1000 ms |

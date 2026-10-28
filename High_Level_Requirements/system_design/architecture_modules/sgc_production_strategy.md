@@ -1,4 +1,9 @@
-# SGC — Production Strategy (v1.6 — Pole-Mount)
+# SGC — Production Strategy (v1.7 — Pole-Mount)
+
+*2026-10-28 — v1.7: **MAX17048 fuel gauge added to the v2 custom PCB** (AD-029) —
+~+$2.5–2.8 per device (~€2.5–3) at EMS volumes; §1/§9/§10 cost + margin rows carry
+the adder. P0 Nicla prototypes unchanged — the Nicla has no gauge IC, so battery %
+stays on the BQ25120A band-gauge until the custom board lands at P1.*
 
 *2026-09-10 — v1.6 (JP): **Companion carrier PCB dropped.** No Nicla-on-carrier phase: Phase 0 uses bare Nicla Sense ME prototypes; Phase 1+ uses the standalone custom PCB with **ANNA-B402** (nRF52833 open CPU — same code as the B112/Nicla line). v1.0's "off-the-shelf Nicla + companion carrier" architecture is superseded.*
 
@@ -41,7 +46,7 @@
 | Quantity | 20–50 units |
 | Hardware | First standalone custom PCB (ANNA-B402, Nicla replica peripherals) |
 | Assembly | Small EMS batch OR hand-assembled with carrier PCB from fab |
-| Cost per unit | ~€120–180 (low volume, no economies of scale) |
+| Cost per unit | ~€122–182 (low volume, no economies of scale) |
 | Total investment | ~€2,500–9,000 |
 
 **Goal:** Early adopter validation.
@@ -59,7 +64,7 @@
 | Quantity | 100–200 units (over full season) |
 | Hardware | Refined companion carrier PCB (v2 incorporating P1 feedback) |
 | Assembly | EMS partner, small batch (50 units/batch) |
-| Cost per unit | ~€100–130 |
+| Cost per unit | ~€102–132 |
 | Total investment | ~€10,000–26,000 |
 
 **Goal:** Real market validation.
@@ -77,7 +82,7 @@
 | Quantity | 200/month |
 | Hardware | Production-optimized companion carrier PCB (v3) |
 | Assembly | Full EMS panelized, bed-of-nails QA |
-| Cost per unit | ~€95–116 (target) |
+| Cost per unit | ~€97–118 (target) |
 
 **Goal:** Scale with confidence.
 
@@ -292,6 +297,7 @@ See §5 for the v1 pole-mount mechanical design.*
 | R_FB1 | 75 kΩ, 1% | 0603 | 1 | Boost feedback divider high-side |
 | R_FB2 | 10 kΩ, 1% | 0603 | 1 | Boost feedback divider low-side |
 | U3 | Level Shifter (74AHCT1G125) | SOT-23-5 | 1 | 3.3V→5V data line shift |
+| U_FG | MAX17048G+T10 fuel gauge (⚠️ v2, AD-029) | TDFN-8 2×2mm | 1 | Battery SoC @ 0x36 on i2c0 (P0.15/16); its passives (0.1 µF VDD decoupling + 10 kΩ ALRT pull-up) count against C1-C4 / R1-R4 |
 | D1-D5 | SK6812-mini RGBW | 2×2mm | 5 | Status indicator LEDs |
 | BZ1 | Piezo beeper (⚠️ DNP) | SMD | 0 | Footprint retained; not populated (v4.2) |
 | J1 | Battery connector | JST-PH 2-pin | 1 | LiPo battery input |
@@ -375,12 +381,12 @@ Ski product = **highly seasonal demand** (October–March peak).
 |------|-----------|-------|
 | Nicla Sense ME | ~€65 | Wholesale pricing |
 | Carrier PCB (fab) | ~€2-3 | Panelized, 4-layer |
-| Components (BOM, no LDC1612) | ~€5-9 | Boost, shifter, SK6812, passives |
+| Components (BOM, no LDC1612) | ~€8-12 | Boost, shifter, SK6812, passives + **MAX17048 fuel gauge (~€2.5-3, AD-029)** |
 | Piezo button (Langir 16mm) | ~€6-10 | Panel-mount, ×1 per device |
 | EMS assembly | ~€5-8 | SMT + test fixture amortized |
 | Battery (sub-zero) | ~€8-15 | Grepow/Ultralife |
 | Flashing + QA (electronics) | ~€2-3 | Bed-of-nails, per-unit test |
-| **Electronics subtotal** | **~€87-103** | |
+| **Electronics subtotal** | **~€90-106** | |
 
 **Mechanical (Pole Mount):**
 
@@ -394,32 +400,32 @@ Ski product = **highly seasonal demand** (October–March peak).
 | Packaging (retail box + USB-C cable) | ~€3-5 | Includes USB-C cable, spare strap |
 | **Mechanical subtotal** | **~€7-15** | |
 
-| **TOTAL COGS (Phase 3, pole mount)** | **~€94-118** | |
+| **TOTAL COGS (Phase 3, pole mount)** | **~€97-121** | |
 
-**Kit price (2 devices = 2 poles):** ~€188-236 COGS
+**Kit price (2 devices = 2 poles):** ~€194-242 COGS (incl. fuel-gauge adder ~€6/kit)
 
 ### Phase 2 (First Season — 50/batch)
 
 | Item | Unit Cost | Notes |
 |------|-----------|-------|
 | Nicla Sense ME | ~€65-70 | Smaller order qty |
-| Carrier PCB + components + assembly | ~€20-30 | Small batch |
+| Carrier PCB + components + assembly | ~€23-33 | Small batch |
 | Battery | ~€10-18 | Lower qty |
 | Flashing + QA | ~€3-5 | Semi-automated |
 | Enclosure (3D-printed or small-run molded) | ~€3-8 | |
 | Strap + assembly + packaging | ~€5-10 | |
-| **TOTAL COGS (Phase 2)** | **~€106-141** | |
+| **TOTAL COGS (Phase 2)** | **~€109-144** | |
 
 ### Phase 1 (Pilot — 20-50 units)
 
 | Item | Unit Cost | Notes |
 |------|-----------|-------|
 | Nicla Sense ME | ~€70-75 | Retail-ish |
-| Carrier PCB + components + manual assembly | ~€30-50 | Proto/low volume |
+| Carrier PCB + components + manual assembly | ~€33-53 | Proto/low volume |
 | Battery | ~€12-20 | Low qty |
 | 3D-printed enclosure + O-ring | ~€5-15 | |
 | Strap + assembly + packaging | ~€5-10 | |
-| **TOTAL COGS (Phase 1)** | **~€122-170** | |
+| **TOTAL COGS (Phase 1)** | **~€125-173** | |
 
 ### Phase 0 (Prototype — 5-10 units)
 
@@ -431,6 +437,9 @@ Ski product = **highly seasonal demand** (October–March peak).
 | Strap | ~€2-5 | |
 | **Total per unit** | **~€27-50** | Mostly already sunk |
 | **Total P0 outlay** | **~€270-500** | Incremental for 10 units |
+
+> P0 Nicla note: no MAX17048 on the Nicla — battery % = BQ25120A band-gauge; the fuel
+gauge arrives with the v2 custom PCB at P1 (AD-029). P0 cost rows unaffected.
 
 ---
 
@@ -461,10 +470,15 @@ Clips to the pole and times every run.
 
 | Phase | COGS/Kit | B2C Price | Gross Margin | B2B Price | Gross Margin |
 |-------|----------|-----------|-------------|-----------|-------------|
-| P1 (worst case) | ~€340 | €169 | **-50%** ⚠️ | €139 | -59% ⚠️ |
-| P1 (best case) | ~€244 | €169 | **-31%** ⚠️ | €139 | -43% ⚠️ |
-| P2 (mid case) | ~€247 | €199 | **-19%** ⚠️ | €169 | -32% ⚠️ |
-| P3 (mid case) | ~€212 | €249 | **15%** | €199 | -6% ⚠️ |
+| P1 (worst case) | ~€345 | €169 | **-51%** ⚠️ | €139 | -60% ⚠️ |
+| P1 (best case) | ~€249 | €169 | **-32%** ⚠️ | €139 | -44% ⚠️ |
+| P2 (mid case) | ~€252 | €199 | **-21%** ⚠️ | €169 | -33% ⚠️ |
+| P3 (mid case) | ~€217 | €249 | **15%** | €199 | -8% ⚠️ |
+
+> Margins = (price − COGS)/COGS, kit = 2 devices. v1.7: fuel-gauge adder ~€2.5–3/device
+> (~€5–6/kit, AD-029) included. Price implication: the gauge erodes ~2 pp of P2/P3
+> margin; recommended retail is unchanged — the ~€2.50 device-level adder is inside the
+> rounding noise of the €149–199 price ladder.
 
 > ⚠️ **P1–P2 are NOT profitable.** Treated as market validation investment.
 > Profitability starts at P3, and only if Nicla wholesale pricing and volume discounts materialize.
@@ -474,9 +488,11 @@ Clips to the pole and times every run.
 
 | Scenario | Phase | Kits | Avg Price | Revenue | COGS | Gross Profit |
 |----------|-------|------|-----------|---------|------|-------------|
-| Pilot only | P1 | 15 | €169 | €2,535 | €4,000 | -€1,465 |
-| First season | P2 | 75 | €190 | €14,250 | €18,500 | -€4,250 |
-| Steady state | P3 | 300 | €235 | €70,500 | €63,600 | €6,900 |
+| Pilot only | P1 | 15 | €169 | €2,535 | €4,075 | -€1,540 |
+| First season | P2 | 75 | €190 | €14,250 | €18,875 | -€4,625 |
+| Steady state | P3 | 300 | €235 | €70,500 | €64,100 | €6,400 |
+
+> COGS columns carry the v1.7 fuel-gauge adder (+€5–6/kit, AD-029).
 
 > **Note:** These numbers assume off-the-shelf Nicla at ~€65 wholesale. True profitability requires
 a custom nRF52832 PCB (no Nicla) — achievable at P3+ but not earlier due to MOQ constraints.

@@ -621,3 +621,42 @@ v1.6, sgc_bom.md note, sgc_system_design.md (IDLE note), HLR v6.0 (F13).
 - Bootstrap indirection decouples the hardest-coded constant in the system (the bootstrap URL in the app) from everything that may move.
 
 **Deployed state:** `remote_db_architecture.md` §3; runbook `implementation/sgc_api/README.md`.
+
+## AD-029: Fuel Gauge on v2 — MAX17048 @ 0x36 on the Power Bus (i2c0/P0.15–16)
+
+**Date:** 2026-10-28 · **Status:** accepted (JP directive 07:40 UTC; documentation-only)
+
+**Decision:** The v2 custom PCB adds a **MAX17048G+T10** (ADI/Maxim 1-cell ModelGauge,
+TDFN-8, no sense resistor, ~3 µA hibernate) on the **power-management bus — Zephyr
+`&i2c0`, P0.15/P0.16** (Arduino "Wire1"), fixed address **0x36**. The BQ25120A's
+voltage-band gauge is **demoted to fallback**. /ALRT is wired to a spare GPIO via a
+10 kΩ pull-up for firmware freedom; its use is v2-optional (low-battery interrupt),
+behavior TBD.
+
+**Rationale:**
+- The BQ encoding resolves only **60–100% in 2% bands** — bench: the device reported a
+  **constant 92% across all states**, information-free in our operating range (the
+  <60% floor already needs the 0.23.2 sentinel hack in `ble_config.c`).
+- The MAX17048 gives true 1% SoC over the full 0–100 range from a single register
+  read (RepSOC, 0x04); industry-standard part that pairs naturally with the BQ25120A
+  (same bus, trivial driver, hibernate ≈ 3 µA keeps the SLEEP budget intact).
+- Bus choice = minimal code impact: all power peripherals on one bus — no sensor-path,
+  no new bus init, no acquisition-path change. Address 0x36 conflicts with nothing:
+  i2c0 = 0x36 gauge / 0x53 IS31FL3194 LED / 0x6A BQ25120A charger; i2c1 (sensors,
+  P0.22–23) = 0x2A LDC1612 (DNP) + 0x52 RV-3028 RTC (DNP), BHY2 hub on SPI.
+- **App-side unchanged:** the ABC5 battery characteristic keeps its byte semantics
+  (bit7 charging from BQ FAULTS, bits6–0 = %) — it now simply carries real 1% data.
+
+**Firmware note:** `ble_config.c` only — `batt_work_handler` reads RepSOC @ 0x36 on
+`i2c0` as the preferred source; when the gauge NAKs (P0 Nicla prototypes have none),
+the existing BQ25120A VBMON chain runs unchanged as fallback — one binary serves both
+platforms.
+
+**Hardware detail (datasheet-checked):** on the single-cell MAX17048 the *sense* input
+is **VDD** (pin 3 → VBAT + 0.1 µF); pin 2 "CELL" is not internally connected (it is
+the 2-cell MAX17049's second-cell input) and ties to GND. Schematic notes:
+`sgc_architecture_hardware.md` §7.
+
+**Docs:** sgc_architecture_hardware.md v2.5 (§2 maps + §7 new subsection),
+sgc_bom.md v4.3 (lines #10/#11; device totals $62.60/$44.19/$27.07),
+sgc_production_strategy.md v1.7 (cost + margin deltas).

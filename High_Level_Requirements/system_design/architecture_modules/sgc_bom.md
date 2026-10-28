@@ -1,4 +1,13 @@
-# SGC — Bill of Materials (v4.2 — Langir piezo)
+# SGC — Bill of Materials (v4.3 — MAX17048 fuel gauge)
+
+*2026-10-28 — v4.3: **MAX17048G+T10 fuel gauge added** as active line #10 (+ gauge
+passives #11) — v2 custom PCB only (AD-029); the BQ25120A band-gauge is demoted to
+fallback on gauge-equipped boards. SGC-additions subtotal $37.60 / $29.19 / $19.57
+(proto / 100 / 1000+); device totals +$3.80 / +$2.84 / +$2.52. Pricing verified
+2026-10-28 (Mouser/Farnell/Findchips): $4.45 @1 / $2.80 @100 / $2.66 @250 / $2.56
+@1000 (Mouser USD); BOM lines carry $3.60 proto (distributor single-piece cut tape),
+$2.80 @100, $2.50 @1000+ (authorized-reel blend; broker/reel channels dip to
+~$1.80–2.25 — deliberately not assumed).*
 
 *2026-08-13 — v4.2: Flash U7 committed to MX25R6435F (8 MB, pin-compatible, firmware
 auto-detects size). USB-C charging added as active SGC line (GCT USB4085 + CC pull-downs
@@ -54,10 +63,18 @@ benefits at half the price and still in active production from Langir.
 | 7 | **Passives + power** | Caps, resistors, P-MOSFET ×2 (v2), pull-ups | $2.80 | $1.85 | $1.35 |
 | 8 | **Custom PCB** | 4-layer FR4, ~22×55mm, ENIG, 0.8mm | $15.00¹ | $8.00 | $4.00 |
 | 9 | **PCB assembly** | SMD pick-and-place + reflow | —² | $5.00 | $3.00 |
-| | **SGC additions subtotal** | | **$33.80** | **$26.35** | **$17.05** |
+| 10 | **Fuel gauge** | MAX17048G+T10 (TDFN-8), I²C 0x36 — ⚠️ **v2 custom PCB only** (P0 Nicla: BQ band-gauge) | $3.60 | $2.80 | $2.50 |
+| 11 | **Fuel-gauge passives** | 0.1 µF X7R (VDD decoupling) + 10 kΩ (ALRT pull-up), 0603 | $0.20 | $0.04 | $0.02 |
+| | **SGC additions subtotal** | | **$37.60** | **$29.19** | **$19.57** |
 
 ¹ Prototype PCB: 5 boards from JLCPCB ~$30 → ~$6/board. Allocated $15 includes PCB + stencil + small-order surcharge.
 ² Prototype: hand-assembled. Labor = your time.
+³ MAX17048 pricing assumptions (verified 2026-10-28): proto = distributor single-piece
+cut tape (Digi-Key ~$3.62, Mouser $4.45 → $3.60 mid taken); @100 = Mouser $2.80;
+@1000+ = authorized-reel blend (Mouser $2.56 @1k, Verical $2.24 @2.5k reel → $2.50).
+A 200/month steady-state buy lands at the @250 break ($2.66 Mouser / £2.11 Farnell
+≈ $2.70) — the cost model carries $2.80 conservatively. Passives = LCSC basic-part
+pricing. Broker/reel channels dip to ~$1.80–2.25 and are NOT assumed.
 
 **Removed from active BOM (v3.0 → v4.0):**
 - LDC1612DNTR (was #1, $3.19/$2.50/$2.00) — **footprint retained, DNP, v2 forearm guard only**
@@ -69,7 +86,7 @@ benefits at half the price and still in active production from Langir.
 - MX25R6435F Flash U7 (8 MB) — pin-compatible swap from MX25R1635F (2 MB). Same SOIC-8
   pinout, same JEDEC SPI command set + SFDP. Firmware auto-detects size (SPIFBlockDevice
   SFDP); layout re-mapped for 8 MB (pre-roll stays 0x0000–0x13FFF).
-- BQ25120A charger, IS31FL3194 RGB LED driver, LDOs — Nicla power management
+- BQ25120A charger, IS31FL3194 RGB LED driver, LDOs — Nicla power management. On the v2 custom PCB the BQ's band-gauge is fallback only — the MAX17048 (#10) is the preferred SoC source (AD-029)
 - Battery (Renata ICP622540PMT) — ⚠️ provisional; JST 3-pin connector may change per cell
 - Qi coil / IP6833 receiver — ⚠️ DROPPED (DNP); USB-C + IP67 cap as mechanical alternative
 - 32 kHz + 32 MHz crystals — Nicla stock
@@ -84,17 +101,21 @@ benefits at half the price and still in active production from Langir.
 
 ¹ Enclosure prototype: 3D-printed PC-like resin, includes the button panel cutout + nut boss.
 
+> Numbering note (v4.3): electronics rows renumbered 1–11; the mechanical table keeps
+> its own sequence — the duplicate #9/#10 across the two tables is cosmetic and is to
+> be resolved at the next full BOM renumber.
+
 **Removed (v3.0 → v4.0):** cross-arm target disc (was #11, $0.20/$0.10/$0.05) — no longer needed with button arming.
 
 ---
 
 ## Total Per-Device Cost (Langir 16 mm piezo)
 
-| Scale | SGC Additions | Mechanical | **Total** |
-|-------|:---:|:---:|---:|
-| Prototype (1–5) | $33.80 | $25.00 | **$58.80** |
-| Small Batch (100) | $26.35 | $15.00 | **$41.35** |
-| Production (1000+) | $17.05 | $7.50 | **$24.55** |
+| Scale | SGC Additions | Mechanical | **Total** | Δ vs v4.2 (gauge) |
+|-------|:---:|:---:|---:|---:|
+| Prototype (1–5) | $37.60 | $25.00 | **$62.60** | +$3.80 |
+| Small Batch (100) | $29.19 | $15.00 | **$44.19** | +$2.84 |
+| Production (1000+) | $19.57 | $7.50 | **$27.07** | +$2.52 |
 
 ---
 
@@ -102,7 +123,9 @@ benefits at half the price and still in active production from Langir.
 
 | Arming | Button cost (1/100/1000+) | **Device total (1/100/1000+)** | Notes |
 |--------|---------------------------|-------------------------------|-------|
-| **Langir 16 mm piezo ✅** | $12 / $9 / $7 | **$58.80 / $41.35 / $24.55** | **selected** — in-production, IP68/69K, 50 M cyc |
-| Schurter PSE 16 | $32.55 / $25 / $20 | $79.35 / $57.35 / $37.55 | rejected — EOL + price |
-| Anti-vandal 16 mm (IP67) | $4 / $2.50 / $1.80 | $50.80 / $34.85 / $19.35 | budget fallback, true hold, moving part |
-| *(v3.0 LDC1612 baseline)* | — | *$50.39 / $35.10 / $19.75* | *for reference* |
+| **Langir 16 mm piezo ✅** | $12 / $9 / $7 | **$62.60 / $44.19 / $27.07** | **selected** — in-production, IP68/69K, 50 M cyc |
+| Schurter PSE 16 | $32.55 / $25 / $20 | $83.15 / $60.19 / $40.07 | rejected — EOL + price |
+| Anti-vandal 16 mm (IP67) | $4 / $2.50 / $1.80 | $54.60 / $37.69 / $21.87 | budget fallback, true hold, moving part |
+| *(v3.0 LDC1612 baseline)* | — | *$54.19 / $37.94 / $22.27* | *for reference (incl. gauge adder for like-for-like)* |
+
+Device totals include the v4.3 fuel-gauge adder (+$3.80 / +$2.84 / +$2.52, lines #10–#11).
