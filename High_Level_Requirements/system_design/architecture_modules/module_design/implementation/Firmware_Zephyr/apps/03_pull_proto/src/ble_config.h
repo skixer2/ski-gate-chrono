@@ -51,6 +51,10 @@ uint8_t ble_config_battery_byte(void);
  * latch test for the "always 92%" question (2026-10-28). */
 void ble_config_batt_debug(void);
 
+/* 0.23.5: VIN present at the last good battery poll. Power policy:
+ * on USB the device must NOT System Off (JP GO 2026-10-28). */
+bool ble_config_on_vin(void);
+
 /* ABC4: bits4-0 = recorder state (SLEEP=0 ARMED=1 LOGGING=2 POST_RUN=3;
  * v0.23.0: SLEEP is the waiting state — it reports 0, the slot the old
  * IDLE occupied; ArduinoFW used 0xFF for waiting, we never did.

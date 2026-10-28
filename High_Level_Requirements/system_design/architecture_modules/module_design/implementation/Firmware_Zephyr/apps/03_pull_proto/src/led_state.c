@@ -97,3 +97,22 @@ int led_state_init(void)
 	k_timer_start(&led_timer, K_SECONDS(1), K_SECONDS(1));
 	return 0;
 }
+
+void led_state_all_off(void)
+{
+	/* 0.23.5 System-Off latch fix (bench 2026-10-28: solid blue, no
+	 * BLE, "dead" device after the 1 h timer fired): the IS31FL3194
+	 * is powered from the rail and RETAINS its last I²C state when
+	 * the SoC dies — if sys_poweroff() lands inside the 100 ms SLEEP
+	 * pulse, the die burns until VDD drops. Called from the power-off
+	 * path: clear + stop BOTH timers so no pulse can land between
+	 * this and sys_poweroff(). */
+	const uint8_t off[3] = { 0x00, 0x00, 0x00 };
+
+	k_timer_stop(&led_timer);
+	k_timer_stop(&led_off_timer);
+	/* drop any queued render works — they would re-light the die */
+	k_work_cancel(&led_work);
+	k_work_cancel(&led_off_work);
+	led_set_color(led, 0, 3, off);
+}

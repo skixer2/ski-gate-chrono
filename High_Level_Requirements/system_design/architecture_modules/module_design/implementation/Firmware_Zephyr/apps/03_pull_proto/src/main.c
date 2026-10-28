@@ -34,7 +34,7 @@
 #include "pull_proto.h"
 #include "power_state.h"
 
-#define APP_VERSION "0.23.4"   /* +serial 'y' battery raw-register debug (latch test, JP 'always 92%' 2026-10-28); +connected-aware battery poll (5s linked / 30s idle - live charging indication, JP); +on-battery battery % read (JP first-battery-session finding); LED sleep heartbeat 100ms/2s (JP); F12/F13: SLEEP primary idle state (no IDLE),
+#define APP_VERSION "0.23.5"   /* +charger self-heal+restore-retry (paused-FAST_CHG hole found on bench); LED all-off before System Off (IS31 latch); VIN present -> no System Off (JP GO); +serial y battery debug; +connected-aware battery poll (5s linked / 30s idle - live charging indication, JP); +on-battery battery % read (JP first-battery-session finding); LED sleep heartbeat 100ms/2s (JP); F12/F13: SLEEP primary idle state (no IDLE),
  * slow 2 s adv in SLEEP, sensors parked, 1 h unconnected → System Off
  * with button-sense wake (rr:4 on the cold boot) */
 

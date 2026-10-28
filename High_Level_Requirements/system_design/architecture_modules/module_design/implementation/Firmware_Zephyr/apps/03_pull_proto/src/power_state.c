@@ -28,6 +28,8 @@
 #include "pull_proto.h"
 #include "button.h"
 #include "sensor_prod.h"
+#include "ble_config.h"
+#include "led_state.h"
 
 /* F12, verbatim from the sealed requirement: SLEEP_SYSTEM_OFF_MS. */
 #define SLEEP_SYSTEM_OFF_MS 3600000u
@@ -58,7 +60,18 @@ static void off_work_handler(struct k_work *w)
 	 * P0.02, level (SENSE) low — same recipe as the Zephyr
 	 * samples/boards/nordic/system_off GPIO wake ("interrupt as
 	 * level active to allow wake-up"); this button is active-low. */
+	/* 0.23.5 (JP GO 2026-10-28): on USB power the device stays
+	 * alive — no System Off. A bench device left unconnected for
+	 * 11 h went dark (button needed); on a ski day (battery) VIN
+	 * is absent and this branch never trips. */
+	if (ble_config_on_vin()) {
+		k_timer_start(&off_timer, K_MSEC(SLEEP_SYSTEM_OFF_MS),
+			      K_NO_WAIT);
+		return;
+	}
+
 	button_arm_systemoff_wake();
+	led_state_all_off();   /* 0.23.5: IS31 latches its last state */
 	printk("{\"ev\":\"sm\",\"from\":\"SLEEP\",\"to\":\"SYSTEM_OFF\"}\n");
 	sys_poweroff();   /* FUNC_NORETURN — button press = cold boot */
 }

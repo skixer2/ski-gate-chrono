@@ -188,13 +188,37 @@ static int bq_battery_pct(void)
 		}
 		bool was_charging = (fastchg & 0x02) == 0;
 
+		if (fastchg & 0x02) {
+			/* 0.23.5 self-heal (bench 2026-10-28: after 13 h on USB
+			 * the cell still read the 92% band — a paused charger
+			 * floats the cell at its natural voltage and the band
+			 * never moves. A failed restore in ANY earlier poll
+			 * leaves bit1 stuck FOREVER: was_charging=false then
+			 * skips the restore on every later read. Clear it,
+			 * loudly, then run the normal pause->read->restore.) */
+			if (bq_write(BQ_FAST_CHG, fastchg & ~0x02) == 0) {
+				printk("batt: charger was PAUSED - restored\n");
+			}
+			was_charging = true;
+		}
+
 		if (was_charging && bq_write(BQ_FAST_CHG, fastchg | 0x02) != 0) {
 			return -4;
 		}
 		int rc = bq_write(BQ_BATT_MON, 0x80);   /* VBMON_READ */
 		k_msleep(3);
 		if (was_charging) {
-			bq_write(BQ_FAST_CHG, fastchg);     /* restore */
+			/* 0.23.5: the restore may not silently fail — a single
+			 * NAK here pauses charging forever (see self-heal
+			 * above). Retry; scream if it sticks. */
+			int rr = -1;
+
+			for (int i = 0; i < 3 && rr != 0; i++) {
+				rr = bq_write(BQ_FAST_CHG, fastchg & ~0x02);
+			}
+			if (rr != 0) {
+				printk("batt: FAST_CHG restore FAILED\n");
+			}
 		}
 		if (rc != 0) {
 			return -4;
@@ -266,6 +290,16 @@ uint8_t ble_config_battery_byte(void)
 	return batt_cache | (charging ? 0x80 : 0x00);
 }
 
+bool ble_config_on_vin(void)
+{
+	/* 0.23.5 (JP GO 2026-10-28): power policy input — on USB the
+	 * device must NOT System Off (a bench device left unconnected
+	 * went dark for 11 h). Refreshed every poll (5 s / 30 s); the
+	 * boot-time default is true, which can only delay (never
+	 * enable) an off by one idle-poll period on battery. */
+	return bq_on_vin;
+}
+
 uint8_t ble_config_state_byte(void)
 {
 	/* recorder: SLEEP=0 ARMED=1 LOGGING=2 POST_RUN=3; sensor flags 0
@@ -283,15 +317,19 @@ void ble_config_batt_debug(void)
 	 * mon_* moving = conversions live (bands are just coarse);
 	 * mon_* frozen forever, especially while charging, = latched. */
 	uint8_t faults = 0, mon_pre = 0, mon_post = 0;
+	uint8_t fastchg = 0, st = 0;
 	int fr = bq_read(BQ_FAULTS, &faults);
 	int mpre = bq_read(BQ_BATT_MON, &mon_pre);
 	int pct = bq_battery_pct();
 	int mpost = bq_read(BQ_BATT_MON, &mon_post);
+	bq_read(BQ_FAST_CHG, &fastchg);   /* 0.23.5: bit1=1 charging paused */
+	bq_read(BQ_STATUS, &st);
 
 	printk("batt_dbg: fr=%d faults=0x%02x mon_pre=0x%02x(%d) "
-	       "pct=%d mon_post=0x%02x(%d) cache=0x%02x byte=0x%02x\n",
+	       "pct=%d mon_post=0x%02x(%d) fastchg=0x%02x st=0x%02x "
+	       "cache=0x%02x byte=0x%02x\n",
 	       fr, faults, mon_pre, mpre, pct, mon_post, mpost,
-	       batt_cache, ble_config_battery_byte());
+	       fastchg, st, batt_cache, ble_config_battery_byte());
 }
 
 uint8_t ble_config_flash_used_pct(void)
