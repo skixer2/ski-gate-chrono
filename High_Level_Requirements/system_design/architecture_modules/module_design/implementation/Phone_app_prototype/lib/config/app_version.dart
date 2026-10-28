@@ -399,7 +399,25 @@
 ///          (2) Merged courses now visible WHILE CONNECTED too — the section
 ///          was disconnected-view-only; extracted to _mergedSection() and
 ///          rendered in both views, day-scoped.
-const String APP_VERSION = '1.73.0';
+///   1.74 - JP WARM-BENCH FIXES (2026-10-28 07:07): (1) Merged courses
+///          render ABOVE single runs in the CONNECTED view too (the
+///          disconnected home already had that order) — "these are the
+///          real ones we are interested in". (2) Battery refresh: 5 s
+///          Timer.periodic while BLE-connected re-reads ABC5 via the
+///          same getBattery/isCharging path as connect — plug/unplug
+///          USB reflects within ~5 s (pairs with FW 0.23.3's 5 s poll
+///          while linked); plain poll, no notify assumptions, own try;
+///          cancelled on unexpected drop / manual disconnect / dispose
+///          (same lifecycle sites as the 1.64 idle timer); skipped
+///          mid-download. (3) Scan sheet filters to SGC devices only:
+///          advertised service UUID equals the SGC product service
+///          (case-insensitive) OR advertised name starts with 'SGC'
+///          (older-FW defense-in-depth); the sheet now carries full
+///          ScanResults (advertisement data) and gains a 'Show all
+///          devices' checkbox (default OFF) for bench debugging — ON
+///          shows every device as before, plus a hidden count when
+///          filtering.
+const String APP_VERSION = '1.74.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

@@ -54,6 +54,10 @@ class _RunListScreenState extends State<RunListScreen>
 
   // 1.64 (JP 2026-10-23): auto-disconnect after 1 min of idle connection.
   Timer? _idleDisconnectTimer;
+  // 1.74 (JP 2026-10-28): battery refresh while connected — 5 s plain
+  // poll of ABC5 (pairs with FW 0.23.3's 5 s poll while linked), so
+  // plug/unplug USB shows on the card within ~5 s.
+  Timer? _batteryTimer;
 
   /// (Re)arm the 1-min idle auto-disconnect. Called on connect-complete,
   /// download-complete — any device activity. While a transfer is in
@@ -75,6 +79,37 @@ class _RunListScreenState extends State<RunListScreen>
   void _cancelIdleDisconnectTimer() {
     _idleDisconnectTimer?.cancel();
     _idleDisconnectTimer = null;
+  }
+
+  /// 1.74: re-read battery every 5 s while connected. Same getBattery/
+  /// isCharging path as the connect-time read; plain poll — no notify
+  /// assumptions. Skipped while a download owns the radio. State
+  /// updates only when the value actually changed (no gratuitous
+  /// rebuilds every 5 s).
+  void _startBatteryTimer() {
+    _cancelBatteryTimer();
+    _batteryTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      final sgc = _sgc;
+      if (sgc == null || !_ble.isConnected || _isDownloading) return;
+      try {
+        final pct = await sgc.getBattery();
+        final charging = await sgc.isCharging();
+        if (!mounted) return;
+        if (pct != _batteryPct || charging != _batteryCharging) {
+          setState(() {
+            _batteryPct = pct;
+            _batteryCharging = charging;
+          });
+        }
+      } catch (e) {
+        debugPrint('[SGC] battery poll failed: $e');
+      }
+    });
+  }
+
+  void _cancelBatteryTimer() {
+    _batteryTimer?.cancel();
+    _batteryTimer = null;
   }
   final List<String> _setupWarnings = [];   // v1.50 (audit A6): surfaced, never silent
   bool _isConnecting = false;
@@ -161,6 +196,7 @@ class _RunListScreenState extends State<RunListScreen>
     }
     debugPrint('[SGC] BLE disconnected — clearing connected UI state');
     _cancelIdleDisconnectTimer();
+    _cancelBatteryTimer();
     if (!mounted) return;
     setState(() {
       _sgc = null;
@@ -178,6 +214,7 @@ class _RunListScreenState extends State<RunListScreen>
   @override
   void dispose() {
     _cancelIdleDisconnectTimer();
+    _cancelBatteryTimer();
     _autoTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _connSub?.cancel();
@@ -561,12 +598,15 @@ class _RunListScreenState extends State<RunListScreen>
       return;
     }
 
-    // Start scan BEFORE showing modal (builder can run multiple times)
-    final devices = <BluetoothDevice>[];
+    // Start scan BEFORE showing modal (builder can run multiple times).
+    // 1.74: keep full ScanResults — the SGC-only sheet filter needs each
+    // device's advertised service UUIDs, which bare BluetoothDevices
+    // don't carry.
+    final devices = <ScanResult>[];
     final sub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
-        if (!devices.any((d) => d.remoteId == r.device.remoteId)) {
-          devices.add(r.device);
+        if (!devices.any((s) => s.device.remoteId == r.device.remoteId)) {
+          devices.add(r);
         }
       }
     });
@@ -681,6 +721,7 @@ class _RunListScreenState extends State<RunListScreen>
         _isConnecting = false;
       });
       _resetIdleDisconnectTimer();   // 1.64: 1-min idle auto-disconnect
+      _startBatteryTimer();          // 1.74: 5 s battery refresh while linked
 
       if (mounted) {
         final warn = _setupWarnings;
@@ -742,6 +783,7 @@ class _RunListScreenState extends State<RunListScreen>
 
   Future<void> _disconnect() async {
     _cancelIdleDisconnectTimer();
+    _cancelBatteryTimer();
     _isDownloading = false;  // V1.23: cancel any in-flight batch first
     await _ble.disconnect();
     if (mounted) {
@@ -1492,8 +1534,12 @@ class _RunListScreenState extends State<RunListScreen>
         const SizedBox(height: 12),
         _buildCloudCard(),
         // ── Local runs section ──
+        // 1.74 (JP): merged courses ABOVE single runs in the connected
+        // view too — the disconnected home already had this order
+        // ("these are the real ones we are interested in").
         if (_localRuns.isNotEmpty) ...[
           const SizedBox(height: 16),
+          ..._mergedSection(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Text('Saved Runs (${_dayRuns.length}${_dayRuns.length == _localRuns.length ? '' : ' of ${_localRuns.length}'})',
@@ -1503,7 +1549,6 @@ class _RunListScreenState extends State<RunListScreen>
             for (int i = 0; i < _dayRuns.length; i++)
               _buildLocalRunTile(_dayRuns[i], i + 1),
           ],
-          ..._mergedSection(),
         ],
       ],
     );
@@ -2479,8 +2524,13 @@ DecompressResult _decompressRunBackground(Uint8List data) {
 }
 
 /// Bottom sheet that shows BLE scan results and updates reactively.
+/// 1.74: carries full ScanResults (advertisement data) and shows ONLY
+/// SGC devices by default — advertised SGC product service UUID, or
+/// (older-FW defense-in-depth) advertised name starting with 'SGC'.
+/// A 'Show all devices' checkbox (default OFF) restores the unfiltered
+/// bench list.
 class _ScanSheet extends StatefulWidget {
-  final List<BluetoothDevice> devices;
+  final List<ScanResult> devices;
   const _ScanSheet({required this.devices});
 
   @override
@@ -2489,6 +2539,7 @@ class _ScanSheet extends StatefulWidget {
 
 class _ScanSheetState extends State<_ScanSheet> {
   StreamSubscription<List<ScanResult>>? _sub;
+  bool _showAll = false;   // 1.74: default = SGC devices only
 
   @override
   void initState() {
@@ -2504,16 +2555,32 @@ class _ScanSheetState extends State<_ScanSheet> {
     super.dispose();
   }
 
+  /// 1.74: SGC filter predicate — the advertised service UUID list
+  /// contains the SGC product service (case-insensitive match against
+  /// SGCService.serviceUuid), OR the advertised name starts with 'SGC'
+  /// (older firmware may not include the service UUID in the adv
+  /// packet).
+  bool _isSgcDevice(ScanResult r) {
+    for (final u in r.advertisementData.serviceUuids) {
+      if (u.str.toUpperCase() == SGCService.serviceUuid.toUpperCase()) {
+        return true;
+      }
+    }
+    return r.device.platformName.toUpperCase().startsWith('SGC');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final list = widget.devices.toList();
-    list.sort((a, b) {
-      final aIsSgc = a.platformName.toLowerCase().contains('sgc');
-      final bIsSgc = b.platformName.toLowerCase().contains('sgc');
+    final all = widget.devices.toList();
+    all.sort((a, b) {
+      final aIsSgc = a.device.platformName.toLowerCase().contains('sgc');
+      final bIsSgc = b.device.platformName.toLowerCase().contains('sgc');
       if (aIsSgc && !bIsSgc) return -1;
       if (!aIsSgc && bIsSgc) return 1;
       return 0;
     });
+    final list = _showAll ? all : all.where(_isSgcDevice).toList();
+    final hidden = all.length - list.length;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.45,
@@ -2537,20 +2604,43 @@ class _ScanSheetState extends State<_ScanSheet> {
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(ctx)),
               ]),
+              const SizedBox(height: 4),
+              // 1.74: bench escape hatch — OFF lists only SGC devices
+              // (SGC service UUID or 'SGC' name prefix); ON = every
+              // advertisement, as before.
+              Row(children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: _showAll,
+                    onChanged: (v) => setState(() => _showAll = v ?? false),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('Show all devices',
+                    style: TextStyle(fontSize: 13, color: Colors.grey)),
+              ]),
               const SizedBox(height: 8),
-              Text('Found ${list.length} device(s)',
+              Text(
+                  'Found ${list.length} device(s)'
+                  '${(!_showAll && hidden > 0) ? ' · $hidden hidden (not SGC)' : ''}',
                   style: const TextStyle(color: Colors.grey)),
               const Divider(),
               Expanded(
                 child: list.isEmpty
-                    ? const Center(
-                        child: Text('No devices found yet',
-                            style: TextStyle(color: Colors.grey, fontSize: 16)))
+                    ? Center(
+                        child: Text(
+                            _showAll
+                                ? 'No devices found yet'
+                                : 'No SGC devices found yet',
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 16)))
                     : ListView.builder(
                         controller: scrollController,
                         itemCount: list.length,
                         itemBuilder: (_, i) {
-                          final d = list[i];
+                          final d = list[i].device;
                           return ListTile(
                             leading: const Icon(Icons.devices),
                             title: Text(d.platformName.isNotEmpty
