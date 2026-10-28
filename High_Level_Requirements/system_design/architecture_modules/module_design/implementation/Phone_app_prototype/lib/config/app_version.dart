@@ -417,7 +417,18 @@
 ///          devices' checkbox (default OFF) for bench debugging — ON
 ///          shows every device as before, plus a hidden count when
 ///          filtering.
-const String APP_VERSION = '1.74.0';
+///   1.75 - FIRMWARE VERSION ROW (JP 2026-10-28 21:36): the connected
+///          card shows the device firmware version — "Firmware" row,
+///          after Discipline, before the counters. SGCService gains
+///          readFwVersion(): one read of the new read-only ABC6
+///          characteristic (ASCII string, FW 0.23.6+), armed ONCE at
+///          connect-success right next to the battery/flash reads —
+///          static per connection, deliberately NOT in the 5 s battery
+///          poll. Null on any failure (old firmware = characteristic
+///          absent = clean '—' placeholder, no error surfaced);
+///          cleared on every disconnect/teardown path that clears the
+///          other connection state.
+const String APP_VERSION = '1.75.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

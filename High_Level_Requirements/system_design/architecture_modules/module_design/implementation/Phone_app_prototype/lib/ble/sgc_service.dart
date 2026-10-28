@@ -26,6 +26,7 @@ class SGCService {
   static const charDiscipline  = '5347ABC3-0000-1000-8000-00805F9B34FB';
   static const charDeviceState = '5347ABC4-0000-1000-8000-00805F9B34FB';
   static const charBattery     = '5347ABC5-0000-1000-8000-00805F9B34FB';
+  static const charFwVersion   = '5347ABC6-0000-1000-8000-00805F9B34FB';
   static const charFlashUsed   = '5347ABC7-0000-1000-8000-00805F9B34FB';
   static const charRunInfo     = '5347ABC8-0000-1000-8000-00805F9B34FB'; // count[2]+age[4]
   static const charRunList     = '5347ABC9-0000-1000-8000-00805F9B34FB';
@@ -197,6 +198,20 @@ class SGCService {
   Future<bool> isCharging() async {
     final v = await _readByte(charBattery);
     return (v & 0x80) != 0;
+  }
+
+  /// 1.75 (JP 2026-10-28): device firmware version — ABC6, read-only
+  /// ASCII string (FW 0.23.6+). NEVER throws: old firmware simply lacks
+  /// the characteristic (CharAccessException → clean null, UI shows '—').
+  Future<String?> readFwVersion() async {
+    try {
+      final b = await _readChar(charFwVersion);
+      final v = String.fromCharCodes(b.where((x) => x != 0)).trim();
+      return v.isEmpty ? null : v;
+    } catch (e) {
+      debugPrint('[SGC] fw-version read failed: $e');
+      return null;
+    }
   }
   Future<int> getDeviceState() async => (await _readByte(charDeviceState)) & 0x1F;
   Future<int> getSensorStatus() async => ((await _readByte(charDeviceState)) >> 5) & 0x07;

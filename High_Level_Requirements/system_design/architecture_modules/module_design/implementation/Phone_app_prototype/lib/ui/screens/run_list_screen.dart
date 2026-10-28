@@ -51,6 +51,10 @@ class _RunListScreenState extends State<RunListScreen>
   // ABC5 (F-snow-kit): null = unknown (0x7F / read failed).
   int? _batteryPct;
   bool _batteryCharging = false;
+  // 1.75 (JP 2026-10-28): device firmware version (ABC6, FW 0.23.6+) —
+  // static per connection: read ONCE at connect-success, never in the
+  // 5 s battery poll. Null = old firmware / read failed ('—' on card).
+  String? _fwVersion;
 
   // 1.64 (JP 2026-10-23): auto-disconnect after 1 min of idle connection.
   Timer? _idleDisconnectTimer;
@@ -204,6 +208,7 @@ class _RunListScreenState extends State<RunListScreen>
       _runCount = null;
       _batteryPct = null;
       _batteryCharging = false;
+      _fwVersion = null;
       _flashUsedPct = null;
       _deviceRuns = [];
       _isConnecting = false;
@@ -582,6 +587,7 @@ class _RunListScreenState extends State<RunListScreen>
           _runCount = null;
           _batteryPct = null;
           _batteryCharging = false;
+          _fwVersion = null;
           _flashUsedPct = null;
           _deviceRuns = [];
         });
@@ -699,6 +705,16 @@ class _RunListScreenState extends State<RunListScreen>
           debugPrint('[SGC] flash-used read failed: $e');
           _flashUsedPct = null;
         }
+        // 1.75: firmware version (ABC6, FW 0.23.6+) — static per
+        // connection, read ONCE here at connect-success (NOT in the 5 s
+        // battery poll). readFwVersion never throws; defensive try anyway.
+        try {
+          final fw = await sgc.readFwVersion();
+          if (mounted) setState(() => _fwVersion = fw);
+          debugPrint('[SGC] fw version = ${fw ?? '(not exposed)'}');
+        } catch (e) {
+          debugPrint('[SGC] fw-version read failed: $e');
+        }
         final ft = FileTransfer(sgc);
         _deviceRuns = await ft.getRunList();
         _recomputeSyncWarning();
@@ -712,6 +728,7 @@ class _RunListScreenState extends State<RunListScreen>
         _runCount = null;
         _batteryPct = null;
         _batteryCharging = false;
+        _fwVersion = null;
         _flashUsedPct = null;
         _deviceRuns = [];
       }
@@ -794,6 +811,7 @@ class _RunListScreenState extends State<RunListScreen>
         _runCount = null;
         _batteryPct = null;
         _batteryCharging = false;
+        _fwVersion = null;
         _flashUsedPct = null;
         _deviceRuns = [];
       });
@@ -1455,6 +1473,9 @@ class _RunListScreenState extends State<RunListScreen>
                     ]),
                   ),
                 ),
+                // 1.75: device firmware version (ABC6, FW ≥ 0.23.6) —
+                // read-only, '—' when the device doesn't expose it.
+                _infoRow('Firmware', _fwVersion ?? '—'),
                 if (_setupWarnings.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
