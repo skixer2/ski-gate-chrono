@@ -1,5 +1,6 @@
-# SGC — System Design (v5.0)
+# SGC — System Design (v5.1)
 
+*2026-10-29 — v5.1: §10 OTA firmware update added — system capability context (MCUboot dual-bank + MCUmgr SMP over BLE; the phone is the update conduit; cloud version distribution = P2+ candidate, NOT in scope). GATT DFU rows replaced by the SMP service (F40/REQ-OTA). Detail: system_design/ota_mechanism.md v2.0. Doc-only, no code.*
 *2026-10-27 — v5.0: Cloud subsystem chapter added (§6.0 — sgc-api LIVE on sgc-api.vytsolutions.com; detail source `remote_db_architecture.md` v0.3). Phone-app subsystem brought current (§5.1 — App 1.72.0: cloud client + durable F43 queue, Synch-as-state, naming convention per reqs v6.5, day pager, delete triad). Device FW section annotated (§7.1 — Zephyr app-03 `pull_proto` 0.22.1: stable monotonic run-ids D/s/H/d, per-run delete; 0.23.0 SLEEP/System-Off in implementation). Arduino-era sections below retained as design reference.*
 *2026-06-28 — v2.4: Phase 11 — Delta-baro encoding. Baro moved from uncompressed header into delta-encoded payload (Pa/2, 2 Pa/LSB). Header 4→2 bytes. Average 8.0 bytes/frame (was 9.55). LDC1612 EWMA auto-recalibration + dead-baseline guard + factory reset 3s confirmation.*
 *2026-06-27 — v2.2: Start detection simplified to drop-only (cumulative vertical descent > 2.0 m from arming P₀). Speed mode removed — BMP390 quantization noise (~0.78 Pa/LSB) caused false triggers at 1.5 m/s threshold. Drain algorithm changed to data-driven (pop N = min(2, ring.count)) instead of fixed 500-cycle — works correctly regardless of ring fill level at LOGGING start.*
@@ -341,8 +342,7 @@ All SGC characteristics derive from this base UUID via 16-bit aliases. A charact
 | — | `...ABCD` | File Transfer Status | R/N | 1 B uint8 | 0=idle, 1=transferring, 2=complete, 3=error |
 | — | `...ABCE` | Sensor Status | R | 1 B uint8 | Bitfield: BHI, BMP, LDC, Flash OK flags (R07) |
 | — | `...ABD0` | Calibration Accuracy | R/N | 1 B uint8 | BHI260AP fusion accuracy: 0=unreliable, 1=low, 2=medium, 3=high. Notifies on change (F41) |
-| — (DFU Service) | `00001530-1212-EFDE-1523-785FEABCD123` | Nordic DFU Control Point | W/N | variable | Standard Nordic BLE DFU service for OTA firmware update (F40). Phone pushes signed firmware image; device validates, flashes, and reboots. Corrupted image → rejected, previous version retained |
-| — (DFU Service) | `...` | DFU Packet | W (no resp) | ≤20 B | Firmware data packets |
+| — (SMP Service) | `8EC90001-F315-4F60-9FB8-838830DAEA50` | MCUmgr SMP | W/N | variable | Standard MCUmgr SMP service for OTA firmware update (F40, REQ-OTA): signed image upload to MCUboot (dual-bank swap, power-loss-safe, revert-on-confirm-fail). Unsigned/corrupt image rejected; previous version retained. Stage 1 via nRF Connect, Stage 2 in-app (F64) |
 
 ### File Transfer Protocol
 
@@ -806,6 +806,17 @@ Flash wear is not a concern for the expected product lifetime. The circular buff
 | DW3000 UWB (v2) antenna detuning in proximity to athlete's body | Medium | UWB antenna detuning near human tissue is well-characterized. Mitigated by antenna placement on PCB edge facing away from arm, with ground plane isolation. Field-test RSSI and ranging accuracy on-body vs. free-space during v2 prototyping |
 | DW3000 UWB (v2) SPI bus contention with Flash + RFID at high UWB rate (100 Hz) | Low | Each UWB blink: 50 µs SPI + 150 µs TX. At 100 Hz = 20 ms total SPI per second = 0.2% utilization. All three devices operate in separate 10 ms cycle windows. Even at worst case, < 500 µs combined SPI per cycle vs. 10 ms budget |
 | Total battery drain → BLE bonding lost (no persistent bond storage) | Low | BLE bond stored in nRF52 RAM (retained across System ON sleep). If VBAT drops below LDO cutoff (~2.5V) during prolonged storage, RAM is lost and bonding must be re-paired. Mitigation: phone app detects missing bond + auto-re-pairs on next connection (Just Works, no user intervention). Acceptable — total drain after > 6 months shelf life is expected (self-discharge dominates) |
+
+---
+
+## 10. OTA Firmware Update — System Capability (2026-10-29)
+
+Field devices (gate-mounted timers, coaches' pockets) must update **without USB/SWD** — SWD stays factory-recovery only. **The phone is the update conduit**: signed firmware images flow phone → device over BLE (MCUmgr SMP → MCUboot dual-bank swap, power-loss-safe, revert-on-confirm-fail). Design + staging: `system_design/ota_mechanism.md` v2.0; requirements: F40 / F64 / REQ-OTA.
+
+- **Trigger point:** before the fleet grows past arm's reach — 2nd device (Nov 2026); production ramp P2/P3 (sgc_production_strategy.md).
+- **Flash budget (verified):** internal 512 KB holds only the app (~150 KB image; ~360 KB free ⇒ dual-bank slots fit); run storage + config stay on the external 8 MB NOR — **storage architecture untouched**.
+- **Firmware-version surface:** the device's firmware version is readable over BLE (ABC6, from FW 0.23.6) — the app's update precondition and downgrade block (Stage 3).
+- **Cloud later:** version distribution (hosting signed releases, fleet update surfacing) is a **cloud P2+ candidate — NOT in scope** for v1.
 
 ---
 

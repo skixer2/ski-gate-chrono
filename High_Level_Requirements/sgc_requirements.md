@@ -32,7 +32,7 @@
 | **F37** | The device shall receive the current UTC date and time from the phone on every BLE connection, before any other GATT interaction | Connect phone, disconnect, wait 1 hour, reconnect — verify time is re-synced |
 | **F38** | The device shall negotiate the largest BLE ATT MTU available — **request 517, target ≥ 500 B effective payload per transfer request** (pull transport: a ≥ 500 B logical chunk = 2×244 B notifications if the stack caps MTU at 247, as observed on Cordio). Fall back to LE 1M PHY minimum; prefer LE 2M PHY (P04). *Aligns with PULL_TRANSFER_REDESIGN.md IR-3.* | BLE sniffer / serial log: verify MTU exchange on connect and negotiated value |
 | **F39** | The device shall support BLE bonding (LE Secure Connections, Just Works pairing) — bond on first connection, encrypt subsequent sessions. Bonding info persists across sleep (RAM retained) | Pair phone, disconnect, reconnect — verify encryption without re-pairing |
-| **F40** | The device shall support BLE OTA firmware update via Nordic DFU service. Firmware images are pushed from the phone | Flash known-good firmware, verify device boots new version; inject corrupted image, verify device rejects and retains previous version |
+| **F40** | The device shall support BLE OTA firmware update via the **MCUboot bootloader + MCUmgr SMP transport** (dual-bank image slots, swap on boot, power-loss-safe, revert-on-confirm-fail). Firmware images are **signed** (imgtool) and pushed from the phone. *Supersedes the Nordic-DFU-on-mbed-bootloader plan (Arduino era — see ota_mechanism.md §6); activates ZEPHYR_PORT_PLAN.md ZPR-9. Staged acceptance: REQ-OTA. Design: system_design/ota_mechanism.md v2.0.* | S1: update 0.23.7 → test build via nRF Connect for Mobile, device boots new version, ABC6 reports it; bad image → rollback to previous version. S3: unsigned/mis-signed image rejected, previous version retained |
 | **F41** | The device shall include an RGB LED for visual status. **Onboard (Nicla stock):** IS31FL3194 I2C driver on Wire1 (P0.15/P0.16, 0x53) — off = sleep, blue breathing = BLE advertising. **Custom PCB only:** 5× SK6812-mini strip on P0.19 with sequential flowing-point animation (blue slow flowing = uncalibrated, solid blue chase = calibrated ≥2, green fast chase = armed, red fast chase = logging, yellow rapid blink = low battery/error). Co-located with the surface transducer inside the enclosure (light pipes through translucent polycarbonate). *White SETUP mode reserved for v2 (RFID).* | Visual: verify each color/pattern matches state machine state; verify LED changes from flowing to chase after figure-8 calibration |
 | **F42** | The device shall detect a **5-presses-within-3-s sequence** on the piezo button as a factory reset trigger: clear BLE bonding, reset device name to default, erase all run data from Flash, restart. *(Supersedes the 20 s inductive/magnetic hold — no inductive sensor exists. Code: FACTORY_PRESS_COUNT=5, PRESS_WINDOW_MS=3000.)* | Bench: 5 quick presses → LED red 3× + reboot; reconnect → bonding lost, name = default, run count = 0; verify < 5 presses does nothing |
 | **F52** | ⚠️ **v2 ONLY** — UHF RFID reader footprint on PCB (Impinj E310), unpopulated in v1. Reserved for future gate identification if pressure-only detection proves insufficient | PCB inspection: verify footprint present, no IC populated |
@@ -98,6 +98,7 @@ After **1 h** of unconnected SLEEP the device enters **System Off** (T4): full s
 | **F57.3** | The phone shall provide a **dual course view**: a graphical map view (when GPS is available, showing gate positions on a map) and a text list view (always available, showing gate number + ΔP + altitude). A toggle button switches between the two views. The text list is the fallback when GPS signal is poor or unavailable | Toggle between map and text list views; disable GPS on phone, verify text list still shows all gates; verify toggle button visible in both modes |
 | **F57.4** | The phone shall store the course map in a **delta-based format**: START is at gate index 0 with ΔP = 0 (reference pressure). Each subsequent gate stores its pressure delta from START pressure (not from the previous gate). GPS positions are stored as relative vectors (ΔGPS: Δlat, Δlon from the previous gate), minimizing cumulative GPS drift error in the vector chain. Altitude is stored per gate for display purposes | Save a course, inspect stored data: verify gate 0 has ΔP = 0 and no ΔGPS; verify gate N has ΔP = P_N − P_START and ΔGPS = GPS_N − GPS_{N−1}; verify manual calculation matches stored values |
 | **F58** | ⚠️ **v2 ONLY** — Phone tracing mode: sets devices to SETUP mode (F57), waits for tag IDs from NFC tap or RFID BLE notify. Either event triggers GPS + tag ID + gate number recording. *v1 course setup uses pressure + GPS sequential recording (see F57.1–F57.4 and sgc_architecture_decisions.md AD-007).* | Enter tracing mode (v2 only) |
+| **F64** | The phone shall provide an **in-app firmware updater** — Settings → Firmware update: file picker for the signed image, BLE transfer via the MCUmgr SMP protocol (Nordic `mcumgr` Android library, Apache-2.0, `io.runtime.mcumgr`), progress display, and post-reboot version verification. The phone reads the device's firmware version (ABC6 characteristic, FW ≥ 0.23.6) as the update precondition and **blocks downgrade attempts** (Stage 3) | S2: full in-app update flow — ~150 KB image transfers in 10–15 s at current BLE throughput, new version verified after reboot. S3: downgrade blocked with explicit message |
 | **F59** | ⚠️ **v2 ONLY** — Duplicate tag ID detection: same pole within 5 s → merged. *v1 has no pole tags — not applicable.* | Touch same pole twice (v2 only) |
 | **F60** | ⚠️ **v2 ONLY** — Cloud persistence of course gate positions via RFID tag IDs. *v1 uses pressure ΔP + ΔGPS course map format (see sgc_architecture_phone.md §15).* | Complete setup (v2 only) |
 | **F61** | ⚠️ **v2 ONLY** — Spatial correlation of run tag IDs with stored gate GPS positions. *v1: gate detection uses pressure + IMU, GPS is sanity-check only.* | Run known course (v2 only) |
@@ -259,11 +260,30 @@ Cloud-side run data (runs + timestamps + barometric_data) older than **1 year** 
 
 ---
 
+## REQ-OTA — Firmware Update Over-the-Air (2026-10-29)
+
+*JP directive: OTA architecture + path into the V-cycle docs. Why: field devices (gate-mounted timers, coaches' pockets) must update without USB/SWD — **SWD stays factory-recovery only**. Trigger point: before the fleet grows past arm's reach (2nd device Nov 2026; production ramp P2/P3 per sgc_production_strategy.md). Design + staging detail: `system_design/ota_mechanism.md` v2.0. Device requirement F40, phone requirement F64.*
+
+| Stage | Scope | Acceptance criteria (testable) |
+|---|---|---|
+| **S1 — Firmware (~1–2 bench days)** | MCUboot + SMP-over-BLE + signing pipeline (imgtool, dev key initially). Updates via Nordic's free **nRF Connect for Mobile** app (manual). One-time SWD migration flash (MCUboot+app combined hex). After this: no cable needed, incl. the 2nd Nicla | OTA update 0.23.7 → test build via nRF Connect; device boots the new version; ABC6 reports it; bad image → rollback |
+| **S2 — App (~1–2 days)** | In-app updater (F64): Settings → Firmware update, file picker, progress, verify — Nordic `mcumgr` Android library (Apache-2.0, `io.runtime.mcumgr`) | Full in-app update UI flow end-to-end; ~150 KB image in 10–15 s at current BLE throughput; version verified post-reboot |
+| **S3 — Production hardening** | Real signing keys + secure storage; MCUboot revert/rollback (image must **confirm alive within window** or device reverts); **downgrade protection** (app checks ABC6 firmware version — from FW 0.23.6 — as update precondition); update gating ("device needs update" logic) | Signed-only enforcement: unsigned/mis-signed image rejected by MCUboot; downgrade attempt blocked; revert fires when a bad image fails to confirm |
+
+**Enabling constraint (verified):** the nRF52832's internal 512 KB flash holds ONLY the app (~150 KB image); run storage + config live on the external 8 MB NOR (2 MB LOG region). ~360 KB internal free ⇒ **dual-bank MCUboot fits WITHOUT touching the storage architecture** — unusually favorable.
+
+**Constraints / risks:** image size growth must stay under the slot budget (~200–220 KB per slot at 512 KB internal); SMP transfer forbidden while ARMED/LOGGING — **SLEEP state only**; power-loss during swap is SAFE by design (that is the point of dual-bank); BLE throughput ~10–20 KB/s ⇒ ~15 s per transfer.
+
+**V-model mapping:** S1 acceptance = system-level bench test (device.md, BLE/OTA); S2 = phone integration test (integration_tests/phone.md); S3 = system + acceptance tests (signed-only enforcement, revert, downgrade block). Firmware-side unit surface: MCUboot Kconfig + signing CI step.
+
+---
+
 ## V-Model Traceability
 
 ```
-REQ-FUNC (F01–F61, F57.1–F57.4)  ◄─────────────── ACCEPTANCE TESTS (field: snow, full system)
+REQ-FUNC (F01–F63, F57.1–F57.4)  ◄─────────────── ACCEPTANCE TESTS (field: snow, full system)
        │                                              ▲
+REQ-OTA (F40/F64, S1–S3)  ◄────────────── OTA STAGED ACCEPTANCE (S1 nRF Connect bench → S2 in-app → S3 signed-only)
 REQ-PERF (P01–P09)  ◄─────────────── PERFORMANCE TESTS (bench: scope, jitter)
        │                                              ▲
 REQ-HW  (H01–H14)   ◄─────────────── ENVIRONMENTAL TESTS (cold chamber, shock)
@@ -315,6 +335,7 @@ REQ-HW  (H01–H14)   ◄─────────────── ENVIRONME
 | 2026-10-26 | v6.3 | **REQ-DB:** added Data Retention — cloud run data older than 1 year purged server-side (nightly); phone copies unaffected (JP directive 2026-10-26, folded from remote_db_architecture.md §5). Activation-window semantics decided: expired = writes blocked, reads + deletion allowed. |
 | 2026-10-26 | v6.4 | **REQ-DB runs:** added `run_type` {single, merged} + `source_run_ids` lineage (JP directive 19:06 "Go!!" — upload policy = everything, distinct types; merged = phone-blended dual-device course). |
 | 2026-10-27 | v6.5 | **Naming Convention section added** (JP design, confirmed 10:18+08:48): device letters A–Z per new paired device (re-pair keeps letter); run name = `<letter>#<device_counter>` synced via name field; day-pager list with display-only per-day numbering (deletes renumber, R-before-L tiebreak); merged = `<A#x> + <B#y>`; cloud ids never displayed; cloud list ordered newest-first. |
+| 2026-10-29 | v6.6 | **REQ-OTA + F40/F64 (JP directive, doc-only):** OTA architecture + path documented. **F40 rewritten** — Nordic-DFU (Arduino era) → MCUboot dual-bank + MCUmgr SMP over BLE, signed images (imgtool; dev key → prod keys at S3). **F64** phone in-app updater (Settings → Firmware update; `mcumgr` Android lib; downgrade block via ABC6 FW-version check ≥ 0.23.6). **REQ-OTA** section: staged acceptance S1 (nRF Connect manual, ~1–2 bench days) / S2 (in-app, ~1–2 days) / S3 (signed-only + revert window + downgrade block). Flash budget verified: internal 512 KB app-only (~150 KB image, ~360 KB free) ⇒ dual-bank fits, external 8 MB NOR storage untouched. SMP only in SLEEP; swap power-loss-safe. V-Model updated. Design: system_design/ota_mechanism.md v2.0; context: sgc_system_design.md §10. Activates ZPR-9. Cloud version distribution = P2+ candidate, out of scope. |
 
 ---
 

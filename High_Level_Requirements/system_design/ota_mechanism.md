@@ -1,214 +1,85 @@
-# SGC OTA Firmware Update Design
+# SGC OTA Firmware Update Design (v2.0 — MCUboot + MCUmgr SMP)
 
-## Context
+*2026-10-29 — v2.0 (JP directive, doc-only): OTA architecture + path documented. Chosen path switched from the Arduino-era Nordic-DFU plan (§6, retained as historical reference) to the **Nordic-native MCUboot (dual-bank) + MCUmgr SMP over BLE** — the built-in Zephyr/NCS mechanism, consistent with the firmware's Zephyr port. Flash budget VERIFIED: dual-bank fits in the internal 512 KB without touching the external-NOR storage architecture. Staged rollout S1→S3 (= REQ-OTA in sgc_requirements.md v6.6). Activates ZEPHYR_PORT_PLAN.md ZPR-9 ("SMP/MCUmgr image management" — was deferred, now scheduled). No code changes.*
+*2026-06 — v1.0: Nordic DFU via Nicla stock mbed bootloader (Arduino era). Superseded by the Zephyr port — see §6.*
 
-Once the SGC device is potted in waterproof glue, the USB port is permanently inaccessible. The **only** update path is BLE. The device uses an nRF52832 (512KB internal flash) + 2MB external SPI flash (MX25R1635F).
+---
 
-**Good news:** The Nicla Sense ME stock bootloader already supports Nordic DFU over BLE. Arduino ships a `dfu.html` WebBLE tool for it. We don't need a custom OTA mechanism — we just need to trigger DFU mode from the app and use existing Nordic DFU protocol on the phone side.
+## 1. Why OTA
 
-## JTAG Recovery Access
+Once a device is potted in waterproof glue, the USB port is permanently inaccessible. Field devices — ski-gate timers mounted on gates, units in coaches' pockets — **must update without USB/SWD**. SWD stays as **factory-recovery only** (§5).
 
-Before potting, leave a **small sealed connector** accessible for SWD/JTAG recovery:
+**Trigger point:** before the fleet grows past arm's reach — the **2nd device (Nov 2026)** already makes cable-round updates annoying, and the production ramp (**P2/P3**, sgc_production_strategy.md) makes them impossible.
 
-### Option A: Tag-Connect TC2050 (recommended)
-- No soldered connector on the PCB — uses spring-loaded pogo pins against test pads
-- Add the TC2050 footprint to the SGC PCB
-- Leave a small silicone plug-covered hole in the enclosure
-- Cable stays external; pogo pins press through the hole during recovery
+## 2. Flash Budget (VERIFIED — the enabling constraint)
 
-### Option B: Sealed Micro Connector
-- Use a waterproof micro JST or Molex connector (IP67-rated)
-- 4 wires: SWDIO, SWCLK, GND, VCC (3.3V)
-- Leave connector flush with enclosure surface, capped with waterproof plug
-- Use CMSIS-DAP or J-Link to reflash if bricked
+| Region | Media | Content |
+|---|---|---|
+| Internal nRF52832 flash | **512 KB** | ONLY the app (~150 KB image) + now MCUboot + second slot |
+| External NOR (MX25R6435F) | **8 MB** | Run storage + config (2 MB LOG region) — **untouched by OTA** |
 
-### Recovery Procedure
-1. Remove waterproof cap from JTAG port
-2. Connect CMSIS-DAP debug probe (or J-Link)
-3. Flash known-good firmware via PlatformIO: `pio run -t upload -e nicla`
-4. Re-cap the port
+~**360 KB internal free** ⇒ **dual-bank MCUboot fits WITHOUT touching the storage architecture.** Run data, config, and the RawRunStore layout are completely unaffected. This is the enabling constraint and it is unusually favorable: no storage migration, no data loss risk from the bootloader work.
 
-**Note for custom PCB:** The nRF52832 JTAG pins are shared with GPIOs (SWDIO=P0.18/nRESET, SWDCLK=P0.20). Ensure the PCB routes these to the JTAG connector AND that the application doesn't reconfigure them in a way that locks out the debugger. The `Nicla_System` library leaves them as SWD by default — don't use `pinMode()` on P0.18 or P0.20.
+Slot sizing: with 512 KB internal, image slots come out at ~**200–220 KB each** — generous headroom over the ~150 KB app, but image growth must be watched (§5).
 
-## OTA Strategy — Nordic DFU (Simplified)
+## 3. Chosen Path — Nordic-Native
 
-### Why not custom OTA?
-The Nicla bootloader **already supports BLE DFU** via the Nordic DFU protocol. Arduino ships `nicla-sense-me-fw/bootloader` with this built in. There's a Flutter package `nordic_dfu` that handles the protocol. We just need to:
-1. Trigger DFU mode from our app
-2. Send the firmware .zip via `nordic_dfu`
+**MCUboot bootloader (dual-bank, swap, power-loss-safe, revert-on-confirm-fail) + MCUmgr SMP transport over BLE + signed images.**
 
-### Architecture
+| Element | Choice | Notes |
+|---|---|---|
+| Bootloader | **MCUboot** (NCS built-in: `CONFIG_BOOTLOADER_MCUBOOT`) | Dual-bank slots; swap-on-boot; power loss during swap is **SAFE by design** (that is the point of dual-bank); revert to the previous slot when a new image fails to confirm within its window |
+| Transport | **MCUmgr SMP over BLE** (NCS 3.4 built-in: `mcumgr` BT) | Standard management protocol — image upload, state query, confirm/reset |
+| Signing | **`imgtool`** | Dev key initially; **real production keys + secure storage at Stage 3** |
+| Migration | One-time SWD flash of the **MCUboot+app combined hex** | The only cable update ever needed again |
 
-```
-Phone App                         BLE                         SGC Device
-┌──────────────────┐    ┌──────────────────────┐    ┌────────────────────┐
-│ nordic_dfu       │    │ Device in DFU mode    │    │ Bootloader (24KB)  │
-│ package          │───▶│ Name: "DfuTarg"       │───▶│ Nordic DFU Service  │
-│ .zip file        │    │ UUID: 00001530-...    │    │ → flash new image  │
-│ progress callback│    │                      │    │ → reboot           │
-└──────────────────┘    └──────────────────────┘    └────────────────────┘
-```
+Why not the alternatives: the v1.0 plan (Nordic DFU on the Arduino mbed bootloader, §6) died with the Arduino→Zephyr port — that bootloader no longer exists on the device. A custom updater was rejected: MCUboot/SMP is Nordic-native, NCS-integrated, battle-tested, and costs no protocol design.
 
-### How It Works
+## 4. Staging
 
-1. **Phone sends DFU trigger** → our app writes a command to `OTAControl` characteristic on the SGC service
-2. **Firmware sets GPREGRET + resets** → enters bootloader DFU mode
-3. **Device appears as "DfuTarg"** with Nordic DFU service (`00001530-1212-EFDE-1523-785FEABCD123`)
-4. **Phone uses `nordic_dfu` package** → sends the .zip firmware package
-5. **Bootloader flashes new image** → verifies → reboots into new firmware
+### Stage 1 — Firmware (~1–2 bench days)
+- MCUboot + SMP-over-BLE + signing pipeline (`imgtool`, dev key).
+- Updates via Nordic's free **nRF Connect for Mobile** app (manual SMP upload).
+- One-time SWD migration flash (MCUboot + app combined hex).
+- **After this: no cable needed — including the 2nd Nicla.**
+- *Acceptance (REQ-OTA S1):* OTA update 0.23.7 → test build via nRF Connect; device boots the new version; ABC6 reports it; bad image → rollback.
 
-### Nordic DFU Package
+### Stage 2 — App (~1–2 days)
+- In-app updater using the Nordic **`mcumgr` Android library** (Apache-2.0, `io.runtime.mcumgr`).
+- UI: **Settings → Firmware update** — file picker, progress, verify. (Phone requirement F64.)
+- ~150 KB image = **10–15 s** at current BLE throughput.
+- *Acceptance (REQ-OTA S2):* full in-app update flow end-to-end; version verified post-reboot.
 
-The .zip file is created using Nordic's `nrfutil` tool:
+### Stage 3 — Production hardening
+- Real signing keys + secure storage; dev key retired.
+- MCUboot **revert/rollback** enforced: a new image must **confirm alive within its window** or the device reverts on next boot.
+- **Downgrade protection:** the app checks the device's firmware version (ABC6 characteristic, present from FW 0.23.6) as the update precondition and blocks downgrades.
+- **Update gating:** "device needs update" logic in the app.
+- *Acceptance (REQ-OTA S3):* signed-only enforcement (unsigned/mis-signed rejected); downgrade blocked; revert fires on a non-confirming image.
 
-```bash
-# Generate private key (once)
-nrfutil keys generate private.pem
+## 5. Constraints & Risks
 
-# Build firmware, then package it
-nrfutil pkg generate \
-  --application sgc_firmware.bin \
-  --application-version 1 \
-  --sd-req 0xB6 \
-  --key-file private.pem \
-  sgc_firmware_v2.1.zip
-```
+| Constraint | Handling |
+|---|---|
+| Image size growth | Must stay under the slot budget (~200–220 KB per slot at 512 KB internal) — watch per-release |
+| SMP transfer vs. operations | **Forbidden while ARMED/LOGGING — SLEEP state only** (an update mid-run would kill acquisition and risk the store) |
+| Power loss during swap | **SAFE by design** — dual-bank means the old slot is never destroyed until the new image confirms |
+| BLE throughput | ~10–20 KB/s ⇒ ~15 s per ~150 KB transfer — negligible |
 
-- `sd-req 0xB6` = SoftDevice S140 v6.1.1 (confirmed for Nicla Sense ME)
-- The .zip goes in the Flutter app's `assets/` folder or downloaded from cloud
+## 6. Historical — v1.0 Nordic DFU Plan (Arduino era, SUPERSEDED 2026-10-29)
 
-## Firmware Side — Triggering DFU Mode
+*Retained for archaeology; the Zephyr port removed the mbed bootloader this relied on. The SWD-recovery guidance below (TC2050/pogo or sealed connector, don't touch SWDIO/SWCLK GPIO config) remains VALID for §1's "SWD = factory recovery" policy.*
 
-### New Characteristic: OTAControl
+<details>
+<summary>v1.0 content (collapsed)</summary>
 
-Add to existing SGC BLE service:
+- Nicla stock bootloader Nordic DFU over BLE; `nordic_dfu` Flutter package; `DfuTarg` entry via GPREGRET magic (`0xB1`) + `NVIC_SystemReset`; `OTAControl` characteristic `5347ABCF` write `0x01`; `nrfutil pkg generate` with `--sd-req 0xB6` (S140 v6.1.1); MAC+1 offset handled by `forceScanningForNewAddressInDfu`.
+- Open questions then: exact GPREGRET magic, SoftDevice req value, DFU MAC offset — all moot post-Zephyr.
 
-| UUID | Name | Props | Purpose |
-|------|------|-------|---------|
-| `5347ABCF` | OTAControl | Write | `0x01` = Enter DFU mode |
+**JTAG/SWD recovery (still valid):** Tag-Connect TC2050 pogo footprint (recommended, no soldered connector) or sealed IP67 micro connector (SWDIO, SWCLK, GND, VCC); recovery = probe + `pio run -t upload` (now: west flash); nRF52832 SWD pins shared with GPIO — never reconfigure them in the application.
 
-### Implementation (in `sgc_service.cpp`)
+</details>
 
-```cpp
-#include "nrf_power.h"  // for NRF_POWER->GPREGRET
+---
 
-// Standard magic value for Nordic buttonless DFU entry
-#define DFU_MAGIC_BOOTLOADER_ENTER  0xB1
-
-void sgc_ble_ota_enter_dfu() {
-    // 1. Disconnect BLE cleanly
-    // 2. Set GPREGRET to tell bootloader to enter DFU
-    NRF_POWER->GPREGRET = DFU_MAGIC_BOOTLOADER_ENTER;
-    // 3. Soft reset — bootloader sees GPREGRET, enters DFU mode
-    NVIC_SystemReset();
-}
-```
-
-When the phone writes `0x01` to `5347ABCF`, call `sgc_ble_ota_enter_dfu()`.
-
-> **Note:** The exact magic value depends on the Nicla bootloader. If `0xB1` doesn't work, check the bootloader source in `nicla-sense-me-fw/bootloader/examples/` for the correct `DFU_MAGIC` constant. The standard values are:
-> - `0xB1` — Nordic Buttonless DFU
-> - `0x4C` — Some Arduino Mbed bootloaders
-> - `0x07738135` — Older Mbed pattern
-
-## Phone App Side
-
-### Flutter Package: `nordic_dfu`
-
-```yaml
-# pubspec.yaml
-dependencies:
-  nordic_dfu: ^7.0.0
-```
-
-### OTA Screen
-
-New screen in Settings tab: "Firmware Update"
-
-### Trigger + DFU Flow
-
-```dart
-// Step 1: Tell SGC device to enter DFU mode
-await sgcService.writeOTAControl(0x01);
-await Future.delayed(Duration(seconds: 3)); // wait for device to reboot
-
-// Step 2: Device is now "DfuTarg" — use nordic_dfu to flash
-await NordicDfu().startDfu(
-  deviceMacAddress,        // e.g. "EB:75:AD:E3:CA:CF"
-  'assets/sgc_firmware_v2.1.zip',
-  fileInAsset: true,
-  onProgressChanged: (address, percent, speed, avgSpeed, currentPart, partsTotal) {
-    setState(() => _progress = percent / 100.0);
-  },
-);
-
-// Step 3: On completion, device reboots into new firmware
-// Reconnect to SGC service automatically
-```
-
-### Important: MAC Address Mapping
-
-After entering DFU mode, the device's MAC address may change (increase by 1). The `nordic_dfu` package v7+ supports address mapping:
-
-```dart
-NordicDfu().startDfu(
-  deviceMacAddress,
-  'assets/firmware.zip',
-  fileInAsset: true,
-  forceScanningForNewAddressInDfu: true, // handles MAC change
-);
-```
-
-## Build & Deploy Workflow
-
-```
-PlatformIO build           nrfutil package           Flutter app
-┌──────────────┐         ┌──────────────┐         ┌──────────────┐
-│ pio run      │ ──.bin──▶│ pkg generate │ ──.zip──▶│ assets/      │
-│ -e nicla     │         │              │         │              │
-└──────────────┘         └──────────────┘         │ nordic_dfu   │
-                                                  │ startDfu()   │
-                                                  └──────────────┘
-                                                         │
-                                                         ▼
-                                                  SGC Device (DfuTarg)
-```
-
-## What Already Exists vs What We Need to Build
-
-| Component | Status | Work Needed |
-|-----------|--------|-------------|
-| Nicla bootloader with BLE DFU | ✅ Exists | Nothing — already on chip |
-| Nordic DFU protocol | ✅ Standard | Nothing — `nordic_dfu` handles it |
-| Firmware trigger (GPREGRET) | ❌ | Add `OTAControl` char + reset code |
-| Phone OTA screen | ❌ | New screen + `nordic_dfu` integration |
-| .zip packaging | ❌ | Script to run `nrfutil` after build |
-| JTAG recovery connector | ❌ | Add TC2050 footprint to custom PCB |
-
-## Implementation Order
-
-### Phase 1: Firmware — DFU Trigger
-- [ ] Add `OTAControl` (5347ABCF) characteristic to SGC service
-- [ ] Implement `sgc_ble_ota_enter_dfu()` with GPREGRET + NVIC_SystemReset
-- [ ] Test: write 0x01, verify device appears as "DfuTarg" in nRF Connect
-
-### Phase 2: Phone App — OTA Screen
-- [ ] Add `nordic_dfu` dependency
-- [ ] Create OTA screen UI (firmware version, .zip picker, progress bar)
-- [ ] Wire up: write OTAControl → wait 3s → startDfu()
-
-### Phase 3: Build Automation
-- [ ] Script: `pio run → nrfutil pkg generate → copy .zip to flutter assets`
-- [ ] Version tracking (read SGC_VERSION from firmware)
-- [ ] Cloud download (future)
-
-### Phase 4: JTAG Recovery (PCB Design)
-- [ ] Add TC2050 footprint to custom SGC PCB
-- [ ] Route SWDIO (P0.18), SWDCLK (P0.20), GND, VCC to connector
-- [ ] Enclosure: silicone plug over connector access hole
-
-## Known Unknowns
-
-1. **Exact GPREGRET magic value** — need to verify against Nicla bootloader. Test with nRF Connect: enter DFU via double-tap reset, check what GPREGRET value the bootloader expects. Or just try `0xB1` first (Nordic standard).
-2. **SoftDevice version** — `sd-req 0xB6` = S140 v6.1.1. Verify with `nrfutil` or read from device.
-3. **DFU MAC address offset** — some bootloaders use MAC+1 in DFU mode. The `nordic_dfu` package's `forceScanningForNewAddressInDfu` handles this.
+*Traceability: F40 (device), F64 (phone), REQ-OTA (staged acceptance) — sgc_requirements.md v6.6. System context: sgc_system_design.md §10. Zephyr port anchor: ZEPHYR_PORT_PLAN.md ZPR-9.*
