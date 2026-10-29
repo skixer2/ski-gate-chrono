@@ -362,6 +362,25 @@ void ble_config_start(void)
 	cfg_load();
 
 	if (bqi2c) {
+		/* 0.23.7 (JP cell 2026-10-29: Renata ICP622540PMT, 550 mAh
+		 * Li-ion, NTC third wire): the charger ran at the untouched
+		 * factory default 10 mA since day one — "charging" was
+		 * geological (550 mAh / 10 mA = 55 h). Renata standard charge
+		 * 0.2C = 110 mA: full in ~5 h from empty, ~2 h from half.
+		 * FAST_CHG = ICHRG_RANGE 1 (40-300 mA decade) + ICHRG code 7
+		 * (40 + 7x10 = 110 mA) => 0x9C. One boot write + read-back. */
+		uint8_t fastchg;
+
+		if (bq_read(BQ_FAST_CHG, &fastchg) == 0 && fastchg != 0x9C) {
+			if (bq_write(BQ_FAST_CHG, 0x9C) == 0 &&
+			    bq_read(BQ_FAST_CHG, &fastchg) == 0) {
+				printk("batt: ICHG %u mA (was 10 mA default)\n",
+				       40 + ((fastchg >> 2) & 0x1F) * 10);
+			} else {
+				printk("batt: ICHG write FAILED\n");
+			}
+		}
+
 		k_work_init_delayable(&batt_work, batt_work_handler);
 		k_work_schedule(&batt_work, K_SECONDS(2));
 	}
