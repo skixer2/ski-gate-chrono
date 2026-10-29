@@ -97,8 +97,10 @@ def main():
 
     # pin lookup per symbol (lib coords)
     def lib_pins(name):
-        unit = next(u for u in next(s for s in sch.libSymbols if s.entryName == name).units
-                    if u.unitId == 1)
+        # embedded cache keys are prefixed ("sgc_p1:NAME") since the ?? fix
+        cand = [s for s in sch.libSymbols if s.entryName == name or s.entryName == "sgc_p1:" + name]
+        us = next(iter(cand)).units
+        unit = next((u for u in us if u.unitId == 1), None) or next((u for u in us if u.pins), us[0])
         return {p.number: p for p in unit.pins}
 
     # ---- 3/4/5. geometry: wires -> UF, labels & power pins as net sources ----

@@ -217,5 +217,24 @@ def main():
           f"{len(boxes)} text boxes")
 
 
+
+def prefix_lib_symbols():
+    """Prefix embedded lib_symbols keys with the lib nickname
+    ("sgc_p1:NAME" and "sgc_p1:NAME_N_N") - bare keys render every
+    instance as "??" in KiCad (bench lesson 2026-10-29). Text-level
+    because kiutils deepcopy mangles unitIds."""
+    import re as _re
+    lib = SymbolLib.from_file(os.path.join(HERE, "sgc_p1.kicad_sym"))
+    path = os.path.join(HERE, "sgc_p1.kicad_sch")
+    t = open(path, encoding="utf-8").read()
+    for n in [sym.entryName for sym in lib.symbols]:
+        esc = _re.escape(n)
+        t = _re.sub(r'(\(symbol ")' + esc + r'(")', r'\1sgc_p1:' + n + r'\2', t)
+        t = _re.sub(r'(\(symbol ")' + esc + r'(_\d_\d")', r'\1sgc_p1:' + n + r'\2', t)
+    open(path, "w", encoding="utf-8").write(t)
+    print("lib_symbols keys prefixed (21 symbols)")
+
+
 if __name__ == "__main__":
     main()
+    prefix_lib_symbols()
