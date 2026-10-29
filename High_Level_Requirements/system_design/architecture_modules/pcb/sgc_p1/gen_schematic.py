@@ -230,7 +230,6 @@ def prefix_lib_symbols():
     for n in [sym.entryName for sym in lib.symbols]:
         esc = _re.escape(n)
         t = _re.sub(r'(\(symbol ")' + esc + r'(")', r'\1sgc_p1:' + n + r'\2', t)
-        t = _re.sub(r'(\(symbol ")' + esc + r'(_\d_\d")', r'\1sgc_p1:' + n + r'\2', t)
     open(path, "w", encoding="utf-8").write(t)
     print("lib_symbols keys prefixed (21 symbols)")
 
