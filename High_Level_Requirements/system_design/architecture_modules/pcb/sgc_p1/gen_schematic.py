@@ -36,6 +36,12 @@ OFF = 2.54    # T/B-pin offset before vertical segment
 F = lambda s=1.27: Font(height=s, width=s)
 
 
+
+def esc_text(s):
+    """KiCad s-expr string escape: raw newlines inside quotes are illegal
+    (KiCad 10: 'Unterminated delimited string'). Escape to literal \n."""
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
 def prop(name, val, at, hide=False, just=None):
     ef = Effects(font=F(), justify=Justify(horizontally=just) if just else Justify())
     if hide:
@@ -163,7 +169,7 @@ def main():
 
     # ---- text boxes ----
     for (nx, ny, nw, nh, text) in NOTES:
-        boxes.append(TextBox(text=text, position=Position(X=nx, Y=ny, angle=0),
+        boxes.append(TextBox(text=esc_text(text), position=Position(X=nx, Y=ny, angle=0),
                              size=Position(X=nw, Y=nh, angle=0),
                              stroke=Stroke(width=0.0, type="dash"), fill=Fill(type="none"),
                              effects=Effects(font=F(1.27), justify=Justify(horizontally="left", vertically="top")),

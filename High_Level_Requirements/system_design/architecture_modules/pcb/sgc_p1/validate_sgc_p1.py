@@ -270,6 +270,21 @@ def main():
     dnp = [p["ref"] for p in PARTS if p.get("dnp")]
     info(f"DNP placements: {', '.join(dnp) if dnp else 'none'}")
 
+    # --- strict KiCad string gate: raw newline inside a quoted string = KiCad parse error ---
+    for fname in (os.path.join(HERE, "sgc_p1.kicad_sym"), os.path.join(HERE, "sgc_p1.kicad_sch")):
+        s = open(fname, encoding="utf-8").read()
+        in_str = False
+        bad = 0
+        for i, ch in enumerate(s):
+            if ch == '"' and (i == 0 or s[i-1] != chr(92)):
+                in_str = not in_str
+            elif ch == chr(10) and in_str:
+                bad += 1
+        if bad:
+            ERRORS.append(f"{fname}: {bad} raw-newline-in-string defect(s) - KiCad parser rejects these")
+        else:
+            INFOS.append(f"{fname}: no raw newlines inside strings (KiCad-strict)")
+
     print("\n".join("  [ok] " + i for i in INFOS))
     if ERRORS:
         print("\n".join("  [FAIL] " + e for e in ERRORS))
