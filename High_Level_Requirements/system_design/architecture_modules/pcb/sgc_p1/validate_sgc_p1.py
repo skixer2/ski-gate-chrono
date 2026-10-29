@@ -85,6 +85,7 @@ def main():
     assert pro["meta"]["filename"] == "sgc_p1.kicad_pro"
     info("sgc_p1.kicad_pro: JSON parse OK")
 
+    STD_EXTERNAL = {"R", "C", "L", "GND"}   # KiCad standard libs (Device:*/power:GND)
     # ---- 2. lib consistency ----
     lib_names = {s.entryName for s in lib.symbols if s.unitId is None}
     sch_lib_names = {s.entryName for s in sch.libSymbols if s.unitId is None}
@@ -92,7 +93,7 @@ def main():
         name = sym.entryName
         if name not in sch_lib_names:
             err(f"{sym.properties[0].value}: lib_id '{name}' missing from schematic lib_symbols")
-        if name not in lib_names and not name.startswith("#"):
+        if name not in lib_names and name not in STD_EXTERNAL and not name.startswith("#"):
             err(f"{sym.properties[0].value}: lib_id '{name}' missing from sgc_p1.kicad_sym")
 
     # pin lookup per symbol (lib coords)

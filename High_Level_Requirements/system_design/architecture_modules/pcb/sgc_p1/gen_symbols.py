@@ -144,9 +144,11 @@ def main():
     symbols = []
     for name in ["ANNA-B402", "BQ25120A", "MAX17048", "IS31FL3194", "LDC1612", "BHI260AP",
                  "BMP390", "MX25R6435F", "MX25R1635F", "USB4085", "JST-BAT-3", "SWD-2X5",
-                 "R", "C", "L", "LED_RGB"]:
+                 "LED_RGB"]:   # R/C/L/GND -> KiCad standard libs (Device:*/power:GND):
         symbols.append(build_symbol(name, SYMBOL_PINS[name]))
     for pname, style in POWER_SYMBOLS.items():
+        if pname == "GND":
+            continue   # power:GND from KiCad standard lib
         symbols.append(build_power_symbol(pname, style))
 
     lib = SymbolLib(version="20231120", generator="sgc_gen", symbols=symbols)

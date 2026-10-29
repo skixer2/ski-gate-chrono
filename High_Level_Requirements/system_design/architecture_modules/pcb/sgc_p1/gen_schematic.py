@@ -26,6 +26,7 @@ from kiutils.items.schitems import (SchematicSymbol, GlobalLabel, NoConnect, Con
                                     HierarchicalSheetInstance)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+STD_NICK = {"R": "Device", "C": "Device", "L": "Device", "GND": "power"}
 from sgc_netlist import SYMBOL_PINS, PARTS, NOTES, POWER_SYMBOLS, POWER_ANCHORS, PASSIVE_LEN
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -75,6 +76,12 @@ def pin_sch_pos(part, pin_num, libsyms):
 def main():
     lib = SymbolLib.from_file(os.path.join(HERE, "sgc_p1.kicad_sym"))
     libsyms = {s.entryName: s for s in lib.symbols if s.unitId is None}
+    # merge KiCad-standard defs (Device:R/C/L, power:GND) for pin geometry
+    _b = open(os.path.join(HERE, "std_symbols.txt"), encoding="utf-8").read()
+    _wrap = "(kicad_symbol_lib (version 20231120) (generator kicad_symbol_editor)" + chr(10) + _b + chr(10) + ")" + chr(10)
+    open("/tmp/_std_lib.kicad_sym", "w").write(_wrap)
+    _stdlib = SymbolLib.from_file("/tmp/_std_lib.kicad_sym")
+    libsyms.update({s.entryName: s for s in _stdlib.symbols if s.unitId is None})
 
     sch = Schematic(version="20231120", generator="sgc_gen", paper=PageSettings(paperSize="A3"))
     sch.uuid = str(uuid.uuid4())
@@ -84,6 +91,14 @@ def main():
         date="2026-10-29", revision="A-WIP", company="Ski Gate Chrono",
         comments={1: "from sgc_schematic_spec.md v0.1 (92b352e)", 2: "generated - not ERC-reviewed"})
     sch.libSymbols = list(lib.symbols)
+    # KiCad standard symbols (Device:R/C/L, power:GND) - extracted from the
+    # local KiCad 10 install via extract_std_symbols.py; embedded so the
+    # schematic is self-contained even without the global lib table.
+    _body = open(os.path.join(HERE, "std_symbols.txt"), encoding="utf-8").read()
+    open("/tmp/_std_lib.kicad_sym", "w").write(
+        '(kicad_symbol_lib (version 20231120) (generator kicad_symbol_editor)\n' + _body + '\n)\n')
+    _stdlib = SymbolLib.from_file("/tmp/_std_lib.kicad_sym")
+    sch.libSymbols += list(_stdlib.symbols)
 
     wires, labels, ncs, symbols, boxes = [], [], [], [], []
 
@@ -103,7 +118,7 @@ def main():
         nonlocal pwr_n
         pwr_n += 1
         ref = f"#PWR{pwr_n:02d}"
-        s = SchematicSymbol(libraryNickname=LIB_NICK, entryName=net, position=Position(X=at[0], Y=at[1], angle=0),
+        s = SchematicSymbol(libraryNickname=STD_NICK.get(net, LIB_NICK), entryName=net, position=Position(X=at[0], Y=at[1], angle=0),
                             unit=1, inBom=True, onBoard=True, dnp=False, uuid=str(uuid.uuid4()))
         s.properties = [prop("Reference", ref, (at[0], at[1]), hide=True),
                         prop("Value", net, (at[0], at[1] - 3.81)),
@@ -123,7 +138,7 @@ def main():
         spec = SYMBOL_PINS[part["sym"]]
         hw, top, bot = body_extents(part["sym"])
         x, y = part["x"], part["y"]
-        s = SchematicSymbol(libraryNickname=LIB_NICK, entryName=part["sym"], position=Position(X=x, Y=y, angle=0),
+        s = SchematicSymbol(libraryNickname=STD_NICK.get(part["sym"], LIB_NICK), entryName=part["sym"], position=Position(X=x, Y=y, angle=0),
                             unit=1, inBom=True, onBoard=True, dnp=part.get("dnp", False),
                             uuid=str(uuid.uuid4()))
         s.properties = [
@@ -230,8 +245,11 @@ def prefix_lib_symbols():
     for n in [sym.entryName for sym in lib.symbols]:
         esc = _re.escape(n)
         t = _re.sub(r'(\(symbol ")' + esc + r'(")', r'\1sgc_p1:' + n + r'\2', t)
+    for _n, _nick in STD_NICK.items():
+        _esc = _re.escape(_n)
+        t = _re.sub(r'(\(symbol ")' + _esc + r'(")', r'\1' + _nick + ':' + _n + r'\2', t)
     open(path, "w", encoding="utf-8").write(t)
-    print("lib_symbols keys prefixed (21 symbols)")
+    print("lib_symbols keys prefixed (project + standard)")
 
 
 if __name__ == "__main__":
