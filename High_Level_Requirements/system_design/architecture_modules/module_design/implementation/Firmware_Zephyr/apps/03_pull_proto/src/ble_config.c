@@ -5,6 +5,7 @@
  * (fetched 2026-10-09, recorded in the ledger).
  */
 #include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/drivers/i2c.h>
 #include <string.h>
@@ -362,6 +363,23 @@ void ble_config_start(void)
 	cfg_load();
 
 	if (bqi2c) {
+		/* 0.23.8 — ROOT CAUSE 2 of the battery saga (st=0x03 B1=1:
+		 * CD_STAT 'CD high, IC disabled'): the BQ25120A CD pin
+		 * (host charge-disable; Nicla wire = nRF P0.25 per ABX00050)
+		 * floats high — the charger has been HARDWARE-DISABLED since
+		 * the Zephyr port began, at every current setting. ArduinoFW
+		 * drove it low ('CD pin port pending' comment, v0.21.4, was
+		 * this exact gap). P0.25 unused by our overlay (verified
+		 * 2026-10-29); Zephyr port-pin number = physical P0.xx. */
+		static const struct device *gpio0 =
+			DEVICE_DT_GET(DT_NODELABEL(gpio0));
+
+		if (device_is_ready(gpio0) &&
+		    gpio_pin_configure(gpio0, 25,
+				       GPIO_OUTPUT_LOW) == 0) {
+			printk("batt: BQ CD (P0.25) driven low - charger ON\n");
+		}
+
 		/* 0.23.7 (JP cell 2026-10-29: Renata ICP622540PMT, 550 mAh
 		 * Li-ion, NTC third wire): the charger ran at the untouched
 		 * factory default 10 mA since day one — "charging" was
