@@ -14,8 +14,9 @@ src = open(SCH, encoding="utf-8").read()
 out = {"symbols": {}, "text_boxes": [], "labels": {}}
 
 # placed symbol instances: (symbol (lib_id "...") (at X Y A) ...
-for m in re.finditer(r'\(symbol \(lib_id "([^"]+)"\)\s*\(at ([-\d.]+) ([-\d.]+) ([-\d.]+)\)', src):
-    lib_id, x, y, a = m.group(1), float(m.group(2)), float(m.group(3)), float(m.group(4))
+for m in re.finditer(r'\(symbol \(lib_id "([^"]+)"\)[^()]{0,80}?\(at ([-\d.]+) ([-\d.]+)(?: ([-\d.]+))?\)', src):
+    lib_id, x, y = m.group(1), float(m.group(2)), float(m.group(3))
+    a = float(m.group(4)) if m.group(4) else 0.0
     # find the Reference property value following this instance (search forward, bounded)
     tail = src[m.end():m.end() + 2000]
     rm = re.search(r'\(property "Reference" "([^"]+)"', tail)
