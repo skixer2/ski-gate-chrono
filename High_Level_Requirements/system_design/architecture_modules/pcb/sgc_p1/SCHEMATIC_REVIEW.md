@@ -22,3 +22,8 @@ Effect if unfixed: dead decoupler — no return path. ERC may or may not flag it
 
 ## Release gate
 After the C11.2 fix: 225/225 match → **sound to release for layout.**
+
+## Fix verified — 2026-10-31 17:26 UTC
+JP's commit "C11 connection corrected" (ed55b12/4ab9fdb): validator now reports
+**VALIDATION PASSED — all 271/271 pin connections green** (syntax + geometry + netlist + census).
+Schematic is release-ready; awaiting JP's "rev A" word for the layout-baseline snapshot.

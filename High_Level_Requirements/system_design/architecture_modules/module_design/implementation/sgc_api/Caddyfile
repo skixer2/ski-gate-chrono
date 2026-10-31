@@ -9,3 +9,7 @@ sgc-api.vytsolutions.com {
 	}
 	reverse_proxy sgc-api:8000
 }
+
+openclaw.vytsolutions.com {
+reverse_proxy openclaw-openclaw-gateway-1:18789
+}
