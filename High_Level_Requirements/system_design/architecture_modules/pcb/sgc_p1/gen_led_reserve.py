@@ -276,12 +276,17 @@ def emit_instance(ref, sym, x, y, nets, val, fp):
     e += '\t\t(instances\n\t\t\t(project "sgc_p1"\n\t\t\t\t(path "/%s"\n\t\t\t\t\t(reference "%s")\n\t\t\t\t\t(unit 1)\n\t\t\t\t)\n\t\t\t)\n\t\t)\n\t)\n' % (PROJ, ref)
     return e
 
+import os
+STAGE = int(os.environ.get('STAGE', '4'))
 objects = ''
-for a, b in wires: objects += emit_wire(a, b)
-for pt in ncs: objects += emit_nc(pt)
-for net, pt in labels: objects += emit_label(net, pt)
-for sym, pt in powers: objects += emit_pwr(sym, pt)
-for ref, sym, x, y, nets, val, fp in PLACE: objects += emit_instance(ref, sym, x, y, nets, val, fp)
+if STAGE >= 2:
+    for a, b in wires: objects += emit_wire(a, b)
+    for pt in ncs: objects += emit_nc(pt)
+    for net, pt in labels: objects += emit_label(net, pt)
+if STAGE >= 3:
+    for sym, pt in powers: objects += emit_pwr(sym, pt)
+if STAGE >= 4:
+    for ref, sym, x, y, nets, val, fp in PLACE: objects += emit_instance(ref, sym, x, y, nets, val, fp)
 
 anchor = '\t(sheet_instances'
 i = s.find(anchor)
