@@ -428,7 +428,19 @@
 ///          absent = clean '—' placeholder, no error surfaced);
 ///          cleared on every disconnect/teardown path that clears the
 ///          other connection state.
-const String APP_VERSION = '1.75.0';
+///   1.76 - HONEST BATTERY WORDS (JP-agreed 2026-10-29 'app 1.76: honest
+///          coarse display'; battery saga closed 2026-10-31 at pct=100
+///          with proper termination). The ABC5 'percent' is % of the TI
+///          BQ25120A 4.2 V regulation voltage (BATT_MON), NOT SoC — per
+///          TI's own table (VBATREG 4.2 V row): FULL >98%, 94/96,
+///          90/92, 86/88, EMPTY <84%. The card's Battery row now leads
+///          with coarse words, raw number demoted to small/grey '(NN%)'
+///          secondary: >=97 Full, >=88 Good, >=61 Low, else Charge me;
+///          0x00 (FW 0.23.3 below-encoder-floor sentinel) = 'Charge me
+///          — below gauge range' regardless of the charging bit; 0x7F
+///          = '— unknown' unchanged. ⚡ suffix kept when the charging
+///          bit is set. Single render site (connected card).
+const String APP_VERSION = '1.76.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

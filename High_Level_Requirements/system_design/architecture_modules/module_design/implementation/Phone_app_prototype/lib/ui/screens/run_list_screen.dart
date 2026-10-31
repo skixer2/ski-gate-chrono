@@ -1494,9 +1494,8 @@ class _RunListScreenState extends State<RunListScreen>
                     _runCount?.toString() ?? '? (read failed)'),
                 _infoRow('Downloaded (phone)', _localRuns.length.toString()),
                 _infoRow('Not Downloaded', _missingRuns.length.toString()),
-                _infoRow('Battery', _batteryPct == null
-                    ? '— (unknown)'
-                    : '$_batteryPct%${_batteryCharging ? ' · charging ⚡' : ''}'),
+                // 1.76: honest coarse battery words (see _batteryInfoRow).
+                _batteryInfoRow(),
                 _infoRow('BLE MTU', _ble.isConnected ? '${_ble.mtu} bytes' : '— (disconnected)'),
                 const SizedBox(height: 8),
                 // 1.64 (JP 2026-10-23): manual disconnect — the connected
@@ -2523,6 +2522,58 @@ class _RunListScreenState extends State<RunListScreen>
       return;
     }
     await _afterParamWrite('discipline');
+  }
+
+  /// 1.76 (JP-agreed 2026-10-29 'app 1.76: honest coarse display'):
+  /// map the raw ABC5 byte (already decoded into _batteryPct) to honest
+  /// coarse words. The 'percent' is % of the TI BQ25120A 4.2 V regulation
+  /// voltage (BATT_MON), NOT a state-of-charge gauge — TI's own table
+  /// bands it FULL >98% / 90–96% / 86–88% / EMPTY <84% of VBATREG, so
+  /// the raw number is shown small+grey in parens, the WORD is primary.
+  /// Decode recap: bits 6-0 = pct band, bit 7 = charging; 0x7F =
+  /// unknown (read failure / no battery info) → _batteryPct null;
+  /// 0x00 = below the encoder's lowest resolvable band (deeply
+  /// discharged) → FW 0.23.3 sentinel, surfaces as 'Charge me'.
+  (String, String) _batteryWords(int? pct) {
+    if (pct == null) return ('—', 'unknown');                // ABC5 0x7F
+    if (pct == 0) return ('Charge me', 'below gauge range'); // sentinel
+    if (pct >= 97) return ('Full', '($pct%)');
+    if (pct >= 88) return ('Good', '($pct%)');
+    if (pct >= 61) return ('Low', '($pct%)');
+    return ('Charge me', '($pct%)');
+  }
+
+  /// Battery row: same layout as [_infoRow] (160 label gutter, 4px
+  /// vertical) but mixed-style value — word primary (w600), '(NN%)'
+  /// secondary small/grey, ⚡ suffix when the charging bit is set.
+  /// Exception: the 0x00 sentinel carries no meaningful charging bit
+  /// (a below-gauge voltage is 'Charge me' regardless of the bolt).
+  Widget _batteryInfoRow() {
+    final (label, sub) = _batteryWords(_batteryPct);
+    final showBolt =
+        _batteryCharging && _batteryPct != null && _batteryPct! > 0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          const SizedBox(
+              width: 160,
+              child: Text('Battery', style: TextStyle(color: Colors.grey))),
+          Expanded(
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: label,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                TextSpan(text: '  $sub',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.grey.shade600)),
+                if (showBolt) const TextSpan(text: ' ⚡'),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _infoRow(String label, String value) {
