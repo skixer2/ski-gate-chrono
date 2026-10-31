@@ -33,6 +33,7 @@
 #include "ble_lifecycle.h"
 #include "pull_proto.h"
 #include "power_state.h"
+#include "ota_gate.h"
 
 #include "app_version.h"
 
@@ -46,7 +47,8 @@ int main(void)
 	 * then peripherals, then BT last (callbacks can fire from
 	 * bt_enable onward — everything they touch must exist). */
 	store_init();
-	ble_config_start();   /* v0.18.0: config chars + battery poller */
+	ble_config_start();
+	ota_gate_init();   /* 0.24.0: SMP only in SLEEP (REQ-OTA) */   /* v0.18.0: config chars + battery poller */
 	recorder_init();
 	if (bhy2_bringup()) {
 		sensor_prod_start();

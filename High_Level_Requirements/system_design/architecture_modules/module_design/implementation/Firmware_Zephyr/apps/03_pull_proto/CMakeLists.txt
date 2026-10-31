@@ -13,6 +13,7 @@ target_sources(app PRIVATE
   src/ble_config.c
   src/recorder.c
   src/power_state.c
+  src/ota_gate.c
   src/sensor_prod.c
   src/sensor_synth.c
   src/bitpacker.c

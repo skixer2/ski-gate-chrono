@@ -1,0 +1,44 @@
+@echo off
+rem SGC Zephyr build: zbuild.bat <app-dir> <board> <build-dir> [overlay]
+rem Requires: nRF Connect SDK (default C:\ncs) installed via VS Code Toolchain Manager.
+rem Override SDK root with NCS_DIR env var if installed elsewhere.
+set "NCSROOT=%NCS_DIR%"
+if "%NCSROOT%"=="" set "NCSROOT=C:\ncs"
+rem Locate the west workspace (the SDK version dir containing .west)
+set "WS="
+rem 2026-10-23: FIRST match wins (v3.4.0) — last-match picked a broken
+rem v3.4.1 workspace ("unknown command build": no extension commands).
+for /d %%D in ("%NCSROOT%\*") do if not defined WS if exist "%%D\.west" set "WS=%%D"
+if "%WS%"=="" (
+echo [zbuild] ERROR: no west workspace ^(.west^) found under %NCSROOT%
+goto end
+)
+rem Locate the toolchain env (any toolchains\* dir with environment.json)
+set "TC="
+for /d %%D in ("%NCSROOT%\toolchains\*") do if exist "%%D\environment.json" set "TC=%%D"
+if "%TC%"=="" (
+echo [zbuild] ERROR: no NCS toolchain found under %NCSROOT%\toolchains
+goto end
+)
+set "PATH=%TC%\mingw64\bin;%TC%\bin;%TC%\opt\bin;%TC%\opt\bin\Scripts;%TC%\nrfutil\bin;%TC%\opt\zephyr-sdk\gnu\arm-zephyr-eabi\bin;C:\Windows\System32;C:\Windows"
+set "ZEPHYR_TOOLCHAIN_VARIANT=zephyr/gnu"
+set "ZEPHYR_SDK_INSTALL_DIR=%TC%\opt\zephyr-sdk"
+set "PYTHONPATH=%TC%\opt\bin;%TC%\opt\bin\Lib;%TC%\opt\bin\Lib\site-packages"
+set "NRFUTIL_HOME=%TC%\nrfutil\home"
+set "SRC=%~f1"
+set "BRD=%2"
+set "BLD=%~f3"
+rem 2026-10-23: SYSTEM-scheduled builds hit git dubious-ownership on the
+rem NCS workspace — inject safe.directory via env-var config (no file writes).
+set GIT_CONFIG_COUNT=1
+set GIT_CONFIG_KEY_0=safe.directory
+set GIT_CONFIG_VALUE_0=*
+rem Run west FROM the west workspace (apps may live anywhere, e.g. the repo)
+cd /d %WS%
+if exist "%BLD%" rmdir /s /q "%BLD%"
+if "%4"=="" goto plain
+west -z "%WS%\zephyr" build --sysbuild -b %BRD% -d "%BLD%" "%SRC%" -- -DEXTRA_DTC_OVERLAY=%4
+goto end
+:plain
+west -z "%WS%\zephyr" build --sysbuild -b %BRD% -d "%BLD%" "%SRC%"
+:end
