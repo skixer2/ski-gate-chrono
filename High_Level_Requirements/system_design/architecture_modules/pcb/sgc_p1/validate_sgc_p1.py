@@ -247,7 +247,7 @@ def main():
     # datasheet pin counts
     expected_pins = {"ANNA-B402": 56, "BQ25120A": 25, "MAX17048": 9, "IS31FL3194": 8,
                      "LDC1612": 12, "BHI260AP": 44, "BMP390": 10, "MX25R6435F": 8,
-                     "MX25R1635F": 8, "USB4085": 20, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "JST-BAT-3": 3, "SWD-2X5": 10}
+                     "MX25R1635F": 8, "USB4085": 20, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "JST-BAT-3": 3, "SWD-2X5": 10}
     for name, n in expected_pins.items():
         got = len(SYMBOL_PINS[name]["pins"])
         if got != n:

@@ -93,9 +93,9 @@ def lib_symbol_text(name, d, embedded):
         L[-1] += ' (in_bom yes) (on_board yes)'
     props = [('Reference', d['prefix'], '0 ' + f(d['hw'] + 1.8), False),
              ('Value', d['value'], '0 -' + f(d['hw'] + 2.2), False),
-             ('Footprint', d['fp'], '0 0 0', True),
-             ('Datasheet', d['ds'], '0 0 0', True),
-             ('Description', d['desc'], '0 0 0', True)]
+             ('Footprint', d['fp'], '0 0', True),
+             ('Datasheet', d['ds'], '0 0', True),
+             ('Description', d['desc'], '0 0', True)]
     for k, v, at, hide in props:
         L.append(t*2 + '(property "%s" "%s" (at %s 0)' % (k, v, at))
         L.append(t*3 + '(show_name no)')
@@ -146,9 +146,9 @@ def power_5v_text(embedded):
               t*2 + '(on_board yes)', t*2 + '(in_pos_files yes)', t*2 + '(duplicate_pin_numbers_are_jumpers no)']
     else:
         L[-1] += ' (power global) (in_bom yes) (on_board yes)'
-    for k, v, at, hide in [('Reference', '#PWR', '0 0 0', True), ('Value', '+5V', '0 3.81', False),
-                           ('Footprint', '', '0 0 0', True), ('Datasheet', '', '0 0 0', True),
-                           ('Description', "Power symbol creates a global label with name '+5V'", '0 0 0', True)]:
+    for k, v, at, hide in [('Reference', '#PWR', '0 0', True), ('Value', '+5V', '0 3.81', False),
+                           ('Footprint', '', '0 0', True), ('Datasheet', '', '0 0', True),
+                           ('Description', "Power symbol creates a global label with name '+5V'", '0 0', True)]:
         L.append(t*2 + '(property "%s" "%s" (at %s 0)' % (k, v, at))
         L.append(t*3 + '(show_name no)'); L.append(t*3 + '(do_not_autoplace no)')
         if hide: L.append(t*3 + '(hide yes)')
