@@ -2709,8 +2709,8 @@
     (uuid ff067e0a-857c-472a-919c-d9469784e356)
   )
 
-  (text_box "U6 LDC1612 = DNP v2 footprint (unpopulated v1, spec 1/4.6). Coil = 14 mm spiral on CH0 (footprint retained, v2)."
-    (at 196 240 0) (size 52 11.46)
+  (text_box "U6 = PROXIMITY (DNP v1): LDC1612 inductive - gate-side detection (v2).\nU6 LDC1612 = DNP v2 footprint (unpopulated v1, spec 1/4.6). Coil = 14 mm spiral on CH0 (footprint retained, v2)."
+    (at 196 240 0) (size 52 14.46)
     (stroke (width 0) (type dash))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
@@ -2730,8 +2730,8 @@
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid 3a146414-2824-4944-9b02-0220c7232714)
   )
-  (text_box "FLASH: U7 = RawRunStore 8 MB (flash layout per hardware doc). U2 = BHI FW flash (Arduino_BHY2 upload) -\nOD-5: ADD U2 to BOM (Nicla parity, populated; missing from BOM v4.3). WP#/HOLD# NC -> internal PU (Macronix Note 1).\nU7/U2 decap 100n = Nicla parity (TBD-JP keep, spec 6)."
-    (at 358.4 197.71 0) (size 48 22)
+  (text_box "U7 = RUN DATA flash 8 MB (RawRunStore). U2 = BHI FW flash 2 MB. Both QSPI to U1.\nFLASH: U7 = RawRunStore 8 MB (flash layout per hardware doc). U2 = BHI FW flash (Arduino_BHY2 upload) -\nOD-5: ADD U2 to BOM (Nicla parity, populated; missing from BOM v4.3). WP#/HOLD# NC -> internal PU (Macronix Note 1).\nU7/U2 decap 100n = Nicla parity (TBD-JP keep, spec 6)."
+    (at 358.4 197.71 0) (size 48 25.0)
     (stroke (width 0) (type dash))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
@@ -2744,8 +2744,8 @@
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid 683a3a71-44c1-4d91-8506-a922f9b1ea2e)
   )
-  (text_box "CHARGER (spec 4.1/4.7): ISET 1.82k -> ICHG ~110 mA; ILIM 1k -> 200 mA; IPRETERM 4.99k -> 10%; VBATREG default 4.2 V.\nOD-8: /CD -> P0.08 (B402 pin 50, moved from P0.25 - P0.25 does not exist) + 100k PU to V_PMID (ship-mode capable).\nBQ INT -> 100k PU +1V8, NC on MCU (read FAULTS reg, AD-029); /PG TP only. /MR, RESET NC (Nicla P0.18->MR net dropped, C3).\nLS/LDO unused (C4): LSCTRL->GND, VINLS->SYS, LS/LDO 1uF. TS: R_HI (VBUS->TS) + R_LO (TS->GND) + pack NTC - values TBD-JP (OD-4).\ni2c0 pull-ups 100k to +1V8 (Nicla parity; BQ ds suggests 10k - spec chose Nicla parity). USB-IF inrush note OD-14."
-    (at 15 104 0) (size 132 23)
+  (text_box "U3 = POWER: BQ25120A charger PMIC - LiPo charge mgmt (~110 mA), ship mode, button wake.\nCHARGER (spec 4.1/4.7): ISET 1.82k -> ICHG ~110 mA; ILIM 1k -> 200 mA; IPRETERM 4.99k -> 10%; VBATREG default 4.2 V.\nOD-8: /CD -> P0.08 (B402 pin 50, moved from P0.25 - P0.25 does not exist) + 100k PU to V_PMID (ship-mode capable).\nBQ INT -> 100k PU +1V8, NC on MCU (read FAULTS reg, AD-029); /PG TP only. /MR, RESET NC (Nicla P0.18->MR net dropped, C3).\nLS/LDO unused (C4): LSCTRL->GND, VINLS->SYS, LS/LDO 1uF. TS: R_HI (VBUS->TS) + R_LO (TS->GND) + pack NTC - values TBD-JP (OD-4).\ni2c0 pull-ups 100k to +1V8 (Nicla parity; BQ ds suggests 10k - spec chose Nicla parity). USB-IF inrush note OD-14."
+    (at 15 104 0) (size 132 26.0)
     (stroke (width 0) (type dash))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
@@ -2779,22 +2779,22 @@
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid 8da95128-a23b-4cdc-bffc-ede8ccd1f3c6)
   )
-  (text_box "BHI CLUSTER (spec 4.4): BMP390L/BMM150/BME688 are sub-sensors on BHI M1 master port - exact M1/M2/M3 wiring = COPY\nABX00050 (Nicla) at capture (TBD-JP). BME688 DNP per OD-6 (footprint retained). H-IF SPI 16 MHz (app.overlay) on\nP0.03-05 despite Table 4 low-freq remark - risk R1: drop to 8/4 MHz if RF regressions. RESETN -> P0.13 (moved, C3/OD-7).\nHOSTBOOT(3) NC v1 (TBD-JP vs Nicla); VREG(6) NC v1 (decoupling per Bosch ds - TBD-JP, not in spec 6); RESV1-3 NC (do not connect)."
-    (at 282 100 0) (size 122 16.84)
+  (text_box "U9 = BARO: BMP390 - altitude/descent pressure sensor (BHI M1 sub-sensor).\nBHI CLUSTER (spec 4.4): BMP390L/BMM150/BME688 are sub-sensors on BHI M1 master port - exact M1/M2/M3 wiring = COPY\nABX00050 (Nicla) at capture (TBD-JP). BME688 DNP per OD-6 (footprint retained). H-IF SPI 16 MHz (app.overlay) on\nP0.03-05 despite Table 4 low-freq remark - risk R1: drop to 8/4 MHz if RF regressions. RESETN -> P0.13 (moved, C3/OD-7).\nHOSTBOOT(3) NC v1 (TBD-JP vs Nicla); VREG(6) NC v1 (decoupling per Bosch ds - TBD-JP, not in spec 6); RESV1-3 NC (do not connect)."
+    (at 282 100 0) (size 122 19.84)
     (stroke (width 0) (type dash))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid ac3e005d-25c2-42fc-974d-f2a443ba9d51)
   )
-  (text_box "GAUGE (spec 4.2, AD-029): addr 0x36 fixed; VDD(3)=VBAT sense +0.1uF; CELL(2) NC->GND; CTG/QSTRT->GND.\nALRT(5) OD -> 10k PU +1V8 -> P0.21 (B402 pin 26). OD-12: verify MAX17048 VIH vs 1.8 V pull-ups at review."
-    (at 27.94 177.8 0) (size 44 16)
+  (text_box "U4 = FUEL GAUGE: MAX17048 - LiPo state-of-charge % (i2c0 0x36).\nGAUGE (spec 4.2, AD-029): addr 0x36 fixed; VDD(3)=VBAT sense +0.1uF; CELL(2) NC->GND; CTG/QSTRT->GND.\nALRT(5) OD -> 10k PU +1V8 -> P0.21 (B402 pin 26). OD-12: verify MAX17048 VIH vs 1.8 V pull-ups at review."
+    (at 27.94 177.8 0) (size 44 19.0)
     (stroke (width 0) (type dash))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid b7d8ab3c-8e07-4304-ae3b-72f201fccecb)
   )
-  (text_box "LED (spec 4.3): U5 VCC/SDB -> V_PMID (OD-17: confirm SDB net on ABX00050 at capture); decap value TBD-JP.\nIS31 OUT1-3 are current sinks - verify SMLP34RGB2W3 common polarity at capture (spec text says anodes to OUTs)."
-    (at 352 148 0) (size 48 16)
+  (text_box "U5 = LED DRIVER: IS31FL3194 - RGB status LED (i2c0 0x53).\nLED (spec 4.3): U5 VCC/SDB -> V_PMID (OD-17: confirm SDB net on ABX00050 at capture); decap value TBD-JP.\nIS31 OUT1-3 are current sinks - verify SMLP34RGB2W3 common polarity at capture (spec text says anodes to OUTs)."
+    (at 352 148 0) (size 48 19.0)
     (stroke (width 0) (type dash))
     (fill (type none))
     (effects (font (size 1.27 1.27)) (justify left top))
