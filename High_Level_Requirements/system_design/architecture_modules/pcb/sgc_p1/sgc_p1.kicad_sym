@@ -1344,4 +1344,566 @@
       (pin power_in line (at 0 0 90) (length 0.0) (name "~") (number "1"))
     )
   )
+  (symbol "MT3608" (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at 0 9.42 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "MT3608" (at 0 -9.82 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-6" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.jlcpcb.com/partdetail/Aerosemi-MT3608_C84817.html" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Description" "Aerosemi MT3608 boost 2.0-24V in, 1.2MHz, EN shutdown ~2uA (pin6 NC not drawn). V2 LED reserve, DNP v1" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (symbol "MT3608_0_1"
+      (rectangle
+        (start -7.62 7.62)
+        (end 7.62 -7.62)
+        (stroke
+          (width 0.254)
+          (type default)
+        )
+        (fill
+          (type background)
+        )
+      )
+    )
+    (symbol "MT3608_1_1"
+      (pin power_in line
+        (at -10.16 7.62 0)
+        (length 2.54)
+        (name "IN"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "5"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin input line
+        (at -10.16 5.08 0)
+        (length 2.54)
+        (name "EN"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "4"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin input line
+        (at -10.16 2.54 0)
+        (length 2.54)
+        (name "FB"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "3"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin output line
+        (at 10.16 7.62 180)
+        (length 2.54)
+        (name "SW"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin power_in line
+        (at 0 -10.16 270)
+        (length 2.54)
+        (name "GND"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+    )
+  )
+  (symbol "TXS0102" (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at 0 9.42 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "TXS0102 (OD-9 TBD)" (at 0 -9.82 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" "Package_SO:VSSOP-8_2.3x2mm_P0.5mm" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.ti.com/lit/ds/symlink/txs0102.pdf" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Description" "TI TXS0102-class dual-supply translator VCCA +1V8 / VCCB +5V for SK6812 DIN level. V2 LED reserve, DNP v1" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (symbol "TXS0102_0_1"
+      (rectangle
+        (start -7.62 7.62)
+        (end 7.62 -7.62)
+        (stroke
+          (width 0.254)
+          (type default)
+        )
+        (fill
+          (type background)
+        )
+      )
+    )
+    (symbol "TXS0102_1_1"
+      (pin power_in line
+        (at -10.16 7.62 0)
+        (length 2.54)
+        (name "VCCA"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin bidirectional line
+        (at -10.16 5.08 0)
+        (length 2.54)
+        (name "A1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin bidirectional line
+        (at -10.16 2.54 0)
+        (length 2.54)
+        (name "A2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "3"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin input line
+        (at -10.16 0 0)
+        (length 2.54)
+        (name "OE"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "7"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin power_in line
+        (at 10.16 7.62 180)
+        (length 2.54)
+        (name "VCCB"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "8"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin bidirectional line
+        (at 10.16 5.08 180)
+        (length 2.54)
+        (name "B1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "6"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin bidirectional line
+        (at 10.16 2.54 180)
+        (length 2.54)
+        (name "B2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "5"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin power_in line
+        (at 0 -10.16 270)
+        (length 2.54)
+        (name "GND"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "4"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+    )
+  )
+  (symbol "SK6812" (in_bom yes) (on_board yes)
+    (property "Reference" "D" (at 0 9.42 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "SK6812MINI" (at 0 -9.82 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" "LED_SMD:LED_SK6812MINI_PLCC4_3.5x3.5mm_P1.75mm" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.lcsc.com/product-detail/light-emitting-diodes-LED_OPSCO-SK6812MINI_C114586.html" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Description" "SK6812-mini RGB LED, 5V, 4-wire chain (DIN<-prev DOUT). x5 strip on VDD_LED. V2 LED reserve, DNP v1" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (symbol "SK6812_0_1"
+      (rectangle
+        (start -7.62 7.62)
+        (end 7.62 -7.62)
+        (stroke
+          (width 0.254)
+          (type default)
+        )
+        (fill
+          (type background)
+        )
+      )
+    )
+    (symbol "SK6812_1_1"
+      (pin power_in line
+        (at 0 10.16 90)
+        (length 2.54)
+        (name "VDD"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin input line
+        (at -10.16 5.08 0)
+        (length 2.54)
+        (name "DIN"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin power_in line
+        (at 0 -10.16 270)
+        (length 2.54)
+        (name "GND"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "3"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin output line
+        (at 10.16 5.08 180)
+        (length 2.54)
+        (name "DOUT"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "4"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+    )
+  )
+  (symbol "+5V" (power global) (in_bom yes) (on_board yes)
+    (property "Reference" "#PWR" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "+5V" (at 0 3.81 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" "" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Datasheet" "" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Description" "Power symbol creates a global label with name '+5V'" (at 0 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (symbol "+5V_0_1"
+      (polyline
+        (pts
+          (xy -1.27 2.54) (xy 1.27 2.54)
+        )
+        (stroke
+          (width 0)
+          (type default)
+        )
+        (fill
+          (type none)
+        )
+      )
+      (polyline
+        (pts
+          (xy 0 0) (xy 0 2.54)
+        )
+        (stroke
+          (width 0)
+          (type default)
+        )
+        (fill
+          (type none)
+        )
+      )
+    )
+    (symbol "+5V_1_1"
+      (pin power_in line
+        (at 0 0 90)
+        (length 0)
+        (name ""
+          (effects
+            (font
+              (size 1.27 1.27)
+            )
+          ))
+        (number "1"
+          (effects
+            (font
+              (size 1.27 1.27)
+            )
+          ))
+      )
+    )
+  )
 )

@@ -27,6 +27,38 @@ P = 2.54  # pin pitch (mm)
 # Order within each side = top-to-bottom placement order.
 # ---------------------------------------------------------------------------
 SYMBOL_PINS = {
+    "MT3608": dict(
+        prefix="U", value="MT3608", fp="Package_TO_SOT_SMD:SOT-23-6",
+        ds="https://www.jlcpcb.com/partdetail/Aerosemi-MT3608_C84817.html", desc="Aerosemi MT3608 boost 2.0-24V in, 1.2MHz, EN shutdown ~2uA (pin6 NC not drawn). V2 LED reserve, DNP v1", hw=7.62,
+        pins=[
+            ("5",  "IN","power_in", "L"),
+            ("4",  "EN","input", "L"),
+            ("3",  "FB","input", "L"),
+            ("1",  "SW","output", "R"),
+            ("2",  "GND","power_in", "B"),
+        ]),
+    "TXS0102": dict(
+        prefix="U", value="TXS0102 (OD-9 TBD)", fp="Package_SO:VSSOP-8_2.3x2mm_P0.5mm",
+        ds="https://www.ti.com/lit/ds/symlink/txs0102.pdf", desc="TI TXS0102-class dual-supply translator VCCA +1V8 / VCCB +5V for SK6812 DIN level. V2 LED reserve, DNP v1", hw=7.62,
+        pins=[
+            ("1",  "VCCA","power_in", "L"),
+            ("2",  "A1","bidirectional", "L"),
+            ("3",  "A2","bidirectional", "L"),
+            ("7",  "OE","input", "L"),
+            ("8",  "VCCB","power_in", "R"),
+            ("6",  "B1","bidirectional", "R"),
+            ("5",  "B2","bidirectional", "R"),
+            ("4",  "GND","power_in", "B"),
+        ]),
+    "SK6812": dict(
+        prefix="D", value="SK6812MINI", fp="LED_SMD:LED_SK6812MINI_PLCC4_3.5x3.5mm_P1.75mm",
+        ds="https://www.lcsc.com/product-detail/light-emitting-diodes-LED_OPSCO-SK6812MINI_C114586.html", desc="SK6812-mini RGB LED, 5V, 4-wire chain (DIN<-prev DOUT). x5 strip on VDD_LED. V2 LED reserve, DNP v1", hw=7.62,
+        pins=[
+            ("1",  "VDD","power_in", "T"),
+            ("2",  "DIN","input", "L"),
+            ("3",  "GND","power_in", "B"),
+            ("4",  "DOUT","output", "R"),
+        ]),
     # B402 Table 4, complete incl. pins 4/7/8 (GND) omitted from the spec table.
     # Left column = pins 1..28, right column = pins 29..56 (numeric order).
     "ANNA-B402": dict(
@@ -375,6 +407,7 @@ POWER_SYMBOLS = {
     "VBAT":     "rail",
     "V_PMID":   "rail",
     "VBUS_USB": "rail",
+    "+5V":      "rail",
 }
 
 # ---------------------------------------------------------------------------
@@ -386,6 +419,21 @@ POWER_SYMBOLS = {
 E = ""  # empty footprint (custom, see README)
 
 PARTS = [
+
+    # --- V2 LED STRIP RESERVE (JP 2026-10-31 b): all DNP v1 ---
+    dict(ref="U11", sym="TXS0102", x=312, y=248, dnp=True, nets={"1": "+1V8", "2": "SK6812_DATA", "3": "NC", "4": "GND", "5": "NC", "6": "LED_DIN_5V", "7": "+1V8", "8": "+5V"}),
+    dict(ref="U10", sym="MT3608", x=352, y=248, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
+    dict(ref="L2", sym="L", x=384, y=248, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "+5V"}),
+    dict(ref="R11", sym="R", x=304, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
+    dict(ref="R12", sym="R", x=320, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
+    dict(ref="C17", sym="C", x=336, y=266, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
+    dict(ref="C18", sym="C", x=352, y=266, fp="Capacitor_SMD:C_0805_2012Metric", dnp=True, value="22uF", nets={"1": "+5V", "2": "GND"}),
+    dict(ref="C19", sym="C", x=368, y=266, fp="Capacitor_SMD:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
+    dict(ref="D2", sym="SK6812", x=306, y=282, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND", "4": "LED_CHAIN_23"}),
+    dict(ref="D3", sym="SK6812", x=330, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_23", "3": "GND", "4": "LED_CHAIN_34"}),
+    dict(ref="D4", sym="SK6812", x=354, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_34", "3": "GND", "4": "LED_CHAIN_45"}),
+    dict(ref="D5", sym="SK6812", x=378, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_45", "3": "GND", "4": "LED_CHAIN_56"}),
+    dict(ref="D6", sym="SK6812", x=402, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_56", "3": "GND", "4": "NC"}),
     # --- USB-C + CC resistors + bulk cap (left edge, top) ---
     dict(ref="J1",  sym="USB4085",    x=52,  y=55,  fp=E, dnp=False, nets={
         "A1": "GND", "A4": "VBUS_USB", "A5": "CC1", "A6": "NC", "A7": "NC", "A8": "NC",
