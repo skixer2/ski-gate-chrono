@@ -2490,3 +2490,10 @@ Commits: 52aad27 (v0.10.6, comments only — flash on next build).
 - **App 1.71.0 (JP, on-phone 13:53):** "works really well" — full triad cloud→phone→device verified by user on live hardware. Kotlin native delete lane compiled clean (gradle 31 s).
 - **Open (1.72.0, building):** Synch-as-state redesign (JP 13:45): local menu Rename/Synch-switch/Delete; cloud-list row switches; orphan definitive-deletion warning; replaces 1.71 dialog checkbox.
 - **Known deferred:** E4 mid-transfer guard untested (defensive); reboot hole-persistence implied by design (index persisted) — covered implicitly by JP's session.
+
+## TC-2026-10-31-001 — BATTERY SAGA CLOSED (2026-10-28→31): first full charge cycle of the Zephyr era
+- Symptom: constant "92%" for days on every power state (JP flag 10-28 07:40; "never saw another value").
+- Root causes (layered, all fixed): (1) display semantic — BATT_MON = % of VBATREG (4.2V), not SoC (TI SLUSD08A Table 23 + example table; Nicla library mislabel inherited verbatim); (2) charger HARDWARE-disabled via CD pin since Zephyr day one — R25 100k pull-up (ABX00050) vs our never-driven P0.25; ArduinoFW drove it low ('CD pin port pending' v0.21.4 = this gap) → FW 0.23.8 (ee515eb) gpio output-low at boot; (3) ICHG factory default 10 mA → FW 0.23.7 (2ac61ae) 110 mA = Renata ICP622540PMT 0.2C standard; (4) restore-write hole in charge-pause dance → FW 0.23.5 self-heal + retry; (5) on-battery read unimplemented → FW 0.23.2.
+- Verification: st 0x03 (CD_STAT=1 disabled) → 0x41 (charge in progress, CD low); band climb mon 0x64→0x68→0x6c→0x7c (92→94→96→100) 10-29 09:29→10-31 09:10; byte=0x64 at full = bolt correctly dropped by cache==100 logic. faults=0x00 throughout. Independent blind review (DS V4-Pro via HF, cold evidence) confirmed H1 CD-mechanism 90-95% pre-fix.
+- Fleet note: VIN-no-System-Off (0.23.6) validated twice over multi-day unconnected-on-USB stretches — bench always reachable. LED-off-before-SystemOff (0.23.6) — no latched-LED recurrence since.
+- Open follow-ups: app 1.76 honest coarse display (Full/Good/Low/Charge me) in flight; below-floor sentinel UX; v2 MAX17048 real SoC (AD-029, BOM v4.3).
