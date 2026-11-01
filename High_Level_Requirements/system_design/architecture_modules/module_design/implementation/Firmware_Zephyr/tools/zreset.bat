@@ -5,4 +5,4 @@ set "MODE=%~1"
 if "%MODE%"=="" set "MODE=run"
 call C:\sgc\tools\_oocd_common.bat
 if errorlevel 1 exit /b 1
-%OOCD% %OOSCR% -f interface/cmsis-dap.cfg -c "transport select swd" -f target/nordic/nrf52.cfg -c "reset %MODE%" -c "shutdown"
+%OOCD% %OOSCR% -f interface/cmsis-dap.cfg -c "transport select swd" -f target/nordic/nrf52.cfg -c "init" -c "reset %MODE%" -c "shutdown"
