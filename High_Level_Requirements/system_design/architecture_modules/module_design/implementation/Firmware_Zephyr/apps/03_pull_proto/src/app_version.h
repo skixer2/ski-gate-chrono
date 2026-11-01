@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.1"   /* OTA upload test build: image version aligned for MCUboot swap (+VERSION file drives imgtool sign). All v0.24.0 features: ABC6 fw char, charger self-heal, LED-off-before-SystemOff, VIN no-SysOff, serial y batt debug, connected-aware batt poll */
+#define APP_VERSION "0.24.2"   /* +MCUmgr transport fix: mcumgr-params query (app MTU=0 bug), BT reassembly 2475B netbufs, 498 MTU, DLE, conn-param control */
 
 #endif /* SGC_APP_VERSION_H */
