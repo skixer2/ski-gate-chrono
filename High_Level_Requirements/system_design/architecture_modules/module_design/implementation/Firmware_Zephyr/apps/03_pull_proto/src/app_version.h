@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.2"   /* +MCUmgr transport fix: mcumgr-params query (app MTU=0 bug), BT reassembly 2475B netbufs, 498 MTU, DLE, conn-param control */
+#define APP_VERSION "0.24.2"   /* +MCUmgr params query (minimal fix: app MTU=0 bug; full smp_svr transport set overflows RAM by 11KB) */
 
 #endif /* SGC_APP_VERSION_H */
