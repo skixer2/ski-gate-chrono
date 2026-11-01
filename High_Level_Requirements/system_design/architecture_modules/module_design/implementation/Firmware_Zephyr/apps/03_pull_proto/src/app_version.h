@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.0"   /* +ABC6 fw-version char (JP 21:36: 'have the device firmware version displayed when connected'); +charger self-heal+restore-retry (paused-FAST_CHG hole found on bench 2026-10-28); LED all-off before System Off (IS31 latch); VIN present -> no System Off (JP GO); serial y battery debug; connected-aware battery poll 5s/30s; on-battery battery % read */
+#define APP_VERSION "0.24.1"   /* OTA upload test build: image version aligned for MCUboot swap (+VERSION file drives imgtool sign). All v0.24.0 features: ABC6 fw char, charger self-heal, LED-off-before-SystemOff, VIN no-SysOff, serial y batt debug, connected-aware batt poll */
 
 #endif /* SGC_APP_VERSION_H */
