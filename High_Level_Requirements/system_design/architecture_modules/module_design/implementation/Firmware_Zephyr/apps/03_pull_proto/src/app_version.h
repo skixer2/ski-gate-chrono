@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.4"   /* +SMP netbuf 244: frames fit single BLE write without reassembly (Corrupt/timeout root cause) */
+#define APP_VERSION "0.24.5"   /* +DS transport design: MTU 300, NETBUF 297 (image-list 252-262B vs 244 ceiling = 8-16B overshoot). RAM gate: <=58150B */
 
 #endif /* SGC_APP_VERSION_H */
