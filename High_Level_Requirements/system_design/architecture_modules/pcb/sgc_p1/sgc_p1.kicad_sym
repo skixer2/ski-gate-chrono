@@ -1363,7 +1363,7 @@
         )
       )
     )
-    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-6" (at 0 0 0 0)
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-6" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1373,7 +1373,7 @@
         )
       )
     )
-    (property "Datasheet" "https://www.jlcpcb.com/partdetail/Aerosemi-MT3608_C84817.html" (at 0 0 0 0)
+    (property "Datasheet" "https://www.jlcpcb.com/partdetail/Aerosemi-MT3608_C84817.html" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1383,7 +1383,7 @@
         )
       )
     )
-    (property "Description" "Aerosemi MT3608 boost 2.0-24V in, 1.2MHz, EN shutdown ~2uA (pin6 NC not drawn). V2 LED reserve, DNP v1" (at 0 0 0 0)
+    (property "Description" "Aerosemi MT3608 boost 2.0-24V in, 1.2MHz, EN shutdown ~2uA (pin6 NC not drawn). V2 LED reserve, DNP v1" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1508,7 +1508,7 @@
         )
       )
     )
-    (property "Footprint" "Package_SO:VSSOP-8_2.3x2mm_P0.5mm" (at 0 0 0 0)
+    (property "Footprint" "Package_SO:VSSOP-8_2.3x2mm_P0.5mm" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1518,7 +1518,7 @@
         )
       )
     )
-    (property "Datasheet" "https://www.ti.com/lit/ds/symlink/txs0102.pdf" (at 0 0 0 0)
+    (property "Datasheet" "https://www.ti.com/lit/ds/symlink/txs0102.pdf" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1528,7 +1528,7 @@
         )
       )
     )
-    (property "Description" "TI TXS0102-class dual-supply translator VCCA +1V8 / VCCB +5V for SK6812 DIN level. V2 LED reserve, DNP v1" (at 0 0 0 0)
+    (property "Description" "TI TXS0102-class dual-supply translator VCCA +1V8 / VCCB +5V for SK6812 DIN level. V2 LED reserve, DNP v1" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1701,7 +1701,7 @@
         )
       )
     )
-    (property "Footprint" "LED_SMD:LED_SK6812MINI_PLCC4_3.5x3.5mm_P1.75mm" (at 0 0 0 0)
+    (property "Footprint" "LED_SMD:LED_SK6812MINI_PLCC4_3.5x3.5mm_P1.75mm" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1711,7 +1711,7 @@
         )
       )
     )
-    (property "Datasheet" "https://www.lcsc.com/product-detail/light-emitting-diodes-LED_OPSCO-SK6812MINI_C114586.html" (at 0 0 0 0)
+    (property "Datasheet" "https://www.lcsc.com/product-detail/light-emitting-diodes-LED_OPSCO-SK6812MINI_C114586.html" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1721,7 +1721,7 @@
         )
       )
     )
-    (property "Description" "SK6812-mini RGB LED, 5V, 4-wire chain (DIN<-prev DOUT). x5 strip on VDD_LED. V2 LED reserve, DNP v1" (at 0 0 0 0)
+    (property "Description" "SK6812-mini RGB LED, 5V, 4-wire chain (DIN<-prev DOUT). x5 strip on VDD_LED. V2 LED reserve, DNP v1" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1811,8 +1811,121 @@
         )
     )
   )
+  (symbol "CON-3" (in_bom yes) (on_board yes)
+    (property "Reference" "J" (at 0 9.42 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "JST-SH-3 (TBD-JP)" (at 0 -9.82 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" "Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal" (at 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.jst-mfg.com/product/detail_en.php?series=SR" (at 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Description" "Off-board SK6812 strip feed: +5V / DATA / GND. Strip glued to pole or in transparent case (v2), NOT on PCB (JP 2026-11-01: space). DNP v1" (at 0 0 0)
+      (show_name no)
+      (do_not_autoplace no)
+      (hide yes)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (symbol "CON-3_0_1"
+      (rectangle
+        (start -7.62 7.62)
+        (end 7.62 -7.62)
+        (stroke
+          (width 0.254)
+          (type default)
+        )
+        (fill
+          (type background)
+        )
+      )
+    )
+    (symbol "CON-3_1_1"
+      (pin passive line
+        (at -10.16 7.62 0)
+        (length 2.54)
+        (name "PIN1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "1"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin passive line
+        (at -10.16 5.08 0)
+        (length 2.54)
+        (name "PIN2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "2"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+      (pin passive line
+        (at -10.16 2.54 0)
+        (length 2.54)
+        (name "PIN3"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        (number "3"
+          (effects
+          (font
+            (size 1.016 1.016)
+          )
+        ))
+        )
+    )
+  )
   (symbol "+5V" (power global) (in_bom yes) (on_board yes)
-    (property "Reference" "#PWR" (at 0 0 0 0)
+    (property "Reference" "#PWR" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1831,7 +1944,7 @@
         )
       )
     )
-    (property "Footprint" "" (at 0 0 0 0)
+    (property "Footprint" "" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1841,7 +1954,7 @@
         )
       )
     )
-    (property "Datasheet" "" (at 0 0 0 0)
+    (property "Datasheet" "" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)
@@ -1851,7 +1964,7 @@
         )
       )
     )
-    (property "Description" "Power symbol creates a global label with name '+5V'" (at 0 0 0 0)
+    (property "Description" "Power symbol creates a global label with name '+5V'" (at 0 0 0)
       (show_name no)
       (do_not_autoplace no)
       (hide yes)

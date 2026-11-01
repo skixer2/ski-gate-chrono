@@ -231,7 +231,7 @@ def main():
     expected_ic = {"U1": "ANNA-B402", "U3": "BQ25120A", "U4": "MAX17048", "U5": "IS31FL3194",
                    "U6": "LDC1612", "U8": "BHI260AP", "U9": "BMP390", "U7": "MX25R6435F",
                    "U2": "MX25R1635F"}
-    expected_j = {"J1": "USB4085", "J2": "JST-BAT-3", "J3": "SWD-2X5"}
+    expected_j = {"J1": "USB4085", "J2": "JST-BAT-3", "J3": "SWD-2X5", "J4": "CON-3"}
     for ref, symname in expected_ic.items():
         if ref not in placed or placed[ref]["sym"] != symname:
             err(f"census: {ref} ({symname}) missing/mismatched")
@@ -247,7 +247,7 @@ def main():
     # datasheet pin counts
     expected_pins = {"ANNA-B402": 56, "BQ25120A": 25, "MAX17048": 9, "IS31FL3194": 8,
                      "LDC1612": 12, "BHI260AP": 44, "BMP390": 10, "MX25R6435F": 8,
-                     "MX25R1635F": 8, "USB4085": 20, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "JST-BAT-3": 3, "SWD-2X5": 10}
+                     "MX25R1635F": 8, "USB4085": 20, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "JST-BAT-3": 3, "SWD-2X5": 10}
     for name, n in expected_pins.items():
         got = len(SYMBOL_PINS[name]["pins"])
         if got != n:
@@ -267,7 +267,7 @@ def main():
     total_pin_conns = sum(len(p["nets"]) for p in PARTS)
     n_labels = len(sch.globalLabels)
     info(f"census: {len(PARTS)} components "
-         f"(9 U + 3 J + {n_c} C + {n_r} R + {n_l} L + {n_d} D) + {pwr_count(sch)} power symbols; "
+         f"(9 U + 4 J + {n_c} C + {n_r} R + {n_l} L + {n_d} D) + {pwr_count(sch)} power symbols; "
          f"{total_pin_conns} pin connections checked; {n_labels} global labels on "
          f"{len({gl.text for gl in sch.globalLabels})} distinct nets")
     dnp = [p["ref"] for p in PARTS if p.get("dnp")]

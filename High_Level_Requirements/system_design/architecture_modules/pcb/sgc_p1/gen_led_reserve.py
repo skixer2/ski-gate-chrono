@@ -42,6 +42,11 @@ NEW_SYMS = {
         desc='SK6812-mini RGB LED, 5V, 4-wire chain (DIN<-prev DOUT). x5 strip on VDD_LED. V2 LED reserve, DNP v1',
         pins=[('1','VDD','power_in','T',0), ('2','DIN','input','L',1),
               ('3','GND','power_in','B',0), ('4','DOUT','output','R',1)]),
+    'CON-3': dict(prefix='J', value='JST-SH-3 (TBD-JP)', hw=7.62,
+        fp='Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal',
+        ds='https://www.jst-mfg.com/product/detail_en.php?series=SR',
+        desc='Off-board SK6812 strip feed: +5V / DATA / GND. Strip glued to pole or in transparent case (v2), NOT on PCB (JP 2026-11-01: space). DNP v1',
+        pins=[('1', 'PIN1', 'passive', 'L', 0), ('2', 'PIN2', 'passive', 'L', 1), ('3', 'PIN3', 'passive', 'L', 2)]),
 }
 
 PLACE = [
@@ -53,11 +58,7 @@ PLACE = [
     ('C17','C',336,266,{'1':'VBAT','2':'GND'},'10uF','Capacitor_SMD:C_0603_1608Metric'),
     ('C18','C',352,266,{'1':'+5V','2':'GND'},'22uF','Capacitor_SMD:C_0805_2012Metric'),
     ('C19','C',368,266,{'1':'+5V','2':'BOOST_FB'},'22pF','Capacitor_SMD:C_0402_1005Metric'),
-    ('D2','SK6812',306,282,{'1':'+5V','2':'LED_DIN_5V','3':'GND','4':'LED_CHAIN_23'},None,None),
-    ('D3','SK6812',330,282,{'1':'+5V','2':'LED_CHAIN_23','3':'GND','4':'LED_CHAIN_34'},None,None),
-    ('D4','SK6812',354,282,{'1':'+5V','2':'LED_CHAIN_34','3':'GND','4':'LED_CHAIN_45'},None,None),
-    ('D5','SK6812',378,282,{'1':'+5V','2':'LED_CHAIN_45','3':'GND','4':'LED_CHAIN_56'},None,None),
-    ('D6','SK6812',402,282,{'1':'+5V','2':'LED_CHAIN_56','3':'GND','4':'NC'},None,None),
+    ('J4','CON-3',392,266,{'1':'+5V','2':'LED_DIN_5V','3':'GND'},None,None),
 ]
 
 # ---------- 1. sgc_netlist.py ----------
@@ -292,7 +293,7 @@ anchor = '\t(sheet_instances'
 i = s.find(anchor)
 s = s[:i] + objects + s[i:]
 s = s.replace('Boost BOM (hw doc 7.3): L 4.7uH/2A, Cin 10uF, Cout 22uF, Rfb 75k/10k, Cff 22pF. NOT drawn - capture at layout.',
-              'Boost BOM (hw doc 7.3): L2 4.7uH/2A, C17/C18, R11/R12, C19 - DRAWN as DNP reserve cluster (U10/U11/L2/D2-D6), v2 decision JP 2026-10-31.')
+              'Boost BOM (hw doc 7.3): L2 4.7uH/2A, C17/C18, R11/R12, C19 - DRAWN as DNP reserve (U10/U11/L2/J4). Strip = OFF-BOARD via J4 (glued to pole / transparent case, JP 2026-11-01) - no SK6812 footprints on PCB.')
 open(SCH, 'w', encoding='utf-8').write(s)
 print('schematic: +%d wires, +%d NC, +%d labels, +%d power, +13 instances, +4 lib' % (len(wires), len(ncs), len(labels), len(powers)))
 

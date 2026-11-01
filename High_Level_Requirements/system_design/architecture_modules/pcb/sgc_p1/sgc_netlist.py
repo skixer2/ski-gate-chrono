@@ -50,6 +50,16 @@ SYMBOL_PINS = {
             ("5",  "B2","bidirectional", "R"),
             ("4",  "GND","power_in", "B"),
         ]),
+    "CON-3": dict(
+        prefix="J", value="JST-SH-3 (TBD-JP)", hw=7.62,
+        fp="Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
+        ds="https://www.jst-mfg.com/product/detail_en.php?series=SR",
+        desc="Off-board SK6812 strip feed: +5V / DATA / GND. Strip glued to pole or in transparent case (v2), NOT on PCB (JP 2026-11-01: space). DNP v1",
+        pins=[
+            ("1",  "PIN1","passive", "L"),
+            ("2",  "PIN2","passive", "L"),
+            ("3",  "PIN3","passive", "L"),
+        ]),
     "SK6812": dict(
         prefix="D", value="SK6812MINI", fp="LED_SMD:LED_SK6812MINI_PLCC4_3.5x3.5mm_P1.75mm",
         ds="https://www.lcsc.com/product-detail/light-emitting-diodes-LED_OPSCO-SK6812MINI_C114586.html", desc="SK6812-mini RGB LED, 5V, 4-wire chain (DIN<-prev DOUT). x5 strip on VDD_LED. V2 LED reserve, DNP v1", hw=7.62,
@@ -429,11 +439,7 @@ PARTS = [
     dict(ref="C17", sym="C", x=336, y=266, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
     dict(ref="C18", sym="C", x=352, y=266, fp="Capacitor_SMD:C_0805_2012Metric", dnp=True, value="22uF", nets={"1": "+5V", "2": "GND"}),
     dict(ref="C19", sym="C", x=368, y=266, fp="Capacitor_SMD:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
-    dict(ref="D2", sym="SK6812", x=306, y=282, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND", "4": "LED_CHAIN_23"}),
-    dict(ref="D3", sym="SK6812", x=330, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_23", "3": "GND", "4": "LED_CHAIN_34"}),
-    dict(ref="D4", sym="SK6812", x=354, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_34", "3": "GND", "4": "LED_CHAIN_45"}),
-    dict(ref="D5", sym="SK6812", x=378, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_45", "3": "GND", "4": "LED_CHAIN_56"}),
-    dict(ref="D6", sym="SK6812", x=402, y=282, dnp=True, nets={"1": "+5V", "2": "LED_CHAIN_56", "3": "GND", "4": "NC"}),
+    dict(ref="J4", sym="CON-3", x=392, y=266, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND"}),
     # --- USB-C + CC resistors + bulk cap (left edge, top) ---
     dict(ref="J1",  sym="USB4085",    x=52,  y=55,  fp=E, dnp=False, nets={
         "A1": "GND", "A4": "VBUS_USB", "A5": "CC1", "A6": "NC", "A7": "NC", "A8": "NC",
