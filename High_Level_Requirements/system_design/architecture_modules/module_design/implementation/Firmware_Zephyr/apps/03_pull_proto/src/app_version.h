@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.2"   /* +MCUmgr params query (minimal fix: app MTU=0 bug; full smp_svr transport set overflows RAM by 11KB) */
+#define APP_VERSION "0.24.3"   /* OTA upload payload (never SWD-flashed): identical to 0.24.2 + version bump - exists to prove the full OTA path end-to-end */
 
 #endif /* SGC_APP_VERSION_H */
