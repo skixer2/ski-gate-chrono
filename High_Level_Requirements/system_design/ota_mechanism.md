@@ -1,4 +1,4 @@
-# SGC OTA Firmware Update Design (v2.0 — MCUboot + MCUmgr SMP)
+# SGC OTA Firmware Update Design (v2.1 — MCUboot + MCUmgr SMP; Stage 1 COMPLETE 2026-11-02)
 
 *2026-10-29 — v2.0 (JP directive, doc-only): OTA architecture + path documented. Chosen path switched from the Arduino-era Nordic-DFU plan (§6, retained as historical reference) to the **Nordic-native MCUboot (dual-bank) + MCUmgr SMP over BLE** — the built-in Zephyr/NCS mechanism, consistent with the firmware's Zephyr port. Flash budget VERIFIED: dual-bank fits in the internal 512 KB without touching the external-NOR storage architecture. Staged rollout S1→S3 (= REQ-OTA in sgc_requirements.md v6.6). Activates ZEPHYR_PORT_PLAN.md ZPR-9 ("SMP/MCUmgr image management" — was deferred, now scheduled). No code changes.*
 *2026-06 — v1.0: Nordic DFU via Nicla stock mbed bootloader (Arduino era). Superseded by the Zephyr port — see §6.*
@@ -43,6 +43,37 @@ Why not the alternatives: the v1.0 plan (Nordic DFU on the Arduino mbed bootload
 - One-time SWD migration flash (MCUboot + app combined hex).
 - **After this: no cable needed — including the 2nd Nicla.**
 - *Acceptance (REQ-OTA S1):* OTA update 0.23.7 → test build via nRF Connect; device boots the new version; ABC6 reports it; bad image → rollback.
+
+### Stage 1 — ✅ COMPLETE (2026-11-02, bench-proven end-to-end)
+
+**Result:** 0.24.6 uploaded from phone → slot 1 → Test → MCUboot swap → confirmed permanent.
+Boot proof: `magic=good, copy_done=0x1, image_ok=0x1`, RSA verified, banner v0.24.6; 35 runs
++ device config survived untouched (external flash). FW chain: 0.24.0 migration → 0.24.2
+params → 0.24.4 netbuf-244 → 0.24.5 MTU-300 → **0.24.6 (the OTA payload, never wire-flashed)**.
+
+**Transport design (measured, nRF52832 = 64 KB RAM part — arduino_nicla_sense_me/nrf52832):**
+
+| Kconfig | Value | Why |
+|---|---|---|
+| `BT_L2CAP_TX_MTU` | **300** (was 247) | one SMP frame per BLE write; MTU−3 ≥ worst-case frame |
+| `MCUMGR_TRANSPORT_NETBUF_SIZE` | **297** (= MTU−3) | image-list response (2 slots × 32 B hash) = 252–262 B; 297 leaves 35 B headroom |
+| `MCUMGR_GRP_OS` + `…_MCUMGR_PARAMS` | y | the app queries mcumgr params at connect — without it the app computes MTU 0 and refuses to send |
+| `MCUMGR_TRANSPORT_BT_REASSEMBLY` | **n** | Nordic's 2475×4 set needs ~7 KB of our 8 KB free RAM — rejected (RAM-margin doctrine) |
+
+Coupling invariant (violating it = Corrupt/Too-large, proven empirically):
+`NETBUF_SIZE ≤ MTU−3` when reassembly is off, and the advertised `buf_size` drives the app's frame size.
+RAM: 57,484 / 64 KB used → **8,052 B free (12.3%)**. BT buffer COUNTS untouched (att_pool starvation
+history — resize, never recount).
+
+**Phone tool = "nRF Connect Device Manager"** (separate app; Advanced mode). NOT nRF Connect for Mobile
+(no MCUmgr anymore) and NOT "nRF Device Firmware Update" (legacy Secure-DFU protocol).
+
+**Operating procedure & gotchas (all learned on hardware):**
+1. Upload `.bin` → Image 0 → mode **Test and Confirm** (or Confirm on the pending image for a permanent swap without trial).
+2. **Test = trial boot**: one reboot runs the new image; without Confirm the NEXT reboot reverts. Extra resets during a Test = revert (observed).
+3. Slot images must DIFFER (identical 0.24.5 in both slots → the app targets the active slot → "Testing active slot denied (33)").
+4. MCUmgr reset has a 250 ms built-in delay (`GRP_OS_RESET_MS`) — the app may look unresponsive; retry once.
+5. SWD stays factory-recovery; nothing on the external flash (runs/config @0x1FC000) is touched by any of this.
 
 ### Stage 2 — App (~1–2 days)
 - In-app updater using the Nordic **`mcumgr` Android library** (Apache-2.0, `io.runtime.mcumgr`).
