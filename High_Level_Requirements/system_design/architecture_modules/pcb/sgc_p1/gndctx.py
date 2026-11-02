@@ -15,7 +15,7 @@ while j < len(s):
         if depth == 0: break
     j += 1
 netblk = s[blk:j + 1]
-nodes = re.findall(r'\(node \(ref "([^"]+)"\) \(pin "([^"]+)"\)', netblk)
+nodes = re.findall(r'\(node\s*\(ref "([^"]+)"\)\s*\(pin "([^"]+)"\)'', netblk)
 print('GND net members (%d):' % len(nodes))
 for r, p in nodes:
     print('  %s.%s' % (r, p))
