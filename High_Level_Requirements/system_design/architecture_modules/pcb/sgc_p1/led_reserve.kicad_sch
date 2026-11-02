@@ -657,7 +657,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "#PWR91")
 					(unit 1)
 				)
@@ -734,7 +734,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "#PWR92")
 					(unit 1)
 				)
@@ -811,7 +811,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "#PWR93")
 					(unit 1)
 				)
@@ -888,7 +888,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "#PWR94")
 					(unit 1)
 				)
@@ -985,7 +985,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "U11")
 					(unit 1)
 				)
@@ -1073,7 +1073,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "U10")
 					(unit 1)
 				)
@@ -1152,7 +1152,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "L2")
 					(unit 1)
 				)
@@ -1231,7 +1231,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "R11")
 					(unit 1)
 				)
@@ -1310,7 +1310,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "R12")
 					(unit 1)
 				)
@@ -1389,7 +1389,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "C17")
 					(unit 1)
 				)
@@ -1468,7 +1468,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "C18")
 					(unit 1)
 				)
@@ -1547,7 +1547,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "C19")
 					(unit 1)
 				)
@@ -1629,7 +1629,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
 					(reference "J4")
 					(unit 1)
 				)
