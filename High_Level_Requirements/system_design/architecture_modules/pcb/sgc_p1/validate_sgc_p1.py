@@ -80,6 +80,18 @@ def main():
     sch, sch2 = roundtrip(os.path.join(HERE, "sgc_p1.kicad_sch"), Schematic)
     info(f"sgc_p1.kicad_sch: kiutils round-trip OK ({len(sch.schematicSymbols)} instances, "
          f"{len(sch.graphicalItems)} wires, {len(sch.globalLabels)} labels, {len(sch.noConnects)} no-connects)")
+    # ---- 1b. child sheet (LED reserve, v2 DNP): round-trip + in-memory union ----
+    child_path = os.path.join(HERE, "led_reserve.kicad_sch")
+    if os.path.exists(child_path):
+        ch, ch2 = roundtrip(child_path, Schematic)
+        info(f"led_reserve.kicad_sch: kiutils round-trip OK ({len(ch.schematicSymbols)} instances, "
+             f"{len(ch.graphicalItems)} wires, {len(ch.globalLabels)} labels)")
+        sch.graphicalItems += ch.graphicalItems
+        sch.globalLabels += ch.globalLabels
+        sch.noConnects += ch.noConnects
+        sch.schematicSymbols += ch.schematicSymbols
+        sch.libSymbols += ch.libSymbols
+        info("two-sheet union: child merged in-memory for checks (global labels bridge sheets)")
     with open(os.path.join(HERE, "sgc_p1.kicad_pro")) as f:
         pro = json.load(f)
     assert pro["meta"]["filename"] == "sgc_p1.kicad_pro"
@@ -274,7 +286,7 @@ def main():
     info(f"DNP placements: {', '.join(dnp) if dnp else 'none'}")
 
     # --- strict KiCad string gate: raw newline inside a quoted string = KiCad parse error ---
-    for fname in (os.path.join(HERE, "sgc_p1.kicad_sym"), os.path.join(HERE, "sgc_p1.kicad_sch")):
+    for fname in (os.path.join(HERE, "sgc_p1.kicad_sym"), os.path.join(HERE, "sgc_p1.kicad_sch"), child_path):
         s = open(fname, encoding="utf-8").read()
         in_str = False
         bad = 0
