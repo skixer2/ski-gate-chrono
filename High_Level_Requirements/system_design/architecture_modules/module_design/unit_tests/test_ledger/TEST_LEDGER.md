@@ -2517,3 +2517,13 @@ Commits: 52aad27 (v0.10.6, comments only — flash on next build).
 
 ### Open (parked, non-blocking)
 - 3× full OTA loop repeat (procedure documented; JP at will) · stack high-water check (needs FW feature) · SGC_BENCH=n production trim (~9-10 KB free target) · MCUmgr reset 250 ms quirk (candidate polish).
+
+## TC-2026-11-02-002 — OTA LOOP ×N + DS verification plan CLOSED
+
+**Status: PASS. FW 0.24.7 (c740680) running, CONFIRMED PERMANENT.**
+
+- JP ran MANY upload→Test-and-Confirm→swap cycles (0.24.6 ↔ 0.24.7 alternating, 16:0x–17:2x UTC). Final state: `magic=good, copy_done=0x1, image_ok=0x1`, v0.24.7 — landed on the newest as planned.
+- **Stack watermarks post-marathon (serial W, THREAD_ANALYZER): IDENTICAL to fresh-boot** — main 72% (832/1152), bt_tx_processor 50%, sysworkq 30%, mcumgr smp 13%, recorder 27%, ISR0 13%. The OTA marathon consumed zero stack health. DS plan item CLOSED.
+- Survived everything: 36 runs intact, cfg 'SGC JP', BQ faults 0x00.
+- Build #16 lessons (worth the ledger): stray 'nul' file (my 2>nul Windows-ism in Linux shell, git add -A adopted, BLOCKED all Windows pulls with 'invalid path nul' — 3 silent build failures); Zephyr 4.4 renamed thread_analyzer_print_all()→print(cpu) (docs drift, header truth); include-guard case-sensitivity ghost. RAM: 58,188/64KB (7,348 free, 11.2%) — 38B over DS's conservative gate, acceptable, trim candidate: THREAD_ANALYZER_ISR_STACK_USAGE + RUNTIME_STATS off.
+- **Remaining open (small):** SGC_BENCH=n production RAM measurement; F65 app-side UX (requirement v6.8, phone lane); S2 in-app updater (mcumgr Android lib); ERC triage before rev A.
