@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.6"   /* the versioned OTA demo: different image from slot0 (identical-hash 0.24.5 pair made app Test/Confirm target the active slot - error 33) */
+#define APP_VERSION "0.24.7"   /* +serial W stack watermarks (DS plan) + MCUmgr reset 100ms (double-tap quirk). Doubles as OTA loop image (alternate 0.24.6/0.24.7) */
 
 #endif /* SGC_APP_VERSION_H */

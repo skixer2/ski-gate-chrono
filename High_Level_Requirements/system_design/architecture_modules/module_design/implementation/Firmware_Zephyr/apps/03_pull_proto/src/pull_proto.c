@@ -824,6 +824,10 @@ static void cmd_work_handler(struct k_work *w)
 		} else {
 			printk("{\"ev\":\"rh_err\",\"why\":\"bad_id\"}\n");
 		}
+	} else if (cmd == 'W') {
+		/* DS verification plan: per-thread stack watermarks (free bytes).
+		 * THREAD_ANALYZER prints via printk -> our console. */
+		thread_analyzer_print_all();
 	} else if (cmd == 'S') {
 		/* BENCH (CONFIG_SGC_BENCH): synthetic FRAME run through the
 		 * REAL pipeline — generator feeds sensor_prod snapshots, the
