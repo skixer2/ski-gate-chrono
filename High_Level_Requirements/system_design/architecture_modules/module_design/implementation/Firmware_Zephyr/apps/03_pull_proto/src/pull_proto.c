@@ -41,6 +41,7 @@
  *     stays shallow (5.81: flooding is what wedged the S22 push era).
  */
 #include <zephyr/kernel.h>
+#include <zephyr/debug/thread_analyzer.h>
 #include <string.h>
 #include <stdlib.h>
 #include <zephyr/bluetooth/bluetooth.h>
