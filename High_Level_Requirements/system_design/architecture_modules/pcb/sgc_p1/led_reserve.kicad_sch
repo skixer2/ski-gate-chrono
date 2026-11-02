@@ -2627,7 +2627,7 @@
 		)
 	)
 	(symbol
-		(lib_id "sgc_p1:GND")
+		(lib_id "power:GND")
 		(at 104.15 135.6 0)
 		(unit 1)
 		(body_style 1)
