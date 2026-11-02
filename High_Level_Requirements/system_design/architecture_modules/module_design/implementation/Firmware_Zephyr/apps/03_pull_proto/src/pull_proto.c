@@ -828,7 +828,7 @@ static void cmd_work_handler(struct k_work *w)
 	} else if (cmd == 'W') {
 		/* DS verification plan: per-thread stack watermarks (free bytes).
 		 * THREAD_ANALYZER prints via printk -> our console. */
-		thread_analyzer_print_all();
+		thread_analyzer_print(0);   /* 4.4 API: print(cpu), not print_all() - docs drift, header is truth */
 	} else if (cmd == 'S') {
 		/* BENCH (CONFIG_SGC_BENCH): synthetic FRAME run through the
 		 * REAL pipeline — generator feeds sensor_prod snapshots, the
