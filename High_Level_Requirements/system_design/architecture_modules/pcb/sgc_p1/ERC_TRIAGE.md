@@ -23,9 +23,9 @@
 1. **275 endpoint_off_grid** — generator mm-precision + manual edits. *Fix:* programmatic snap with **netlist-identity proof** (netlist before == after, byte-identical membership) right before revA snapshot — not mid-polish.
 2. **41 lib_symbol_mismatch** — our deliberately-embedded copies vs global libs (embedding is the headless-generation doctrine). *Fix:* severity→ignore in project ERC settings; embedded copies ARE canon.
 3. **13 isolated_pin_label** — expected on reserved/DNP nets (M1_CSB2, LED-reserve globals BOOST_EN/SK6812_DATA…). *Fix:* list-check + annotate; no rewire expected.
-4. **3 footprint_link_issues** — REAL pre-layout fixes:
-   - `Package_SO:SOIC-8_5.23x5.23mm_P1.27mm` not found (×2 — U2/U7 flash; MX25R1635FZUIH=USON8, MX25R6435FZAIL=SOP8-208mil → correct fp names needed)
-   - `Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal` not found (J4) → KiCad-10 lib renamed/variants
+4. **3 footprint_link_issues** — REAL pre-layout fixes (verified vs installed KiCad 10 libs):
+   - J4 `BM03B-SRSS-TB ...Horizontal` — mixed name; stock has **SM03B-...Horizontal** (side-entry) OR **BM03B-...Vertical** (top-entry). JP picks orientation → 1-word swap.
+   - U2 MX25R1635FZUIH (USON-8 4×3) and U7 MX25R6435FZAIL (SOP-8 208-mil/5.23×5.23) — **neither exists in KiCad 10 stock footprints**. Options: (a) project-local .pretty generated from datasheet dims, (b) re-pick part variant that matches stock (e.g. ZNI 150-mil ≈ SOP-8_3.76x4.96). JP decides.
 
 ## ERC severity proposals (project settings)
 - lib_symbol_mismatch → ignore (embedded = canon)
