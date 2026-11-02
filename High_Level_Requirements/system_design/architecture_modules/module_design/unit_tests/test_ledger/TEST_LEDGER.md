@@ -2497,3 +2497,23 @@ Commits: 52aad27 (v0.10.6, comments only — flash on next build).
 - Verification: st 0x03 (CD_STAT=1 disabled) → 0x41 (charge in progress, CD low); band climb mon 0x64→0x68→0x6c→0x7c (92→94→96→100) 10-29 09:29→10-31 09:10; byte=0x64 at full = bolt correctly dropped by cache==100 logic. faults=0x00 throughout. Independent blind review (DS V4-Pro via HF, cold evidence) confirmed H1 CD-mechanism 90-95% pre-fix.
 - Fleet note: VIN-no-System-Off (0.23.6) validated twice over multi-day unconnected-on-USB stretches — bench always reachable. LED-off-before-SystemOff (0.23.6) — no latched-LED recurrence since.
 - Open follow-ups: app 1.76 honest coarse display (Full/Good/Low/Charge me) in flight; below-floor sentinel UX; v2 MAX17048 real SoC (AD-029, BOM v4.3).
+
+## TC-2026-11-02-001 — OTA STAGE 1 COMPLETE + full regression on 0.24.6 (MTU 300)
+
+**Status: PASS (all green). Device: bench Nicla COM3, FW 0.24.6 (delivered BY OTA — never wire-flashed).**
+
+### The OTA proof (09:55–09:59 UTC, JP + nRF Connect Device Manager on S22)
+- Upload sgc_fw_0.24.6.bin (163,292 B) → slot 1 → Test → swap → reboot → Confirm → PERMANENT.
+- Boot-log evidence (zio_claw\sgc_bench\swap_proof.txt): `magic=good, swap_type=0x2, copy_done=0x1, image_ok=0x1`; RSA verified; banner v0.24.6; 35 runs + cfg 'SGC JP' intact.
+- Saga: 13 builds; root causes (all verified in .config): missing MCUMGR_PARAMS (app MTU-0), netbuf 384-default vs 244 single-write cap (Corrupt), image-list 252-262 B vs 244 (Too large). Final transport (DS-designed): MTU 300 / NETBUF 297 / no reassembly. RAM 57,484/64 KB (8,052 free). Identical-image trap (error 33) + Test-trial revert semantics learned on hardware. Docs: ota_mechanism.md v2.1, requirements v6.7.
+
+### Regression suite (11:45-12:10 UTC, bench)
+- Boot: sensors 4×@100 Hz configured, BQ alive faults=0x00, store 35 runs, cfg loaded, advertising ✓
+- Battery (y): pct=100 st=0x41 mon 0x7c stable pre/post — identical to 2026-10-30 baseline ✓
+- Run list (D): 36 runs after test, d_end clean, sizes/sides sane ✓
+- Synth pipeline (S 12 4): ARMED (baro lock p0=88902 drp=0) → LOGGING → impacts at EXACTLY 4000/8000 ms (23.1/22.3 m/s², seed 42) → POST_RUN → run 39 stored (21,962 B, 1398 frames, skipped=0, t2=403 t3=995 ms) → runway prep → SLEEP ✓
+- BLE (live, JP's app, MTU 300): connect → subscribe → dir ×2 (36 runs) → run download stream id=4 (52,350 B in 240-B frames, seq 0-218 continuous, no ENOMEM/drop observed mid-capture) — the DS-plan att_pool/stream regression PASSED in production use ✓
+- BLE suspend during acquisition (reason 0x16 SUSPENDED) + auto re-advertise ✓ (doctrine intact)
+
+### Open (parked, non-blocking)
+- 3× full OTA loop repeat (procedure documented; JP at will) · stack high-water check (needs FW feature) · SGC_BENCH=n production trim (~9-10 KB free target) · MCUmgr reset 250 ms quirk (candidate polish).
