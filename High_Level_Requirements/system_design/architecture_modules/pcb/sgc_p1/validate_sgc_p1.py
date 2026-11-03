@@ -126,6 +126,24 @@ def main():
         pts.add(a); pts.add(b)
         uf.union(a, b)
 
+    def pin_pt(sym, pin):
+        """absolute pin position honoring mirror (and rot 0/180); loud on unhandled transforms"""
+        rot = getattr(getattr(sym, 'orientation', None), 'value', sym.orientation) if hasattr(sym, 'orientation') else 0
+        mir = getattr(sym, 'mirror', None)
+        px, py = pin.position.X, pin.position.Y
+        x, y = sym.position.X, sym.position.Y
+        import math as _m
+        r = int(round(float(rot or 0) / 90.0)) % 4
+        assert r in (0, 2), f"rotation {rot} unsupported for {sym.properties[0].value}"
+        if r == 2:
+            px, py = -px, -py
+        if mir == 'x':
+            return (round(x + px, 3), round(y + py, 3))     # py NOT negated
+        if mir == 'y':
+            return (round(x - px, 3), round(y - py, 3))     # px negated
+        assert mir in (None, '', 'none'), f"mirror {mir} unsupported"
+        return (round(x + px, 3), round(y - py, 3))
+
     # connection points: KiCad connects coincident points with no wire needed
     # (label-on-pin, power-flag-on-pin, pin-on-pin are all valid)
     conn = set(pts)
@@ -140,8 +158,7 @@ def main():
         except Exception:
             continue
         for _num, pin in lp.items():
-            conn.add((round(sym.position.X + pin.position.X, 3),
-                      round(sym.position.Y - pin.position.Y, 3)))
+            conn.add(pin_pt(sym, pin))
 
     net_of_cluster = {}   # root -> netname (with conflict detection)
     def set_net(pt, net, what):
@@ -194,8 +211,7 @@ def main():
         # geometry
         for pin_num, expected_net in part["nets"].items():
             lp = lpins[pin_num]
-            pt = (round(sym.position.X + lp.position.X, 3),
-                  round(sym.position.Y - lp.position.Y, 3))
+            pt = pin_pt(sym, lp)
             if expected_net == "NC":
                 if pt not in nc_pts:
                     err(f"{ref}.{pin_num}: expected no-connect flag at {pt}, none found")
@@ -221,8 +237,7 @@ def main():
         lpins2 = lib_pins(part["sym"])
         for pin_num2, net2 in part["nets"].items():
             lp2 = lpins2[pin_num2]
-            all_points.append(((round(sym2.position.X + lp2.position.X, 3),
-                                round(sym2.position.Y - lp2.position.Y, 3)), net2, f"{part['ref']}.{pin_num2}"))
+            all_points.append((pin_pt(sym2, lp2), net2, f"{part['ref']}.{pin_num2}"))
     segs = [(key(w.points[0]), key(w.points[-1])) for w in sch.graphicalItems if w.type == "wire"]
     for (pt, net, what) in all_points:
         for (a, b) in segs:
@@ -250,8 +265,7 @@ def main():
         for pin_num, net in part["nets"].items():
             if net == "NC":
                 lp = lpins[pin_num]
-                declared_nc.add((round(sym.position.X + lp.position.X, 3),
-                                 round(sym.position.Y - lp.position.Y, 3)))
+                declared_nc.add(pin_pt(sym, lp))
     for nc in nc_pts:
         if nc not in declared_nc:
             err(f"stray no-connect flag at {nc}")
