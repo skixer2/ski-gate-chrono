@@ -58,6 +58,15 @@ SYMBOL_PINS = {
             ("5",  "B2","bidirectional", "R"),
             ("4",  "GND","power_in", "B"),
         ]),
+    "CON-2": dict(
+        prefix="J", value="JST-SH-2 piezo (TBD-JP)", hw=10.16,
+        fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal",
+        ds="", desc="Off-board piezo arming button (Langir 16mm, arch doc 3) - water-resistant press sensing",
+        pins=[
+            ("1",  "PIN1","passive", "L"),
+            ("2",  "PIN2","passive", "L"),
+        ],
+    ),
     "CON-3": dict(
         prefix="J", value="JST-SH-3 (TBD-JP)", hw=7.62,
         fp="Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
@@ -442,7 +451,10 @@ PARTS = [
     dict(ref="U11", sym="TXS0102", x=312, y=248, dnp=True, nets={"1": "+1V8", "2": "SK6812_DATA", "3": "NC", "4": "GND", "5": "NC", "6": "LED_DIN_5V", "7": "+1V8", "8": "+5V"}),
     dict(ref="U10", sym="MT3608", x=352, y=248, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
     dict(ref="L2", sym="L", x=384, y=248, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
-    dict(ref="D2", sym="D_SCHOTTKY", x=386, y=230, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),  # 2026-11-03: boost rectifier added
+    dict(ref="D2", sym="D_SCHOTTKY", x=386, y=230, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
+    dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="Resistor_SMD:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
+    dict(ref="C20", sym="C", x=287.02, y=50.8, dnp=False, fp="Capacitor_SMD:C_0402_1005Metric", value="220n", nets={"1": "VREG", "2": "GND"}),
+    dict(ref="J5", sym="CON-2", x=109.22, y=246.38, dnp=False, fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", value="JST-SH-2 piezo (TBD-JP)", nets={"1": "BUTTON", "2": "GND"}),  # 2026-11-03: boost rectifier added
     dict(ref="R11", sym="R", x=304, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
     dict(ref="R12", sym="R", x=320, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
     dict(ref="C17", sym="C", x=336, y=266, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
@@ -477,10 +489,10 @@ PARTS = [
     dict(ref="R1", sym="R", x=168, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1.82k 1%", nets={"1": "ISET_R", "2": "GND"}),      # ICHG ~110 mA (OD-15)
     dict(ref="R2", sym="R", x=168, y=58, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1k 1%",    nets={"1": "ILIM_R", "2": "GND"}),       # ILIM 200 mA
     dict(ref="R3", sym="R", x=168, y=68, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.99k 1%", nets={"1": "IPRETERM_R", "2": "GND"}),  # term/prechg 10%
-    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "V_PMID", "2": "BQ_CD"}),      # CD PU V_PMID (OD-8)
+    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_CD"}),      # CD PU V_PMID (OD-8)
     dict(ref="R5", sym="R", x=168, y=92, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_INT"}),       # BQ INT PU
-    dict(ref="R9", sym="R", x=184, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "I2C0_SDA"}),     # i2c0 PU (Nicla parity)
-    dict(ref="R10",sym="R", x=184, y=60, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
+    dict(ref="R9", sym="R", x=184, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SDA"}),     # i2c0 PU (Nicla parity)
+    dict(ref="R10",sym="R", x=184, y=60, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
 
     # --- Fuel gauge + battery (bottom-left) ---
     dict(ref="U4", sym="MAX17048", x=60, y=150, fp=E, dnp=False, nets={
@@ -513,7 +525,7 @@ PARTS = [
         "53": "GND", "54": "GND", "55": "GND", "56": "GND"}),
 
     # --- Sensor cluster (right) ---
-    dict(ref="U8", sym="BHI260AP", x=330, y=65, fp=E, dnp=False, nets={
+    dict(ref="U8", sym="BHI260AP", x=330, y=65, fp=E, dnp=False, nets={"3": "HOSTBOOT", "6": "VREG", 
         "1": "NC", "2": "NC", "3": "NC", "4": "QSPI_IO0", "5": "QSPI_SCK", "6": "NC",
         "7": "+1V8", "8": "QSPI_IO3", "9": "BHI_RESET", "10": "BHI_HIRQ",
         "11": "SPI2_MOSI", "12": "+1V8", "13": "NC", "14": "QSPI_CS", "15": "QSPI_IO1",
@@ -538,7 +550,7 @@ PARTS = [
         "A1": "V_PMID", "B1": "I2C0_SDA", "C1": "I2C0_SCL", "D1": "GND",
         "A2": "V_PMID", "B2": "LED_R", "C2": "LED_G", "D2": "LED_B"}),
     dict(ref="D1", sym="LED_RGB", x=372, y=175, fp=E, dnp=False, value="SMLP34RGB2W3", nets={
-        "R": "LED_R", "G": "LED_G", "B": "LED_B", "COM": "NC"}),
+        "R": "LED_R", "G": "LED_G", "B": "LED_B", "COM": "V_PMID"}),
     dict(ref="C15", sym="C", x=395, y=175, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "V_PMID", "2": "GND"}), # IS31 decap (value TBD-JP, OD-17)
 
     # --- Flash (bottom-right) ---

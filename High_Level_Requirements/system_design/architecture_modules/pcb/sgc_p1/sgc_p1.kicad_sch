@@ -1908,7 +1908,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin passive line
 					(at -17.78 24.13 0)
 					(length 2.54)
 					(name "HOSTBOOT"
@@ -3449,7 +3449,121 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "sgc_p1:CON-3"
+			(symbol "sgc_p1:CON-2"
+			(pin_names
+				(offset 1.016)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "J"
+				(at 0 9.42 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "JST-SH-2 piezo (TBD-JP)"
+				(at 0 -9.82 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://www.jst-mfg.co.jp/product/index.html"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Off-board piezo arming button (Langir 16mm, arch doc 3) - 2-pin JST-SH"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "CON-2_0_1"
+				(rectangle
+					(start -7.62 10.16)
+					(end 7.62 -7.62)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "CON-2_1_1"
+				(pin passive line
+					(at -10.16 7.62 0)
+					(length 2.54)
+					(name "PIN1"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -10.16 5.08 0)
+					(length 2.54)
+					(name "PIN2"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.016 1.016)
+							)
+						)
+					)
+				)
+			)
+		)
+			(symbol "sgc_p1:CON-3"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -6904,10 +7018,6 @@
 	(no_connect
 		(at 347.78 71.35)
 		(uuid "147fcac3-6941-4648-abbd-46a554839756")
-	)
-	(no_connect
-		(at 378.35 175)
-		(uuid "173b9cff-cdd7-40c2-bdce-ec58f6441b6e")
 	)
 	(no_connect
 		(at 312.7 226.27)
@@ -13626,7 +13736,7 @@
 			)
 		)
 	)
-	(global_label "V_PMID"
+	(global_label "+1V8"
 		(shape input)
 		(at 267.97 35.56 0)
 		(fields_autoplaced yes)
@@ -15370,6 +15480,609 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "V_PMID"
+		(shape bidirectional)
+		(at 378.35 175 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		(justify left)
+		)
+		(uuid "1d3a0001-a1b2-4c3d-8e9f-00001d3a0001")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 378.35 175 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "HOSTBOOT"
+		(shape bidirectional)
+		(at 312.22 40.87 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		(justify right)
+		)
+		(uuid "1d3a0002-a1b2-4c3d-8e9f-00001d3a0002")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 312.22 40.87 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "VREG"
+		(shape bidirectional)
+		(at 312.22 48.49 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		(justify right)
+		)
+		(uuid "1d3a0003-a1b2-4c3d-8e9f-00001d3a0003")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 312.22 48.49 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "HOSTBOOT"
+		(shape bidirectional)
+		(at 287.02 36.83 90)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		(justify left)
+		)
+		(uuid "1d3a0004-a1b2-4c3d-8e9f-00001d3a0004")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 287.02 36.83 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "VREG"
+		(shape bidirectional)
+		(at 287.02 46.99 90)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		(justify left)
+		)
+		(uuid "1d3a0005-a1b2-4c3d-8e9f-00001d3a0005")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 287.02 46.99 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "sgc_p1:CON-2")
+		(at 109.22 246.38 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d3a0013-a1b2-4c3d-8e9f-00001d3a0013")
+		(property "Reference" "J5"
+			(at 112.22 245.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "JST-SH-2 piezo (TBD-JP)"
+			(at 112.22 247.58 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal"
+			(at 109.22 246.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 109.22 246.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "DS review fix 2026-11-03"
+			(at 109.22 246.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d3a0014-a1b2-4c3d-8e9f-00001d3a0014")
+		)
+		(pin "2"
+			(uuid "1d3a0015-a1b2-4c3d-8e9f-00001d3a0015")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+					(reference "J5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 287.02 40.64 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d3a0006-a1b2-4c3d-8e9f-00001d3a0006")
+		(property "Reference" "R13"
+			(at 290.02 39.44 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k 1%"
+			(at 290.02 41.84 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+			(at 287.02 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 287.02 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "DS review fix 2026-11-03"
+			(at 287.02 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d3a0007-a1b2-4c3d-8e9f-00001d3a0007")
+		)
+		(pin "2"
+			(uuid "1d3a0008-a1b2-4c3d-8e9f-00001d3a0008")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+					(reference "R13")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 287.02 50.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d3a0009-a1b2-4c3d-8e9f-00001d3a0009")
+		(property "Reference" "C20"
+			(at 290.02 49.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "220n"
+			(at 290.02 52 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0402_1005Metric"
+			(at 287.02 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 287.02 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "DS review fix 2026-11-03"
+			(at 287.02 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d3a000a-a1b2-4c3d-8e9f-00001d3a000a")
+		)
+		(pin "2"
+			(uuid "1d3a000b-a1b2-4c3d-8e9f-00001d3a000b")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+					(reference "C20")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 287.02 44.45 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d3a000c-a1b2-4c3d-8e9f-00001d3a000c")
+		(property "Reference" "#PWR19"
+			(at 290.02 43.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 290.02 45.65 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 287.02 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 287.02 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "DS review fix 2026-11-03"
+			(at 287.02 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d3a000d-a1b2-4c3d-8e9f-00001d3a000d")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+					(reference "#PWR19")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 287.02 54.61 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d3a000e-a1b2-4c3d-8e9f-00001d3a000e")
+		(property "Reference" "#PWR20"
+			(at 290.02 53.41 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 290.02 55.81 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 287.02 54.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 287.02 54.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "DS review fix 2026-11-03"
+			(at 287.02 54.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d3a000f-a1b2-4c3d-8e9f-00001d3a000f")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+					(reference "#PWR20")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "BUTTON"
+		(shape bidirectional)
+		(at 99.06 238.76 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		(justify right)
+		)
+		(uuid "1d3a0010-a1b2-4c3d-8e9f-00001d3a0010")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 99.06 238.76 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 99.06 241.3 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d3a0011-a1b2-4c3d-8e9f-00001d3a0011")
+		(property "Reference" "#PWR21"
+			(at 102.06 240.1 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 102.06 242.5 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 99.06 241.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 99.06 241.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "DS review fix 2026-11-03"
+			(at 99.06 241.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d3a0012-a1b2-4c3d-8e9f-00001d3a0012")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+					(reference "#PWR21")
+					(unit 1)
 				)
 			)
 		)
@@ -17278,7 +17991,7 @@
 				)
 			)
 		)
-		(property "Value" "100k"
+		(property "Value" "4.7k 1%"
 			(at 251.206 40.64 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18598,7 +19311,7 @@
 				)
 			)
 		)
-		(property "Value" "100k"
+		(property "Value" "4.7k 1%"
 			(at 252.73 60.706 0)
 			(show_name no)
 			(do_not_autoplace no)

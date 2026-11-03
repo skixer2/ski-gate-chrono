@@ -260,7 +260,7 @@ def main():
     expected_ic = {"U1": "ANNA-B402", "U3": "BQ25120A", "U4": "MAX17048", "U5": "IS31FL3194",
                    "U6": "LDC1612", "U8": "BHI260AP", "U9": "BMP390", "U7": "MX25R6435F",
                    "U2": "MX25R1635F"}
-    expected_j = {"J1": "USB4085", "J2": "JST-BAT-3", "J3": "SWD-2X5", "J4": "CON-3"}
+    expected_j = {"J1": "USB4085", "J2": "JST-BAT-3", "J3": "SWD-2X5", "J4": "CON-3", "J5": "CON-2"}
     for ref, symname in expected_ic.items():
         if ref not in placed or placed[ref]["sym"] != symname:
             err(f"census: {ref} ({symname}) missing/mismatched")
@@ -271,8 +271,8 @@ def main():
     n_r = sum(1 for p in placed.values() if p["sym"] == "R")
     n_l = sum(1 for p in placed.values() if p["sym"] == "L")
     n_d = sum(1 for p in placed.values() if p["sym"] == "LED_RGB")
-    if (n_c, n_r, n_l, n_d) != (19, 12, 2, 1):
-        err(f"census: passives C/R/L/D = {n_c}/{n_r}/{n_l}/{n_d}, expected 19/12/2/2 (+5 SK6812 DNP separate)")
+    if (n_c, n_r, n_l, n_d) != (20, 13, 2, 1):
+        err(f"census: passives C/R/L/D = {n_c}/{n_r}/{n_l}/{n_d}, expected 20/13/2/2 (+5 SK6812 DNP separate)")
     # datasheet pin counts
     expected_pins = {"ANNA-B402": 56, "BQ25120A": 25, "MAX17048": 9, "IS31FL3194": 8, "LDC1612": 12, "BHI260AP": 44, "BMP390": 10, "MX25R6435F": 8, "MX25R1635F": 8, "USB4085": 20, "MT3608": 5, "TXS0102": 8, "SK6812": 4, "CON-3": 3, "JST-BAT-3": 3, "SWD-2X5": 10, "D_SCHOTTKY": 2}
     for name, n in expected_pins.items():
