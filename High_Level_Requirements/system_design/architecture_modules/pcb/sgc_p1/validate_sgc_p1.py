@@ -126,6 +126,23 @@ def main():
         pts.add(a); pts.add(b)
         uf.union(a, b)
 
+    # connection points: KiCad connects coincident points with no wire needed
+    # (label-on-pin, power-flag-on-pin, pin-on-pin are all valid)
+    conn = set(pts)
+    for gl in sch.globalLabels:
+        conn.add(key(gl.position))
+    for sym in sch.schematicSymbols:
+        if sym.entryName in POWER_SYMBOLS:
+            conn.add((round(sym.position.X, 3), round(sym.position.Y, 3)))
+            continue
+        try:
+            lp = lib_pins(sym.entryName)
+        except Exception:
+            continue
+        for _num, pin in lp.items():
+            conn.add((round(sym.position.X + pin.position.X, 3),
+                      round(sym.position.Y - pin.position.Y, 3)))
+
     net_of_cluster = {}   # root -> netname (with conflict detection)
     def set_net(pt, net, what):
         r = uf.find(pt)
@@ -136,8 +153,8 @@ def main():
 
     for gl in sch.globalLabels:
         pt = key(gl.position)
-        if pt not in pts:
-            err(f"floating global label '{gl.text}' at {pt} (not on a wire)")
+        if pt not in conn:
+            err(f"floating global label '{gl.text}' at {pt} (not on a connection point)")
         else:
             set_net(pt, gl.text, f"label {gl.text}")
 
@@ -145,7 +162,7 @@ def main():
     for sym in sch.schematicSymbols:
         if sym.entryName in POWER_SYMBOLS:
             pt = (round(sym.position.X, 3), round(sym.position.Y, 3))
-            if pt not in pts:
+            if pt not in conn:
                 err(f"power symbol {sym.properties[0].value} ({sym.entryName}) at {pt} not touching a wire")
             else:
                 set_net(pt, sym.entryName, f"power {sym.entryName}")
@@ -185,8 +202,8 @@ def main():
                 if pt in pts:
                     err(f"{ref}.{pin_num}: NC pin has a wire attached at {pt}")
                 continue
-            if pt not in pts:
-                err(f"{ref}.{pin_num} (net {expected_net}): NO wire/label at pin point {pt}")
+            if pt not in conn:
+                err(f"{ref}.{pin_num} (net {expected_net}): NO connection (wire/label/flag/pin) at pin point {pt}")
                 continue
             got = net_of_cluster.get(uf.find(pt))
             if got != expected_net:

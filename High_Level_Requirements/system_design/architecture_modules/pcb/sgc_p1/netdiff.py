@@ -17,8 +17,8 @@ def parse(fn):
             out[nm.group(1)] = nodes
     return out
 
-a = parse('C:/Users/v17ni/zio_claw/sgc_bench/hier6.net')
-b = parse('C:/Users/v17ni/zio_claw/sgc_bench/hier7.net')
+a = parse('C:/Users/v17ni/zio_claw/sgc_bench/hier9.net')
+b = parse('C:/Users/v17ni/zio_claw/sgc_bench/hier10.net')
 print('nets before/after:', len(a), '/', len(b))
 only_a = set(a) - set(b)
 only_b = set(b) - set(a)
