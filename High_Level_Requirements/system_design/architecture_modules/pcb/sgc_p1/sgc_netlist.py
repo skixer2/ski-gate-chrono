@@ -526,7 +526,7 @@ PARTS = [
 
     # --- Sensor cluster (right) ---
     dict(ref="U8", sym="BHI260AP", x=330, y=65, fp=E, dnp=False, nets={"3": "HOSTBOOT", "6": "VREG", 
-        "1": "NC", "2": "NC", "3": "NC", "4": "QSPI_IO0", "5": "QSPI_SCK", "6": "NC",
+        "1": "NC", "2": "NC", "4": "QSPI_IO0", "5": "QSPI_SCK",
         "7": "+1V8", "8": "QSPI_IO3", "9": "BHI_RESET", "10": "BHI_HIRQ",
         "11": "SPI2_MOSI", "12": "+1V8", "13": "NC", "14": "QSPI_CS", "15": "QSPI_IO1",
         "16": "NC", "17": "GND", "18": "M1_CSB2", "19": "NC", "20": "QSPI_IO2",
