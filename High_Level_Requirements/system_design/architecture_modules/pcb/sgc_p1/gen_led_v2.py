@@ -176,24 +176,23 @@ def flag(refnum, lib_id, val, x, y, uid, puid):
             T*5 + '(reference "%s")' % refnum + NL + T*5 + '(unit 1)' + NL + T*4 + ')' + NL + T*3 + ')' + NL + T*2 + ')' + NL + T + ')' + NL)
 
 def ncflag(x, y, uid):
-    return T + '(no_connect' + NL + T*2 + '(at %g %g 90)' % (x, y) + NL + T*2 + '(uuid "%s")' % uid + NL + T + ')' + NL
+    return T + '(no_connect' + NL + T*2 + '(at %g %g)' % (x, y) + NL + T*2 + '(uuid "%s")' % uid + NL + T + ')' + NL
 
 blob = ''
-ui = 0x1d2b0000
+_u = [0x1d2b0000]
+def _uuid():
+    _u[0] += 1
+    v = _u[0]
+    return '%08x-cccc-4ccc-8ccc-%012x' % (v, v)
 for (r, p), (txt, ang) in LBL.items():
     x, y = pinpt(r, p)
-    ui += 1
-    blob += glabel(txt, x, y, ang, '1d2b%04x-cccc-4ccc-8ccc-%012x' % (ui, ui))
+    blob += glabel(txt, x, y, ang, _uuid())
 for k, ((r, p), (lib_id, val)) in enumerate(sorted(FLAG.items())):
     x, y = pinpt(r, p)
-    ui += 1
-    ui2 = ui + 0x100
-    blob += flag('#PWR%d' % (95 + k), lib_id, val, x, y,
-                 '1d2b%04x-dddd-4ddd-8ddd-%012x' % (ui2, ui2), '1d2b%04x-eeee-4eee-8eee-%012x' % (ui2 + 1, ui2 + 1))
+    blob += flag('#PWR%d' % (95 + k), lib_id, val, x, y, _uuid(), _uuid())
 for (r, p) in NC:
     x, y = pinpt(r, p)
-    ui += 1
-    blob += ncflag(x, y, '1d2b%04x-ffff-4fff-8fff-%012x' % (ui, ui))
+    blob += ncflag(x, y, _uuid())
 
 # insert before the first moved part instance
 anchor = re.search(r'\t\(symbol' + NL + r'\t\t\(lib_id "', s)
