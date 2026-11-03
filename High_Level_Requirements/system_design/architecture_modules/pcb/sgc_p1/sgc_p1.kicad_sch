@@ -1926,7 +1926,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin bidirectional line
 					(at -17.78 21.59 0)
 					(length 2.54)
 					(name "QSPI_D0"
@@ -1944,7 +1944,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin output line
 					(at -17.78 19.05 0)
 					(length 2.54)
 					(name "QSPI_CLK"
@@ -1998,7 +1998,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin bidirectional line
 					(at -17.78 11.43 0)
 					(length 2.54)
 					(name "QSPI_D3"
@@ -2106,7 +2106,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin output line
 					(at -17.78 -3.81 0)
 					(length 2.54)
 					(name "QSPI_CSN"
@@ -2124,7 +2124,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin bidirectional line
 					(at -17.78 -6.35 0)
 					(length 2.54)
 					(name "QSPI_D1"
@@ -2214,7 +2214,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin bidirectional line
 					(at -17.78 -19.05 0)
 					(length 2.54)
 					(name "QSPI_D2"
@@ -2430,7 +2430,7 @@
 						)
 					)
 				)
-				(pin output line
+				(pin bidirectional line
 					(at 17.78 6.35 180)
 					(length 2.54)
 					(name "HSDO"
@@ -2538,7 +2538,7 @@
 						)
 					)
 				)
-				(pin input line
+				(pin output line
 					(at 17.78 -8.89 180)
 					(length 2.54)
 					(name "MCSB1"
@@ -3122,7 +3122,7 @@
 						)
 					)
 				)
-				(pin power_out line
+				(pin passive line
 					(at -12.7 -2.54 0)
 					(length 2.54)
 					(name "PMID"
@@ -3475,7 +3475,7 @@
 					)
 				)
 			)
-			(property "Footprint" "Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal"
+			(property "Footprint" "Connector_JST:JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -3872,7 +3872,7 @@
 				)
 			)
 			(symbol "JST-BAT-3_1_1"
-				(pin passive line
+				(pin power_out line
 					(at -7.62 2.54 0)
 					(length 2.54)
 					(name "VBAT"
@@ -4799,7 +4799,7 @@
 					)
 				)
 			)
-			(property "Footprint" "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
+			(property "Footprint" "sgc_p1:USON-8_2x3mm_P0.5mm"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -5019,7 +5019,7 @@
 					)
 				)
 			)
-			(property "Footprint" "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
+			(property "Footprint" "sgc_p1:USON-8_4x3mm_P0.8mm"
 				(at 0 0 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -5084,7 +5084,7 @@
 						)
 					)
 				)
-				(pin output line
+				(pin bidirectional line
 					(at -12.7 1.27 0)
 					(length 2.54)
 					(name "SO/SIO1"
@@ -5928,7 +5928,7 @@
 						)
 					)
 				)
-				(pin passive line
+				(pin power_out line
 					(at -15.24 8.89 0)
 					(length 2.54)
 					(name "VBUS"
@@ -18088,7 +18088,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
+		(property "Footprint" "sgc_p1:USON-8_2x3mm_P0.5mm"
 			(at 287.02 246.38 0)
 			(hide yes)
 			(show_name no)
@@ -19898,7 +19898,7 @@
 				)
 			)
 		)
-		(property "Value" "MX25R6435FZAIL-08G"
+		(property "Value" "MX25R6435FZBIH3"
 			(at 289.84 233.95 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19908,7 +19908,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
+		(property "Footprint" "sgc_p1:USON-8_4x3mm_P0.8mm"
 			(at 300 225 0)
 			(hide yes)
 			(show_name no)
