@@ -1,7 +1,17 @@
-# SGC P1 — ERC Triage (pre-revA gate)
+# SGC P1 — ERC Triage (pre-revA gate) — SURGERY EXECUTED 2026-11-03
+
+**RESULT: 347 → 337 findings; ERRORS 15 → 5 (all 5 documented accepts). Netlist membership byte-identical before/after (netdiff.py).**
+
+Executed (commit 57faf8b on JP canon 8e3e3be + fp-lib-table 3ac8ce3):
+- 11 pin retypes (all asserted x1): J1-A4 VBUS + J2-1 VBAT → power_out; BHI260AP QSPI_D0/D1/D2/D3 → bidirectional, QSPI_CLK/QSPI_CSN/MCSB1 → output, HSDO → bidirectional; U7 SO/SIO1 → bidirectional; BQ25120A B3 → passive (dup bump).
+- U2 → sgc_p1:USON-8_2x3mm_P0.5mm; U7 → sgc_p1:USON-8_4x3mm_P0.8mm + VALUE → MX25R6435FZBIH3 (datasheet decoder: ZAIL was USON-4×4 all along, "-08G" postfix bogus; ZB=4×3 = smallest non-WLCSP, JP "min space" pick; DigiKey carries ZBIH3).
+- J4 → Connector_JST:JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal (JP "horizontal").
+- New project fp lib sgc_p1.pretty (gen_uson_fps.py; dims from MX25R1635F v1.6 p.81 + MX25R6435F v1.6 p.82; EP left floating per datasheet note → no EP pad) + fp-lib-table (kicad-cli doesn't auto-add project libs).
+
+**Remaining 5 errors = accepted:** #PWR05 GND (convention) · J3.4 SWDCLK + J3.10 NRESET (debugger-driven) · U8.18 MCSB2 (reserved M1 slot) · #PWR93 +5V (**real finding: MT3608 boost has NO Schottky SW→VOUT — required external part; cluster is DNP so dormant — JP to decide: add DNP Schottky or accept**).
 
 **Data:** `erc_now.rpt` + `hier6.net`, kicad-cli (KiCad 10.0) vs JP's current file (local canon, 2026-11-02 22:53).
-**Totals: 347 = 15 errors + 332 warnings. ZERO wiring errors found** — netlist membership proves every bus lands per spec (QSPI U2↔U8 is the BHI260AP hub's own FW flash, Nicla-parity; M1_CSB1 U8.38→U9.6 drives the BMP390).
+**Original totals: 347 = 15 errors + 332 warnings. ZERO wiring errors found** — netlist membership proves every bus lands per spec (QSPI U2↔U8 is the BHI260AP hub's own FW flash, Nicla-parity; M1_CSB1 U8.38→U9.6 drives the BMP390).
 
 ## The 15 errors — all pin-typing / conventions, none electrical
 
