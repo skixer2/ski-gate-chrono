@@ -7064,10 +7064,6 @@
 		(uuid "441ab17c-1f96-45dc-9d5f-f7076dbddd60")
 	)
 	(no_connect
-		(at 312.22 40.87)
-		(uuid "4e702667-f6de-4776-bb90-b827226c6cec")
-	)
-	(no_connect
 		(at 132.7 56.73)
 		(uuid "4f8761c8-ca12-4a86-87b2-174cac10f06e")
 	)
@@ -7150,10 +7146,6 @@
 	(no_connect
 		(at 312.22 94.21)
 		(uuid "d1f484ac-9e4e-4684-b932-f913f88d550f")
-	)
-	(no_connect
-		(at 312.22 48.49)
-		(uuid "d680ac12-86fe-42ab-8a17-15d9d4cb8d2e")
 	)
 	(no_connect
 		(at 67.24 51.19)
