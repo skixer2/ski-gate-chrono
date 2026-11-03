@@ -8,7 +8,7 @@
 		(title "SGC P1 - LED strip reserve (v2 DNP)")
 		(date "2026-11-02")
 		(rev "A-WIP")
-		(comment 1 "Off-board SK6812 x5 feed: MT3608 5V boost + TXS0102 level translator + J4 connector. ALL DNP v1 (JP 2026-11-01).")
+		(comment 1 "Off-board SK6812 x5 feed: MT3608 5V boost + TXS0102 level translator + J4 connector. ALL DNP v1 (JP 2026-11-01). D2 SS34 Schottky SW->+5V added + L2 rewired VBAT->SW (boost topology completed 2026-11-03).")
 		(comment 2 "Connections to root sheet via GLOBAL LABELS (BOOST_EN, SK6812_DATA, VBAT, GND, +1V8). +5V local to this sheet.")
 	)
 	(lib_symbols
@@ -235,7 +235,166 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "Device:L"
+		(symbol "sgc_p1:D_SCHOTTKY"
+		(pin_names
+			(offset 1.016)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(duplicate_pin_numbers_are_jumpers no)
+		(property "Reference" "D"
+			(at 0 7.62 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "SS34"
+			(at 0 -7.62 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SMA"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Schottky 40V 3A SMA - MT3608 boost rectifier, V2 LED reserve, DNP v1"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(symbol "D_SCHOTTKY_0_1"
+			(polyline
+				(pts
+				(xy -1.905 2.54)
+				(xy 1.905 2.54)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+				(xy -1.905 2.54)
+				(xy -1.905 3.81)
+				(xy -0.635 3.81)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+				(xy 1.905 2.54)
+				(xy 1.905 1.27)
+				(xy 0.635 1.27)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+			(polyline
+				(pts
+				(xy -1.905 -2.54)
+				(xy 1.905 -2.54)
+				(xy 0 2.54)
+				(xy -1.905 -2.54)
+				)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type background)
+				)
+			)
+		)
+		(symbol "D_SCHOTTKY_1_1"
+			(pin power_out line
+				(at 0 5.08 270)
+				(length 2.54)
+				(name "K"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 0 -5.08 90)
+				(length 2.54)
+				(name "A"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.016 1.016)
+						)
+					)
+				)
+			)
+		)
+	)
+	(symbol "Device:L"
 			(pin_names
 				(offset 1.016)
 			)
@@ -1594,14 +1753,25 @@
 	)
 	(wire
 		(pts
-			(xy 176.15 53.98) (xy 179.07 53.98)
+			(xy 176.15 53.98) (xy 177 53.98)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "50e0dac5-883d-40e3-b448-75fe9f1687ff")
+		(uuid "1d2a0006-aaaa-4aaa-8aaa-0000000000a6")
 	)
+	(wire
+		(pts
+			(xy 177 53.98) (xy 179.07 53.98)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d2a0007-aaaa-4aaa-8aaa-0000000000a7")
+	)
+
 	(wire
 		(pts
 			(xy 112.15 135.6) (xy 128.15 135.6)
@@ -2024,14 +2194,55 @@
 	)
 	(wire
 		(pts
-			(xy 176.15 87.41) (xy 176.15 53.98)
+			(xy 176.15 87.41) (xy 176.15 30.48)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "d3dc5b58-5aa8-478e-94c7-69282709dbdc")
+		(uuid "1d2a0001-aaaa-4aaa-8aaa-0000000000a1")
 	)
+	(wire
+		(pts
+			(xy 176.15 30.48) (xy 130.81 30.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d2a0002-aaaa-4aaa-8aaa-0000000000a2")
+	)
+	(wire
+		(pts
+			(xy 177 59.42) (xy 177 53.98)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d2a0003-aaaa-4aaa-8aaa-0000000000a3")
+	)
+	(wire
+		(pts
+			(xy 177 69.58) (xy 177 75.98)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d2a0004-aaaa-4aaa-8aaa-0000000000a4")
+	)
+	(wire
+		(pts
+			(xy 177 75.98) (xy 154.31 75.98)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d2a0005-aaaa-4aaa-8aaa-0000000000a5")
+	)
+
 	(wire
 		(pts
 			(xy 141.61 105.41) (xy 146.69 105.41)
@@ -2403,6 +2614,86 @@
 			)
 		)
 	)
+	(symbol
+		(lib_id "sgc_p1:D_SCHOTTKY")
+		(at 177 64.5 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp yes)
+		(uuid "1d2a0010-bbbb-4bbb-8bbb-0000000000b1")
+		(property "Reference" "D2"
+			(at 179.6 63.5 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "SS34 (TBD-JP)"
+			(at 179.6 65.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SMA"
+			(at 177 64.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 177 64.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "MT3608 boost rectifier SW->+5V, V2 LED reserve, DNP v1"
+			(at 177 64.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1d2a0011-bbbb-4bbb-8bbb-0000000000b2")
+		)
+		(pin "2"
+			(uuid "1d2a0012-bbbb-4bbb-8bbb-0000000000b3")
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701/30db32a4-7fa6-413b-a0de-da7d48f5eae5"
+					(reference "D2")
+					(unit 1)
+				)
+			)
+		)
+	)
+
 	(symbol
 		(lib_id "sgc_p1:CON-3")
 		(at 181.61 101.6 0)

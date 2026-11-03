@@ -27,6 +27,14 @@ P = 2.54  # pin pitch (mm)
 # Order within each side = top-to-bottom placement order.
 # ---------------------------------------------------------------------------
 SYMBOL_PINS = {
+    "D_SCHOTTKY": dict(
+        prefix="D", value="SS34", fp="Diode_SMD:D_SMA",
+        ds="", desc="Schottky 40V 3A SMA - MT3608 boost rectifier, V2 LED reserve, DNP v1", hw=5.08,
+        pins=[
+            ("1",  "K","power_out", "T"),
+            ("2",  "A","passive", "B"),
+        ],
+    ),
     "MT3608": dict(
         prefix="U", value="MT3608", fp="Package_TO_SOT_SMD:SOT-23-6",
         ds="https://www.jlcpcb.com/partdetail/Aerosemi-MT3608_C84817.html", desc="Aerosemi MT3608 boost 2.0-24V in, 1.2MHz, EN shutdown ~2uA (pin6 NC not drawn). V2 LED reserve, DNP v1", hw=7.62,
@@ -433,7 +441,8 @@ PARTS = [
     # --- V2 LED STRIP RESERVE (JP 2026-10-31 b): all DNP v1 ---
     dict(ref="U11", sym="TXS0102", x=312, y=248, dnp=True, nets={"1": "+1V8", "2": "SK6812_DATA", "3": "NC", "4": "GND", "5": "NC", "6": "LED_DIN_5V", "7": "+1V8", "8": "+5V"}),
     dict(ref="U10", sym="MT3608", x=352, y=248, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
-    dict(ref="L2", sym="L", x=384, y=248, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "+5V"}),
+    dict(ref="L2", sym="L", x=384, y=248, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
+    dict(ref="D2", sym="D_SCHOTTKY", x=386, y=230, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),  # 2026-11-03: boost rectifier added
     dict(ref="R11", sym="R", x=304, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
     dict(ref="R12", sym="R", x=320, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
     dict(ref="C17", sym="C", x=336, y=266, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
