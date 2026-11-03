@@ -1,6 +1,8 @@
 # SGC P1 — ERC Triage (pre-revA gate) — SURGERY EXECUTED 2026-11-03
 
-**RESULT: 347 → 337 findings; ERRORS 15 → 5 (all 5 documented accepts). Netlist membership byte-identical before/after (netdiff.py).**
+**RESULT (final, a895242): 347 → 340 findings; ERRORS 15 → 4 — SWDCLK + NRESET (debugger-driven), MCSB2 (reserved), GND (convention). Surgery-1 netlist membership byte-identical (netdiff.py).**
+
+**D2 arc (2026-11-03): the +5V trace exposed a SPEC BUG — L2 was wired SW↔+5V (the diode slot), VBAT↔SW had NO inductor. Fixed: L2 → VBAT↔SW, D2 SS34 Schottky added (DNP, Diode_SMD:D_SMA, K=power_out → +5V rail driven). Netlist-verified: VBAT∋L2.2, BOOST_SW∋{L2.1,D2.A,U10.1}, +5V∋{D2.K,C18,C19,J4.1,R11.1,U11.8}. kicad-cli also caught my first riser shorting +5V↔VBAT via endpoint auto-junction (rerouted x=181.61) — engine-as-arbiter doctrine vindicated twice in one day.**
 
 Executed (commit 57faf8b on JP canon 8e3e3be + fp-lib-table 3ac8ce3):
 - 11 pin retypes (all asserted x1): J1-A4 VBUS + J2-1 VBAT → power_out; BHI260AP QSPI_D0/D1/D2/D3 → bidirectional, QSPI_CLK/QSPI_CSN/MCSB1 → output, HSDO → bidirectional; U7 SO/SIO1 → bidirectional; BQ25120A B3 → passive (dup bump).
