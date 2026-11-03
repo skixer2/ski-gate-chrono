@@ -2194,24 +2194,36 @@
 	)
 	(wire
 		(pts
-			(xy 176.15 87.41) (xy 176.15 30.48)
+			(xy 176.15 87.41) (xy 181.61 87.41)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "1d2a0001-aaaa-4aaa-8aaa-0000000000a1")
+		(uuid "1d2a0008-aaaa-4aaa-8aaa-0000000000a8")
 	)
 	(wire
 		(pts
-			(xy 176.15 30.48) (xy 130.81 30.48)
+			(xy 181.61 87.41) (xy 181.61 30.48)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "1d2a0002-aaaa-4aaa-8aaa-0000000000a2")
+		(uuid "1d2a0009-aaaa-4aaa-8aaa-0000000000a9")
 	)
+
+	(wire
+		(pts
+			(xy 181.61 30.48) (xy 130.81 30.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d2a000a-aaaa-4aaa-8aaa-0000000000aa")
+	)
+
 	(wire
 		(pts
 			(xy 177 59.42) (xy 177 53.98)
