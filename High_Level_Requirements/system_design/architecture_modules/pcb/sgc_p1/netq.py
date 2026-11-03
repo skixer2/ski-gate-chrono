@@ -3,7 +3,7 @@ import re
 net = open('C:/Users/v17ni/zio_claw/sgc_bench/hier6.net', encoding='utf-8', errors='replace').read()
 n0 = net.find('(nets')
 starts = [n0 + m.start() for m in re.finditer(r'\(net\s*\(code', net[n0:])]
-targets = [('U10', '1'), ('L2', '1'), ('L2', '2'), ('U11', '8'), ('C18', '1'), ('C17', '1'), ('J4', '1'), ('J4', '2'), ('J4', '3')]
+targets = [('U8', '3'), ('U8', '6'), ('J5', '1'), ('J5', '2'), ('R13', '1'), ('C20', '1'), ('R4', '1'), ('D1', 'COM')]
 for k, s in enumerate(starts):
     e = starts[k + 1] if k + 1 < len(starts) else len(net)
     blk = net[s:e]
