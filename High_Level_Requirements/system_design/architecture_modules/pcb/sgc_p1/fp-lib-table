@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "sgc_p1")(type "KiCad")(uri "${KIPRJMOD}/sgc_p1.pretty")(options "")(descr "SGC P1 project-local footprints (USON flash packages generated from Macronix datasheets)"))
+)
