@@ -8,10 +8,15 @@ import re, uuid
 HERE = '/home/node/.openclaw/workspace/ski_gate_chrono/High_Level_Requirements/system_design/architecture_modules/pcb/sgc_p1'
 ROOT = HERE + '/sgc_p1.kicad_sch'
 CHILD = HERE + '/led_reserve.kicad_sch'
-DX, DY = -280.0, -225.0
-CLUSTER_REFS = {'U10', 'U11', 'L2', 'R11', 'R12', 'C17', 'C18', 'C19', 'J4'}
+DX, DY = -166.0, -232.0
+CLUSTER_REFS = {'U10', 'U11', 'L2', 'D2', 'R11', 'R12', 'C17', 'C18', 'C19', 'J4'}
 CLUSTER_LIBS = {'sgc_p1:MT3608', 'sgc_p1:TXS0102', 'sgc_p1:CON-3', 'sgc_p1:+5V'}
-BBOX = (288.0, 218.0, 416.0, 306.0)  # x0 y0 x1 y1 of the reserve zone
+BBOX = (180.0, 230.0, 280.0, 283.0)
+# Margins are the MEASURED label coordinates, not guesses (label offset is 5.08 mm):
+#   U11 L-side labels at x=182.76 -> x0 must be < 182.76
+#   U2  L-side labels at x=282.22 -> x1 must be < 282.22 (U2 is flash, stays on root)
+#   R/C bottom labels at y=282.35 -> y1 must be > 282.35
+#   D2  top label    at y=231.11 -> y0 must be < 231.11
 
 def u(): return str(uuid.uuid4())
 def f(v):
@@ -38,7 +43,7 @@ def in_bbox(x, y):
 moved, keep = [], []
 
 # ---- 1. symbol instances: by lib_id or Reference ----
-for m in re.finditer(r'\(symbol\n\s*\(lib_id "([^"]+)"', s):
+for m in re.finditer(r'\(symbol\s*\(lib_id "([^"]+)"', s):
     a, b = block_at(m.start())
     blk = s[a:b]
     refm = re.search(r'\(property "Reference" "([^"]+)"', blk)
@@ -49,7 +54,7 @@ for m in re.finditer(r'\(symbol\n\s*\(lib_id "([^"]+)"', s):
         keep.append(('symbol', blk))
 
 # power instances of GND/VBAT/+1V8 INSIDE the bbox move too
-for m in re.finditer(r'\(symbol\n\s*\(lib_id "sgc_p1:(GND|VBAT|\+1V8)"', s):
+for m in re.finditer(r'\(symbol\s*\(lib_id "sgc_p1:(GND|VBAT|\+1V8)"', s):
     a, b = block_at(m.start())
     blk = s[a:b]
     at = re.search(r'\(at ([-\d.]+) ([-\d.]+)', blk)
@@ -73,9 +78,9 @@ def geo_blocks(pattern, pt_group=1):
                 out.append(blk)
     return out
 
-wire_blocks = geo_blocks(r'\(wire\n')
+wire_blocks = geo_blocks(r'\(wire\b')
 label_blocks = geo_blocks(r'\(global_label "')
-nc_blocks = geo_blocks(r'\(no_connect\n')
+nc_blocks = geo_blocks(r'\(no_connect\b')
 moved_all = [blk for _, blk in moved] + wire_blocks + label_blocks + nc_blocks
 moved_set = set(moved_all)
 
@@ -164,13 +169,18 @@ sheet_entry = '''	(sheet
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/4921ceaf-687f-4bbc-9968-2c2379bb8701"
+				(path "/{ROOT_UUID}"
 					(page "2")
 				)
 			)
 		)
 	)
 '''.replace("{SU}", str(uuid.uuid4()))
+# root UUID of the parent sheet - the child's instance path must match it exactly
+_m = re.search(r'\(uuid "?([0-9a-f-]{36})"?\)', open(ROOT, encoding='utf-8').read(800))
+ROOT_UUID = _m.group(1) if _m else ''
+sheet_entry = sheet_entry.replace('{ROOT_UUID}', ROOT_UUID)
+
 s = s.replace('\t(sheet_instances', sheet_entry + '\t(sheet_instances', 1)
 open(ROOT, 'w', encoding='utf-8').write(s)
 print(f'moved {len(moved_all)} blocks to child; root sheet entry added')

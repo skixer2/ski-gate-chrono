@@ -14,6 +14,7 @@ and power symbols (no sprawling point-to-point wiring).
 """
 import json
 import os
+import re
 import sys
 import uuid
 
@@ -197,6 +198,29 @@ def main():
     sch.textBoxes = boxes
     sch.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")]
 
+    # Reuse the project's existing root-sheet UUID (stable regeneration), and
+    # NEVER clobber user project settings: sgc_p1.kicad_pro is merged, not replaced.
+    pro_path = os.path.join(HERE, "sgc_p1.kicad_pro")
+    sch_path = os.path.join(HERE, "sgc_p1.kicad_sch")
+    # Root-sheet UUID must be STABLE: led_reserve.kicad_sch and the .kicad_pro both
+    # reference it by path. Reuse whatever the current schematic already declares.
+    if os.path.exists(sch_path):
+        try:
+            _head = open(sch_path, encoding="utf-8").read(800)
+            _m = re.search(r'\(uuid "?([0-9a-f-]{36})"?\)', _head)
+            if _m:
+                sch.uuid = _m.group(1)
+        except Exception as _e:
+            print(f"WARN: could not reuse root sheet UUID ({_e}) - a new one was generated")
+    _existing_pro = None
+    if os.path.exists(pro_path):
+        try:
+            with open(pro_path, encoding="utf-8") as _f:
+                _existing_pro = json.load(_f)
+            pass  # root UUID already taken from the schematic above
+        except Exception as _e:
+            print(f"WARN: existing .kicad_pro unreadable ({_e}) - will regenerate a minimal one")
+
     sch.to_file(os.path.join(HERE, "sgc_p1.kicad_sch"))
 
     # ---- minimal project file ----
@@ -223,7 +247,14 @@ def main():
         "sheets": [[sch.uuid, "Root"]],
         "text_variables": {},
     }
-    with open(os.path.join(HERE, "sgc_p1.kicad_pro"), "w") as f:
+    if _existing_pro is not None:
+        # Preserve every existing setting (3dviewports, ipc2581, net classes, ERC
+        # severities, pinned libs...). Only the root-sheet entry is authoritative here.
+        _existing_pro["sheets"] = [[sch.uuid, "Root"]] + [
+            sh for sh in _existing_pro.get("sheets", []) if not (len(sh) == 2 and sh[1] == "Root")]
+        _existing_pro.setdefault("meta", {})["filename"] = "sgc_p1.kicad_pro"
+        pro = _existing_pro
+    with open(pro_path, "w", encoding="utf-8") as f:
         json.dump(pro, f, indent=2)
 
     print(f"wrote sgc_p1.kicad_sch: {len(symbols)} symbol instances "

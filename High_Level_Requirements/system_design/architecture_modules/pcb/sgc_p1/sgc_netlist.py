@@ -308,6 +308,54 @@ SYMBOL_PINS = {
             ("10", "VDD",   "power_in", "R"),
         ],
     ),
+    "BME688": dict(
+        prefix="U", value="BME688",
+        fp="", ds="https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bme688-ds000.pdf",
+        desc="Bosch BME688 environmental (T/RH/P/gas/VOC), 8-pad LGA; rides BHI260AP M1 SPI (Nicla U6 parity). G2",
+        hw=7.62,
+        pins=[
+            ("1", "GND",     "power_in", "L"),
+            ("2", "CSB",     "input", "L"),
+            ("3", "SDI",     "bidirectional", "L"),
+            ("4", "SCK",     "input", "L"),
+            ("5", "SDO",     "output", "L"),
+            ("6", "VDDIO",   "power_in", "R"),
+            ("7", "GND",     "power_in", "R"),
+            ("8", "VDD",     "power_in", "R"),
+        ],
+    ),
+    "BMM150": dict(
+        prefix="U", value="BMM150",
+        fp="", ds="https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf",
+        desc="Bosch BMM150 geomagnetic sensor, 8-bump WLCSP; rides BHI260AP M3 I2C (Nicla U4 parity). G1",
+        hw=7.62,
+        pins=[
+            ("A1", "PS",   "input", "L"),
+            ("A3", "SCK",  "input", "L"),
+            ("A5", "CS",   "input", "L"),
+            ("B2", "VDDIO","power_in", "L"),
+            ("B4", "SDI",  "bidirectional", "L"),
+            ("C1", "SDO",  "output", "L"),
+            ("C5", "GND",  "power_in", "R"),
+            ("D2", "INT",  "output", "R"),
+            ("D4", "DRDY", "output", "R"),
+            ("E1", "GND",  "power_in", "R"),
+            ("E3", "GND",  "power_in", "R"),
+            ("E5", "VDD",  "power_in", "R"),
+        ],
+    ),
+    "SIT1532": dict(
+        prefix="Y", value="SIT1532AI-J4-DCC-32.768E",
+        fp="", ds="https://www.sitime.com/datasheet/SiT1532",
+        desc="SiTime SiT1532 32.768 kHz MEMS XO, 4-pad 1.5x0.8 mm CSP (Nicla Y1 parity). G3",
+        hw=5.08,
+        pins=[
+            ("1", "ST",  "input", "L"),
+            ("2", "GND", "power_in", "L"),
+            ("3", "OUT", "output", "R"),
+            ("4", "VDD", "power_in", "R"),
+        ],
+    ),
     "MX25R6435F": dict(
         prefix="U", value="MX25R6435FZAIL-08G",
         fp="Package_SO:SOIC-8_5.23x5.23mm_P1.27mm",
@@ -434,6 +482,7 @@ POWER_SYMBOLS = {
     "VBAT":     "rail",
     "V_PMID":   "rail",
     "VBUS_USB": "rail",
+    "VBUS_IN":  "rail",
     "+5V":      "rail",
 }
 
@@ -448,19 +497,19 @@ E = ""  # empty footprint (custom, see README)
 PARTS = [
 
     # --- V2 LED STRIP RESERVE (JP 2026-10-31 b): all DNP v1 ---
-    dict(ref="U11", sym="TXS0102", x=312, y=248, dnp=True, nets={"1": "+1V8", "2": "SK6812_DATA", "3": "NC", "4": "GND", "5": "NC", "6": "LED_DIN_5V", "7": "+1V8", "8": "+5V"}),
-    dict(ref="U10", sym="MT3608", x=352, y=248, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
-    dict(ref="L2", sym="L", x=384, y=248, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
-    dict(ref="D2", sym="D_SCHOTTKY", x=386, y=230, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
+    dict(ref="U11", sym="TXS0102", x=198, y=258, dnp=True, nets={"1": "+1V8", "2": "SK6812_DATA", "3": "NC", "4": "GND", "5": "NC", "6": "LED_DIN_5V", "7": "+1V8", "8": "+5V"}),
+    dict(ref="U10", sym="MT3608", x=238, y=258, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
+    dict(ref="L2", sym="L", x=270, y=258, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
+    dict(ref="D2", sym="D_SCHOTTKY", x=272, y=240, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
     dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="Resistor_SMD:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
     dict(ref="C20", sym="C", x=287.02, y=50.8, dnp=False, fp="Capacitor_SMD:C_0402_1005Metric", value="220n", nets={"1": "VREG", "2": "GND"}),
-    dict(ref="J5", sym="CON-2", x=109.22, y=246.38, dnp=False, fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", value="JST-SH-2 piezo (TBD-JP)", nets={"1": "BUTTON", "2": "GND"}),  # 2026-11-03: boost rectifier added
-    dict(ref="R11", sym="R", x=304, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
-    dict(ref="R12", sym="R", x=320, y=266, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
-    dict(ref="C17", sym="C", x=336, y=266, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
-    dict(ref="C18", sym="C", x=352, y=266, fp="Capacitor_SMD:C_0805_2012Metric", dnp=True, value="22uF", nets={"1": "+5V", "2": "GND"}),
-    dict(ref="C19", sym="C", x=368, y=266, fp="Capacitor_SMD:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
-    dict(ref="J4", sym="CON-3", x=392, y=266, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND"}),
+    dict(ref="J5", sym="CON-2", x=109.22, y=246.38, dnp=False, fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", value="JST-SH-2 piezo (TBD-JP)", nets={"1": "BUTTON_RAW", "2": "GND"}),  # 2026-11-03: boost rectifier added
+    dict(ref="R11", sym="R", x=190, y=276, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
+    dict(ref="R12", sym="R", x=206, y=276, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
+    dict(ref="C17", sym="C", x=222, y=276, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
+    dict(ref="C18", sym="C", x=238, y=276, fp="Capacitor_SMD:C_0805_2012Metric", dnp=True, value="22uF", nets={"1": "+5V", "2": "GND"}),
+    dict(ref="C19", sym="C", x=254, y=276, fp="Capacitor_SMD:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
+    dict(ref="J4", sym="CON-3", x=278, y=276, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND"}),
     # --- USB-C + CC resistors + bulk cap (left edge, top) ---
     dict(ref="J1",  sym="USB4085",    x=52,  y=55,  fp=E, dnp=False, nets={
         "A1": "GND", "A4": "VBUS_USB", "A5": "CC1", "A6": "NC", "A7": "NC", "A8": "NC",
@@ -473,13 +522,13 @@ PARTS = [
 
     # --- Charger subsystem (top-left) ---
     dict(ref="U3", sym="BQ25120A", x=120, y=58, fp=E, dnp=False, nets={
-        "A1": "GND", "A2": "VBUS_USB", "A3": "V_PMID", "A4": "SW_NODE", "A5": "GND",
+        "A1": "GND", "A2": "VBUS_IN", "A3": "V_PMID", "A4": "SW_NODE", "A5": "GND",
         "B1": "VBAT", "B2": "VBAT", "B3": "V_PMID", "B4": "+1V8", "B5": "+1V8",
         "C1": "ISET_R", "C2": "ILIM_R", "C3": "TS_NTC",
         "C4": "+1V8", "C5": "LSLDO_C",
         "D1": "IPRETERM_R", "D2": "BQ_INT", "D3": "NC", "D4": "NC", "D5": "GND",
         "E1": "NC", "E2": "BQ_CD", "E3": "GND", "E4": "I2C0_SDA", "E5": "I2C0_SCL"}),
-    dict(ref="C1", sym="C", x=152, y=42, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBUS_USB", "2": "GND"}),   # BQ IN bypass (>=1uF)
+    dict(ref="C1", sym="C", x=152, y=42, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBUS_IN", "2": "GND"}),   # BQ IN bypass (>=1uF)
     dict(ref="C2", sym="C", x=152, y=52, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="4.7uF", nets={"1": "V_PMID", "2": "GND"}),    # PMID >=3uF, Nicla C10
     dict(ref="C3", sym="C", x=152, y=62, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="10uF",  nets={"1": "+1V8", "2": "GND"}),      # SYS >=4.7uF, Nicla C15
     dict(ref="C4", sym="C", x=152, y=72, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBAT", "2": "GND"}),      # BAT bypass
@@ -489,7 +538,7 @@ PARTS = [
     dict(ref="R1", sym="R", x=168, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1.82k 1%", nets={"1": "ISET_R", "2": "GND"}),      # ICHG ~110 mA (OD-15)
     dict(ref="R2", sym="R", x=168, y=58, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1k 1%",    nets={"1": "ILIM_R", "2": "GND"}),       # ILIM 200 mA
     dict(ref="R3", sym="R", x=168, y=68, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.99k 1%", nets={"1": "IPRETERM_R", "2": "GND"}),  # term/prechg 10%
-    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_CD"}),      # CD PU V_PMID (OD-8)
+    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "V_PMID", "2": "BQ_CD"}),     # CD PU V_PMID (OD-8) - D2 fix 2026-11-04
     dict(ref="R5", sym="R", x=168, y=92, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_INT"}),       # BQ INT PU
     dict(ref="R9", sym="R", x=184, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SDA"}),     # i2c0 PU (Nicla parity)
     dict(ref="R10",sym="R", x=184, y=60, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
@@ -526,10 +575,10 @@ PARTS = [
 
     # --- Sensor cluster (right) ---
     dict(ref="U8", sym="BHI260AP", x=330, y=65, fp=E, dnp=False, nets={"3": "HOSTBOOT", "6": "VREG", 
-        "1": "NC", "2": "NC", "4": "QSPI_IO0", "5": "QSPI_SCK",
+        "1": "M3_SDA", "2": "M3_SCL", "4": "QSPI_IO0", "5": "QSPI_SCK",
         "7": "+1V8", "8": "QSPI_IO3", "9": "BHI_RESET", "10": "BHI_HIRQ",
         "11": "SPI2_MOSI", "12": "+1V8", "13": "NC", "14": "QSPI_CS", "15": "QSPI_IO1",
-        "16": "NC", "17": "GND", "18": "M1_CSB2", "19": "NC", "20": "QSPI_IO2",
+        "16": "NC", "17": "GND", "18": "M1_CSB2", "19": "M3_CS", "20": "QSPI_IO2",
         "21": "NC", "22": "NC", "23": "NC", "24": "NC",
         "25": "GND", "26": "GND", "27": "GND", "28": "+1V8",
         "29": "M1_SCK", "30": "NC", "31": "NC", "32": "SPI2_MISO", "33": "SPI2_SCK",
@@ -568,6 +617,45 @@ PARTS = [
         "1": "I2C1_SCL", "2": "I2C1_SDA", "3": "NC", "4": "GND", "5": "BUTTON",
         "6": "GND", "7": "+1V8", "8": "GND",
         "9": "LDC_CH0A", "10": "LDC_CH0B", "11": "LDC_CH1A", "12": "LDC_CH1B"}),
+
+
+    # =======================================================================
+    # N1 PARITY G-SET (JP GO 2026-11-04): close Nicla-parity gaps.
+    # Ball-level wiring copied from ABX00050 sheet 6 (pdftotext -layout) and
+    # BHI260AP BST-BHI260AP-DS000-02 pad table. NO nRF GPIO consumed by G1-G3.
+    # =======================================================================
+    # --- G1 BMM150 magnetometer: rides BHI260AP M3 I2C (P0.02/P0.20/P0.21 on Nicla) ---
+    dict(ref="U12", sym="BMM150", x=400, y=100, fp=E, dnp=False, nets={
+        "A1": "M3_PS", "A3": "M3_SCL", "A5": "M3_CS", "B2": "+1V8", "B4": "M3_SDA",
+        "C1": "GND", "C5": "GND", "D2": "NC", "D4": "NC", "E1": "GND", "E3": "GND", "E5": "+1V8"}),
+    dict(ref="R18", sym="R", x=372, y=100, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SCL"}),  # M3 I2C SCL pull-up (required for I2C mode)
+    dict(ref="R29", sym="R", x=372, y=110, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SDA"}),  # M3 I2C SDA pull-up (required for I2C mode)
+    dict(ref="C21", sym="C", x=400, y=112, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BMM150 decap (G5)
+    dict(ref="R40", sym="R", x=400, y=120, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="0R", nets={"1": "M3_PS", "2": "+1V8"}),       # PS -> VDDIO = I2C mode (Nicla VDDIO)
+
+    # --- G2 BME688 environment T/RH/P/gas: rides BHI260AP M1 SPI, CS = MCSB2 pad 18 ---
+    dict(ref="U13", sym="BME688", x=400, y=140, fp=E, dnp=False, nets={
+        "1": "GND", "2": "M1_CSB2", "3": "M1_MOSI", "4": "M1_SCK",
+        "5": "M1_MISO", "6": "+1V8", "7": "GND", "8": "+1V8"}),
+    dict(ref="C22", sym="C", x=400, y=152, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BME688 decap (G5)
+
+    # --- G3 Y1 32.768 kHz MEMS XO (SIT1532AI) -> XL1 P0.00, XL2 P0.01 -> GND ---
+    dict(ref="Y1", sym="SIT1532", x=395, y=60, fp=E, dnp=False, nets={
+        "1": "NC", "2": "GND", "3": "32K_XL1", "4": "+1V8"}),
+    dict(ref="C23", sym="C", x=395, y=72, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # Y1 decap
+
+    # --- G4 D3 VBUS series protection (Nicla D3 PMEG4005EPK parity) ---
+    dict(ref="D5", sym="D_SCHOTTKY", x=100, y=40, fp="", dnp=False, value="PMEG4005EPK (SOD-1608 - fp TBD-JP)",
+         nets={"2": "VBUS_USB", "1": "VBUS_IN"}),   # A=USB side, K=BQ IN side
+
+    # --- Piezo arming protection (JP 2026-11-04: "add whatever is needed") ---
+    # A piezo disc is a capacitive generator: mechanical shock can spike far past the rail.
+    # R41 limits the fault current into the B402 pin; D6/D7 clamp overshoot to both rails.
+    dict(ref="R41", sym="R", x=109.22, y=236, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="100k", nets={"1": "BUTTON_RAW", "2": "BUTTON"}),
+    dict(ref="D6", sym="D_SCHOTTKY", x=118, y=232, fp="Diode_SMD:D_SOD-323", dnp=False, value="BAT42WS (clamp)",
+         nets={"1": "+1V8", "2": "BUTTON_RAW"}),    # K->rail: clamps positive spike
+    dict(ref="D7", sym="D_SCHOTTKY", x=118, y=240, fp="Diode_SMD:D_SOD-323", dnp=False, value="BAT42WS (clamp)",
+         nets={"2": "BUTTON_RAW", "1": "GND"}),     # A->GND: clamps negative spike
 
     # --- SWD connector (bottom-left) ---
     dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp=E, dnp=False, nets={
@@ -651,6 +739,7 @@ NOTES = [
 # ---------------------------------------------------------------------------
 POWER_ANCHORS = [
     ("VBUS_USB", 30, 35),   # zone A (USB/charger)
+    ("VBUS_IN",  42, 40),   # zone A (post-D3)
     ("+1V8", 204, 32),
     ("VBAT", 204, 52),
     ("V_PMID", 204, 68),

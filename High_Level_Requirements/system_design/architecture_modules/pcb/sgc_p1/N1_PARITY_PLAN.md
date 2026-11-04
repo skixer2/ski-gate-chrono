@@ -92,7 +92,27 @@ qualification, because **three Nicla blocks must NOT be copied verbatim**:
    level-shift nets — and it serves *only* programming/console. Not a parity gap; a deliberate delta.
    Everything else is cheap and should be closed now.
 
-### Close now (all cheap, all pure parity, mostly zero new nRF pins)
+### ✅ DONE 2026-11-04 — G1–G5 closed in `sgc_netlist.py` (validator green)
+
+| # | Item | Refdes | Wiring landed | Verified |
+|---|---|---|---|---|
+| G1 | BMM150 magnetometer | U12 + R18 R29 R40 C21 | M3 I²C: `M3SDA`=U8.1↔U12.B4, `M3SCL`=U8.2↔U12.A3, `M3_CS`=U8.19(MCSB4)↔U12.A5; PS→+1V8 via R40 0R; SDO→GND (addr LSB=0); 10k pull-ups R18/R29 on the two M3 lines (required for I²C mode per BHI260AP ds p.1271); C21 decap | nets: M3_SDA/SCL/CS/PS each ≥2 members |
+| G2 | BME688 environment (T/RH/P/gas) | U13 + C22 | M1 SPI: `M1_SCK`=U8.29↔U13.4, `M1_MOSI`=U8.44↔U13.3, `M1_MISO`=U8.43↔U13.5, **`M1_CSB2`=U8.18↔U13.2** (pad 18 was NC); C22 decap. **Populated** (JP wants temperature → supersedes OD-6 DNP) | M1_CSB2 2 members |
+| G3 | Y1 SIT1532AI 32.768 kHz | Y1 + C23 | `32K_XL1`=U1.17↔Y1.3; Y1.2→GND, Y1.4→+1V8, Y1.1(ST)→NC (internal PU = running); C23 decap. **Net no longer dangling** | 32K_XL1 2 members |
+| G4 | VBUS series protection | D5 | PMEG4005EPK: A=VBUS_USB, K=`VBUS_IN` → BQ IN. Split the old direct VBUS_USB→U3.A2 net; C1 bypass moved to VBUS_IN; C16 bulk stays at the connector | VBUS_IN 3 members, VBUS_USB 6 |
+| G5 | Sensor decoupling | C21 C22 C23 | 100 nF each on +1V8 per Nicla bypass-bank practice | — |
+
+**Extra, same pass — piezo arming protection (JP: "add whatever is needed"):**
+`J5.1`→`BUTTON_RAW` → **R41 100k** series → `BUTTON` → W17.02 ... plus **D6 BAT42WS** (K=+1V8, clamps overshoot) and **D7 BAT42WS** (A=BUTTON_RAW, K=GND, clamps undershoot). A piezo disc is a capacitive generator — mechanical shock can spike far outside the rail; the B402 pin is now clamped both ways.
+
+**Also fixed the D2 defect found earlier:** R4 (`/CD` pull-up) moved from `+1V8` to **`V_PMID`**, restoring the OD-8 cold-boot guarantee (SYS/+1V8 does not exist in ship mode, so a pull-up there could never hold CD high).
+
+**Verification:** `validate_sgc_p1.py` → *VALIDATION PASSED* (66 components, 351 pin connections, 73 nets, geometry + census). All 11 remaining single-member nets are intentional (LDC coil pads, UWB, user-SPI, UART test points — all v2/DNP/TP).
+
+**Still open from G-set side:** D5 footprint (PMEG4005EPK is **SOD-1608** 1.0×0.6 mm, no verified stock KiCad footprint yet → left empty/TBD-JP); Y1 footprint (1508 CSP, must be drawn); USB ESD part (OD-13, separate item).
+
+### Original gap table (kept for provenance)
+
 | # | Item | Effort | Note |
 |---|---|---|---|
 | G1 | **BMM150 magnetometer** | ~8 parts, **0 nRF pins** | rides the BHI260AP M-port (M3 I²C) — no MCU cost |

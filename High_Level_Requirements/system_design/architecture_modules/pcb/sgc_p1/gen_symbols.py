@@ -13,7 +13,7 @@ from kiutils.items.common import Position, Property, Effects, Font, Justify, Str
 from kiutils.items.syitems import SyRect, SyPolyLine, SyCircle
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sgc_netlist import SYMBOL_PINS, POWER_SYMBOLS, PASSIVE_LEN
+from sgc_netlist import SYMBOL_PINS, POWER_SYMBOLS, PASSIVE_LEN, PARTS
 
 LIB_NAME = "sgc_p1"
 F = lambda s=1.27: Font(height=s, width=s)
@@ -142,9 +142,14 @@ def build_power_symbol(name, style):
 
 def main():
     symbols = []
-    for name in ["ANNA-B402", "BQ25120A", "MAX17048", "IS31FL3194", "LDC1612", "BHI260AP",
-                 "BMP390", "MX25R6435F", "MX25R1635F", "USB4085", "JST-BAT-3", "SWD-2X5",
-                 "LED_RGB"]:   # R/C/L/GND -> KiCad standard libs (Device:*/power:GND):
+    # Every non-standard symbol that is actually instantiated must be emitted.
+    # Derive from SYMBOL_PINS (was a hand-kept list -> silently dropped symbols
+    # whenever a new part was added, or when led_reserve.kicad_sch needed one).
+    # R/C/L/GND/LED_RGB come from KiCad standard libs.
+    STD = {"R", "C", "L"}
+    used = {p["sym"] for p in PARTS}
+    emit = [n for n in SYMBOL_PINS if n not in STD and (n in used or n in ("JST-BAT-3", "SWD-2X5", "LED_RGB"))]
+    for name in emit:
         symbols.append(build_symbol(name, SYMBOL_PINS[name]))
     for pname, style in POWER_SYMBOLS.items():
         if pname == "GND":

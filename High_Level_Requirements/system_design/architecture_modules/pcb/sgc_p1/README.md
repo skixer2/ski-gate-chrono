@@ -25,7 +25,32 @@ everything the spec marks TBD-JP appears as a **text note**, never as a guessed 
    `lib_symbols` section, so the sheet displays even before you register the library.
 3. Open `sgc_p1.kicad_sch` in Eeschema.
 
-**Regenerate after edits:** `python3 gen_symbols.py && python3 gen_schematic.py && python3 validate_sgc_p1.py`
+**Regenerate after edits — FOUR steps, in this order (order matters):**
+
+```
+python3 gen_symbols.py       # 1. regenerate sgc_p1.kicad_sym from SYMBOL_PINS
+python3 gen_schematic.py     # 2. regenerate the single flat sheet (LED cluster included)
+python3 split_led_sheet.py   # 3. move the LED-reserve cluster to child sheet led_reserve.kicad_sch
+python3 validate_sgc_p1.py   # 4. mandatory validation
+```
+
+Step 3 is **not optional**: `gen_schematic.py` always emits the LED-reserve cluster
+(U10/U11/L2/D2/R11/R12/C17-C19/J4) on the parent sheet, so skipping the split leaves those
+parts duplicated and the validator will report their pins as unconnected.
+
+Gotchas learned the hard way (2026-11-04):
+- `split_led_sheet.py` works by **text surgery**, so it depends on exact formatting. Its regexes
+  now accept both kiutils and generator layout, but keep them in sync if the generator's output
+  format changes.
+- The cluster's parent-sheet **BBOX must contain no other parts**. It previously overlapped
+  flash U7/U2/C8/C9, which dragged their wires into the child sheet. The cluster was relocated
+  to x 190-278 / y 240-276 and the BBOX is now (180, 230, 280, 283).
+- Label offset is **5.08 mm**, not 2.54 — the BBOX margins are the measured label coordinates
+  (see the comment in `split_led_sheet.py`). Do not re-derive them by eye.
+- `kiutils` is a hard dependency and does **not** survive a container restart:
+  `pip install --break-system-packages kiutils`.
+
+Add `--break-system-packages` only because this is a PEP-668 managed Python.
 (requires `pip install kiutils`). Edit `sgc_netlist.py`, not the generated files.
 
 ## Layout of the sheet (grouped by subsystem)
