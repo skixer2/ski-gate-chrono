@@ -54,7 +54,7 @@ Legend: ✅ present & equivalent · 🔵 **better (boosted)** · ❌ **MISSING**
 | Reverse-protection on 5 V aux | D4/D5 PMEG4005 | — | ➖ (no ESLOV) |
 | USB **connector** | J7 micro-USB ZX62-AB-5PA | J1 USB-C USB4085, 5.1 kΩ Rd | 🔵 |
 | USB ESD | (in bridge circuit) | — none — | ❌ verify |
-| **USB↔serial bridge** | **U1 SAMD11 + U14 AP2112K-3.3 + U13 NTS0304 + 100 nF×2 + 100 k×4** | **— none — (SWD header J3 only)** | ❌ MISSING |
+| **USB↔serial bridge** | **U1 SAMD11 + U14 AP2112K-3.3 + U13 NTS0304 + 100 nF×2 + 100 k×4** | — none — (SWD J3 + BLE OTA instead) | ➖ **deliberate (JP OK 2026-11-04; rev B footprint reserved)** |
 | **External IO (ESLOV)** | J5 SM05B-SRSS + R36/R37 10k + R38/R39 0R | — | ❌ MISSING |
 | **10-pin expansion header** | J1 2×10 (JTAG_ANNA/JTAG_BHI/SPI1_EXT/I2C1_EXT/LPIO/ADC0/ADC1) | J3 2×5 SWD only | ⚠ partial |
 | Aux 3-pin | J4 BM03B-ACHSS | J4 = LED strip (different) | ➖ |
@@ -69,6 +69,15 @@ Legend: ✅ present & equivalent · 🔵 **better (boosted)** · ❌ **MISSING**
 
 ## 3. What this means — and my recommendation
 
+> **Doc defects found while answering JP's questions (2026-11-04) — fix before rev A snapshot:**
+> - **D1** `sgc_architecture_hardware.md:162` says "P0.18 → BQ25120 MR (reset network)". **Wrong.**
+>   Verified in ABX00050: net **`RESET_BHI260`** (BHI260 pad 9 / E3 `PIU509`) goes to the B112 **P0.18**.
+>   Corroborated by our own Zephyr overlay comment: "BHI260 RESET pin 9 = Arduino variant pin 13 =
+>   P0.18 (see variant.cpp:91)". P0.18 on Nicla is the **BHI reset**, not BQ MR.
+> - **D2** `sgc_netlist.py:492` R4 net is **`+1V8`** but its own comment and spec §4.1 E2 say **`V_PMID`**.
+>   V_PMID is the correct rail (present with battery alone; +1V8/SYS does not exist in ship mode, so the
+>   pull-up would not guarantee active mode at cold boot — the whole point of OD-8). **Fix net, not doc.**
+
 **JP's instinct is right, and the docs back it.** The V-cycle already demands a strict replica; the
 netlist is simply behind the documentation. But "recreate the identical board" needs one important
 qualification, because **three Nicla blocks must NOT be copied verbatim**:
@@ -77,11 +86,11 @@ qualification, because **three Nicla blocks must NOT be copied verbatim**:
    Boost EN moves to P0.17, BQ CD to P0.08, and BHI RESETN to P0.13 because B402 pin 12 (RESET_N) is
    fixed on P0.18 — which Nicla uses for BHI reset. Already resolved in spec §3.3 (C1/C2/C3).
 2. **Qi charging → USB-C** (Qi dropped v4.2).
-3. **SAMD11 USB bridge — the one real judgement call.** It exists on Nicla to give USB programming +
-   serial. We have SWD (J3) and a working BLE OTA path. Copying it costs ~5 ICs (SAMD11, AP2112K,
-   NTS0304 ×2, TXB0108), a second 3.3 V rail, and 4 level-shift nets — and it serves *only*
-   programming/console. **Recommendation: omit in rev A; reserve the footprint block for rev B if
-   field-USB-service is ever required.** Everything else is cheap and should be closed now.
+3. **SAMD11 USB bridge — DECIDED (JP "OK!" 2026-11-04): OMIT in rev A, reserve the footprint block for
+   rev B.** It exists on Nicla to give USB programming + serial. We have SWD (J3) and a working BLE OTA
+   path. Copying it costs ~5 ICs (SAMD11, AP2112K-3.3, NTS0304 ×2, TXB0108), a second 3.3 V rail, and 4
+   level-shift nets — and it serves *only* programming/console. Not a parity gap; a deliberate delta.
+   Everything else is cheap and should be closed now.
 
 ### Close now (all cheap, all pure parity, mostly zero new nRF pins)
 | # | Item | Effort | Note |
