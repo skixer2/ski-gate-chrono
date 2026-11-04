@@ -27,7 +27,7 @@ from kiutils.schematic import Schematic
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from sgc_netlist import SYMBOL_PINS, PARTS, POWER_SYMBOLS
+from sgc_netlist import SYMBOL_PINS, PARTS, POWER_SYMBOLS, SHEETS
 
 ERRORS = []
 INFOS = []
@@ -80,18 +80,21 @@ def main():
     sch, sch2 = roundtrip(os.path.join(HERE, "sgc_p1.kicad_sch"), Schematic)
     info(f"sgc_p1.kicad_sch: kiutils round-trip OK ({len(sch.schematicSymbols)} instances, "
          f"{len(sch.graphicalItems)} wires, {len(sch.globalLabels)} labels, {len(sch.noConnects)} no-connects)")
-    # ---- 1b. child sheet (LED reserve, v2 DNP): round-trip + in-memory union ----
-    child_path = os.path.join(HERE, "led_reserve.kicad_sch")
-    if os.path.exists(child_path):
-        ch, ch2 = roundtrip(child_path, Schematic)
-        info(f"led_reserve.kicad_sch: kiutils round-trip OK ({len(ch.schematicSymbols)} instances, "
+    # ---- 1b. every child sheet from SHEETS: round-trip + in-memory union ----
+    # (N1 7-page split, 2026-11-04: global labels bridge sheets)
+    sheet_files = []
+    for _title, _fn, _refs in SHEETS:
+        _path = os.path.join(HERE, _fn)
+        sheet_files.append(_path)
+        ch, ch2 = roundtrip(_path, Schematic)
+        info(f"{_fn}: round-trip OK ({len(ch.schematicSymbols)} instances, "
              f"{len(ch.graphicalItems)} wires, {len(ch.globalLabels)} labels)")
         sch.graphicalItems += ch.graphicalItems
         sch.globalLabels += ch.globalLabels
         sch.noConnects += ch.noConnects
         sch.schematicSymbols += ch.schematicSymbols
         sch.libSymbols += ch.libSymbols
-        info("two-sheet union: child merged in-memory for checks (global labels bridge sheets)")
+    info(f"{len(SHEETS)}-sheet union merged in-memory for checks (global labels bridge sheets)")
     with open(os.path.join(HERE, "sgc_p1.kicad_pro")) as f:
         pro = json.load(f)
     assert pro["meta"]["filename"] == "sgc_p1.kicad_pro"
@@ -320,7 +323,7 @@ def main():
     info(f"DNP placements: {', '.join(dnp) if dnp else 'none'}")
 
     # --- strict KiCad string gate: raw newline inside a quoted string = KiCad parse error ---
-    for fname in (os.path.join(HERE, "sgc_p1.kicad_sym"), os.path.join(HERE, "sgc_p1.kicad_sch"), child_path):
+    for fname in [os.path.join(HERE, "sgc_p1.kicad_sym"), os.path.join(HERE, "sgc_p1.kicad_sch")] + sheet_files:
         s = open(fname, encoding="utf-8").read()
         in_str = False
         bad = 0
