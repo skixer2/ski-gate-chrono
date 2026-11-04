@@ -159,7 +159,7 @@ These match the Nicla Sense ME exactly. Custom PCB copies this wiring.
 | P0.14 | BHI260AP HIRQ/INT | Interrupt from BHI260AP to nRF52832 |
 | P0.15 | I2C1 SDA (Wire1) | RGB LED (IS31FL3194) + BQ25120A charger |
 | P0.16 | I2C1 SCL (Wire1) | RGB LED + charger |
-| P0.18 | System reset | BQ25120 MR (reset network) |
+| P0.18 | BHI260AP reset | **RESET_BHI260** (BHI260AP pad 9 / E3) — verified against ABX00050 sheet 6 net name, and against our own overlay comment ("BHI260 RESET pin 9 = Arduino variant pin 13 = P0.18, variant.cpp:91"). ⚠ Corrected 2026-11-04: this row previously read "BQ25120 MR (reset network)", which is wrong — Nicla's P0.18 is the BHI reset, not the charger MR. On the **ANNA-B402** P0.18 is instead the module RESET_N (fixed pin 12), so BHI RESETN moves to P0.13 — see `sgc_schematic_spec.md` §3.3 (C3) and OD-7. |
 | P0.21 | RESET_N | ANNA-B112 module reset (pin 12) |
 | P0.22 | I2C0 SDA (Wire) | External I2C header (J2-1) / ESLOV |
 | P0.23 | I2C0 SCL (Wire) | External I2C header (J2-2) / ESLOV |
@@ -293,6 +293,31 @@ for pole-mount + aluminium pole shaft is itself a conductive target).
 as a **GPIO edge interrupt** — a 10 Hz poll will miss the 20 ms pulse. Arming logic moves
 from "1000 ms continuous hold" to "single press"; factory reset from "20 s hold" to
 "5 presses in 3 s". Debounce is minimal (single clean closure).
+
+**⛔ Known conflict (2026-11-04) — must be resolved before the button is soldered.**
+`Firmware_Zephyr/apps/03_pull_proto/src/button.c` (JP 2026-10-15) currently requires
+**1 s of CONTINUOUS press** to arm, with a 10-tick hold gate added so that pole knocks and
+packing bumps cannot arm the device. That gate was written for the bench **monostable** switch.
+A piezo cannot hold for 1 s, so on the real Langir button the current firmware would likely
+**never arm**.
+
+**Decision (JP 2026-11-04): "Piezo. We reject any pressure when not idle or sleeping."**
+So the rule is state-gated, not duration-gated:
+
+| Device state | Button press |
+|---|---|
+| SLEEP / IDLE | **accepted** → arm (F03) |
+| ARMED / LOGGING / POST_RUN | **rejected** — ignored entirely |
+
+This replaces the 1 s hold gate as the anti-bump mechanism: bumps happen while the device is
+already awake and armed, so they are rejected by state rather than by duration. The piezo path
+therefore needs: edge interrupt + short debounce, **no** hold requirement, plus the existing
+press-count window for factory reset (F42: 5 presses in 3 s, also state-gated).
+
+**Electrical protection (added 2026-11-04, JP "add whatever is needed"):** a piezo disc is a
+capacitive generator — mechanical shock can spike well outside the rail. The input is now
+`J5.1 → BUTTON_RAW → R41 100k series → BUTTON` (P0.02), clamped both ways by **D6** (K to +1V8)
+and **D7** (K to GND), both BAT42WS SOD-323.
 
 ---
 
