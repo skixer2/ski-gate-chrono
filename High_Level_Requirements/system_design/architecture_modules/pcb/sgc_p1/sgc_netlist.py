@@ -640,12 +640,12 @@ PARTS = [
     dict(ref="C22", sym="C", x=400, y=152, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BME688 decap (G5)
 
     # --- G3 Y1 32.768 kHz MEMS XO (SIT1532AI) -> XL1 P0.00, XL2 P0.01 -> GND ---
-    dict(ref="Y1", sym="SIT1532", x=395, y=60, fp=E, dnp=False, nets={
+    dict(ref="Y1", sym="SIT1532", x=395, y=60, fp="sgc_p1:SIT1532_CSP-4_1p5x0p8mm", dnp=False, nets={
         "1": "NC", "2": "GND", "3": "32K_XL1", "4": "+1V8"}),
     dict(ref="C23", sym="C", x=395, y=72, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # Y1 decap
 
     # --- G4 D3 VBUS series protection (Nicla D3 PMEG4005EPK parity) ---
-    dict(ref="D5", sym="D_SCHOTTKY", x=100, y=40, fp="", dnp=False, value="PMEG4005EPK (SOD-1608 - fp TBD-JP)",
+    dict(ref="D5", sym="D_SCHOTTKY", x=100, y=40, fp="sgc_p1:D_SOD-1608_DFN1608D-2", dnp=False, value="PMEG4005EPK",
          nets={"2": "VBUS_USB", "1": "VBUS_IN"}),   # A=USB side, K=BQ IN side
 
     # --- Piezo arming protection (JP 2026-11-04: "add whatever is needed") ---
