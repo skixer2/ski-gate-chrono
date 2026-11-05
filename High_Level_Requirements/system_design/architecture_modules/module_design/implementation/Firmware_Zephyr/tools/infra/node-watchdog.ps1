@@ -30,6 +30,9 @@ $SSH_EXE    = 'C:\Windows\System32\OpenSSH\ssh.exe'
 $PY_EXE     = "$USER_DIR\AppData\Local\Programs\Python\Python313\python.exe"
 $NODE_EXE   = 'C:\Program Files\nodejs\node.exe'
 $LOG        = "$USER_DIR\node-watchdog.log"
+# v2.6 knobs: node self-heal bounds (minutes)
+$STALE_MIN = 30
+$FORCE_MIN = 90
 $TUN_PORT   = 18789
 $WEB_PORT   = 8080
 $CHECK_EVERY_SEC  = 30
@@ -138,8 +141,61 @@ function Ensure-NodeHost {
     Start-Sleep -Seconds 3
 }
 
+# ── v2.6: node CONNECTION-liveness (JP directive 11-05: no human intervention) ──
+# 2026-11-05 failure mode: gateway rejected the node during a config incident;
+# the node-host process stayed alive but silently gave up retrying. v2.5 only
+# checked "process exists" -> stuck for hours. Fix: if BOTH nodehost logs are
+# stale (no writes for $STALE_MIN) while the tunnel+gateway probe is OK, the
+# node is presumed disconnected-stuck -> kill it; the loop respawns it fresh.
+# Backstop: unconditional recycle every $FORCE_MIN regardless of log activity.
+# Worst case cost: a healthy node blips once every $FORCE_MIN (reconnects ~2 s).
+$script:LastNodeRecycle = Get-Date
+function Test-GatewayViaTunnel {
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 6 `
+             -Uri 'http://127.0.0.1:18789/healthz'
+        return ($r.StatusCode -eq 200)
+    } catch { return $false }
+}
+function Get-NewestLogWrite {
+    $newest = [datetime]::MinValue
+    foreach ($f in @("$USER_DIR\nodehost.log", "$USER_DIR\nodehost.err.log")) {
+        if (Test-Path $f) {
+            $t = (Get-Item $f -ErrorAction SilentlyContinue).LastWriteTime
+            if ($t -and $t -gt $newest) { $newest = $t }
+        }
+    }
+    return $newest
+}
+function Restart-NodeHost {
+    Log 'nodehost: FORCE-RECYCLE (stuck or periodic)'
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+        Where-Object { $_.CommandLine -like '*openclaw.mjs*node run*' } |
+        ForEach-Object {
+            Log ("nodehost: killing pid {0}" -f $_.ProcessId)
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    $script:LastNodeRecycle = Get-Date
+}
+function Ensure-NodeLiveness {
+    if (-not (Test-GatewayViaTunnel)) { return }   # tunnel/gateway down: daemon 1 handles
+    $ageMin = if ((Get-NewestLogWrite) -eq [datetime]::MinValue) {
+        [int]::MaxValue
+    } else {
+        [int]((Get-Date) - (Get-NewestLogWrite)).TotalMinutes
+    }
+    $sinceMin = [int]((Get-Date) - $script:LastNodeRecycle).TotalMinutes
+    if ($ageMin -ge $STALE_MIN) {
+        Log ("nodehost: logs stale {0} min while gateway reachable -> recycle" -f $ageMin)
+        Restart-NodeHost
+    } elseif ($sinceMin -ge $FORCE_MIN) {
+        Log ("nodehost: periodic recycle ({0} min)" -f $sinceMin)
+        Restart-NodeHost
+    }
+}
+
 # ── Main loop ───────────────────────────────────────────────────────
-Log 'watchdog v2.5: starting (boot-proof, 3 daemons)  [v2.5: quote-safe nodehost spawn]'
+Log 'watchdog v2.6: starting (boot-proof, 3 daemons + node self-heal 30/90 min)'
 $script:TunFails = 0
 $script:WebFails = 0
 $Beat = 0
@@ -147,6 +203,7 @@ while ($true) {
     Ensure-Tunnel
     Ensure-Web
     Ensure-NodeHost
+    Ensure-NodeLiveness
     if ((++$Beat % (600 / $CHECK_EVERY_SEC)) -eq 0) {
         Log 'heartbeat: all daemons ok'
     }

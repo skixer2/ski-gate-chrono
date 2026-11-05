@@ -46,8 +46,11 @@ services:
       - caddy-data:/data        # certificates
       - caddy-config:/config
     networks:
-      - default
-      - openclaw_default      # reverse proxy for openclaw.vytsolutions.com
+      default: {}
+      openclaw_default:       # reverse proxy for openclaw.vytsolutions.com
+        # STATIC IP: gateway.trustedProxies pins caddy at 172.18.0.4/32.
+        # If this changes, the gateway must be updated in lockstep.
+        ipv4_address: 172.18.0.4
     depends_on:
       - sgc-api
 
