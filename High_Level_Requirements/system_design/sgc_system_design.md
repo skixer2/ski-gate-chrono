@@ -94,7 +94,7 @@ state (F12) and the button press transitions SLEEP → ARMED directly.*
 |---|---|---|---|
 | SLEEP | Piezo button press (GPIO sense) | ARMED | Instant wake, no reboot (F13); P₀ captured, pre-roll starts (F03) |
 | SLEEP | 1 h unconnected | SYSTEM_OFF | Deep shutdown (F12); button press → cold boot (rr:4) |
-| SLEEP / ARMED / POST_RUN | 5 button presses within 3 s | (factory reset) | LED flashes red 3× → clear bonding + Flash → restart (F42). Button masked during LOGGING (R03) |
+| — | *(v6.1: on-device factory reset REMOVED — F42 is phone-only; the piezo button only arms (SLEEP) and wakes. No multi-press gesture is mapped in v1)* | — | — |
 | ARMED | Cumulative vertical drop > 2.0 m from arming P₀ | LOGGING | Drain begins, LED=red chase (F04, F05, F41). Single-mode: drop only (speed removed v2.2 — BMP390 quantization noise caused false triggers) |
 | ARMED | 30 s no descent | SLEEP | R02 |
 | LOGGING | Descent < 2 m over last 5 s (0.5 Hz sampling) | POST_RUN | Close file, write CRC32 (F06). Altitude-adaptive PA_PER_M. Ignores ascent (dp < 0) |
@@ -290,9 +290,16 @@ On every BLE connection, the phone pushes UTC time to the device **before any ot
 - ATT MTU: negotiated to ≥ 247 bytes on connect (enables 244-byte file chunks) (F38)
 - Security: LE Secure Connections, Just Works pairing. Bond on first connection, encrypt all subsequent sessions (F39)
 
-**Pairing & factory reset (F42):**
-- First connection: phone initiates bonding → bond stored in nRF52 RAM (persists across System ON sleep)
-- Factory reset: athlete holds cross-arm proximity for 20 continuous seconds → LED flashes red 3× → device clears bonding info, resets name to default, erases all Flash run data, restarts
+**Pairing, ownership & factory reset (v6.1, F39/F42/F65-F68):**
+- Bonding: LE Secure Connections, Just Works; bond stored in nRF52 RAM (re-bonds after total drain — unchanged)
+- Ownership: 6-digit PIN in config flash, set at first claim by the first app to connect (F65); survives reflash and battery drain
+- New phone / phone change: connect → enter PIN → old bond dropped, new phone bonded, **runs kept** (F39)
+- PIN change: from a bonded + encrypted session, no old PIN required (F66) — covers forgot-PIN-with-working-phone
+- Factory reset: **app-only**, confirm dialog, clears bond + name + PIN; runs kept unless the optional checkbox is ticked (F42)
+- SMP/OTA + config writes behind the PIN gate; images stay MCUboot-signed (F40/F67)
+- Production: nRF52833 APPROTECT on (SWD dead until mass-erase, F68); USB-C is charge-only — no USB data path exists
+- Lost PIN + no phone: support case (bench SWD reflash). No on-device PIN-clear path exists by design
+- Reserved field-service gesture (defined, unused): 5 taps → red LED 1 s → after LED off, 5 taps
 
 ```
 Phone                           Device
