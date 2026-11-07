@@ -582,7 +582,7 @@ PARTS = [
         "1": "M3_SDA", "2": "M3_SCL", "4": "QSPI_IO0", "5": "QSPI_SCK",
         "7": "+1V8", "8": "QSPI_IO3", "9": "BHI_RESET", "10": "BHI_HIRQ",
         "11": "SPI2_MOSI", "12": "+1V8", "13": "NC", "14": "QSPI_CS", "15": "QSPI_IO1",
-        "16": "NC", "17": "GND", "18": "M1_CSB2", "19": "NC", "20": "QSPI_IO2",
+        "16": "NC", "17": "GND", "18": "M1_CSB2", "19": "M3_CS", "20": "QSPI_IO2",
         "21": "NC", "22": "NC", "23": "NC", "24": "NC",
         "25": "GND", "26": "GND", "27": "GND", "28": "+1V8",
         "29": "M1_SCK", "30": "NC", "31": "NC", "32": "SPI2_MISO", "33": "SPI2_SCK",
@@ -628,9 +628,9 @@ PARTS = [
     # Ball-level wiring copied from ABX00050 sheet 6 (pdftotext -layout) and
     # BHI260AP BST-BHI260AP-DS000-02 pad table. NO nRF GPIO consumed by G1-G3.
     # =======================================================================
-    # --- G1 BMM150 magnetometer: rides BHI260AP M3 I2C (P0.02/P0.20/P0.21 on Nicla) ---
+    # --- G1 BMM150 magnetometer (CS routed to MCSB4 per Nicla "19 CS1" abx:791 - arbitration 2026-11-07: DS-A claim "Nicla ties CSB to GND" was WRONG, DS-B right; BHI MCSB4 internal pull-up sets BMM150 I2C addr with SDO=GND): rides BHI260AP M3 I2C (P0.02/P0.20/P0.21 on Nicla) ---
     dict(ref="U12", sym="BMM150", x=400, y=100, fp=E, dnp=False, nets={
-        "A1": "M3_PS", "A3": "M3_SCL", "A5": "GND", "B2": "+1V8", "B4": "M3_SDA",
+        "A1": "M3_PS", "A3": "M3_SCL", "A5": "M3_CS", "B2": "+1V8", "B4": "M3_SDA",
         "C1": "GND", "C5": "GND", "D2": "NC", "D4": "NC", "E1": "GND", "E3": "GND", "E5": "+1V8"}),
     dict(ref="R18", sym="R", x=372, y=100, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SCL"}),  # M3 I2C SCL pull-up (required for I2C mode)
     dict(ref="R29", sym="R", x=372, y=110, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SDA"}),  # M3 I2C SDA pull-up (required for I2C mode)
