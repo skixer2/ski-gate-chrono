@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.24.7"   /* +serial W stack watermarks (DS plan) + MCUmgr reset 100ms (double-tap quirk). Doubles as OTA loop image (alternate 0.24.6/0.24.7) */
+#define APP_VERSION "0.25.0"   /* piezo arming rework (JP 2026-11-04/05): 1s hold gate removed, single press arms in SLEEP, other states reject, 200ms quiet window. v6.1 F42-compliant (button = arm+wake only) */
 
 #endif /* SGC_APP_VERSION_H */
