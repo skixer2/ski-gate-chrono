@@ -674,16 +674,16 @@ SHEETS = [
     ("Power: charger / gauge / battery rail",      "sch_power.kicad_sch",
      ["U3","U4","L1","C1","C2","C3","C4","C5","C6","C7","R1","R2","R3","R4","R5","R6","R9","R10"]),
     ("MCU: ANNA-B402 + 32 kHz + SWD",              "sch_mcu.kicad_sch",
-     ["U1","Y1","C23","J3"]),
+     ["U1","Y1","C23"]),
     ("Sensors: BHI260AP cluster + RGB indicator",  "sch_sensors.kicad_sch",
      ["U8","U9","U12","U13","U5","D1","U6","R13","R18","R29","R40",
       "C10","C11","C12","C13","C14","C15","C20","C21","C22"]),
     ("Storage: data flash + BHI FW flash",         "sch_storage.kicad_sch",
      ["U7","U2","C8","C9"]),
     ("5V boost + LED strip reserve (v2 DNP)",      "sch_boost_led.kicad_sch",
-     ["U10","U11","L2","D2","R11","R12","C17","C18","C19","J4"]),
+     ["U10","U11","L2","D2","R11","R12","C17","C18","C19"]),
     ("Connectors: USB-C / battery / piezo / SWD",  "sch_connectors.kicad_sch",
-     ["J1","J2","J5","R7","R8","C16","D5","R41","D6","D7"]),
+     ["J1","J2","J3","J5","R7","R8","C16","D5","R41","D6","D7","J4"]),
 ]
 
 # Value overrides/defaults: parts without explicit 'value' take symbol default (part number).
