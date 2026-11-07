@@ -43,12 +43,15 @@ static void off_work_handler(struct k_work *w)
 	 * system ON; the state hooks own the timer and will re-arm (or
 	 * cancel) it on the next transition. */
 	if (ble_lifecycle_connected()) {
+		printk("off deferred: connected\n");
 		return;   /* connected ⇒ no System Off, ever (V5.00) */
 	}
 	if (recorder_state_idx() != 0u) {   /* 0 = SLEEP */
+		printk("off deferred: not-sleep\n");
 		return;   /* ARMED/LOGGING/POST_RUN never go dark */
 	}
 	if (pull_proto_busy()) {
+		printk("off deferred: busy\n");
 		/* Stream/directory in flight (defence in depth: both
 		 * abort on disconnect anyway) — fresh full window. */
 		k_timer_start(&off_timer, K_MSEC(SLEEP_SYSTEM_OFF_MS),
@@ -65,6 +68,7 @@ static void off_work_handler(struct k_work *w)
 	 * 11 h went dark (button needed); on a ski day (battery) VIN
 	 * is absent and this branch never trips. */
 	if (ble_config_on_vin()) {
+		printk("off deferred: VIN present\n");
 		k_timer_start(&off_timer, K_MSEC(SLEEP_SYSTEM_OFF_MS),
 			      K_NO_WAIT);
 		return;

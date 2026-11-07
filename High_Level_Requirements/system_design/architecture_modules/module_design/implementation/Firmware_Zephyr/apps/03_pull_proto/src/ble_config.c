@@ -141,14 +141,20 @@ static int bq_write(uint8_t reg, uint8_t val)
  * -1 no battery / -2 unreadable / -3 skipped (battery mode) /
  * -4 I2C dead; else 0..100. */
 static bool bq_on_vin = true;   /* 0.23.2: VIN state from FAULTS, refreshed per read */
+static uint8_t bq_fail_streak;  /* 0.25.1: consecutive dead reads (fail-safe -> battery) */
 
 static int bq_battery_pct(void)
 {
 	uint8_t faults;
 
 	if (bq_read(BQ_FAULTS, &faults) != 0) {
+		if (++bq_fail_streak >= 3) {
+			bq_on_vin = false;
+		}
 		return -4;
 	}
+	bq_fail_streak = 0;
+	bq_on_vin = (faults & (0x20u | 0x40u)) == 0u;
 	static bool diag_done;   /* one-shot bench diagnostic (values) */
 	if (!diag_done) {
 		diag_done = true;
@@ -157,12 +163,11 @@ static int bq_battery_pct(void)
 		printk("batt: BQ alive, faults=0x%02x status=0x%02x\n",
 		       faults, st);
 	}
-	if (faults & 0x20) {            /* BAT_UVLO: not connected / too low */
-		return -1;
+	if (faults & 0x20) {
+		return -1;   /* VIN_UV (measured 2026-11-07, full pack, USB out) - oracle already updated above */
 	}
 
 	const bool on_battery = (faults & 0x40) != 0;
-	bq_on_vin = !on_battery;
 
 	uint8_t data;
 
