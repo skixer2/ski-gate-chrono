@@ -83,12 +83,14 @@ def main():
     # ---- 1b. every child sheet from SHEETS: round-trip + in-memory union ----
     # (N1 7-page split, 2026-11-04: global labels bridge sheets)
     sheet_files = []
+    SHEETS_CTX = [("root", sch)]
     for _title, _fn, _refs in SHEETS:
         _path = os.path.join(HERE, _fn)
         sheet_files.append(_path)
         ch, ch2 = roundtrip(_path, Schematic)
         info(f"{_fn}: round-trip OK ({len(ch.schematicSymbols)} instances, "
              f"{len(ch.graphicalItems)} wires, {len(ch.globalLabels)} labels)")
+        SHEETS_CTX.append((_fn, ch))
         sch.graphicalItems += ch.graphicalItems
         sch.globalLabels += ch.globalLabels
         sch.noConnects += ch.noConnects
@@ -119,160 +121,136 @@ def main():
         unit = next((u for u in us if u.unitId == 1), None) or next((u for u in us if u.pins), us[0])
         return {p.number: p for p in unit.pins}
 
-    # ---- 3/4/5. geometry: wires -> UF, labels & power pins as net sources ----
+    # ---- 3/4/5. geometry: PER-SHEET namespace (2026-11-07 reorder made sheet coordinate
+    # spaces overlap; a merged map produced phantom cross-sheet shorts). Sheets bridge by LABEL NAME.
     uf = UF()
     pts = set()
-    for w in sch.graphicalItems:
-        if w.type != "wire":
-            continue
-        a, b = key(w.points[0]), key(w.points[-1])
-        pts.add(a); pts.add(b)
-        uf.union(a, b)
-
-    def pin_pt(sym, pin):
-        """absolute pin position honoring mirror (and rot 0/180); loud on unhandled transforms"""
-        rot = getattr(getattr(sym, 'orientation', None), 'value', sym.orientation) if hasattr(sym, 'orientation') else 0
-        mir = getattr(sym, 'mirror', None)
-        px, py = pin.position.X, pin.position.Y
-        x, y = sym.position.X, sym.position.Y
-        import math as _m
-        r = int(round(float(rot or 0) / 90.0)) % 4
-        assert r in (0, 2), f"rotation {rot} unsupported for {sym.properties[0].value}"
-        if r == 2:
-            px, py = -px, -py
-        if mir == 'x':
-            return (round(x + px, 3), round(y + py, 3))     # py NOT negated
-        if mir == 'y':
-            return (round(x - px, 3), round(y - py, 3))     # px negated
-        assert mir in (None, '', 'none'), f"mirror {mir} unsupported"
-        return (round(x + px, 3), round(y - py, 3))
-
-    # connection points: KiCad connects coincident points with no wire needed
-    # (label-on-pin, power-flag-on-pin, pin-on-pin are all valid)
-    conn = set(pts)
-    for gl in sch.globalLabels:
-        conn.add(key(gl.position))
-    for sym in sch.schematicSymbols:
-        if sym.entryName in POWER_SYMBOLS:
-            conn.add((round(sym.position.X, 3), round(sym.position.Y, 3)))
-            continue
-        try:
-            lp = lib_pins(sym.entryName)
-        except Exception:
-            continue
-        for _num, pin in lp.items():
-            conn.add(pin_pt(sym, pin))
-
-    net_of_cluster = {}   # root -> netname (with conflict detection)
-    def set_net(pt, net, what):
-        r = uf.find(pt)
+    conn = set()
+    nc_pts = set()
+    net_of_cluster = {}
+    def set_net(tag, net, what):
+        r = uf.find(tag)
         cur = net_of_cluster.get(r)
         if cur and cur != net:
-            err(f"SHORT/conflict at {pt}: net '{cur}' vs '{net}' ({what})")
+            err("SHORT/conflict: net %s vs %s (%s) at %s" % (cur, net, what, tag))
         net_of_cluster[r] = net
-
-    for gl in sch.globalLabels:
-        pt = key(gl.position)
-        if pt not in conn:
-            err(f"floating global label '{gl.text}' at {pt} (not on a connection point)")
+    def pin_pt_ns(sname, sym, pin):
+        rot = getattr(getattr(sym, "orientation", None), "value", sym.orientation) if hasattr(sym, "orientation") else 0
+        mir = getattr(sym, "mirror", None)
+        px, py = pin.position.X, pin.position.Y
+        x, y = sym.position.X, sym.position.Y
+        r = int(round(float(rot or 0) / 90.0)) % 4
+        assert r in (0, 2), "rotation %s unsupported" % rot
+        if r == 2:
+            px, py = -px, -py
+        if mir == "x":
+            wx, wy = x + px, y + py
+        elif mir == "y":
+            wx, wy = x - px, y - py
         else:
-            set_net(pt, gl.text, f"label {gl.text}")
-
-    # power symbol instances impose their Value on the cluster at their pin (origin)
-    for sym in sch.schematicSymbols:
-        if sym.entryName in POWER_SYMBOLS:
-            pt = (round(sym.position.X, 3), round(sym.position.Y, 3))
+            assert mir in (None, "", "none"), "mirror %s unsupported" % mir
+            wx, wy = x + px, y - py
+        return (sname, round(wx, 3), round(wy, 3))
+    def lib_pins_local(sobj, name):
+        cand = [s for s in sobj.libSymbols if s.entryName == name or s.entryName == "sgc_p1:" + name]
+        us = next(iter(cand)).units
+        unit = next((u for u in us if u.unitId == 1), None) or next((u for u in us if u.pins), us[0])
+        return {p.number: p for p in unit.pins}
+    for sname, sobj in SHEETS_CTX:
+        for w in sobj.graphicalItems:
+            if w.type != "wire":
+                continue
+            a = (sname, round(w.points[0].X, 3), round(w.points[0].Y, 3))
+            b = (sname, round(w.points[-1].X, 3), round(w.points[-1].Y, 3))
+            pts.add(a); pts.add(b)
+            uf.union(a, b)
+        for gl in sobj.globalLabels:
+            conn.add((sname, round(gl.position.X, 3), round(gl.position.Y, 3)))
+        for sym in sobj.schematicSymbols:
+            if sym.entryName in POWER_SYMBOLS:
+                conn.add((sname, round(sym.position.X, 3), round(sym.position.Y, 3)))
+                continue
+            try:
+                lp = lib_pins_local(sobj, sym.entryName)
+            except Exception:
+                continue
+            for _num, pin in lp.items():
+                conn.add(pin_pt_ns(sname, sym, pin))
+        for gl in sobj.globalLabels:
+            pt = (sname, round(gl.position.X, 3), round(gl.position.Y, 3))
             if pt not in conn:
-                err(f"power symbol {sym.properties[0].value} ({sym.entryName}) at {pt} not touching a wire")
+                err("floating global label %r at %s (not on a connection point)" % (gl.text, pt))
             else:
-                set_net(pt, sym.entryName, f"power {sym.entryName}")
-
-    # no-connect positions
-    nc_pts = {key(nc.position) for nc in sch.noConnects}
-
-    # ---- per-component pin checks ----
-    placed = {}  # ref -> part
+                set_net(pt, gl.text, "label %s" % gl.text)
+        for sym in sobj.schematicSymbols:
+            if sym.entryName in POWER_SYMBOLS:
+                pt = (sname, round(sym.position.X, 3), round(sym.position.Y, 3))
+                if pt not in conn:
+                    err("power symbol %s at %s not touching a wire" % (sym.entryName, pt))
+                else:
+                    set_net(pt, sym.entryName, "power %s" % sym.entryName)
+        for nc in sobj.noConnects:
+            nc_pts.add((sname, round(nc.position.X, 3), round(nc.position.Y, 3)))
+    SYM_AT = {}
+    for sname, sobj in SHEETS_CTX:
+        for s in sobj.schematicSymbols:
+            refv = next((p.value for p in s.properties if p.key == "Reference"), None)
+            if refv and not refv.startswith("#"):
+                SYM_AT[refv] = (sname, s)
+    placed = {}
     for part in PARTS:
         ref = part["ref"]
         if ref in placed:
-            err(f"duplicate refdes {ref}")
+            err("duplicate refdes %s" % ref)
         placed[ref] = part
-        sym = next((s for s in sch.schematicSymbols
-                    if s.entryName == part["sym"] and
-                    any(p.key == "Reference" and p.value == ref for p in s.properties)), None)
-        if sym is None:
-            err(f"{ref}: not placed on sheet")
+        if ref not in SYM_AT:
+            err("%s: not placed on any sheet" % ref)
             continue
-        lpins = lib_pins(part["sym"])
-        # every netlist pin exists in symbol and vice versa
+        sname, sym = SYM_AT[ref]
+        sobj = next(o for n, o in SHEETS_CTX if n == sname)
+        lpins = lib_pins_local(sobj, part["sym"])
         for pin_num in part["nets"]:
             if pin_num not in lpins:
-                err(f"{ref}: netlist pin '{pin_num}' not in symbol {part['sym']}")
+                err("%s: netlist pin %r not in symbol" % (ref, pin_num))
         for pin_num in lpins:
             if pin_num not in part["nets"]:
-                err(f"{ref}: symbol pin '{pin_num}' has no net assignment")
-        # geometry
+                err("%s: symbol pin %r has no net assignment" % (ref, pin_num))
         for pin_num, expected_net in part["nets"].items():
             lp = lpins[pin_num]
-            pt = pin_pt(sym, lp)
+            pt = pin_pt_ns(sname, sym, lp)
             if expected_net == "NC":
                 if pt not in nc_pts:
-                    err(f"{ref}.{pin_num}: expected no-connect flag at {pt}, none found")
+                    err("%s.%s: expected no-connect flag at %s, none found" % (ref, pin_num, pt))
                 if pt in pts:
-                    err(f"{ref}.{pin_num}: NC pin has a wire attached at {pt}")
+                    err("%s.%s: NC pin has a wire attached at %s" % (ref, pin_num, pt))
                 continue
             if pt not in conn:
-                err(f"{ref}.{pin_num} (net {expected_net}): NO connection (wire/label/flag/pin) at pin point {pt}")
+                err("%s.%s (net %s): NO connection at pin point %s" % (ref, pin_num, expected_net, pt))
                 continue
             got = net_of_cluster.get(uf.find(pt))
             if got != expected_net:
-                err(f"{ref}.{pin_num}: expected net '{expected_net}', sheet gives '{got}' at {pt}")
-
-    # ---- mid-span tap check: no pin point may lie strictly inside a foreign wire
-    # (KiCad auto-junctions wire-end-on-mid-span taps -> hidden shorts) ----
-    all_points = []
-    for part in PARTS:
-        sym2 = next((s for s in sch.schematicSymbols
-                     if s.entryName == part["sym"] and
-                     any(p.key == "Reference" and p.value == part["ref"] for p in s.properties)), None)
-        if not sym2:
-            continue
-        lpins2 = lib_pins(part["sym"])
-        for pin_num2, net2 in part["nets"].items():
-            lp2 = lpins2[pin_num2]
-            all_points.append((pin_pt(sym2, lp2), net2, f"{part['ref']}.{pin_num2}"))
-    segs = [(key(w.points[0]), key(w.points[-1])) for w in sch.graphicalItems if w.type == "wire"]
-    for (pt, net, what) in all_points:
-        for (a, b) in segs:
-            if pt == a or pt == b:
+                err("%s.%s: expected net %r, sheet gives %r at %s" % (ref, pin_num, expected_net, got, pt))
+    for sname, sobj in SHEETS_CTX:
+        segs = [((sname, round(w.points[0].X,3), round(w.points[0].Y,3)), (sname, round(w.points[-1].X,3), round(w.points[-1].Y,3))) for w in sobj.graphicalItems if w.type == "wire"]
+        for part in PARTS:
+            if part["ref"] not in SYM_AT or SYM_AT[part["ref"]][0] != sname:
                 continue
-            hit = None
-            if a[0] == b[0] and pt[0] == a[0] and min(a[1], b[1]) < pt[1] < max(a[1], b[1]):
-                hit = a
-            elif a[1] == b[1] and pt[1] == a[1] and min(a[0], b[0]) < pt[0] < max(a[0], b[0]):
-                hit = a
-            if hit is not None:
-                seg_net = net_of_cluster.get(uf.find(hit))
-                if seg_net != net:
-                    err(f"mid-span tap: {what} (net {net}) at {pt} lies inside a wire of net '{seg_net}'")
-
-    # every no-connect belongs to a declared NC pin
-    declared_nc = set()
-    for part in PARTS:
-        sym = next((s for s in sch.schematicSymbols
-                    if s.entryName == part["sym"] and
-                    any(p.key == "Reference" and p.value == part["ref"] for p in s.properties)), None)
-        if not sym:
-            continue
-        lpins = lib_pins(part["sym"])
-        for pin_num, net in part["nets"].items():
-            if net == "NC":
-                lp = lpins[pin_num]
-                declared_nc.add(pin_pt(sym, lp))
-    for nc in nc_pts:
-        if nc not in declared_nc:
-            err(f"stray no-connect flag at {nc}")
-
+            ps, sym2 = SYM_AT[part["ref"]]
+            lpins2 = lib_pins_local(sobj, part["sym"])
+            for pin_num2, net2 in part["nets"].items():
+                pt = pin_pt_ns(sname, sym2, lpins2[pin_num2])
+                for (a, b) in segs:
+                    if pt == a or pt == b:
+                        continue
+                    hit = None
+                    if a[0] == b[0] == pt[0] and a[2] == b[2] == pt[2] and min(a[1],b[1]) < pt[1] < max(a[1],b[1]):
+                        hit = a
+                    elif a[0] == b[0] == pt[0] and a[1] == b[1] == pt[1] and min(a[2],b[2]) < pt[2] < max(a[2],b[2]):
+                        hit = a
+                    if hit is not None:
+                        seg_net = net_of_cluster.get(uf.find(hit))
+                        if seg_net != net2:
+                            err("mid-span tap: %s.%s (net %s) at %s inside a wire of net %s" % (part["ref"], pin_num2, net2, pt, seg_net))
     # ---- 6. census vs spec ----
     expected_ic = {"U12": "BMM150", "U13": "BME688", "Y1": "SIT1532",
                    "U1": "ANNA-B402", "U3": "BQ25120A", "U4": "MAX17048", "U5": "IS31FL3194",

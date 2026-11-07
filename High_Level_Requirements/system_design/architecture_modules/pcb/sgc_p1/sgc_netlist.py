@@ -501,7 +501,9 @@ PARTS = [
     dict(ref="U10", sym="MT3608", x=238, y=258, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
     dict(ref="L2", sym="L", x=270, y=258, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
     dict(ref="D2", sym="D_SCHOTTKY", x=272, y=240, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
-    dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="Resistor_SMD:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
+    dict(ref="R14", sym="R", x=266.7, y=36.83, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k",
+         nets={"1": "+1V8", "2": "BHI_HIRQ"}),  # 0.25.x JP 2026-11-07: BHI HIRQ pull-up (Nicla R21 parity, DS review flag)
+        dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="Resistor_SMD:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
     dict(ref="C20", sym="C", x=287.02, y=50.8, dnp=False, fp="Capacitor_SMD:C_0402_1005Metric", value="220n", nets={"1": "VREG", "2": "GND"}),
     dict(ref="J5", sym="CON-2", x=109.22, y=246.38, dnp=False, fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", value="JST-SH-2 piezo (TBD-JP)", nets={"1": "BUTTON_RAW", "2": "GND"}),  # 2026-11-03: boost rectifier added
     dict(ref="R11", sym="R", x=190, y=276, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
@@ -676,7 +678,7 @@ SHEETS = [
     ("MCU: ANNA-B402 + 32 kHz + SWD",              "sch_mcu.kicad_sch",
      ["U1","Y1","C23"]),
     ("Sensors: BHI260AP cluster + RGB indicator",  "sch_sensors.kicad_sch",
-     ["U8","U9","U12","U13","U5","D1","U6","R13","R18","R29","R40",
+     ["U8","U9","U12","U13","U5","D1","U6","R13","R14","R18","R29","R40",
       "C10","C11","C12","C13","C14","C15","C20","C21","C22"]),
     ("Storage: data flash + BHI FW flash",         "sch_storage.kicad_sch",
      ["U7","U2","C8","C9"]),
