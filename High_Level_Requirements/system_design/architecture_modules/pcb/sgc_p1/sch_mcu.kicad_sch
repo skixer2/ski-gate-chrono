@@ -9218,7 +9218,7 @@
 		(dnp no)
 		(uuid "89eb9203-a012-4304-a48d-3ece62fb0311")
 		(property "Reference" "C23"
-			(at 175.038 125.13 0)
+			(at 172.466 129.794 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9228,7 +9228,7 @@
 			)
 		)
 		(property "Value" "100n"
-			(at 177.038 135.05 0)
+			(at 181.102 127.254 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
