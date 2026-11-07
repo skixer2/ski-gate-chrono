@@ -83,7 +83,7 @@ def main():
     # ---- 1b. every child sheet from SHEETS: round-trip + in-memory union ----
     # (N1 7-page split, 2026-11-04: global labels bridge sheets)
     sheet_files = []
-    SHEETS_CTX = [("root", sch)]
+    SHEETS_CTX = []   # root is hierarchy-only (verified empty 2026-11-07); the sch object below gets children merged into it, so it must NOT be a namespace member
     for _title, _fn, _refs in SHEETS:
         _path = os.path.join(HERE, _fn)
         sheet_files.append(_path)
@@ -135,22 +135,16 @@ def main():
             err("SHORT/conflict: net %s vs %s (%s) at %s" % (cur, net, what, tag))
         net_of_cluster[r] = net
     def pin_pt_ns(sname, sym, pin):
-        rot = getattr(getattr(sym, "orientation", None), "value", sym.orientation) if hasattr(sym, "orientation") else 0
+        rot = float(getattr(sym.position, "angle", 0) or 0)
         mir = getattr(sym, "mirror", None)
-        px, py = pin.position.X, pin.position.Y
-        x, y = sym.position.X, sym.position.Y
-        r = int(round(float(rot or 0) / 90.0)) % 4
-        assert r in (0, 2), "rotation %s unsupported" % rot
-        if r == 2:
-            px, py = -px, -py
-        if mir == "x":
-            wx, wy = x + px, y + py
-        elif mir == "y":
-            wx, wy = x - px, y - py
-        else:
-            assert mir in (None, "", "none"), "mirror %s unsupported" % mir
-            wx, wy = x + px, y - py
-        return (sname, round(wx, 3), round(wy, 3))
+        dx, dy = pin.position.X, -pin.position.Y   # lib y-up -> sheet y-down
+        r = int(round(rot / 90.0)) % 4
+        if r == 1: dx, dy = dy, -dx
+        elif r == 2: dx, dy = -dx, -dy
+        elif r == 3: dx, dy = -dy, dx
+        if mir == "x": dy = -dy
+        elif mir == "y": dx = -dx
+        return (sname, round(sym.position.X + dx, 3), round(sym.position.Y + dy, 3))
     def lib_pins_local(sobj, name):
         cand = [s for s in sobj.libSymbols if s.entryName == name or s.entryName == "sgc_p1:" + name]
         us = next(iter(cand)).units
@@ -197,6 +191,32 @@ def main():
             refv = next((p.value for p in s.properties if p.key == "Reference"), None)
             if refv and not refv.startswith("#"):
                 SYM_AT[refv] = (sname, s)
+    # Local nets (2026-11-07 JP doctrine): a net whose members all sit on ONE sheet and whose
+    # name appears NOWHERE as a global label is wired DIRECTLY (KiCad auto-names the island
+    # at export). The gate accepts shared-island membership instead of a label name.
+    all_label_names = {gl.text for _sn, _so in SHEETS_CTX for gl in _so.globalLabels}
+    pin_pt_cache = {}
+    for part in PARTS:
+        if part["ref"] not in SYM_AT: continue
+        _sn, _sy = SYM_AT[part["ref"]]
+        _so = next(o for n, o in SHEETS_CTX if n == _sn)
+        try: _lp = lib_pins_local(_so, part["sym"])
+        except Exception: continue
+        for _pn in part["nets"]:
+            if _pn in _lp: pin_pt_cache[(part["ref"], _pn)] = pin_pt_ns(_sn, _sy, _lp[_pn])
+    LOCAL_NETS = {}
+    for part in PARTS:
+        for _pn, _net in part["nets"].items():
+            if _net != "NC" and _net not in all_label_names:
+                LOCAL_NETS.setdefault(_net, []).append((part["ref"], _pn))
+    for _net, _pins in LOCAL_NETS.items():
+        _sheets = {SYM_AT[r][0] for r, _ in _pins if r in SYM_AT}
+        _roots = set()
+        for r, _ in _pins:
+            pt = pin_pt_cache.get((r, _))
+            _roots.add(uf.find(pt) if pt in uf.p else pt)
+        if not (len(_sheets) == 1 and len(_roots) == 1):
+            err("local net %r: %d sheet(s) / %d island(s) - needs a global label or rewiring" % (_net, len(_sheets), len(_roots)))
     placed = {}
     for part in PARTS:
         ref = part["ref"]
@@ -224,6 +244,8 @@ def main():
                 if pt in pts:
                     err("%s.%s: NC pin has a wire attached at %s" % (ref, pin_num, pt))
                 continue
+            if expected_net in LOCAL_NETS:
+                continue   # local unnamed island - membership verified above
             if pt not in conn:
                 err("%s.%s (net %s): NO connection at pin point %s" % (ref, pin_num, expected_net, pt))
                 continue
