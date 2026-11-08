@@ -750,7 +750,7 @@ main loop (polling)
 ### Shelf Life (Sleep)
 
 ```
-Battery: Renata ICP622540PMT, 600 mAh, 3.7V Li-Po
+Battery: Renata ICP622540 (2026-11-08 JP GO: superseded by ICP632136HPST - 3.8V/4.35V CV, 520mAh, 6.95x21.5x39.5mm, NTC incl.; VBATREG 4.35V locked in FW 0.25.2; ONE-WAY: 4.2V cells must never be paired after that build)PMT, 600 mAh, 3.7V Li-Po
 Sleep current: ~53 µA
 Shelf life = 600 mAh / 0.053 mA = 11,320 hours ≈ 472 days ≈ 15.7 months
 

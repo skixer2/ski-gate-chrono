@@ -296,7 +296,7 @@ USB-C 5 V ──IN── BQ25120A ──BAT── Renata 600 mAh (3.7 V, NTC 3-w
 - System peaks: BLE TX peak handled by B402's internal DC/DC (datasheet §2.1.1: integrated step-down; battery must handle module peak per SIM §3.4.1); BQ buck 300 mA ceiling ≫ our ~25 mA ARMED/LOGGING budget (hardware doc §7 power table).
 - Charge + system simultaneously: 110 mA (ICHG) + ~25 mA (system) + LEDs ~15 mA @5V→~23 mA battery-side ≈ 158 mA < ILIM 200 mA ✓ (with USB present the buck loads are served from VIN via power path, per BQ §9.3 DPPM description).
 - Session budget unchanged from hardware doc §7 (~48 mAh/session → ~12.5 sessions @ 20 °C; gauge adds ~3 µA — AD-029).
-- Battery capacity: docs say **Renata ICP622540PMT, 600 mAh** (sgc_system_design §746, hardware doc §7) — the task brief's "550 mAh" figure appears nowhere in the repo; **confirm OD-4**.
+- Battery capacity: docs say **Renata ICP622540 (2026-11-08 JP GO: superseded by ICP632136HPST - 3.8V/4.35V CV, 520mAh, 6.95x21.5x39.5mm, NTC incl.; VBATREG 4.35V locked in FW 0.25.2; ONE-WAY: 4.2V cells must never be paired after that build)PMT, 600 mAh** (sgc_system_design §746, hardware doc §7) — the task brief's "550 mAh" figure appears nowhere in the repo; **confirm OD-4**.
 
 ---
 
@@ -328,7 +328,7 @@ USB-C 5 V ──IN── BQ25120A ──BAT── Renata 600 mAh (3.7 V, NTC 3-w
 | OD-1 | EDA tool for capture/layout | (JP's choice; spec is tool-agnostic) |
 | OD-2 | SWD connector: Tag-Connect TC2050 vs 2×5 1.27 mm Cortex Debug | TC2050 footprint + castellated pads |
 | OD-3 | Final test-point set | §4.8 list |
-| OD-4 | Battery connector PN + cell confirm: docs say ICP622540PMT **600 mAh** (sgc_system_design.md:746); task brief said "550 mAh" — reconcile; NTC R25/B from Renata pack spec → then compute R_HI/R_LO (BQ Eq. 1–2) | keep 600 mAh doc value |
+| OD-4 | Battery connector PN + cell confirm: docs say ICP622540 (2026-11-08 JP GO: superseded by ICP632136HPST - 3.8V/4.35V CV, 520mAh, 6.95x21.5x39.5mm, NTC incl.; VBATREG 4.35V locked in FW 0.25.2; ONE-WAY: 4.2V cells must never be paired after that build)PMT **600 mAh** (sgc_system_design.md:746); task brief said "550 mAh" — reconcile; NTC R25/B from Renata pack spec → then compute R_HI/R_LO (BQ Eq. 1–2) | keep 600 mAh doc value |
 | OD-5 | **Add U2 (BHI FW flash, MX25R1635F, QSPI) to BOM** — present on Nicla ("BHI Flash" U2, ABX00050), absent from BOM v4.3 | add, Nicla parity |
 | OD-6 | BME688 populate vs DNP (unused by FW) | DNP to save cost/power; footprint always |
 | OD-7 | BHI RESETN → P0.13 + overlay pin change (18→13), or tie-high and drop the bring-up pulse | route to P0.13 (keeps bring-up reset) |

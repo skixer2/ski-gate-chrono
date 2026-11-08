@@ -87,7 +87,7 @@ pricing. Broker/reel channels dip to ~$1.80–2.25 and are NOT assumed.
   pinout, same JEDEC SPI command set + SFDP. Firmware auto-detects size (SPIFBlockDevice
   SFDP); layout re-mapped for 8 MB (pre-roll stays 0x0000–0x13FFF).
 - BQ25120A charger, IS31FL3194 RGB LED driver, LDOs — Nicla power management. On the v2 custom PCB the BQ's band-gauge is fallback only — the MAX17048 (#10) is the preferred SoC source (AD-029)
-- Battery (Renata ICP622540PMT) — ⚠️ provisional; JST 3-pin connector may change per cell
+- Battery (Renata ICP622540 (2026-11-08 JP GO: superseded by ICP632136HPST - 3.8V/4.35V CV, 520mAh, 6.95x21.5x39.5mm, NTC incl.; VBATREG 4.35V locked in FW 0.25.2; ONE-WAY: 4.2V cells must never be paired after that build)PMT) — ⚠️ provisional; JST 3-pin connector may change per cell
 - Qi coil / IP6833 receiver — ⚠️ DROPPED (DNP); USB-C + IP67 cap as mechanical alternative
 - 32 kHz + 32 MHz crystals — Nicla stock
 
