@@ -501,6 +501,8 @@ PARTS = [
     dict(ref="U10", sym="MT3608", x=238, y=258, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
     dict(ref="L2", sym="L", x=270, y=258, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
     dict(ref="D2", sym="D_SCHOTTKY", x=272, y=240, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
+    dict(ref="R42", sym="R", x=190, y=62, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="24k 1%", nets={"1": "VBUS_USB", "2": "TS_NTC"}),  # TS R_HI (DS solve 2026-11-08: cold 0C at 39.95% vs V_COLD 39.8%)
+    dict(ref="R43", sym="R", x=190, y=72, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="36k 1%", nets={"1": "TS_NTC", "2": "GND"}),  # TS R_LO (hot 45C at 15.1% vs V_HOT 15.0%)
     dict(ref="C24", sym="C", x=232, y=118, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # U1 VCC local (DS pass-2: Nicla C17 parity + u-blox SIM VCC caps mandate)
     dict(ref="C25", sym="C", x=232, y=124, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1u",   nets={"1": "+1V8", "2": "GND"}),  # U1 VCC bulk (same)
     dict(ref="R14", sym="R", x=266.7, y=36.83, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k",
@@ -542,7 +544,7 @@ PARTS = [
     dict(ref="R1", sym="R", x=168, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1.82k 1%", nets={"1": "ISET_R", "2": "GND"}),      # ICHG ~110 mA (OD-15)
     dict(ref="R2", sym="R", x=168, y=58, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1k 1%",    nets={"1": "ILIM_R", "2": "GND"}),       # ILIM 200 mA
     dict(ref="R3", sym="R", x=168, y=68, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.99k 1%", nets={"1": "IPRETERM_R", "2": "GND"}),  # term/prechg 10%
-    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "V_PMID", "2": "BQ_CD"}),     # CD PU V_PMID (OD-8) - D2 fix 2026-11-04
+    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_CD"}),       # CD PU +1V8 (JP GO 2026-11-08: V_PMID overdrove U1.50 abs-max via 100k; +1V8 keeps cold-boot-active guarantee - BQ POR = load switch on - and correct ship persistence)
     dict(ref="R5", sym="R", x=168, y=92, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_INT"}),       # BQ INT PU
     dict(ref="R9", sym="R", x=184, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SDA"}),     # i2c0 PU (Nicla parity)
     dict(ref="R10",sym="R", x=184, y=60, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
