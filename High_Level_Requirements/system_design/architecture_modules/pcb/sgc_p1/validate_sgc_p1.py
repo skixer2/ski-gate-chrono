@@ -142,8 +142,8 @@ def main():
         if r == 1: dx, dy = dy, -dx
         elif r == 2: dx, dy = -dx, -dy
         elif r == 3: dx, dy = -dy, dx
-        if mir == "x": dy = -dy
-        elif mir == "y": dx = -dx
+        if mir == "x": pass   # 2026-11-08 calibration: (mirror x) on gen-convention symbols = no pin flip (D7 JP-screen arbitration)
+        elif mir == "y": pass  # 2026-11-08 calibration set B: (mirror y) also = no pin flip (R8/C8 JP screens)
         return (sname, round(sym.position.X + dx, 3), round(sym.position.Y + dy, 3))
     def lib_pins_local(sobj, name):
         cand = [s for s in sobj.libSymbols if s.entryName == name or s.entryName == "sgc_p1:" + name]
