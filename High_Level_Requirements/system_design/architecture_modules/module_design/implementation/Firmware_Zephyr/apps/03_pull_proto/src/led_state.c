@@ -41,7 +41,7 @@ static void led_work_handler(struct k_work *w)
 	/* Array maps <B,G,R> (index 0 = BLUE die — verified quirk).
 	 * Run state outranks link state (JP 2026-10-14):
 	 *   red    = LOGGING   (hard evidence — record in progress)
-	 *   yellow = ARMED     (waiting for the drop; distinct from
+	 *   orange = ARMED     (waiting for the drop; distinct from
 	 *                       green = BLE connected)
 	 *   green  = connected (no run activity)
 	 *   blue blink = advertising
@@ -51,8 +51,8 @@ static void led_work_handler(struct k_work *w)
 		const uint8_t red[3] = { 0x00, 0x00, 0xFF };
 		led_set_color(led, 0, 3, red);
 	} else if (st == 1) {                /* ARMED */
-		const uint8_t yellow[3] = { 0x00, 0xFF, 0xFF };
-		led_set_color(led, 0, 3, yellow);
+		const uint8_t orange[3] = { 0x00, 0x40, 0xFF };   /* JP 2026-11-08: equal-mix yellow READ as green on the SMLP34 (G die dominates); R-heavy orange is unmistakable */
+		led_set_color(led, 0, 3, orange);
 	} else if (ble_lifecycle_connected()) {
 		const uint8_t green[3] = { 0x00, 0xFF, 0x00 };
 		led_set_color(led, 0, 3, green);
