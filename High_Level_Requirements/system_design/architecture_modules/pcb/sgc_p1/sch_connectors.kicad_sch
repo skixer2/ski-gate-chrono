@@ -9862,7 +9862,6 @@
 	(symbol
 		(lib_id "sgc_p1:D_SCHOTTKY")
 		(at 332.74 203.2 0)
-		(mirror x)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9872,7 +9871,7 @@
 		(dnp no)
 		(uuid "5e21c19b-fdea-4409-a5d1-03a30c75e9f3")
 		(property "Reference" "D7"
-			(at 325.66 208.51 0)
+			(at 325.628 201.168 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9882,7 +9881,7 @@
 			)
 		)
 		(property "Value" "BAT42WS (clamp)"
-			(at 342.9 183.388 0)
+			(at 342.9 223.012 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10604,7 +10603,7 @@
 		(dnp no)
 		(uuid "fdd7fb2f-3d40-4d1b-a02b-14bcb54aabdb")
 		(property "Reference" "D6"
-			(at 325.66 182.65 0)
+			(at 325.374 186.436 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10614,7 +10613,7 @@
 			)
 		)
 		(property "Value" "BAT42WS (clamp)"
-			(at 342.9 199.136 0)
+			(at 346.71 194.31 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
