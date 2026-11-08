@@ -438,7 +438,7 @@ Qi Charging Pad (5W, any Qi-compliant transmitter)
         │  ┌─ Charging status → BQ25120 I²C (Wire1, P0.15/P0.16)
         │  └─ Battery temp → NTC thermistor on battery lead
         ▼
-   Renata ICP622540 (2026-11-08 JP GO: superseded by ICP632136HPST - 3.8V/4.35V CV, 520mAh, 6.95x21.5x39.5mm, NTC incl.; VBATREG 4.35V locked in FW 0.25.2; ONE-WAY: 4.2V cells must never be paired after that build)PMT
+   Renata ICP622540 (2026-11-08 JP GO: superseded by ICP632136HPST - 3.8V/4.35V CV, 520mAh, 6.95x21.5x39.5mm, NTC incl.; VBATREG 4.35V switch PENDING JP GO - the bench still has the 4.2V PMT; the FW write is DORMANT (git 8fd1979 + pointer comment in ble_config.c) and is enabled ONLY at the physical pack swap. ONE-WAY after enable: 4.2V cells must never be paired)PMT
    600 mAh, 3.7V Li-Po
    Integrated NTC (3-wire: BAT+, BAT−/GND, NTC)
         │
