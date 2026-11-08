@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.25.1"   /* piezo arming rework (JP 2026-11-04/05): 1s hold gate removed, single press arms in SLEEP, other states reject, 200ms quiet window. v6.1 F42-compliant (button = arm+wake only) */
+#define APP_VERSION "0.25.2"   /* piezo arming rework (JP 2026-11-04/05): 1s hold gate removed, single press arms in SLEEP, other states reject, 200ms quiet window. v6.1 F42-compliant (button = arm+wake only) */
 
 #endif /* SGC_APP_VERSION_H */
