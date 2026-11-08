@@ -405,18 +405,12 @@ void ble_config_start(void)
 			}
 		}
 
-		/* 0.25.2 (JP GO 2026-11-08): Renata ICP632136HPST = 3.8 V class cell, CV 4.35 V.
-		 * BQ_BATT_VOLT 0x8B = 640+80+20+10 mV over 3.6 V = 4.35 V (default 0x78 = 4.2 V).
-		 * ONE-WAY DOOR: once set, a 4.2 V cell (old ICP622540PMT) must NEVER be paired
-		 * to this device - 4.35 V on a 4.2 V cell overcharges it. */
-		uint8_t vb;
-		if (bq_read(BQ_BATT_VOLT, &vb) == 0 && vb != 0x8B) {
-			if (bq_write(BQ_BATT_VOLT, 0x8B) == 0) {
-				printk("batt: VBATREG 4.35 V (HPST chemistry lock)\n");
-			} else {
-				printk("batt: VBATREG write FAILED - still 4.2 V, HPST undercharges\n");
-			}
-		}
+		/* 4.35 V SWITCH -- PENDING JP GO, DO NOT ENABLE YET.
+ * JP 2026-11-08: the bench still has the 4.2 V ICP622540PMT connected;
+ * enabling this write now would OVERCHARGE that pack.
+ * Enable ONLY when the pack is physically swapped to ICP632136HPST.
+ * The exact code block is preserved in git commit 8fd1979 (re-insert at
+ * this spot). Reg 0x05, value 0x8B = 4.35 V. ONE-WAY door after enable. */
 		k_work_init_delayable(&batt_work, batt_work_handler);
 		k_work_schedule(&batt_work, K_SECONDS(2));
 	}
