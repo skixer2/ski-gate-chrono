@@ -261,20 +261,31 @@ static void batt_work_handler(struct k_work *w)
 {
 	struct k_work_delayable *d =
 		CONTAINER_OF(w, struct k_work_delayable, work);
+	/* 0.25.7 (Table 1, SLUSD08A): CD polarity is VIN-DEPENDENT -
+	 * L on USB = charge enabled; L on battery = Hi-Z = I2C DEAD (the
+	 * battery-unknown root cause; errno EIO/NACK measured 2026-11-09).
+	 * H on battery = Active Battery, I2C alive (tHIZ_ACTIVEBAT = 1 ms). */
+	const struct device *g0 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+	if (device_is_ready(g0)) {
+		gpio_pin_configure(g0, 25, bq_on_vin ? GPIO_OUTPUT_LOW
+					: GPIO_OUTPUT_HIGH);
+	}
 	int pct = bq_battery_pct();
 	if (pct == -4) {
-		/* 0.25.6 staged recovery (0.25.5 CD re-assert fired but rc stayed -4):
-		 * 1) standard 9-clock SDA bus clear; 2) retry; errno byte exposes NACK
-		 * (EIO=5, device silent) vs timeout/busy (bus physically stuck). */
+		/* 0.25.7: on battery the fix is CD HIGH -> Active BAT (1 ms),
+		 * then retry; recover_bus kept for the stuck-bus case. */
+		const struct device *g = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+		if (device_is_ready(g)) {
+			gpio_pin_configure(g, 25, GPIO_OUTPUT_HIGH);
+		}
 		int rb = i2c_recover_bus(bqi2c);
 		k_msleep(5);
 		pct = bq_battery_pct();
 		batt_diag_recovers++;
 		if (rb != 0) {
-			batt_diag_recovers += 2;   /* encode recover_bus failure: +2 */
+			batt_diag_recovers += 2;
 		}
-	}	batt_diag_rc = (int8_t)((pct > 127) ? 127 : pct);
-	batt_diag_polls++;
+	}	batt_diag_polls++;
 	batt_diag_vin = bq_on_vin ? 1 : 0;
 	/* recovers counted in the -4 path */
 
