@@ -83,6 +83,9 @@ static struct bt_uuid_128 time_sync_uuid =
 static struct bt_uuid_128 fw_version_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABC6, 0x0000, 0x1000,
 				    0x8000, 0x00805F9B34FB));
+static struct bt_uuid_128 batt_diag_uuid =
+	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCB, 0x0000, 0x1000,
+					0x8000, 0x00805F9B34FB));
 static struct bt_uuid_128 console_uuid =
 	BT_UUID_INIT_128(BT_UUID_128_ENCODE(0x5347ABCA, 0x0000, 0x1000,
 					    0x8000, 0x00805F9B34FB));
@@ -487,8 +490,25 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 	BT_GATT_CHARACTERISTIC(&fw_version_uuid.uuid,
 			       BT_GATT_CHRC_READ,
 			       BT_GATT_PERM_READ,
-			       read_fw_version, NULL, NULL)
+			       read_fw_version, NULL, NULL),
+	/* 0.25.4 ABCB battery diagnostics - appended LAST, indices untouched */
+	BT_GATT_CHARACTERISTIC(&batt_diag_uuid.uuid,
+				BT_GATT_CHRC_READ,
+				BT_GATT_PERM_READ,
+				read_batt_diag, NULL, NULL)
 );
+
+/* 0.25.4 battery diagnostics: [0]=last FAULTS raw, [1]=last bq_battery_pct
+ * return code (int8: -4 I2C fail, -2 below floor, else pct band), [2]=poll
+ * counter (wraps), [3]=vin flag at last poll. Read-only; the app does not
+ * consume it - diagnostics via nRF Connect on battery (serial is dead there). */
+static ssize_t read_batt_diag(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t d[4];
+	ble_config_batt_diag(d);
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, d, sizeof(d));
+}
 
 static uint32_t job_off;    /* next blob byte to send            */
 static uint32_t job_end;    /* off + len                         */

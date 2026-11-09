@@ -30,6 +30,11 @@ static uint8_t cfg_arm;              /* 0=left */
 static uint8_t cfg_disc = 1;         /* GS parity with ArduinoFW */
 
 static struct k_work_delayable cfg_flush;
+/* 0.25.4 battery diagnostics snapshot (ABC8-free slot ABCB consumer) */
+static uint8_t batt_diag_faults;
+static int8_t  batt_diag_rc;
+static uint8_t batt_diag_polls;
+static uint8_t batt_diag_vin;
 static struct k_work_delayable batt_work;
 
 static void cfg_flush_handler(struct k_work *w)
@@ -155,6 +160,7 @@ static int bq_battery_pct(void)
 		return -4;
 	}
 	bq_fail_streak = 0;
+	batt_diag_faults = faults;
 	bq_on_vin = (faults & (0x20u | 0x40u)) == 0u;
 	static bool diag_done;   /* one-shot bench diagnostic (values) */
 	if (!diag_done) {
@@ -249,6 +255,9 @@ static void batt_work_handler(struct k_work *w)
 	struct k_work_delayable *d =
 		CONTAINER_OF(w, struct k_work_delayable, work);
 	int pct = bq_battery_pct();
+	batt_diag_rc = (int8_t)((pct > 127) ? 127 : pct);
+	batt_diag_polls++;
+	batt_diag_vin = bq_on_vin ? 1 : 0;
 
 	switch (pct) {
 	case -3:
@@ -413,4 +422,12 @@ void ble_config_start(void)
 		k_work_init_delayable(&batt_work, batt_work_handler);
 		k_work_schedule(&batt_work, K_SECONDS(2));
 	}
+}
+
+void ble_config_batt_diag(uint8_t out[4])
+{
+	out[0] = batt_diag_faults;
+	out[1] = (uint8_t)batt_diag_rc;
+	out[2] = batt_diag_polls;
+	out[3] = batt_diag_vin;
 }

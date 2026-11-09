@@ -67,4 +67,5 @@ uint8_t ble_config_flash_used_pct(void);
 /* ABD0: 0 until the BHI calibration-status port. */
 uint8_t ble_config_cal(void);
 
+void ble_config_batt_diag(uint8_t out[4]);   /* 0.25.4 diagnostics: faults, rc, polls, vin */
 #endif /* SGC_BLE_CONFIG_H */
