@@ -429,6 +429,18 @@ static ssize_t read_time_sync(struct bt_conn *conn,
  * [5,6] console (+declaration) · [7] CCC. console value = attrs[6]
  * for GATT ops — but notify via attrs[5] is the proven form (see
  * console_emit note). */
+/* 0.25.4 battery diagnostics: [0]=last FAULTS raw, [1]=last bq_battery_pct
+ * return code (int8: -4 I2C fail, -2 below floor, else pct band), [2]=poll
+ * counter (wraps), [3]=vin flag at last poll. Read-only; the app does not
+ * consume it - diagnostics via nRF Connect on battery (serial is dead there). */
+static ssize_t read_batt_diag(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			void *buf, uint16_t len, uint16_t offset)
+{
+	uint8_t d[4];
+	ble_config_batt_diag(d);
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, d, sizeof(d));
+}
+
 BT_GATT_SERVICE_DEFINE(product_svc,
 	BT_GATT_PRIMARY_SERVICE(&product_svc_uuid.uuid),
 	BT_GATT_CHARACTERISTIC(&run_info_uuid.uuid,
@@ -497,18 +509,6 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 				BT_GATT_PERM_READ,
 				read_batt_diag, NULL, NULL)
 );
-
-/* 0.25.4 battery diagnostics: [0]=last FAULTS raw, [1]=last bq_battery_pct
- * return code (int8: -4 I2C fail, -2 below floor, else pct band), [2]=poll
- * counter (wraps), [3]=vin flag at last poll. Read-only; the app does not
- * consume it - diagnostics via nRF Connect on battery (serial is dead there). */
-static ssize_t read_batt_diag(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			void *buf, uint16_t len, uint16_t offset)
-{
-	uint8_t d[4];
-	ble_config_batt_diag(d);
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, d, sizeof(d));
-}
 
 static uint32_t job_off;    /* next blob byte to send            */
 static uint32_t job_end;    /* off + len                         */
