@@ -501,10 +501,9 @@ PARTS = [
     dict(ref="U10", sym="MT3608", x=238, y=258, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
     dict(ref="L2", sym="L", x=270, y=258, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
     dict(ref="D2", sym="D_SCHOTTKY", x=272, y=240, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
-    dict(ref="R42", sym="R", x=190, y=62, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="24k 1%", nets={"1": "VBUS_USB", "2": "TS_NTC"}),  # TS R_HI (DS solve 2026-11-08: cold 0C at 39.95% vs V_COLD 39.8%)
-    dict(ref="R43", sym="R", x=190, y=72, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="36k 1%", nets={"1": "TS_NTC", "2": "GND"}),  # TS R_LO (hot 45C at 15.1% vs V_HOT 15.0%)
-    dict(ref="C24", sym="C", x=232, y=118, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # U1 VCC local (DS pass-2: Nicla C17 parity + u-blox SIM VCC caps mandate)
-    dict(ref="C25", sym="C", x=232, y=124, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1u",   nets={"1": "+1V8", "2": "GND"}),  # U1 VCC bulk (same)
+    dict(ref="R15", sym="R", x=190, y=62, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="24k 1%", nets={"1": "VBUS_USB", "2": "TS_NTC"}),  # TS R_HI (DS solve 2026-11-08: cold 0C at 39.95% vs V_COLD 39.8%)
+    dict(ref="R16", sym="R", x=190, y=72, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="36k 1%", nets={"1": "TS_NTC", "2": "GND"}),  # TS R_LO (hot 45C at 15.1% vs V_HOT 15.0%)
+    dict(ref="C24", sym="C", x=232, y=118, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF", nets={"1": "+1V8", "2": "GND"}),  # U1 VCC local (DS pass-2: Nicla C17 parity + u-blox SIM VCC caps mandate)
     dict(ref="R14", sym="R", x=266.7, y=36.83, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k",
          nets={"1": "+1V8", "2": "BHI_HIRQ"}),  # 0.25.x JP 2026-11-07: BHI HIRQ pull-up (Nicla R21 parity, DS review flag)
         dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="Resistor_SMD:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
