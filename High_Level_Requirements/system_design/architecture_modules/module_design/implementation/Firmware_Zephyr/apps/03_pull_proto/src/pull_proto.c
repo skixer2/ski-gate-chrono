@@ -436,7 +436,7 @@ static ssize_t read_time_sync(struct bt_conn *conn,
 static ssize_t read_batt_diag(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			void *buf, uint16_t len, uint16_t offset)
 {
-	uint8_t d[5];
+	uint8_t d[6];
 	ble_config_batt_diag(d);
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, d, sizeof(d));
 }

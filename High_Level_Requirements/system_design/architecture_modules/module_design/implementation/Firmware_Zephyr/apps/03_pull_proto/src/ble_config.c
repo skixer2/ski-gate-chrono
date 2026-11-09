@@ -36,6 +36,7 @@ static int8_t  batt_diag_rc;
 static uint8_t batt_diag_polls;
 static uint8_t batt_diag_vin;
 static uint8_t batt_diag_recovers;
+static int batt_diag_errno;
 static struct k_work_delayable batt_work;
 
 static void cfg_flush_handler(struct k_work *w)
@@ -132,9 +133,14 @@ static const struct device *bqi2c;
 static uint8_t batt_cache = BATT_UNKNOWN;
 static bool batt_vin;          /* VIN present at last good read (USB power) */
 
+static int bq_last_errno;   /* 0.25.6: raw i2c errno of the last failed read */
 static int bq_read(uint8_t reg, uint8_t *val)
 {
-	return i2c_write_read(bqi2c, BQ_ADDR, &reg, 1, val, 1);
+	int rc = i2c_write_read(bqi2c, BQ_ADDR, &reg, 1, val, 1);
+	if (rc != 0) {
+		bq_last_errno = rc;
+	}
+	return rc;
 }
 
 static int bq_write(uint8_t reg, uint8_t val)
@@ -257,19 +263,17 @@ static void batt_work_handler(struct k_work *w)
 		CONTAINER_OF(w, struct k_work_delayable, work);
 	int pct = bq_battery_pct();
 	if (pct == -4) {
-		/* 0.25.5 (diag bytes 00-FC-41-00 on battery): I2C to the BQ dies when
-		 * VIN drops. Prime suspect: the CD line glitches HIGH at VIN collapse
-		 * (level-shifter loses its VIN-side rail) -> BQ enters Hi-Z/ship -> I2C
-		 * dead. Re-assert CD low (active) and retry once. */
-		const struct device *g = DEVICE_DT_GET(DT_NODELABEL(gpio0));
-		if (device_is_ready(g) &&
-			gpio_pin_configure(g, 25, GPIO_OUTPUT_LOW) == 0) {
-			k_msleep(5);
-			pct = bq_battery_pct();
-			batt_diag_recovers++;
+		/* 0.25.6 staged recovery (0.25.5 CD re-assert fired but rc stayed -4):
+		 * 1) standard 9-clock SDA bus clear; 2) retry; errno byte exposes NACK
+		 * (EIO=5, device silent) vs timeout/busy (bus physically stuck). */
+		int rb = i2c_recover_bus(bqi2c);
+		k_msleep(5);
+		pct = bq_battery_pct();
+		batt_diag_recovers++;
+		if (rb != 0) {
+			batt_diag_recovers += 2;   /* encode recover_bus failure: +2 */
 		}
-	}
-	batt_diag_rc = (int8_t)((pct > 127) ? 127 : pct);
+	}	batt_diag_rc = (int8_t)((pct > 127) ? 127 : pct);
 	batt_diag_polls++;
 	batt_diag_vin = bq_on_vin ? 1 : 0;
 	/* recovers counted in the -4 path */
@@ -446,4 +450,5 @@ void ble_config_batt_diag(uint8_t out[4])
 	out[2] = batt_diag_polls;
 	out[3] = batt_diag_vin;
 	out[4] = batt_diag_recovers;
+	out[5] = (uint8_t)(bq_last_errno & 0xFF);
 }
