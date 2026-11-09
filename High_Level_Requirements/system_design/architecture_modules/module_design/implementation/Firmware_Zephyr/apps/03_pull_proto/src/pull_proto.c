@@ -431,12 +431,12 @@ static ssize_t read_time_sync(struct bt_conn *conn,
  * console_emit note). */
 /* 0.25.4 battery diagnostics: [0]=last FAULTS raw, [1]=last bq_battery_pct
  * return code (int8: -4 I2C fail, -2 below floor, else pct band), [2]=poll
- * counter (wraps), [3]=vin flag at last poll. Read-only; the app does not
+ * counter (wraps), [3]=vin flag at last poll, [4]=CD recovery count. App-free;
  * consume it - diagnostics via nRF Connect on battery (serial is dead there). */
 static ssize_t read_batt_diag(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			void *buf, uint16_t len, uint16_t offset)
 {
-	uint8_t d[4];
+	uint8_t d[5];
 	ble_config_batt_diag(d);
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, d, sizeof(d));
 }
