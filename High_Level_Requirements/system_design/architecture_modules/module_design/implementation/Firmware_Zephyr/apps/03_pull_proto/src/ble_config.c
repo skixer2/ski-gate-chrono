@@ -164,11 +164,10 @@ static int bq_battery_pct(void)
 		printk("batt: BQ alive, faults=0x%02x status=0x%02x\n",
 		       faults, st);
 	}
-	if (faults & 0x20) {
-		return -1;   /* VIN_UV (measured 2026-11-07, full pack, USB out) - oracle already updated above */
-	}
-
-	const bool on_battery = (faults & 0x40) != 0;
+	/* 0.25.2 real fix (JP 2026-11-09: still unknown on battery - the 11-08
+	 * change never landed; the commit only touched the version string).
+	 * 0x20 = VIN_UV = NO USB, not "no battery" -> fold into the VBMON path. */
+	const bool on_battery = (faults & 0x40) != 0 || (faults & 0x20) != 0;
 
 	uint8_t data;
 
