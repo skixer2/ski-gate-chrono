@@ -60,7 +60,7 @@ OUT OF SCOPE: <explicit non-goals>
 
 ## 2. Active Session Test Case
 
-### TC-2026-11-13-001 — P1 DIODE SYMBOL POLARITY (JP visual-symbol rework) — OPEN, gate FAIL 5 errors
+### TC-2026-11-13-001 — P1 DIODE SYMBOL POLARITY (JP visual-symbol rework) — CLOSED: PASS (2026-11-13 14:2x UTC; opened with 5 gate errors, resolved by JP flips 22645f5, see 14:2x entry)
 
 | Field | Value |
 |---|---|
@@ -107,7 +107,9 @@ Electrical verdicts:
 
 Fix options: JP in KiCad (file is open) OR ZioClaw kiutils pass on request. Gate = validate_sgc_p1.py FULLY GREEN.
 
-**2026-11-13 14:2x — CLOSED: PASS.** JP flipped all three diodes in KiCad (save 14:13 UTC, commit 22645f5 "Flipped diodes... ZioClaw was right!"). Post-flip extraction + gate: D5.1=VBUS_IN(K), D5.2=VBUS_USB(A), D6.1=+1V8, piezo chain CONNECTED (islands resolved), census 70/359/72. **validate_sgc_p1.py FULLY GREEN, 0 errors.** Note: my earlier "piezo chain open in the file" was an artifact of reading the truncated mid-sync file state — JP was right, everything was connected. TC-2026-11-13-001 CLOSED.
+**2026-11-13 14:2x — CLOSED: PASS.** JP flipped all three diodes in KiCad (save 14:13 UTC, commit 22645f5 "Flipped diodes... ZioClaw was right!"). Post-flip extraction + gate: D5.1=VBUS_IN(K), D5.2=VBUS_USB(A), D6.1=+1V8, piezo chain CONNECTED (islands resolved), census 70/359/72. **validate_sgc_p1.py FULLY GREEN, 0 errors.**
+
+**RESIDUAL (new, TC-2026-11-13-002 candidate):** sgc_p1.kicad_pcb (PCB layout) is NOT under version control and NOT covered by the gate. Schematic diode flips (22645f5) are committed, but if the layout predates the flips, copper/nets for D5/D6/D7 may still reflect the OLD orientation. Action: update PCB from schematic in KiCad, verify diode pad nets on layout, then commit the .kicad_pcb (it is a load-bearing artifact - gitignore bypass means no history/protection). Note: my earlier "piezo chain open in the file" was an artifact of reading the truncated mid-sync file state — JP was right, everything was connected. TC-2026-11-13-001 CLOSED.
 
 **2026-11-13 13:0x — BUTTON_RAW mystery RESOLVED + island-membership mechanism understood:**
 - JP: "BUTTON_RAW was deleted a long ago" — CONFIRMED for LABELS: zero BUTTON_RAW strings in any of the 6 sheets (Unicode-safe Select-String; findstr false-negatives ruled out).
