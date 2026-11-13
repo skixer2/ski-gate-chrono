@@ -1,4 +1,4 @@
-# SGC — Master Test Plan (v1.1)
+# SGC — Master Test Plan (v1.2)
 
 *2026-06-24 — Initial release. Covers all v1 testing: firmware (Nicla), phone (Flutter/Dart), and cloud.*
 
@@ -8,6 +8,7 @@
 |---|---|---|
 | 2026-06-24 | v1.0 | Initial release |
 | 2026-10-27 | v1.1 | §8 added — test levels by subsystem for the Oct 2026 wave: **CLOUD** (pytest 38+ checks, smoke.sh vs prod, nightly ops job), **APP** (analyze gate in build lane; unit tests PLANNED for pure-logic modules; JP on-phone passes as acceptance practice, 1.66–1.72 history), **DEVICE** (Zephyr-era suite PLANNED; Arduino-era S03–S06 scripts marked stale-superseded). Encodes FW 0.22.1 / FW 0.23.0-in-flight / App 1.72.0 / sgc-api live state. |
+| 2026-11-13 | v1.2 | State refresh: FW 0.25.8 ON DEVICE (SWD flash + boot-banner verified 11-12; MCUboot image version matches app banner). Since v1.1: battery-%-on-battery fixed and JP-verified on hardware (0.25.7 CD-polarity root cause, BQ25120A Table 1), version sources synced for phone-OTA, OTA stage 1 on device (MCUboot dual-slot + MCUmgr over BLE), piezo arming rework v6.1 (single-press arm), ABCB/ABCD diagnostic chars, hexsafe build-archive protocol, solo build+flash certification. Cloud/APP lanes unchanged. |
 
 ---
 

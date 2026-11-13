@@ -1,5 +1,6 @@
-# SGC — Architecture: Hardware (v2.5 — Pole-Mount)
+# SGC — Architecture: Hardware (v2.6 — Pole-Mount)
 
+*2026-11-13 — v2.6 (state-only): TS divider PLACED and gate-verified (R42 24k + R43 36k, BQ25120A Fig-18 window). D5 = PMEG4005EPK VBUS series protection placed (nets: pin 2 = VBUS_USB = anode / USB side, pin 1 = VBUS_IN = cathode / BQ-IN side; Nicla D3 parity; validate_sgc_p1.py FULLY GREEN 11-13). Battery pack decision locked: ICP632136HPST (3.8 V / 4.35 V CV, 520 mAh) at next physical pack swap; bench pack ICP622540PMT superseded. FW 0.25.7 CD-polarity fix: CD tracks bq_on_vin per poll (L = charge-enable on USB, H = Active-BAT) — battery-%-on-battery now reports correctly (JP-verified on hardware 11-10). FW on device: 0.25.8 (banner-verified).*
 *2026-10-28 — v2.5 (doc-only): §7 adds the **v2 fuel gauge — MAX17048 @ 0x36** on the
 power-management bus (Zephyr `&i2c0`, P0.15/P0.16 — Arduino "Wire1"; AD-029).
 BQ25120A band-gauge demoted to fallback. §2 bus/address maps and §10 interconnection

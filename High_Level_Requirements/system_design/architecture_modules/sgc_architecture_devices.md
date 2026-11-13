@@ -1,5 +1,6 @@
-# SGC — Architecture: Device Firmware (v1.6 — Pole-Mount)
+# SGC — Architecture: Device Firmware (v1.7 — Pole-Mount)
 
+*2026-11-13 — v1.7 (state-only): piezo button arming MIGRATED and reworked in FW (v6.1, 2026-11-04/05: single press arms in SLEEP, other states reject, 200 ms quiet window; button = arm+wake only; 5-press factory reset kept) — the v1.6 "NOT yet migrated / waiting on JP" note below is superseded. FW now 0.25.8 on device; charger/power subsystem facts tracked in sgc_architecture_hardware.md.*
 *2026-08-12 — v1.6: Hardware arming target = Langir 16 mm piezo button on P0.02 (edge interrupt; single press = arm, 5 presses = factory reset). ⚠️ Firmware code below still describes the LDC1612 proximity path — NOT yet migrated; waiting on JP to buy + wire the button. See sgc_architecture_hardware.md v2.2 + sgc_bom.md v4.0.*
 *2026-06-27 — v1.4: Start detection simplified to drop-only (cumulative > 2.0 m). Drain changed to data-driven (pop N = min(2, ring.count())). See sgc_system_design.md v2.2 for rationale.*
 *2026-06-09 — v1.3: Architecture pivot — RFID removed from active BOM. Start detector (speed OR drop). rfid_reader marked as v2 stub. See sgc_architecture_decisions.md for pivot rationale.*

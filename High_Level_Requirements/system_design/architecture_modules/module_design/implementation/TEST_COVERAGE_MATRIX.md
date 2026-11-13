@@ -1,6 +1,7 @@
-# SGC — Test Coverage Matrix (v1.1)
+# SGC — Test Coverage Matrix (v1.2)
 
 *2026-10-27 — v1.1: §9 added — feature-level coverage for the Oct 2026 wave (App 1.72.0, FW 0.22.1, sgc-api live). §1–§8 below are the original requirement-level matrix (Arduino-era device rows); for current subsystem practice see MASTER_TEST_PLAN §7.*
+*2026-11-13 — v1.2: state note — FW 0.25.8 on device (banner-verified 11-12). Coverage rows unchanged; device evidence since v1.1: battery-%-on-battery PASS on hardware (0.25.7 CD-polarity fix, BQ25120A Table 1), version reporting via boot banner + ABC6 + MCUboot image version, OTA stage 1 installed (dual-slot, MCUmgr over BLE), piezo arming rework v6.1. OTA-lane test additions tracked in MASTER_TEST_PLAN v1.2.*
 *2026-06-24 — Complete requirement-to-test mapping for all v1 requirements.*
 *Covers: Device Functional (F01-F51), Phone Functional (F15-F57.4), Performance (P01-P08), Hardware (H01-H13), Interface (I01-I11), Robustness (R01-R08). v2-only requirements (F52-F61, P09, H11-H12, I10) are excluded.*
 
