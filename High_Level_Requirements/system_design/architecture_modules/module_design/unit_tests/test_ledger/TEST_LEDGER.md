@@ -107,6 +107,8 @@ Electrical verdicts:
 
 Fix options: JP in KiCad (file is open) OR ZioClaw kiutils pass on request. Gate = validate_sgc_p1.py FULLY GREEN.
 
+**2026-11-13 14:2x — CLOSED: PASS.** JP flipped all three diodes in KiCad (save 14:13 UTC, commit 22645f5 "Flipped diodes... ZioClaw was right!"). Post-flip extraction + gate: D5.1=VBUS_IN(K), D5.2=VBUS_USB(A), D6.1=+1V8, piezo chain CONNECTED (islands resolved), census 70/359/72. **validate_sgc_p1.py FULLY GREEN, 0 errors.** Note: my earlier "piezo chain open in the file" was an artifact of reading the truncated mid-sync file state — JP was right, everything was connected. TC-2026-11-13-001 CLOSED.
+
 **2026-11-13 13:0x — BUTTON_RAW mystery RESOLVED + island-membership mechanism understood:**
 - JP: "BUTTON_RAW was deleted a long ago" — CONFIRMED for LABELS: zero BUTTON_RAW strings in any of the 6 sheets (Unicode-safe Select-String; findstr false-negatives ruled out).
 - Gate mechanism (validate_sgc_p1.py L195-219): a reference net that appears NOWHERE as a global label is checked by ISLAND MEMBERSHIP — the pins the reference puts on it must sit on ONE connected wire cluster. Deleting the label does NOT clear the error; connectivity must match.
