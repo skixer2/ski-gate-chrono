@@ -91,6 +91,22 @@ Consequences:
 
 Open question logged for JP: is Documents\projects OneDrive/sync-redirected? (MASTER_TEST_PLAN.md insert was auto-reverted with a preserved old mtime on 11-13.)
 
+**2026-11-13 13:2x — FULL VERDICT on the diode rework (independent kiutils extraction of JP's sheet + datasheets + DS-arbitration history):**
+
+Independent extraction (extract_diodes.py, kiutils, JP's current 12:32-save file):
+- D5: pin 1 (bar side) -> VBUS_USB; pin 2 -> VBUS_IN
+- D6: pin 2 -> +1V8; pin 1 -> piezo chain side (unlabeled)
+- D7: pin 1 -> GND; pin 2 -> piezo chain side (unlabeled)
+- J5.1, R41.1: unlabeled islands; BUTTON_RAW labels deleted (JP doctrine 6e4f3fa: label useless for local cluster — the GATE accepts islands, it checks MEMBERSHIP)
+
+Electrical verdicts:
+1. **D5 (PMEG4005EPK, pin1=K per Nexperia Table 2)**: JP wired pad1(K) = VBUS_USB, pad2(A) = VBUS_IN -> diode conducts VBUS_IN -> VBUS_USB = REVERSED. On the board: USB charging BLOCKED. Fix: swap the two stub labels (upper -> VBUS_USB, lower -> VBUS_IN). His symbol graphics + pin positions are otherwise correct and self-consistent.
+2. **D6/D7 (BAT42WS SOD-323)**: JP wired D6 pad2 = +1V8, pad1 = signal; D7 pad1 = GND, pad2 = signal — under his "pin 1 = anode" reading this reproduces the EXACT configuration DS pass-2 (1d4d2f3) flagged as wrong physics: "crushed positive pulses, left negative undershoot unclamped into U1.20 abs-max". The 11-07 arbitration (ad0c8e5) settled it: D7 flip STANDS — K = signal side, A = GND; D6 = K = +1V8, A = signal. As-drawn now: D7 clamps positive at ~0.3 V (destroys button HIGH), D6 clamps low at ~+1.5 V (destroys button LOW) -> button signal unusable. Fix per reference: D6.1 = +1V8 (re-anchor), D6.2 + D7.1 = piezo chain island (join J5.1/R41.1/D6.2/D7.1), D7.2 = GND.
+   - CAVEAT: BAT42WS pin-1 A/K not re-verified today (datasheet bot-walled); the DS pass-2/arbitration (11-07, "verified against primary sources") is the recorded authority for K=signal on pad 1.
+3. Why the morning "no divergence" missed this: at 11:23 the sheet matched the reference (gate GREEN — true at that time). The divergence ARRIVED with JP's afternoon commits (ed74bce, 2e30428) + redraws. The reference staleness (BUTTON_RAW group still expected) is a separate pre-existing gap — reference needs updating to JP's final design once he states the clamp-chain decision.
+
+Fix options: JP in KiCad (file is open) OR ZioClaw kiutils pass on request. Gate = validate_sgc_p1.py FULLY GREEN.
+
 **2026-11-13 13:0x — BUTTON_RAW mystery RESOLVED + island-membership mechanism understood:**
 - JP: "BUTTON_RAW was deleted a long ago" — CONFIRMED for LABELS: zero BUTTON_RAW strings in any of the 6 sheets (Unicode-safe Select-String; findstr false-negatives ruled out).
 - Gate mechanism (validate_sgc_p1.py L195-219): a reference net that appears NOWHERE as a global label is checked by ISLAND MEMBERSHIP — the pins the reference puts on it must sit on ONE connected wire cluster. Deleting the label does NOT clear the error; connectivity must match.
