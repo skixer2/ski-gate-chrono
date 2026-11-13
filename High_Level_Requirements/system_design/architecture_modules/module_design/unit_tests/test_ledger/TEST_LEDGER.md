@@ -91,3 +91,10 @@ Consequences:
 
 Open question logged for JP: is Documents\projects OneDrive/sync-redirected? (MASTER_TEST_PLAN.md insert was auto-reverted with a preserved old mtime on 11-13.)
 
+**2026-11-13 13:0x — BUTTON_RAW mystery RESOLVED + island-membership mechanism understood:**
+- JP: "BUTTON_RAW was deleted a long ago" — CONFIRMED for LABELS: zero BUTTON_RAW strings in any of the 6 sheets (Unicode-safe Select-String; findstr false-negatives ruled out).
+- Gate mechanism (validate_sgc_p1.py L195-219): a reference net that appears NOWHERE as a global label is checked by ISLAND MEMBERSHIP — the pins the reference puts on it must sit on ONE connected wire cluster. Deleting the label does NOT clear the error; connectivity must match.
+- Current sheet state (12:32 UTC save): J5, R41, D6, D7, D5 all still PLACED (D2 DNP-absent). Reference expects on one BUTTON_RAW island: J5.1 + R41.1 + D6.2 + D7.1, with D6.1 → +1V8 and D7.2 → GND (piezo clamp chain, 11-04 design, DS-reviewed 11-07). JP's edits split it into 3 islands + float D6.1/D7.2.
+- DESIGN QUESTION to JP (blocks gate-green): keep the piezo clamp chain as designed (then re-anchor wires to the new pin positions + restore net labels: BUTTON_RAW optional — islands suffice — but +1V8/GND labels required) OR drop the clamp chain entirely (then JP deletes J5/R41/D6/D7 instances in KiCad and ZioClaw removes the group from sgc_netlist.py).
+- D5 fix unchanged: swap the two stub labels (upper → VBUS_USB, lower → VBUS_IN); datasheet-backed (pin 1 = K).
+
