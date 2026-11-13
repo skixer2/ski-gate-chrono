@@ -111,8 +111,8 @@
 				)
 			)
 			(symbol "D_SCHOTTKY_1_1_1"
-				(pin power_out line
-					(at -2.54 3.81 270)
+				(pin passive line
+					(at -2.54 -3.81 90)
 					(length 2.54)
 					(name ""
 						(effects
@@ -129,8 +129,8 @@
 						)
 					)
 				)
-				(pin passive line
-					(at -2.54 -3.81 90)
+				(pin power_out line
+					(at -2.54 3.81 270)
 					(length 2.54)
 					(name ""
 						(effects
@@ -248,8 +248,8 @@
 				)
 			)
 			(symbol "D_SCHOTTKY_2_1_1"
-				(pin power_out line
-					(at -2.54 3.81 270)
+				(pin passive line
+					(at -2.54 -3.81 90)
 					(length 2.54)
 					(name ""
 						(effects
@@ -266,8 +266,8 @@
 						)
 					)
 				)
-				(pin passive line
-					(at -2.54 -3.81 90)
+				(pin power_out line
+					(at -2.54 3.81 270)
 					(length 2.54)
 					(name ""
 						(effects
@@ -4575,8 +4575,8 @@
 				)
 			)
 			(symbol "D_SCHOTTKY_1_1"
-				(pin power_out line
-					(at -2.54 3.81 270)
+				(pin passive line
+					(at -2.54 -3.81 90)
 					(length 2.54)
 					(name ""
 						(effects
@@ -4593,8 +4593,8 @@
 						)
 					)
 				)
-				(pin passive line
-					(at -2.54 -3.81 90)
+				(pin power_out line
+					(at -2.54 3.81 270)
 					(length 2.54)
 					(name ""
 						(effects
@@ -11260,10 +11260,10 @@
 				)
 			)
 		)
-		(pin "2"
+		(pin "1"
 			(uuid "9dbb72dc-2504-497f-bc13-32dbc08621df")
 		)
-		(pin "1"
+		(pin "2"
 			(uuid "539d5629-845e-45ba-a989-cacc13d99d6d")
 		)
 		(instances
