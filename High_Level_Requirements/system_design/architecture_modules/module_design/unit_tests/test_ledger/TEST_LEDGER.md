@@ -81,3 +81,13 @@ OUT OF SCOPE: <explicit non-goals>
 
 **DONE WHEN:** validate_sgc_p1.py FULLY GREEN.
 
+**2026-11-13 12:4x — DATASHEET GROUND TRUTH (settles the polarity question):** Nexperia PMEG4005EPK datasheet §5 Pinning (Table 2, DFN1608D-2/SOD1608): **pin 1 = K = cathode** ("the marking bar indicates the cathode"), **pin 2 = A = anode**. Source: assets.nexperia.com/documents/data-sheet/PMEG4005EPK.pdf (fetched via r.jina.ai).
+
+Consequences:
+- The REFERENCE is correct as-is (D5 pin 1 = VBUS_IN = K, pin 2 = VBUS_USB = A — series diode conducts USB→BQ-IN). Original symbol also agreed: pre-change lib named pin 1 "K" (in-repo evidence: ed74bce diff of the old lib block).
+- JP's redraw kept the physical wire nets but the new pin numbers invert the mapping: as-wired now, pad 1 (physically K) would get VBUS_USB and pad 2 (A) VBUS_IN = **diode reversed on the board = USB charging blocked**. The gate's 5 errors are real.
+- JP's "in my graph 1 is anode" is contradicted by BOTH the datasheet AND his own graphics (bar/cathode side = pin 1) AND the pre-change symbol name (pin 1 = "K").
+- Fix confirmed: swap the two global labels on D5's stubs (upper → VBUS_USB, lower → VBUS_IN) + re-anchor D6/D7 wires + re-bridge BUTTON_RAW. Then gate must be FULLY GREEN.
+
+Open question logged for JP: is Documents\projects OneDrive/sync-redirected? (MASTER_TEST_PLAN.md insert was auto-reverted with a preserved old mtime on 11-13.)
+
