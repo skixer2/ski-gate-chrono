@@ -7842,7 +7842,7 @@
 	)
 	(wire
 		(pts
-			(xy 31.75 21.59) (xy 31.75 29.21)
+			(xy 30.48 21.59) (xy 30.48 27.94)
 		)
 		(stroke
 			(width 0)
@@ -7962,7 +7962,7 @@
 	)
 	(wire
 		(pts
-			(xy 27.94 21.59) (xy 31.75 21.59)
+			(xy 27.94 21.59) (xy 30.48 21.59)
 		)
 		(stroke
 			(width 0)
@@ -7972,7 +7972,7 @@
 	)
 	(wire
 		(pts
-			(xy 31.75 46.99) (xy 31.75 41.91)
+			(xy 30.48 46.99) (xy 30.48 40.64)
 		)
 		(stroke
 			(width 0)
@@ -7982,7 +7982,7 @@
 	)
 	(wire
 		(pts
-			(xy 35.56 46.99) (xy 31.75 46.99)
+			(xy 30.48 46.99) (xy 35.56 46.99)
 		)
 		(stroke
 			(width 0)
@@ -9601,7 +9601,7 @@
 	)
 	(symbol
 		(lib_id "sgc_p1:D_SCHOTTKY")
-		(at 29.21 35.56 0)
+		(at 27.94 34.29 0)
 		(mirror y)
 		(unit 1)
 		(body_style 1)
@@ -9612,7 +9612,7 @@
 		(dnp no)
 		(uuid "1e2dd1d9-1f8c-4ae2-92c1-b76590656ec5")
 		(property "Reference" "D5"
-			(at 36.29 30.25 0)
+			(at 35.02 28.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9622,7 +9622,7 @@
 			)
 		)
 		(property "Value" "PMEG4005EPK"
-			(at 22.352 41.148 0)
+			(at 21.082 39.878 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9632,7 +9632,7 @@
 			)
 		)
 		(property "Footprint" "sgc_p1:D_SOD-1608_DFN1608D-2"
-			(at 29.21 35.56 0)
+			(at 27.94 34.29 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9643,7 +9643,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 29.21 35.56 0)
+			(at 27.94 34.29 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9654,7 +9654,7 @@
 			)
 		)
 		(property "Description" "Schottky 40V 3A SMA - MT3608 boost rectifier, V2 LED reserve, DNP v1"
-			(at 29.21 35.56 0)
+			(at 27.94 34.29 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
