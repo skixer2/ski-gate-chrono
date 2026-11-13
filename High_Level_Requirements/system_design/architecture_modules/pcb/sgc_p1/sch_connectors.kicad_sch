@@ -7931,6 +7931,26 @@
 	)
 	(wire
 		(pts
+			(xy 30.48 46.99) (xy 35.56 46.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "037408a1-4308-4582-a8f2-f10d2ed570ce")
+	)
+	(wire
+		(pts
+			(xy 27.94 21.59) (xy 30.48 21.59)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "06f18284-1890-44ab-94a7-5d962a6ba21d")
+	)
+	(wire
+		(pts
 			(xy 332.74 55.88) (xy 327.66 55.88)
 		)
 		(stroke
@@ -7967,7 +7987,7 @@
 			(width 0)
 			(type default)
 		)
-		(uuid "0f8461b7-6500-4228-bc1f-95d4868b291e")
+		(uuid "0e619d11-845f-4664-bee0-9614cb08c8b3")
 	)
 	(wire
 		(pts
@@ -8018,16 +8038,6 @@
 			(type default)
 		)
 		(uuid "1df0880a-bee2-4bd7-9215-04020c73563d")
-	)
-	(wire
-		(pts
-			(xy 30.48 38.1) (xy 30.48 46.99)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "1f5350a7-4d48-497e-92a3-cd864b276b2a")
 	)
 	(wire
 		(pts
@@ -8098,6 +8108,16 @@
 			(type default)
 		)
 		(uuid "389ee3a4-992b-46a6-9a7a-6dca53b36b35")
+	)
+	(wire
+		(pts
+			(xy 330.2 196.85) (xy 330.2 199.39)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "44063e7e-0a2a-40bc-b874-3a05bd7371d7")
 	)
 	(wire
 		(pts
@@ -8221,26 +8241,6 @@
 	)
 	(wire
 		(pts
-			(xy 330.2 191.77) (xy 330.2 196.85)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "749f4f63-0a4f-42cf-b83e-d7721f1b7c71")
-	)
-	(wire
-		(pts
-			(xy 30.48 21.59) (xy 30.48 30.48)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "74ae4716-5aa6-4dd5-95a9-7c4502cc7e66")
-	)
-	(wire
-		(pts
 			(xy 236.22 43.18) (xy 231.14 43.18)
 		)
 		(stroke
@@ -8248,6 +8248,16 @@
 			(type default)
 		)
 		(uuid "788b2e30-e93c-4934-ba6b-73233b02913b")
+	)
+	(wire
+		(pts
+			(xy 330.2 193.04) (xy 330.2 196.85)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7b3b81a0-b843-4a67-8c1d-459b02797cf8")
 	)
 	(wire
 		(pts
@@ -8281,26 +8291,6 @@
 	)
 	(wire
 		(pts
-			(xy 27.94 21.59) (xy 30.48 21.59)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "8e3434ba-840d-47c2-9ec8-e9817af44367")
-	)
-	(wire
-		(pts
-			(xy 30.48 46.99) (xy 35.56 46.99)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a3b251d7-8a4a-4e2f-9db4-3a8667a637e1")
-	)
-	(wire
-		(pts
 			(xy 67.31 201.93) (xy 73.66 201.93)
 		)
 		(stroke
@@ -8308,16 +8298,6 @@
 			(type default)
 		)
 		(uuid "a861b524-2f32-45fd-9ee3-72a3e6f0b4ed")
-	)
-	(wire
-		(pts
-			(xy 330.2 196.85) (xy 330.2 199.39)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a8b0129f-1213-456b-9726-42afcd82ae10")
 	)
 	(wire
 		(pts
@@ -8331,6 +8311,16 @@
 	)
 	(wire
 		(pts
+			(xy 330.2 179.07) (xy 330.2 185.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b4cf1942-149a-44d6-a135-0c9391937a35")
+	)
+	(wire
+		(pts
 			(xy 36.83 59.69) (xy 36.83 69.85)
 		)
 		(stroke
@@ -8338,6 +8328,16 @@
 			(type default)
 		)
 		(uuid "b753ad10-f8f4-49e4-a04c-6ba3834c0d3a")
+	)
+	(wire
+		(pts
+			(xy 330.2 212.09) (xy 332.74 212.09)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b9fcc810-866c-4859-ad97-ca0bb27ab428")
 	)
 	(wire
 		(pts
@@ -8421,16 +8421,6 @@
 	)
 	(wire
 		(pts
-			(xy 330.2 212.09) (xy 332.74 212.09)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "d52cc175-c400-4099-99db-6d4bc3e6add1")
-	)
-	(wire
-		(pts
 			(xy 332.74 63.5) (xy 327.66 63.5)
 		)
 		(stroke
@@ -8458,6 +8448,16 @@
 			(type default)
 		)
 		(uuid "dc711566-bf13-40cd-9175-7c6416d1f624")
+	)
+	(wire
+		(pts
+			(xy 30.48 38.1) (xy 30.48 46.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e16d5f79-0aad-44cd-8f12-856b634cbbc0")
 	)
 	(wire
 		(pts
@@ -8521,13 +8521,13 @@
 	)
 	(wire
 		(pts
-			(xy 330.2 179.07) (xy 330.2 184.15)
+			(xy 30.48 21.59) (xy 30.48 30.48)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "f0ac4a09-b130-469b-ac2e-8a241c08fe50")
+		(uuid "ef4dc7ac-c071-4862-b403-01c5486eb1c6")
 	)
 	(wire
 		(pts
@@ -9910,8 +9910,7 @@
 	)
 	(symbol
 		(lib_id "sgc_p1:D_SCHOTTKY")
-		(at 27.94 34.29 0)
-		(mirror y)
+		(at 27.94 34.29 180)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9921,7 +9920,7 @@
 		(dnp no)
 		(uuid "1e2dd1d9-1f8c-4ae2-92c1-b76590656ec5")
 		(property "Reference" "D5"
-			(at 35.02 28.98 0)
+			(at 35.02 39.6 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9931,7 +9930,7 @@
 			)
 		)
 		(property "Value" "PMEG4005EPK"
-			(at 21.082 34.544 0)
+			(at 21.082 34.036 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10308,6 +10307,7 @@
 		(lib_name "D_SCHOTTKY_2")
 		(lib_id "sgc_p1:D_SCHOTTKY")
 		(at 332.74 203.2 0)
+		(mirror x)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10317,7 +10317,7 @@
 		(dnp no)
 		(uuid "5e21c19b-fdea-4409-a5d1-03a30c75e9f3")
 		(property "Reference" "D7"
-			(at 325.628 201.168 0)
+			(at 325.628 205.232 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10327,7 +10327,7 @@
 			)
 		)
 		(property "Value" "BAT42WS (clamp)"
-			(at 341.376 202.946 0)
+			(at 341.376 203.454 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11198,7 +11198,8 @@
 	(symbol
 		(lib_name "D_SCHOTTKY_1")
 		(lib_id "sgc_p1:D_SCHOTTKY")
-		(at 332.74 187.96 0)
+		(at 332.74 189.23 0)
+		(mirror x)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11208,7 +11209,7 @@
 		(dnp no)
 		(uuid "fdd7fb2f-3d40-4d1b-a02b-14bcb54aabdb")
 		(property "Reference" "D6"
-			(at 325.374 186.436 0)
+			(at 325.374 190.754 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11218,7 +11219,7 @@
 			)
 		)
 		(property "Value" "BAT42WS (clamp)"
-			(at 341.122 187.706 0)
+			(at 341.122 189.484 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11228,7 +11229,7 @@
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SMA"
-			(at 332.74 187.96 0)
+			(at 332.74 189.23 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11239,7 +11240,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 332.74 187.96 0)
+			(at 332.74 189.23 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11250,7 +11251,7 @@
 			)
 		)
 		(property "Description" "Schottky 40V 3A SMA - MT3608 boost rectifier, V2 LED reserve, DNP v1"
-			(at 332.74 187.96 0)
+			(at 332.74 189.23 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
