@@ -168,8 +168,9 @@ class _RunListScreenState extends State<RunListScreen>
     WidgetsBinding.instance.addObserver(this);
     _loadLocalRuns();
     _loadAutoPrefs();
-    _autoTimer = Timer.periodic(
-        const Duration(seconds: 15), (_) => _autoTick());
+    // F69 (2026-11-16): the auto-sync cycle moved to the global
+    // AutoSyncWorker (lib/sync/auto_sync_worker.dart) - it runs on every
+    // screen now. This screen no longer arms its own timer.
     // React to unexpected BLE drops so the UI is never stuck "connected".
     _connSub = _ble.connectionStream.listen(_onConnectionChanged);
   }
