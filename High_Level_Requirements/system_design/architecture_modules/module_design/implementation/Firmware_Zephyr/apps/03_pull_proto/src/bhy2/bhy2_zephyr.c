@@ -94,22 +94,10 @@ struct bhy2_dev *bhy2_zephyr_dev(void)
  * hand, exactly like the Arduino reference (DigitalOut around ops). */
 static const struct gpio_dt_spec bhi_cs = {
 	.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
-	 GPIO_ACTIVE_LOW, /* PLAIN polarity: set(0)=LOW=assert, set(1)=HIGH=release.
+	.pin = 31,
+	.dt_flags = 0, /* PLAIN polarity: set(0)=LOW=assert, set(1)=HIGH=release.
 			 * ACTIVE_LOW + logical set() inverts both edges — the
 			 * v0.11.11-13 bug: chip selected only BETWEEN transfers. */
-};
-
-/* FIX-A (v0.25.9): CS under SPI-driver control - the driver asserts/releases
- * CS while holding the spi2 context lock, so a flash WIP poll can never race
- * a hub transfer (v0.25.8 silent-write-loss root cause: manual CS + prio-3
- * preemption + shared spi2 bus). */
-static struct spi_cs_control bhi_cs_ctrl = {
-        .gpio = {
-                .port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
-                .pin = 31,
-                .dt_flags = 0,
-        },
-        .delay = 0u,
 };
 
 /* RESET_BHI260 = P0.18 (Arduino variant pin 13, variant.cpp:91).
@@ -120,13 +108,11 @@ static const struct gpio_dt_spec bhi_rst = {
 	.dt_flags = GPIO_ACTIVE_LOW,
 };
 static const struct device *const spi_dev = DEVICE_DT_GET(DT_BUS(BHI_NODE));
-static bool bhi_cs_cfg_done = false;   /* FIX-A: configure CS once */
-
-
+static struct spi_config bhi_spi_cfg = {
 	.frequency = 8000000, /* nRF52832 SPIM2 max — mbed's 16M request clamps here anyway */
 	.operation = (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) |
 		      SPI_TRANSFER_MSB),  /* Mode 0: Arduino mbed default */
-        .cs = { .gpio = { .port = DEVICE_DT_GET(DT_NODELABEL(gpio0)), .pin = 31, .dt_flags = 0 }, .delay = 0u }, /* FIX-A */
+	/* cs left empty — manual GPIO CS (bhi_cs) around every op */
 };
 
 /* ── The three host functions the Bosch API needs ─────────────────── */
@@ -144,11 +130,9 @@ int8_t bhy2_zephyr_read(uint8_t reg, uint8_t *buf, uint32_t len,
 	struct spi_buf rx = { .buf = scratch, .len = len + 1 };
 	const struct spi_buf_set rxs = { .buffers = &rx, .count = 1 };
 
-        if (!bhi_cs_cfg_done) {
-                gpio_pin_configure_dt(&bhi_cs_ctrl.gpio, GPIO_OUTPUT_HIGH);
-                bhi_cs_cfg_done = true;
-        }
-
+	gpio_pin_set_dt(&bhi_cs, 0); /* select */
+	int err = spi_transceive(spi_dev, &bhi_spi_cfg, &txs, &rxs);
+	gpio_pin_set_dt(&bhi_cs, 1); /* release */
 
 	if (err == 0) {
 		memcpy(buf, scratch + 1, len);
@@ -168,11 +152,9 @@ int8_t bhy2_zephyr_write(uint8_t reg, const uint8_t *buf, uint32_t len,
 	};
 	const struct spi_buf_set txs = { .buffers = tx, .count = 2 };
 
-        if (!bhi_cs_cfg_done) {
-                gpio_pin_configure_dt(&bhi_cs_ctrl.gpio, GPIO_OUTPUT_HIGH);
-                bhi_cs_cfg_done = true;
-        }
-
+	gpio_pin_set_dt(&bhi_cs, 0); /* select */
+	int err = spi_write(spi_dev, &bhi_spi_cfg, &txs);
+	gpio_pin_set_dt(&bhi_cs, 1); /* release */
 
 	return (err == 0) ? BHY2_INTF_RET_SUCCESS : (BHY2_INTF_RET_TYPE)-1;
 }

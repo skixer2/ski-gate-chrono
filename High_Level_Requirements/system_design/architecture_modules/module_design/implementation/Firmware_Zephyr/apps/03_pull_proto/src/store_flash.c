@@ -436,7 +436,8 @@ static struct {
  * so the proven path stays untouched; mutually exclusive via busy(). */
 static struct {
 	bool     active;
-	bool     truncated;
+	        bool     truncated;
+        bool     write_err;   /* v0.25.9: verify-after-write failed 3x */
 	bool     wrapped;       /* placed at LOG_START (decided at begin) */
 	uint32_t addr;         /* header location (plan)                */
 	uint32_t ts;           /* run timestamp (set at begin, reused)  */
@@ -628,7 +629,26 @@ static void rec_work_handler(struct k_work *w)
 				                        .cal_accuracy = (uint8_t)(3 | (rec.write_err ? 0x40 : 0x00)), ._pad = 0,
 			};
 
-			flash_write(flashdev, (off_t)rec.addr, &hdr, sizeof(hdr));
+			                        {
+                                uint8_t hr[16];
+                                int hok = 0;
+                                for (int htry = 0; htry < 8 && !hok; htry++) {
+                                        flash_write(flashdev, (off_t)rec.addr, &hdr, sizeof(hdr));
+                                        flash_read(flashdev, (off_t)rec.addr, hr, sizeof(hdr));
+                                        hok = 1;
+                                        for (uint16_t i = 0; i < sizeof(hdr); i++) {
+                                                if (hr[i] != ((uint8_t *)&hdr)[i]) { hok = 0; break; }
+                                        }
+                                        if (!hok) {
+                                                printk("WARN: hdr verify try %d\n", htry + 1);
+                                                k_sleep(K_MSEC(3));
+                                        }
+                                }
+                                if (!hok) {
+                                        printk("ERROR: hdr write UNVERIFIABLE\n");
+                                        rec.write_err = true;
+                                }
+                        }
 		}
 
 		/* One 4 KB chunk per pass. The payload is the ramp
@@ -645,15 +665,39 @@ static void rec_work_handler(struct k_work *w)
 			buf[i] = (uint8_t)(rec.written + i);
 			rec.crc = crc32_byte(rec.crc, buf[i]);
 		}
-		if (flash_write(flashdev,
-                            (off_t)(rec.addr + sizeof(struct run_header) +
-                                    rec.written),
-                            buf, take) != 0) {
-                        printk("ERROR: payload write @+%lu\n",
-                               (unsigned long)rec.written);
-                        rec.write_err = true;
-                }
-                rec.written += take;
+		                        off_t poff = (off_t)(rec.addr + sizeof(struct run_header) +
+                                             rec.written);
+                        uint32_t wcc = 0xFFFFFFFFu;
+                        for (uint32_t i = 0; i < take; i++) {
+                                wcc = crc32_byte(wcc, buf[i]);
+                        }
+                        wcc ^= 0xFFFFFFFFu;
+                        int pok = 0;
+                        for (int try_i = 0; try_i < 8 && !pok; try_i++) {
+                                if (flash_write(flashdev, poff, buf, take) != 0) {
+                                        printk("ERROR: payload write @+%lu\n",
+                                               (unsigned long)rec.written);
+                                        rec.write_err = true;
+                                }
+                                flash_read(flashdev, poff, buf, take);
+                                uint32_t rcc = 0xFFFFFFFFu;
+                                for (uint32_t i = 0; i < take; i++) {
+                                        rcc = crc32_byte(rcc, buf[i]);
+                                }
+                                rcc ^= 0xFFFFFFFFu;
+                                pok = (rcc == wcc);
+                                if (!pok) {
+                                        printk("WARN: payload verify @+%lu try %d\n",
+                                               (unsigned long)rec.written, try_i + 1);
+                                        k_sleep(K_MSEC(3));
+                                }
+                        }
+                        if (!pok) {
+                                printk("ERROR: payload UNVERIFIABLE @+%lu\n",
+                                       (unsigned long)rec.written);
+                                rec.write_err = true;
+                        }
+                        rec.written += take;
 
 		if (rec.written < rec.payload_len) {
 			k_work_schedule(&rec_work, K_MSEC(1));
@@ -677,18 +721,28 @@ static void rec_work_handler(struct k_work *w)
 				       (uint8_t)(crc >> 16),
 				       (uint8_t)(crc >> 24) };
 
-		if (flash_write(flashdev,
-                            (off_t)(rec.addr + sizeof(struct run_header) +
-                                    rec.payload_len),
-                            trailer, sizeof(trailer)) != 0) {
-                        if (flash_write(flashdev,
-                                    (off_t)(rec.addr + sizeof(struct run_header) +
-                                            rec.payload_len),
-                                    trailer, sizeof(trailer)) != 0) {
-                                printk("ERROR: trailer write (retried once)");
-                                rec.write_err = true;
+		                        {
+                                off_t toff = (off_t)(rec.addr + sizeof(struct run_header) +
+                                                     rec.payload_len);
+                                uint8_t tr[6];
+                                int tok = 0;
+                                for (int ttry = 0; ttry < 8 && !tok; ttry++) {
+                                        flash_write(flashdev, toff, trailer, sizeof(trailer));
+                                        flash_read(flashdev, toff, tr, sizeof(trailer));
+                                        tok = 1;
+                                        for (uint16_t i = 0; i < sizeof(trailer); i++) {
+                                                if (tr[i] != trailer[i]) { tok = 0; break; }
+                                        }
+                                        if (!tok) {
+                                                printk("WARN: trailer verify try %d\n", ttry + 1);
+                                                k_sleep(K_MSEC(3));
+                                        }
+                                }
+                                if (!tok) {
+                                        printk("ERROR: trailer write UNVERIFIABLE\n");
+                                        rec.write_err = true;
+                                }
                         }
-                }
 
 		/* Commit the entry (append at the age-ordered tail) and
 		 * advance the cursor to the next sector boundary. */
@@ -790,12 +844,31 @@ static void srec_flush(void)
 	if (srec.fill == 0) {
 		return;
 	}
-	flash_write(flashdev,
-		    (off_t)(srec.addr + sizeof(struct run_header)
-			    + srec.written),
-		    srec.buf, srec.fill);
-	srec.written += srec.fill;
-	srec.fill = 0;
+	off_t woff = (off_t)(srec.addr + sizeof(struct run_header)
+                            + srec.written);
+        uint16_t wlen = srec.fill;
+        uint8_t reread[256];
+        int try_i;
+        int ok = 0;
+        for (try_i = 0; try_i < 8 && !ok; try_i++) {
+                flash_write(flashdev, woff, srec.buf, wlen);
+                ok = (flash_read(flashdev, woff, reread, wlen) == 0);
+                if (ok) {
+                        for (uint16_t i = 0; i < wlen; i++) {
+                                if (reread[i] != srec.buf[i]) { ok = 0; break; }
+                        }
+                }
+                if (!ok) {
+                        printk("WARN: srec flush verify fail @+%lu\n", (unsigned long)srec.written, try_i + 1);
+                        k_sleep(K_MSEC(3));   /* let prio-3 BHI burst drain */
+                }
+        }
+        if (!ok) {
+                printk("ERROR: srec flush UNVERIFIABLE @+%lu\n", (unsigned long)srec.written);
+                srec.write_err = true;
+        }
+        srec.written += wlen;
+        srec.fill = 0;
 }
 
 bool store_record_begin(uint8_t arm_side)
@@ -821,7 +894,9 @@ bool store_record_begin(uint8_t arm_side)
 	}
 
 	/* Header now (the v0.8.1 lesson: header write is explicit). */
-	uint32_t ts0 = next_run_ts();
+	        uint32_t ts0 = next_run_ts();
+        bool hdr_err = false;
+
 
 	srec.ts = ts0;
 	struct run_header hdr = {
@@ -833,7 +908,22 @@ bool store_record_begin(uint8_t arm_side)
 		.cal_accuracy = 3, ._pad = 0,
 	};
 
-	flash_write(flashdev, (off_t)addr, &hdr, sizeof(hdr));
+	        {
+        uint8_t reread[sizeof(hdr)];
+        int try_i;
+        int ok = 0;
+        for (try_i = 0; try_i < 8 && !ok; try_i++) {
+                flash_write(flashdev, (off_t)addr, &hdr, sizeof(hdr));
+                ok = (flash_read(flashdev, (off_t)addr, reread, sizeof(hdr)) == 0);
+                if (ok) {
+                        for (uint16_t i = 0; i < sizeof(hdr); i++) {
+                                if (reread[i] != ((uint8_t *)&hdr)[i]) { ok = 0; break; }
+                        }
+                }
+                if (!ok) { printk("WARN: header verify fail try %d\n", try_i + 1); k_sleep(K_MSEC(3)); }
+        }
+        if (!ok) { printk("ERROR: header write UNVERIFIABLE\n"); hdr_err = true; }
+        }
 
 	srec.active = true;
 	srec.truncated = false;
@@ -841,7 +931,9 @@ bool store_record_begin(uint8_t arm_side)
 	srec.addr = addr;
 	srec.written = 0;
 	srec.fill = 0;
-	srec.crc = 0xFFFFFFFFu;
+	
+        srec.crc = 0xFFFFFFFFu;
+        srec.write_err = hdr_err;
 	printk("rec: stream begin at 0x%lx (budget %lu B)\n",
 	       (unsigned long)addr, (unsigned long)run_budget);
 	return true;
@@ -884,10 +976,24 @@ bool store_record_end(void)
 			       (uint8_t)(crc >> 16),
 			       (uint8_t)(crc >> 24) };
 
-	flash_write(flashdev,
-		    (off_t)(srec.addr + sizeof(struct run_header)
-			    + srec.written),
-		    trailer, sizeof(trailer));
+	        {
+        off_t toff = (off_t)(srec.addr + sizeof(struct run_header)
+                            + srec.written);
+        uint8_t reread[sizeof(trailer)];
+        int try_i;
+        int ok = 0;
+        for (try_i = 0; try_i < 8 && !ok; try_i++) {
+                flash_write(flashdev, toff, trailer, sizeof(trailer));
+                ok = (flash_read(flashdev, toff, reread, sizeof(trailer)) == 0);
+                if (ok) {
+                        for (uint16_t i = 0; i < sizeof(trailer); i++) {
+                                if (reread[i] != trailer[i]) { ok = 0; break; }
+                        }
+                }
+                if (!ok) { printk("WARN: trailer verify fail try %d\n", try_i + 1); k_sleep(K_MSEC(3)); }
+        }
+        if (!ok) { printk("ERROR: trailer write UNVERIFIABLE\n"); srec.write_err = true; }
+        }
 
 	/* Index entry — cal_accuracy bit 7 = truncated (JP 2026-09-29).
 	 * ENTRY only: the run HEADER cannot carry the flag (NOR cannot
@@ -906,7 +1012,8 @@ bool store_record_end(void)
 		.ts_utc = srec.ts,
 		.run_id = next_run_id++,
 		.arm_side = (uint8_t)((next_run_id - 1) & 1),
-		.cal_accuracy = (uint8_t)(3 | (srec.truncated ? 0x80 : 0)),
+		        .cal_accuracy = (uint8_t)(3 | (srec.truncated ? 0x80 : 0)
+                          | (srec.write_err ? 0x40 : 0)),
 	};
 	entry_count++;
 
