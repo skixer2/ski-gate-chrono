@@ -259,13 +259,45 @@ void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n)
 	}
 }
 
+/* Hardening (F46 report d1): address-based blob read for in-flight
+ * transfers. The wire-id accessors resolve entries[] per request, but
+ * a stream job runs for seconds - a mid-transfer reclaim compaction
+ * would shift a POSITION. pull_proto captures addr at stream start
+ * and reads through here, so compaction cannot redirect the stream
+ * onto a neighboring entry. Same bytes, same failure semantics
+ * (read fail -> 0xFF fill + loud printk). */
+uint32_t store_run_addr(uint8_t id)
+{
+	return entries[id].addr;
+}
+
+void store_read_blob_at(uint32_t addr, uint32_t off, uint8_t *dst, uint32_t n)
+{
+	/* One linear read - this is WHY runs never wrap mid-run. */
+	int rc = flash_read(flashdev, (off_t)(addr + off), dst, (size_t)n);
+
+	if (rc != 0) {
+		printk("ERROR: flash_read @0x%lx -> %d\n",
+		       (unsigned long)(addr + off), rc);
+		memset(dst, 0xFF, n);
+	}
+}
+
 /* ════════════════════════════════════════════════════════════════════
  * INDEX PERSISTENCE
  * One 4 KB sector at INDEX_ADDR: erase, then a single page write of
  * header + entries. ~1 KB worst case — comfortably one sector.
  * ════════════════════════════════════════════════════════════════════ */
 
-static void persist_index(void)
+/* Hardening (F46 report 3a3): set when the index-sector persist
+ * fails twice in a row. While latched, persist_index() writes nothing
+ * (a half-written sector is never made worse) and the sector gets
+ * blanked so the next boot takes the fresh-log path: load_index()
+ * fails the SGL3 magic on an erased sector instead of trusting a
+ * possibly AND-corrupted entry set (the F46 ghost trigger class). */
+static bool index_broken;
+
+static bool persist_index_once(void)
 {
 	struct sgl_header hdr = {
 		.magic = SGL3_MAGIC,
@@ -283,12 +315,42 @@ static void persist_index(void)
 	static uint8_t page[sizeof(struct sgl_header) + sizeof(entries)];
 
 	/* (Erase is ~50–100 ms; we run in work context, never ISR.) */
-	flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE);
+	int rc;
+
+	rc = flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE);
+	if (rc != 0) {
+		return false;
+	}
 	memcpy(page, &hdr, sizeof(hdr));
 	memcpy(page + sizeof(hdr), entries,
 	       entry_count * sizeof(entries[0]));
-	flash_write(flashdev, INDEX_ADDR, page,
-		    sizeof(hdr) + entry_count * sizeof(entries[0]));
+	rc = flash_write(flashdev, INDEX_ADDR, page,
+			sizeof(hdr) + entry_count * sizeof(entries[0]));
+	return rc == 0;
+}
+
+static void persist_index(void)
+{
+	if (index_broken) {
+		return;   /* latched: persist nothing */
+	}
+	if (persist_index_once()) {
+		return;
+	}
+	/* One retry, then the loud latch. Blank the index sector so
+	 * the next boot takes the fresh-log path instead of loading
+	 * a possibly AND-corrupted entry set. */
+	if (persist_index_once()) {
+		printk("WARN: index persist retry OK\n");
+		return;
+	}
+	index_broken = true;
+	printk("ERROR: index persist FAILED twice - latch set, "
+	       "blanking index sector for fresh-log boot\n");
+	if (flash_erase(flashdev, INDEX_ADDR, LOG_SECTOR_SIZE) != 0) {
+		printk("ERROR: index blank erase also FAILED - "
+		       "flash device suspect\n");
+	}
 }
 
 static bool load_index(void)
@@ -358,13 +420,15 @@ static struct {
 	uint32_t crc;          /* running CRC (payload only!)           */
 	bool     wrapped;      /* record placed at LOG_START            */
 	uint32_t ts;
-	uint8_t  side;
+	        uint8_t  side;
+        bool     write_err;   /* v0.25.9: any flash_write rc!=0 this record */
 } rec;
 
 /* Top-up walk state (REC_TOPUP): */
 static struct {
 	struct runway_plan plan;
 	uint8_t  seg;         /* 0 = segment 1, 1 = segment 2          */
+	uint8_t  retries;     /* failed erase retries, current sector  */
 	uint32_t from, to;    /* current segment walk cursors          */
 } prep;
 
@@ -431,6 +495,7 @@ static void schedule_topup(const char *why)
 	reclaim_victims(&prep.plan);
 
 	prep.seg = 0;
+	prep.retries = 0;
 	prep.from = prep.plan.s1_from;
 	prep.to = prep.plan.s1_to;
 	if (prep.from >= prep.to) {
@@ -459,14 +524,74 @@ static void rec_work_handler(struct k_work *w)
 		uint32_t from = prep.from;
 
 		if (from < prep.to) {
-			flash_erase(flashdev, from, LOG_SECTOR_SIZE);
+			/* Hardening (F46 report d2): ghost assert. The
+			 * reclaim already dropped every entry inside the
+			 * plan, so a live entry under THIS sector means a
+			 * geometry regression - refuse the erase, skip the
+			 * sector, alarm loudly (the run's data survives). */
+			bool live_under = false;
+			uint16_t i;
+
+			for (i = 0; i < entry_count; i++) {
+				if (overlaps(from,
+					     from + LOG_SECTOR_SIZE,
+					     entries[i].addr,
+					     entries[i].addr +
+					     run_span(entries[i].payload_len))) {
+					printk("ERROR: topup erase 0x%lx "
+					       "overlaps live id=%u - "
+					       "sector SKIPPED, not erased\n",
+					       (unsigned long)from,
+					       entries[i].run_id);
+					live_under = true;
+					break;
+				}
+			}
+			if (!live_under) {
+				int rc = flash_erase(flashdev, from,
+						     LOG_SECTOR_SIZE);
+
+				if (rc != 0) {
+					/* Hardening (F46 report 3a1): a failed
+					 * erase must NOT advance the walk or let
+					 * a frontier claim non-erased flash.
+					 * Bounded retries, then abort with an
+					 * honest frontier commit. */
+					if (++prep.retries >= 10) {
+						printk("ERROR: topup erase "
+						       "@0x%lx rc=%d - walk "
+						       "aborted, frontier "
+						       "stays honest\n",
+						       (unsigned long)from,
+						       rc);
+						if (prep.seg == 0) {
+							erased_hi = prep.from;
+						} else {
+							erased_lo = prep.from;
+						}
+						persist_index();
+						rec_state = REC_IDLE;
+						return;
+					}
+					printk("WARN: topup erase @0x%lx "
+					       "rc=%d - retry %u\n",
+					       (unsigned long)from, rc,
+					       prep.retries);
+					k_work_schedule(&rec_work,
+							K_MSEC(50));
+					return;
+				}
+				prep.retries = 0;
+			}
 			prep.from = from + LOG_SECTOR_SIZE;
 			k_work_schedule(&rec_work, K_MSEC(1));
 			return;
 		}
 
 		if (prep.seg == 0) {
-			erased_hi = prep.plan.s1_to;
+			/* Honest frontier (F46 3a2): commit the walk's ACTUAL
+			 * progress, never the plan's promise. */
+			erased_hi = prep.from;
 			prep.seg = 1;
 			prep.from = prep.plan.s2_from;
 			prep.to = prep.plan.s2_to;
@@ -476,7 +601,8 @@ static void rec_work_handler(struct k_work *w)
 			}
 			/* s2 already clean — fall through to finish */
 		} else {
-			erased_lo = prep.plan.s2_to;
+			/* Honest frontier (F46 3a2), as above. */
+			erased_lo = prep.from;
 		}
 
 		/* Coverage reached U(cursor) — persist (crash window (b)
@@ -499,7 +625,7 @@ static void rec_work_handler(struct k_work *w)
 				.format_ver = 2, .arm_side = rec.side,
 				.ts_utc = rec.ts, .baro_temp = 125,
 				.data_size = 0, .frame_count = 0,
-				.cal_accuracy = 3, ._pad = 0,
+				                        .cal_accuracy = (uint8_t)(3 | (rec.write_err ? 0x40 : 0x00)), ._pad = 0,
 			};
 
 			flash_write(flashdev, (off_t)rec.addr, &hdr, sizeof(hdr));
@@ -519,11 +645,15 @@ static void rec_work_handler(struct k_work *w)
 			buf[i] = (uint8_t)(rec.written + i);
 			rec.crc = crc32_byte(rec.crc, buf[i]);
 		}
-		flash_write(flashdev,
-			    (off_t)(rec.addr + sizeof(struct run_header) +
-				    rec.written),
-			    buf, take);
-		rec.written += take;
+		if (flash_write(flashdev,
+                            (off_t)(rec.addr + sizeof(struct run_header) +
+                                    rec.written),
+                            buf, take) != 0) {
+                        printk("ERROR: payload write @+%lu\n",
+                               (unsigned long)rec.written);
+                        rec.write_err = true;
+                }
+                rec.written += take;
 
 		if (rec.written < rec.payload_len) {
 			k_work_schedule(&rec_work, K_MSEC(1));
@@ -547,10 +677,18 @@ static void rec_work_handler(struct k_work *w)
 				       (uint8_t)(crc >> 16),
 				       (uint8_t)(crc >> 24) };
 
-		flash_write(flashdev,
-			    (off_t)(rec.addr + sizeof(struct run_header) +
-				    rec.payload_len),
-			    trailer, sizeof(trailer));
+		if (flash_write(flashdev,
+                            (off_t)(rec.addr + sizeof(struct run_header) +
+                                    rec.payload_len),
+                            trailer, sizeof(trailer)) != 0) {
+                        if (flash_write(flashdev,
+                                    (off_t)(rec.addr + sizeof(struct run_header) +
+                                            rec.payload_len),
+                                    trailer, sizeof(trailer)) != 0) {
+                                printk("ERROR: trailer write (retried once)");
+                                rec.write_err = true;
+                        }
+                }
 
 		/* Commit the entry (append at the age-ordered tail) and
 		 * advance the cursor to the next sector boundary. */
@@ -631,7 +769,9 @@ bool store_record_start(uint32_t payload_len)
 	rec.crc = 0xFFFFFFFFu;
 	rec.ts = next_run_ts();
 	rec.side = (uint8_t)(next_run_id & 1);   /* alternate L/R for bench */
-	rec.wrapped = wrapped;
+        rec.wrapped = wrapped;
+	
+        rec.write_err = false;
 
 	printk("rec: start %lu B%s at 0x%lx (hi 0x%lx lo 0x%lx)\n",
 	       (unsigned long)payload_len, wrapped ? " [wrap]" : "",
@@ -859,7 +999,14 @@ static void verify_runway(void)
 	for (uint32_t i = 0; i < sizeof(sniff); i++) {
 		if (sniff[i] != 0xFF) { dirty = true; break; }
 	}
-	if (!dirty && erased_lo > LOG_START) {
+	/* Hardening (F46 report d3): in the wrap era a live run
+	 * legitimately sits AT LOG_START; sniffing it always "finds"
+	 * bytes, resets the frontier and re-erases the full runway on
+	 * every boot (dozens of sectors of pure erase wear). A live
+	 * oldest entry parked at LOG_START is not stale data - skip
+	 * the bottom sniff in that case. */
+	if (!dirty && erased_lo > LOG_START &&
+	    !(entry_count > 0 && entries[0].addr == LOG_START)) {
 		flash_read(flashdev, (off_t)LOG_START, sniff, sizeof(sniff));
 		for (uint32_t i = 0; i < sizeof(sniff); i++) {
 			if (sniff[i] != 0xFF) { dirty = true; break; }
@@ -945,6 +1092,83 @@ void store_init(void)
 		       (unsigned long)erased_hi,
 		       (unsigned long)erased_lo,
 		       (unsigned long)run_budget);
+	}
+
+	/* Hardening (F46 report 3b): prune ghost entries at boot.
+	 * Ghost = an indexed run whose flash extent reads back as
+	 * erased (the F46 failure shape: entry intact, payload 0xFF).
+	 * Bounds check first (catches AND-corrupted addrs), then sniff
+	 * the 16 B header and the 6 B trailer: both all-0xFF means the
+	 * run is gone - drop it so nothing downstream ever walks dead
+	 * geometry. Runs AFTER load/fresh and BEFORE the boot top-up,
+	 * so pruned sectors behave exactly like deleted-run data (lazy
+	 * reclaim). Only erased-evidence prunes; a merely corrupt run
+	 * stays listed and fails loudly downstream. */
+	{
+		static uint8_t hdr_sniff[16];
+		static uint8_t trl_sniff[6];
+		uint16_t i = 0;
+		bool dropped = false;
+
+		while (i < entry_count) {
+			uint32_t addr = entries[i].addr;
+			uint32_t span = run_span(entries[i].payload_len);
+			uint32_t k;
+			bool hdr_ff = true;
+			bool trl_ff = true;
+			bool bad = false;
+
+			if (addr < LOG_START ||
+			    addr > LOG_END ||
+			    span > LOG_END - addr ||
+			    entries[i].payload_len >
+			    MAX_RUN_BUDGET - BLOB_OVERHEAD) {
+				printk("pruned ghost id=%u (bad bounds "
+				       "addr=0x%lx span=%lu)\n",
+				       entries[i].run_id,
+				       (unsigned long)addr,
+				       (unsigned long)span);
+				bad = true;
+			} else {
+				flash_read(flashdev, (off_t)addr,
+					   hdr_sniff, sizeof(hdr_sniff));
+				flash_read(flashdev,
+					   (off_t)(addr + sizeof(hdr_sniff) +
+						   entries[i].payload_len),
+					   trl_sniff, sizeof(trl_sniff));
+				for (k = 0; k < sizeof(hdr_sniff); k++) {
+					if (hdr_sniff[k] != 0xFF) {
+						hdr_ff = false;
+						break;
+					}
+				}
+				for (k = 0; k < sizeof(trl_sniff); k++) {
+					if (trl_sniff[k] != 0xFF) {
+						trl_ff = false;
+						break;
+					}
+				}
+				if (hdr_ff && trl_ff) {
+					printk("pruned ghost id=%u "
+					       "(header+trailer erased "
+					       "@0x%lx)\n",
+					       entries[i].run_id,
+					       (unsigned long)addr);
+					bad = true;
+				}
+			}
+			if (!bad) {
+				i++;
+				continue;
+			}
+			memmove(&entries[i], &entries[i + 1],
+				(entry_count - i - 1) * sizeof(entries[0]));
+			entry_count--;
+			dropped = true;
+		}
+		if (dropped) {
+			persist_index();
+		}
 	}
 
 	for (uint8_t i = 0; i < entry_count && i < 8; i++) {

@@ -25,7 +25,7 @@ DecompressResult _decompressForWorker(Uint8List data) {
   return Decompressor().decompressFull(data);
 }
 
-class AutoSyncWorker {
+class AutoSyncWorker with WidgetsBindingObserver {
   static final AutoSyncWorker instance = AutoSyncWorker._();
   AutoSyncWorker._();
 
@@ -87,7 +87,7 @@ class AutoSyncWorker {
     _lastScan = now;
     _busy = true;
     try {
-      await _scanAndSync();
+      await _scanAndSync().timeout(const Duration(minutes: 4), onTimeout: () => throw Exception('cycle watchdog (4 min)'));
     } catch (e) {
       debugPrint('[AUTOSYNC] cycle error: ' + e.toString());
       status.value = 'Auto: error - retry in 1 min';
@@ -139,6 +139,7 @@ class AutoSyncWorker {
       return;
     }
     final mac = dev.remoteId.str;
+    debugPrint('[AUTOSYNC] cycle target: ' + mac);
     status.value = 'Auto: syncing ' + mac + '...';
     await _syncDevice(mac);
     _quietUntil = DateTime.now().add(const Duration(minutes: 5));
@@ -181,9 +182,10 @@ class AutoSyncWorker {
 
   /// F70: one download attempt; returns the run bytes when the CRC
   /// validates, null otherwise (transfer or store corruption).
-  Future<Uint8List?> _attempt(String address, int runId) async {
+  Future<Uint8List?> _attempt(String address, int runId, List<String> logTail) async {
     Uint8List? got;
-    NativeBleDownloader().setListener(
+    NativeBleDownloader.setListener(
+      onLog: (m) => debugPrint('[AUTOSYNC][native] ' + m),
       onRunComplete: (id, timestamp, data) {
         if (id == runId) got = data;
       },
@@ -193,9 +195,10 @@ class AutoSyncWorker {
         address: address,
         runIds: [runId],
       );
+      logTail.addAll(res.log);
       if (got == null && res.runs.isNotEmpty) got = res.runs.first.data;
     } finally {
-      NativeBleDownloader().setListener();
+      NativeBleDownloader.setListener(onLog: (m) => debugPrint('[AUTOSYNC][native] ' + m));
     }
     if (got == null) return null;
     if (!Decompressor().validateCRC(got!)) return null;
@@ -208,14 +211,18 @@ class AutoSyncWorker {
   /// -> defer, never delete.
   Future<void> _downloadWithCrcPolicy(String address, RunMetadata run) async {
     status.value = 'Auto: downloading run #' + run.id.toString() + '...';
-    final p1 = await _attempt(address, run.id);
+    final logs1 = <String>[];
+    final p1 = await _attempt(address, run.id, logs1);
+    if (p1 == null) debugPrint('[AUTOSYNC] attempt1 failed, native log: ' + logs1.join(' | '));
     if (p1 != null) {
       await _saveRun(address, run.id, p1);
       return;
     }
     status.value = 'Auto: run #' + run.id.toString()
         + ' CRC failed - retry once';
-    final p2 = await _attempt(address, run.id);
+    final logs2 = <String>[];
+    final p2 = await _attempt(address, run.id, logs2);
+    if (p2 == null) debugPrint('[AUTOSYNC] attempt2 failed, native log: ' + logs2.join(' | '));
     if (p2 != null) {
       await _saveRun(address, run.id, p2);
       return;
@@ -243,7 +250,10 @@ class AutoSyncWorker {
   }
 
   Future<void> _saveRun(String address, int id, Uint8List data) async {
-    final decoded = await compute(_decompressForWorker, data);
+    debugPrint('[AUTOSYNC] save: decompressing run #' + id.toString() + ' (' + data.length.toString() + ' B)...');
+    final decoded = await compute(_decompressForWorker, data)
+        .timeout(const Duration(seconds: 20), onTimeout: () => throw Exception('decompress isolate timeout'));
+    debugPrint('[AUTOSYNC] save: decompressed, storing...');
     await LocalStorage().save(
       runId: id,
       compressedData: data,

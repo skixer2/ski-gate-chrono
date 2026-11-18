@@ -513,6 +513,10 @@ BT_GATT_SERVICE_DEFINE(product_svc,
 static uint32_t job_off;    /* next blob byte to send            */
 static uint32_t job_end;    /* off + len                         */
 static uint16_t job_seq;
+/* Hardening (F46 report d1): stream reads go through the CAPTURED
+ * entry address, not the entries[] position - a mid-transfer reclaim
+ * compaction can no longer shift the stream onto another run. */
+static uint32_t job_addr;   /* entry addr captured at stream start */
 static uint8_t  job_run;    /* entries[] POSITION — v0.22.1: resolved
 			     * from the wire run_id at stream start */
 static bool     job_active;
@@ -605,7 +609,8 @@ static void stream_work_handler(struct k_work *w)
 	frame[0] = (uint8_t)(job_seq & 0xFF);       /* seq: 2 B LE */
 	frame[1] = (uint8_t)(job_seq >> 8);
 	frame[2] = (uint8_t)take;                   /* len: 1 B     */
-	store_read_blob(job_run, job_off, &frame[3], take);
+	/* d1 (F46): read via the CAPTURED addr - compaction-proof. */
+	store_read_blob_at(job_addr, job_off, &frame[3], take);
 
 	console_emit_bin(frame, 3 + take);
 	printk("frame seq=%u len=%lu off=%lu\n",
@@ -795,6 +800,7 @@ static void cmd_work_handler(struct k_work *w)
 				len = remain;           /* clamp, as ArduinoFW */
 			}
 			job_run = (uint8_t)pos;  /* internal positional handle */
+			job_addr = store_run_addr(job_run);   /* d1: captured at start */
 			job_off = (uint32_t)off;
 			job_end = job_off + (uint32_t)len;
 			job_seq = 0;
@@ -1099,6 +1105,15 @@ uint8_t pull_proto_sd_len(void)             { return ARRAY_SIZE(sd_dyn); }
 bool pull_proto_busy(void)
 {
 	return job_active || dir_active;
+}
+
+/* Hardening (F46 report g): stream job only (no directory burst).
+ * sensor_prod gates its 1 Hz b1_rate printk on this - a stats line
+ * interleaved into the serial stream hexdump corrupts capture
+ * decoding. (job_active itself is static; this is its accessor.) */
+bool pull_proto_stream_active(void)
+{
+	return job_active;
 }
 
 void pull_proto_on_disconnect(void)

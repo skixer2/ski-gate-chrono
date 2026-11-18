@@ -215,9 +215,18 @@ K_THREAD_DEFINE(sensor_prod_tid, 1536, drain_thread, NULL, NULL, NULL,
 static void stats_thread(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+	/* Hardening (F46 report g): gate the b1_rate printk on stream
+	 * activity. job_active is static in pull_proto.c, so the state
+	 * arrives through this getter (extern-declared, codebase style). */
+	extern bool pull_proto_stream_active(void);
 	while (true) {
 		k_sleep(K_SECONDS(1));
 		if (bhy2_zephyr_dev() == NULL) {
+			continue;
+		}
+		/* F46 g: skip while a stream is active (counters keep
+		 * accumulating; the next line reports the full window). */
+		if (pull_proto_stream_active()) {
 			continue;
 		}
 		printk("{\"ev\":\"b1_rate\",\"rv\":%u,\"lacc\":%u,\"baro\":%u,"

@@ -19,6 +19,12 @@ void pull_proto_on_disconnect(void);
  * SLEEP's System-Off guard uses it as defence in depth (F12). */
 bool pull_proto_busy(void);
 
+/* Hardening (F46 report g): true while an 's' stream job (only) is
+ * in flight. sensor_prod gates its 1 Hz b1_rate printk on this: a
+ * stats line interleaved into the stream corrupts serial capture
+ * decoding. */
+bool pull_proto_stream_active(void);
+
 /* Advertisement payloads (defined here because the product service
  * UUID is the single source of truth in pull_proto.c — the ADV packet
  * names it, setAdvertisedService parity). */

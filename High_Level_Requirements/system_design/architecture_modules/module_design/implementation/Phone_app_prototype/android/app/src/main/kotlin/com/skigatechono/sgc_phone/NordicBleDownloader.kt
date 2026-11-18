@@ -361,6 +361,7 @@ class NordicBleDownloader(private val context: Context) {
                 val overallDeadline = t0 + overallMs
                 var idleDeadline = t0 + STREAM_IDLE_TIMEOUT_MS
                 var lastProgressMs = 0L
+                var nextSeq = 0   /* v0.25.8 mux: skip interleaved telemetry by seq continuity */
 
                 while (System.currentTimeMillis() < overallDeadline && !cancelled) {
                     if (!m.isConnected) throw Exception("link lost at ${buffer.size()} B")
@@ -372,6 +373,7 @@ class NordicBleDownloader(private val context: Context) {
                             }
                             continue
                         }
+                    if (pkt.size >= 2 && pkt[0] == 0x7B.toByte() && pkt[1] == 0x22.toByte()) continue
                     if (pkt.size < 3) continue
                     idleDeadline = System.currentTimeMillis() + STREAM_IDLE_TIMEOUT_MS
 
@@ -387,6 +389,8 @@ class NordicBleDownloader(private val context: Context) {
                         return DownloadedRun(runId, parseTimestamp(data), data)
                     }
 
+                    if (seq != nextSeq) continue   /* interleaved console line - not a frame */
+                    nextSeq = seq + 1
                     val len = pkt[2].toInt() and 0xFF
                     if (pkt.size < 3 + len) continue   /* truncated — skip */
                     buffer.write(pkt, 3, len)

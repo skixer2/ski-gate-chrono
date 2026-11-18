@@ -50,6 +50,14 @@ uint8_t  store_run_side(uint8_t id);          /* 0=left 1=right */
  * validated against store_run_total() before scheduling. */
 void store_read_blob(uint8_t id, uint32_t off, uint8_t *dst, uint32_t n);
 
+/* Hardening (F46 report d1): transfer-stable read path. pull_proto
+ * captures the entry's absolute addr at stream start (store_run_addr)
+ * and reads through store_read_blob_at, so a mid-transfer index
+ * compaction cannot shift an in-flight stream onto another entry. */
+uint32_t store_run_addr(uint8_t id);
+void store_read_blob_at(uint32_t addr, uint32_t off, uint8_t *dst,
+			uint32_t n);
+
 /* ── Recording producer (4b: real lifecycle) ──────────────────────
  * Starts recording a run of payload_len bytes. The producer runs as
  * a chunked state machine (write → close → runway top-up), non-
