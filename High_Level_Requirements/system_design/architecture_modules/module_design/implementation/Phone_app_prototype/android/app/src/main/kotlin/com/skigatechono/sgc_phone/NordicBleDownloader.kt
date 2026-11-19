@@ -98,6 +98,8 @@ class NordicBleDownloader(private val context: Context) {
         var runInfoChar: BluetoothGattCharacteristic? = null
         var consoleChar: BluetoothGattCharacteristic? = null
         var calChar: BluetoothGattCharacteristic? = null
+        var timeChar: BluetoothGattCharacteristic? = null
+        var nameChar: BluetoothGattCharacteristic? = null
 
         /** Binary stream frames + ASCII lines from the console char. */
         val consolePackets = LinkedBlockingQueue<ByteArray>()
@@ -122,6 +124,8 @@ class NordicBleDownloader(private val context: Context) {
             runInfoChar = svc.getCharacteristic(CHAR_RUN_INFO)
             consoleChar = svc.getCharacteristic(CHAR_CONSOLE)
             calChar = svc.getCharacteristic(CHAR_CAL)
+            timeChar = svc.getCharacteristic(CHAR_TIME)
+            nameChar = svc.getCharacteristic(CHAR_NAME)
             return consoleChar != null
         }
 
@@ -179,6 +183,55 @@ class NordicBleDownloader(private val context: Context) {
                 .await()
             log("V2: connected; settling ${CONNECT_SETTLE_MS} ms")
             Thread.sleep(CONNECT_SETTLE_MS)
+        }
+
+        /** 1.77 (JP 2026-11-19): write ABC0 with the phone's UTC epoch and
+         * read it back. Runs INSIDE the manager because the Nordic BLE
+         * read/write primitives are protected to this class.
+         * @return the epoch the device reports (0 = not synced). */
+        fun syncEpoch(): Long {
+            val c = timeChar ?: return 0L
+            val now = System.currentTimeMillis() / 1000L
+            val payload = byteArrayOf(
+                (now and 0xFF).toByte(),
+                ((now shr 8) and 0xFF).toByte(),
+                ((now shr 16) and 0xFF).toByte(),
+                ((now shr 24) and 0xFF).toByte(),
+            )
+            return try {
+                writeCharacteristic(c, payload,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
+                val rb = readCharacteristic(c).await()
+                if (rb == null || rb.size < 4) {
+                    log("time sync: readback short")
+                    0L
+                } else {
+                    val back = (rb[0].toLong() and 0xFF) or
+                        ((rb[1].toLong() and 0xFF) shl 8) or
+                        ((rb[2].toLong() and 0xFF) shl 16) or
+                        ((rb[3].toLong() and 0xFF) shl 24)
+                    log("time sync: wrote $now, device reports $back")
+                    back
+                }
+            } catch (e: Exception) {
+                log("time sync failed: ${e.message}")
+                0L
+            }
+        }
+
+        /** 1.77: the recording unit's own name (ABC1). "" when unreadable. */
+        fun readName(): String {
+            val c = nameChar ?: return ""
+            return try {
+                val rb = readCharacteristic(c).await()
+                val nm = if (rb == null) "" else
+                    String(rb, Charsets.UTF_8).trim('\u0000', ' ', '\n', '\r')
+                log("device name: '$nm'")
+                nm
+            } catch (e: Exception) {
+                log("device name read failed: ${e.message}")
+                ""
+            }
         }
 
         fun sendRequest(line: String) {
@@ -462,34 +515,13 @@ class NordicBleDownloader(private val context: Context) {
     }
 
     /** 1.77 (JP 2026-11-19): autosync never sent the ABC0 epoch write, so
-     * only a MANUAL connect from the Runs screen ever set the device clock;
-     * runs recorded in between inherited a frozen timestamp and the app
-     * filed them under the wrong day. Called on every autosync cycle before
-     * listing/downloading.
-     * @return the epoch the device reports after the write (0 = not synced). */
+     * only a MANUAL connect set the device clock; runs recorded in between
+     * inherited a frozen timestamp and got filed under the wrong day.
+     * @return the epoch the device reports (0 = not synced). */
     fun syncTimeEpoch(address: String): Long {
         val manager = newConnectedManager(address)
         return try {
-            val now = System.currentTimeMillis() / 1000L
-            val payload = byteArrayOf(
-                (now and 0xFF).toByte(),
-                ((now shr 8) and 0xFF).toByte(),
-                ((now shr 16) and 0xFF).toByte(),
-                ((now shr 24) and 0xFF).toByte(),
-            )
-            val c = manager.getCharacteristic(CHAR_TIME)
-                ?: throw Exception("ABC0 time characteristic unavailable")
-            manager.writeCharacteristic(c, payload,
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
-            val rb = manager.readCharacteristic(c).await() ?: ByteArray(0)
-            if (rb.size < 4) {
-                log("time sync: readback short (${rb.size} B)")
-                0L
-            } else {
-                val back = le32(rb, 0)
-                log("time sync: wrote $now, device reports $back")
-                back
-            }
+            manager.syncEpoch()
         } catch (e: Exception) {
             log("time sync failed: ${e.message}")
             0L
@@ -498,20 +530,12 @@ class NordicBleDownloader(private val context: Context) {
         }
     }
 
-    /** 1.77 (JP 2026-11-19): the autosync save path hardcoded the device
-     * name to "SGC", so every run stored from a background download lost
-     * the unit's real identity. Reads ABC1 so the saved record carries the
-     * recording device's name next to its MAC.
-     * @return the device name, or "" when unreadable. */
+    /** 1.77: recording device's own name (ABC1), so saved runs carry the
+     * unit's real identity next to its MAC. "" when unreadable. */
     fun readDeviceName(address: String): String {
         val manager = newConnectedManager(address)
         return try {
-            val c = manager.getCharacteristic(CHAR_NAME)
-                ?: throw Exception("ABC1 name characteristic unavailable")
-            val rb = manager.readCharacteristic(c).await() ?: ByteArray(0)
-            val name = String(rb, Charsets.UTF_8).trim('\u0000', ' ', '\n', '\r')
-            log("device name: '$name'")
-            name
+            manager.readName()
         } catch (e: Exception) {
             log("device name read failed: ${e.message}")
             ""
