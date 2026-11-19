@@ -47,6 +47,8 @@ class NativeBleDownloader(private val context: Context) {
         private val CHAR_FT_REQUEST: UUID = UUID.fromString("5347ABCA-0000-1000-8000-00805F9B34FB")
         private val CHAR_FT_STREAM: UUID = UUID.fromString("5347ABCD-0000-1000-8000-00805F9B34FB")
         private val CHAR_CAL: UUID = UUID.fromString("5347ABD0-0000-1000-8000-00805F9B34FB")
+        private val CHAR_TIME: UUID = UUID.fromString("5347ABC0-0000-1000-8000-00805F9B34FB")
+        private val CHAR_NAME: UUID = UUID.fromString("5347ABC1-0000-1000-8000-00805F9B34FB")
         private val CCC_DESCRIPTOR: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
         private const val CONNECT_TIMEOUT_MS = 15_000L
@@ -647,6 +649,66 @@ class NativeBleDownloader(private val context: Context) {
 
         log("native batch end: ok=${done.size} failed=${failed.size}")
         return BatchResult(done, failed, synchronized(logs) { logs.toList() })
+    }
+
+    /** 1.77 (JP 2026-11-19): autosync never sent the ABC0 epoch write, so
+     * only a MANUAL connect from the Runs screen ever set the device clock.
+     * Runs recorded in between inherited a frozen timestamp and the app
+     * filed them under the wrong day. Called on every autosync cycle
+     * before listing/downloading.
+     * @return the epoch the device reports after the write (0 = not synced). */
+    fun syncTimeEpoch(address: String): Long {
+        cancelled = false
+        connect(address)
+        return try {
+            val now = System.currentTimeMillis() / 1000L
+            val payload = byteArrayOf(
+                (now and 0xFF).toByte(),
+                ((now shr 8) and 0xFF).toByte(),
+                ((now shr 16) and 0xFF).toByte(),
+                ((now shr 24) and 0xFF).toByte(),
+            )
+            writeChar(CHAR_TIME, payload)
+            val rb = readChar(CHAR_TIME)
+            if (rb.size < 4) {
+                log("time sync: readback short (${rb.size} B)")
+                0L
+            } else {
+                val back = (rb[0].toLong() and 0xFF) or
+                    ((rb[1].toLong() and 0xFF) shl 8) or
+                    ((rb[2].toLong() and 0xFF) shl 16) or
+                    ((rb[3].toLong() and 0xFF) shl 24)
+                log("time sync: wrote $now, device reports $back")
+                back
+            }
+        } catch (e: Exception) {
+            log("time sync failed: ${e.message}")
+            0L
+        } finally {
+            closeGatt("syncTime")
+        }
+    }
+
+    /** 1.77 (JP 2026-11-19): the autosync save path hardcoded the device
+     * name to "SGC", so every run stored from a background download lost
+     * the unit's real name. Reads ABC1 (same characteristic the manual
+     * path uses) so the saved record carries the recording device's name
+     * next to its MAC.
+     * @return the device name, or "" when unreadable. */
+    fun readDeviceName(address: String): String {
+        cancelled = false
+        connect(address)
+        return try {
+            val rb = readChar(CHAR_NAME)
+            val name = String(rb, Charsets.UTF_8).trim('\u0000', ' ', '\n', '\r')
+            log("device name: '$name'")
+            name
+        } catch (e: Exception) {
+            log("device name read failed: ${e.message}")
+            ""
+        } finally {
+            closeGatt("readName")
+        }
     }
 
     fun readRunListJson(address: String): String {

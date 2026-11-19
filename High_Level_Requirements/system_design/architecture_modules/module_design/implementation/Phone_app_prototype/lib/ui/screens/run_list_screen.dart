@@ -166,6 +166,10 @@ class _RunListScreenState extends State<RunListScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 1.77 (JP 2026-11-19): a background autosync save must refresh this
+    // list without an app restart - otherwise a downloaded run stays
+    // invisible ("Newer day" greyed, stale "x of y" counter).
+    LocalStorage.revision.addListener(_onStorageChanged);
     _loadLocalRuns();
     _loadAutoPrefs();
     // F69 (2026-11-16): the auto-sync cycle moved to the global
@@ -219,6 +223,7 @@ class _RunListScreenState extends State<RunListScreen>
 
   @override
   void dispose() {
+    LocalStorage.revision.removeListener(_onStorageChanged);
     _cancelIdleDisconnectTimer();
     _cancelBatteryTimer();
     _autoTimer?.cancel();
@@ -819,6 +824,12 @@ class _RunListScreenState extends State<RunListScreen>
     }
   }
 
+  /// 1.77: reload the index when another actor (autosync) saved a run.
+  void _onStorageChanged() {
+    if (!mounted) return;
+    _loadLocalRuns();
+  }
+
   Future<void> _loadLocalRuns() async {
     final runs = await _storage.listAll();
     await _refreshDerivedState(runs);
@@ -1071,6 +1082,10 @@ class _RunListScreenState extends State<RunListScreen>
             result: decoded,
             deviceName: run.deviceName,
             runName: run.name,
+            // 1.77: the saved run already knows its arm side - never let the
+            // detail card fall back to "Unknown" for a run we listed as
+            // Left/Right.
+            armSide: run.side == 'right' ? ArmSide.right : ArmSide.left,
           ),
         ),
       );

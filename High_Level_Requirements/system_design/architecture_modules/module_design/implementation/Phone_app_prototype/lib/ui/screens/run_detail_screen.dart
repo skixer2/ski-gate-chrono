@@ -256,8 +256,15 @@ class _RunDetailScreenState extends State<RunDetailScreen> {
     int detectedGates,
     int estimatedGates,
   ) {
-    final armLabel =
-        widget.armSide != null ? widget.armSide!.label : 'Unknown';
+    // 1.77 (JP 2026-11-19): the RUN's own header records the arm side at
+    // recording time and is authoritative. The old code showed 'Unknown'
+    // whenever the caller passed no device config (the saved-run path never
+    // did), so a run listed as "Left" opened as "Arm Unknown". Fall back to
+    // the device config only when the header byte is out of range.
+    final ArmSide? runArm = hdr.armSide == 1
+        ? ArmSide.right
+        : (hdr.armSide == 0 ? ArmSide.left : null);
+    final armLabel = (runArm ?? widget.armSide)?.label ?? 'Unknown';
     final discLabel = const {'sl': 'Slalom', 'gs': 'GS', 'sg': 'Super-G', 'dh': 'DH'};
     final calLabel = ['—', 'Low', 'Medium', 'High'][hdr.calAccuracy.clamp(0, 3)];
 

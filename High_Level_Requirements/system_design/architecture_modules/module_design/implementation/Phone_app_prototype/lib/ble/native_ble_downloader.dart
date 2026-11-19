@@ -117,6 +117,23 @@ class NativeBleDownloader {
     );
   }
 
+  /// 1.77 (JP 2026-11-19): the autosync cycle never sent the ABC0 epoch
+  /// write, so the device clock only advanced on a MANUAL connect from the
+  /// Runs screen. Runs recorded in between kept a frozen timestamp and the
+  /// app filed them under the wrong day. Returns the epoch the device
+  /// reports after the write (0 = not synced).
+  Future<int> syncTime({required String address}) async {
+    final res = await _channel.invokeMethod<int>('syncTime', {'address': address});
+    return res ?? 0;
+  }
+
+  /// 1.77: the recording device's own name (ABC1), used to stamp saved
+  /// runs. Returns "" when unreadable — the caller keeps a fallback.
+  Future<String> readDeviceName({required String address}) async {
+    final res = await _channel.invokeMethod<String>('readDeviceName', {'address': address});
+    return res ?? '';
+  }
+
   Future<String> readRunList({required String address}) async {
     final res = await _channel.invokeMethod<String>('readRunList', {'address': address});
     return res ?? '';

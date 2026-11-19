@@ -46,6 +46,9 @@ class AutoSyncWorker with WidgetsBindingObserver {
   /// Set by main(): chains the cloud upload worker after each save (F43).
   void Function()? onSaved;
 
+  /// 1.77: per-device name cache, filled once per cycle (see _syncDevice).
+  final Map<String, String> _deviceNameCache = {};
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _pairedMacs = prefs.getStringList(_prefsPairedMacs) ?? const [];
@@ -168,6 +171,28 @@ class AutoSyncWorker with WidgetsBindingObserver {
         }
       }
     }
+    // 1.77 (JP 2026-11-19): set the device clock BEFORE listing, so a run
+    // recorded since the last manual connect is stamped with the real date
+    // instead of inheriting a frozen timestamp (which filed new runs under
+    // the wrong day). Failure is non-fatal - the download still proceeds.
+    try {
+      final epoch = await NativeBleDownloader().syncTime(address: address);
+      debugPrint('[AUTOSYNC] time sync: device epoch=' + epoch.toString());
+    } catch (e) {
+      debugPrint('[AUTOSYNC] time sync failed: ' + e.toString());
+    }
+    // 1.77 (JP 2026-11-19): fetch the unit's real name once per cycle so
+    // every run saved from autosync carries the recording device's name
+    // (the save path used to hardcode 'SGC', losing the identity).
+    try {
+      final nm = await NativeBleDownloader().readDeviceName(address: address);
+      if (nm.isNotEmpty) {
+        _deviceNameCache[address] = nm;
+        debugPrint('[AUTOSYNC] device name for ' + address + ': ' + nm);
+      }
+    } catch (e) {
+      debugPrint('[AUTOSYNC] device name read failed: ' + e.toString());
+    }
     status.value = 'Auto: reading ' + address + '...';
     final raw = await NativeBleDownloader().readRunList(address: address);
     if (raw.isEmpty) throw Exception('device returned 0-byte run list');
@@ -176,9 +201,22 @@ class AutoSyncWorker with WidgetsBindingObserver {
         .map((e) => RunMetadata.fromJson(e as Map<String, dynamic>))
         .toList();
     final local = await LocalStorage().listAll();
-    final keys = local.map((r) => (r.id, r.timestamp)).toSet();
+    // 1.77 (JP 2026-11-19): identity is PER DEVICE. Run ids restart at 0 on
+    // every unit and both clocks can collide, so a device-blind key
+    // (id, timestamp) can match a run downloaded from ANOTHER unit and
+    // silently skip a genuine one (or re-download forever). Key on the
+    // recording unit's MAC as well. Runs saved before 1.69 have a null
+    // sourceMac and are matched on (id, timestamp) alone.
+    final keys = local
+        .map((r) => (r.sourceMac ?? '', r.id, r.timestamp))
+        .toSet();
+    final legacyKeys = local
+        .where((r) => r.sourceMac == null)
+        .map((r) => (r.id, r.timestamp))
+        .toSet();
     final missing = deviceRuns
-        .where((r) => !keys.contains((r.id, r.timestamp)))
+        .where((r) => !keys.contains((address, r.id, r.timestamp)) &&
+            !legacyKeys.contains((r.id, r.timestamp)))
         .toList();
     debugPrint('[AUTOSYNC] ' + address + ': ' + deviceRuns.length.toString()
         + ' runs on device, ' + missing.length.toString() + ' missing');
@@ -266,7 +304,10 @@ class AutoSyncWorker with WidgetsBindingObserver {
       runId: id,
       compressedData: data,
       result: decoded,
-      deviceName: 'SGC',
+      // 1.77 (JP 2026-11-19): record WHO recorded the run - the unit's own
+      // name plus its BLE MAC (sourceMac). 'SGC' is only a last-resort
+      // fallback when the name characteristic could not be read.
+      deviceName: _deviceNameCache[address] ?? 'SGC',
       sourceMac: address,
     );
     debugPrint('[AUTOSYNC] saved run #' + id.toString() + ' from ' + address);

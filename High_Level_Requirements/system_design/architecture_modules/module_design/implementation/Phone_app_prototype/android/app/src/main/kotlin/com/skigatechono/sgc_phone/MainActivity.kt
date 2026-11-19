@@ -90,6 +90,42 @@ class MainActivity : FlutterActivity() {
                             }
                         }.start()
                     }
+                    "syncTime" -> {
+                        val address = call.argument<String>("address")
+                        if (address.isNullOrBlank()) {
+                            result.error("bad_args", "address is required", null)
+                            return@setMethodCallHandler
+                        }
+                        val engine = downloader ?: run {
+                            result.error("not_ready", "native BLE downloader not initialized", null)
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            try {
+                                postSuccess(result, engine.syncTimeEpoch(address))
+                            } catch (e: Exception) {
+                                postError(result, "native_ble", e.message ?: e.javaClass.simpleName, null)
+                            }
+                        }.start()
+                    }
+                    "readDeviceName" -> {
+                        val address = call.argument<String>("address")
+                        if (address.isNullOrBlank()) {
+                            result.error("bad_args", "address is required", null)
+                            return@setMethodCallHandler
+                        }
+                        val engine = downloader ?: run {
+                            result.error("not_ready", "native BLE downloader not initialized", null)
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            try {
+                                postSuccess(result, engine.readDeviceName(address))
+                            } catch (e: Exception) {
+                                postError(result, "native_ble", e.message ?: e.javaClass.simpleName, null)
+                            }
+                        }.start()
+                    }
                     "readRunList" -> {
                         val address = call.argument<String>("address")
                         if (address.isNullOrBlank()) {

@@ -69,6 +69,18 @@ class LocalStorage {
   static const _runsDir = 'sgc_runs';
   static const _indexFile = 'runs.json';
 
+  /// 1.77 (JP 2026-11-19): the run index is also written by background
+  /// actors (AutoSyncWorker saves a downloaded run) while the Runs screen
+  /// is already built. Before this the screen kept a stale in-memory list
+  /// and a freshly downloaded run stayed invisible until an app restart
+  /// ("Newer day" greyed out, counter "3 of 49" while runs.json held 50).
+  /// Every index write bumps this notifier; the Runs screen listens.
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  static void _bumpRevision() {
+    revision.value = revision.value + 1;
+  }
+
   Future<Directory> get _dir async {
     final appDir = await getApplicationDocumentsDirectory();
     final dir = Directory('${appDir.path}/$_runsDir');
@@ -122,6 +134,7 @@ class LocalStorage {
     runs.add(saved);
     runs.sort((a, b) => b.savedAt.compareTo(a.savedAt)); // newest first
     await _writeIndex(runs);
+    _bumpRevision();
 
     debugPrint('[LocalStorage] Saved run #$runId → $fileName (${result.frameCount} frames, ${result.totalDurationSec.toStringAsFixed(1)}s)');
     return saved;
@@ -301,6 +314,7 @@ class LocalStorage {
     final runs = await listAll();
     runs.removeWhere((r) => r.fileName == run.fileName);
     await _writeIndex(runs);
+    _bumpRevision();
   }
 
   Future<void> _writeIndex(List<SavedRun> runs) async {
