@@ -234,16 +234,16 @@ class NordicBleDownloader(private val context: Context) {
             }
         }
 
-        /** Blocking single characteristic read: the Nordic library delivers
-         * the value to the notification callback, not the await result. */
+        /** Blocking read of a READ-ONLY characteristic. ABC0/ABC1 have no
+         * notify property, so a notification callback never fires - the
+         * value arrives on the ReadRequest callback instead. */
         private fun readWithCallback(c: BluetoothGattCharacteristic): ByteArray? {
             val latch = CountDownLatch(1)
             var value: ByteArray? = null
-            setNotificationCallback(c).with { _, data ->
+            readCharacteristic(c).with { _, data ->
                 value = data.value?.clone()
                 latch.countDown()
-            }
-            readCharacteristic(c).await()
+            }.await()
             latch.await(3, TimeUnit.SECONDS)
             return value
         }
