@@ -1,0 +1,186 @@
+2026-11-04 22:30:26.324Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-04T22:40:58Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-04T22:45:55Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-04T23:00:32Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-04 23:15 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-05T00:00:00Z GAP_LOG entries 2026-11-04T23:15Z..2026-11-07T23:15Z lost (append accident 2026-11-07T23:30Z, file replaced by write tool); recovered in-gap READ_FAIL follows; successful reads in that window were pct=100; details in battery_climb_20261028.recovery-note.md
+2026-11-06T01:45:00Z READ_FAIL
+2026-11-07 23:30:24Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-07 23:45:41.614 READ_FAIL_PORT
+2026-11-08T00:00:27Z READ_FAIL
+2026-11-08T00:16:04Z READ_FAIL
+2026-11-08T00:30:00Z READ_FAIL_PORT
+2026-11-08T00:45:25Z READ_FAIL
+2026-11-08 01:00Z READ_FAIL
+2026-11-08T01:15Z READ_FAIL
+2026-11-08T01:31:23Z READ_FAIL
+2026-11-08T01:45:26Z READ_FAIL
+2026-11-08 02:00:55Z READ_FAIL
+2026-11-08T02:15:33Z READ_FAIL
+2026-11-08T02:30:38Z READ_FAIL
+2026-11-08T02:45:50Z READ_FAIL
+2026-11-08T03:00:33Z READ_FAIL_PORT
+2026-11-08T03:15:00Z READ_FAIL_PORT
+2026-11-08T03:31:12.486Z READ_FAIL
+2026-11-08T03:45:44Z READ_FAIL
+2026-11-08T04:01:01Z READ_FAIL_PORT
+2026-11-08T04:16:12Z READ_FAIL
+2026-11-08T04:30:40Z READ_FAIL
+2026-11-08T04:45:46Z READ_FAIL
+2026-11-08T05:00:00Z READ_FAIL_PORT
+2026-11-08T05:15:35Z READ_FAIL
+2026-11-08 05:30:50.383 READ_FAIL
+2026-11-08T05:45:32Z READ_FAIL_PORT COM3 FileNotFoundError
+2026-11-08T06:01:18Z READ_FAIL_PORT COM3 FileNotFoundError
+2026-11-08T06:16:00Z READ_FAIL
+2026-11-08 06:31 UTC READ_FAIL
+2026-11-08T06:45:41Z READ_FAIL
+2026-11-08T07:00:45Z READ_FAIL_PORT
+2026-11-08T07:15:00Z READ_FAIL_PORT
+2026-11-08T07:30:00Z READ_FAIL
+2026-11-08 07:45 UTC READ_FAIL
+2026-11-08T08:00:41Z READ_FAIL
+2026-11-08 08:15:26.088Z READ_FAIL
+2026-11-08T08:31:18Z READ_FAIL
+2026-11-08T08:45:37Z READ_FAIL
+2026-11-08 09:00:40Z READ_FAIL_PORT
+2026-11-08 09:15:52.714Z READ_FAIL
+2026-11-08T09:30:41Z READ_FAIL
+2026-11-08T09:45:00Z READ_FAIL
+2026-11-08T10:00:31Z READ_FAIL_PORT
+2026-11-08T10:16:20Z READ_FAIL_PORT
+2026-11-08T10:31:26Z READ_FAIL
+2026-11-08T10:45:24Z READ_FAIL
+2026-11-08T11:00:41Z READ_FAIL_PORT
+2026-11-08T11:15:54.984Z READ_FAIL
+2026-11-08T11:30Z READ_FAIL_PORT
+2026-11-08T11:46:20Z READ_FAIL_PORT
+2026-11-08T12:01:12.155Z READ_FAIL
+2026-11-08 12:16 UTC READ_FAIL
+2026-11-08 12:30 UTC READ_FAIL
+2026-11-08T12:45Z READ_FAIL_PORT
+2026-11-08T13:01:49.246Z READ_FAIL
+2026-11-08T13:16:14Z READ_FAIL
+2026-11-08 13:30:35 UTC READ_FAIL
+2026-11-08T13:45Z READ_FAIL_PORT
+2026-11-08 14:01:26 UTC READ_FAIL
+2026-11-08T14:15:29Z READ_FAIL
+2026-11-08T14:31:20Z READ_FAIL
+2026-11-08T14:45:34Z READ_FAIL
+2026-11-08T15:00:00Z READ_FAIL
+2026-11-08 15:16 UTC READ_FAIL
+2026-11-08 15:30 UTC READ_FAIL_PORT
+2026-11-08T15:46:12Z READ_FAIL
+2026-11-08T16:00Z READ_FAIL_PORT
+2026-11-08T16:16:16.468Z READ_FAIL
+2026-11-08 16:30:47 UTC READ_FAIL
+2026-11-08T16:45Z READ_FAIL
+2026-11-08 17:00:22.823Z READ_FAIL_PORT
+2026-11-08T17:00Z NOTE: second append accident 2026-11-08 17:00Z (write tool replaced file with single line); full 77-line history restored from write-tool diff, zero data loss; future appends must use plain gateway exec shell append (>>), never the write tool
+2026-11-08T17:16:14Z READ_FAIL_PORT
+2026-11-08T17:30Z READ_FAIL
+2026-11-08T17:48Z READ_FAIL_PORT
+2026-11-08T18:00Z READ_FAIL_PORT
+2026-11-08T18:15:59Z READ_FAIL
+2026-11-08T18:30:00Z READ_FAIL
+2026-11-08 18:46:39Z READ_FAIL
+2026-11-08 19:00 UTC READ_FAIL_PORT
+2026-11-08T19:15:00Z READ_FAIL
+2026-11-08T19:30:35Z READ_FAIL_PORT
+2026-11-08T19:45:21Z READ_FAIL_PORT
+2026-11-08T20:01:01.558Z READ_FAIL
+2026-11-08T20:15:32Z READ_FAIL_PORT
+2026-11-08T20:30:57Z READ_FAIL
+2026-11-08 20:45:17.914 UTC READ_FAIL
+2026-11-08T21:01:05Z READ_FAIL
+2026-11-08T21:15:00Z READ_FAIL_PORT
+2026-11-08T21:31:32Z READ_FAIL
+2026-11-08T21:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08T22:01:57Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08T22:15:39Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08T22:30:41Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08 22:45:25.891 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08T23:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08 23:15:37 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08T23:31:06Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-08T23:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T00:00:37Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T00:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T00:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T00:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T01:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T01:16:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T01:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09 01:45 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T02:01:32Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T02:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T02:31:34Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T02:47:27Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T03:02:07Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T03:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T03:30:33Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T03:46:41Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T04:00:00Z READ_FAIL
+2026-11-09T04:15:06Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T04:33:52.148Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T04:46:52.339Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T05:01:42Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T05:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T05:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09 05:46:09Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T06:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T06:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09 06:31:15 READ_FAIL
+2026-11-09T06:46:11Z READ_FAIL
+2026-11-09T07:01:06Z READ_FAIL
+2026-11-09T07:15:54.965Z READ_FAIL_PORT
+2026-11-09T07:30:38Z READ_FAIL_PORT
+2026-11-09T07:46:47Z READ_FAIL_PORT
+2026-11-09T08:01:31.644Z READ_FAIL_PORT
+2026-11-09T08:15:51Z READ_FAIL
+2026-11-09T08:30:00Z READ_FAIL
+2026-11-09T08:46:17.094Z READ_FAIL_PORT
+2026-11-09T09:01:48Z READ_FAIL
+2026-11-09T09:16:52Z READ_FAIL
+2026-11-09 09:31:21Z READ_FAIL
+2026-11-09T09:47:20Z READ_FAIL
+2026-11-09T10:01:02Z READ_FAIL_PORT
+2026-11-09T10:15:41Z READ_FAIL_PORT
+2026-11-09 10:30:51Z READ_FAIL
+2026-11-09T10:46:20Z READ_FAIL
+2026-11-09T11:01:12Z READ_FAIL_PORT
+2026-11-09T11:16:38Z READ_FAIL_PORT
+2026-11-09T11:31:18Z READ_FAIL_PORT
+2026-11-09T11:45:38Z READ_FAIL
+2026-11-09T12:01:19Z READ_FAIL
+2026-11-09T12:15:34Z READ_FAIL_PORT
+2026-11-09T12:30:35.349Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T12:46:33Z batt_dbg: fr=0 faults=0x40 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x7f byte=0x7f
+2026-11-09 13:00:40.457 batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+
+2026-11-09 13:15:58 batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09 13:30:29 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T13:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T14:00:40Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T14:15:58Z READ_FAIL_PORT
+2026-11-09T14:30:50.131Z READ_FAIL
+2026-11-09T14:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T15:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09 15:16:08Z READ_FAIL
+2026-11-09T15:30:00Z READ_FAIL
+2026-11-09T15:45:32Z READ_FAIL
+2026-11-09T16:01:50Z READ_FAIL
+2026-11-09T16:15:52Z READ_FAIL
+2026-11-09T16:31:12.743Z READ_FAIL
+2026-11-09T16:45:00Z READ_FAIL
+2026-11-09T17:00:00Z READ_FAIL
+2026-11-09T17:19:18Z READ_FAIL
+2026-11-09T17:31:15Z READ_FAIL
+2026-11-09T17:46:08Z READ_FAIL
+2026-11-09T18:00:50Z READ_FAIL
+2026-11-09T18:15:00Z READ_FAIL
+2026-11-09T18:31:51Z READ_FAIL
+2026-11-09T18:46:16Z READ_FAIL
+2026-11-09T19:00:00Z READ_FAIL
+2026-11-09T19:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-09T19:31:06Z {"status":"completed","exitCode":0,"durationMs":4487,"aggregated":"batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64\r\nOK batt_dbg\r\n{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}\r\n{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}\r\n{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}\r\n","nodeId":"a7f3fa463611b61a83ab7396dc1fec1c1a7f8e3896ee04ccdc01e01c7a41f6f0"}

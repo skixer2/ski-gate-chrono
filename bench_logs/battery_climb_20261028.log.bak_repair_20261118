@@ -1,0 +1,49 @@
+2026-11-18T05:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T05:10:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T05:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T05:30Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 05:46 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 06:02 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 06:16 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 06:31 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T06:45:38Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T07:02:58Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 07:15 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T07:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T07:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T08:00:43Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T08:16:14Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T08:31:13Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T08:46:18Z READ_FAIL
+2026-11-18T09:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T09:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T09:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T09:46:07Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 10:01:08Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T10:15:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 10:30:47Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T10:46:15Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T11:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T11:17:19Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T11:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T11:46:12Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T12:04:17Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 12:16 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T12:31:11Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T12:46:24Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T13:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 13:15:31Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 13:30:27.239 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T13:46:12Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T14:00:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T14:16:10Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T14:30:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18T14:45:00Z batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+2026-11-18 15:01:33 UTC {"status":"completed","exitCode":0,"durationMs":4365,"aggregated":"batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64
+OK batt_dbg
+{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}
+{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}
+{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}
+{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}
+{\"ev\":\"b1_rate\",\"rv\":0,\"lacc\":0,\"baro\":0,\"temp\":0,\"err\":0,\"short\":0,\"baro_pa\":0,\"qw\":0,\"tx10\":0,\"la\":[0,0,0],\"obs\":[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],\"r0\":[0,0,0,0,0,0,0,0]}
+","nodeId":"a7f3fa463611b61a83ab7396dc1fec1c1a7f8e3896ee04ccdc01e01c7a41f6f0"}2026-11-18 15:01:33 UTC batt_dbg: fr=0 faults=0x00 mon_pre=0x7c(0) pct=100 mon_post=0x7c(0) fastchg=0x9c st=0x41 cache=0x64 byte=0x64

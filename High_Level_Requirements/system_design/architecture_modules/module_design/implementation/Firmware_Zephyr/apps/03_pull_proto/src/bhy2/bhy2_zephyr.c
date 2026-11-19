@@ -491,6 +491,41 @@ bool bhy2_bringup(void)
 	ret = bhy2_get_boot_status(&boot, &bhy2);
 	printk("bhy2: boot_status after -> %d, 0x%02x\n", ret, boot);
 
+	/* 0.25.11 (DS E1/E2/E3): hub identity dump - the hub's flash is not
+	 * host-readable, so kernel/user/BSX versions + the sensor-present
+	 * bitmasks are the only image comparison it exposes. */
+	{
+		uint16_t kern = 0, user = 0;
+		uint8_t errv = 0;
+		bhy2_get_kernel_version(&kern, &bhy2);
+		bhy2_get_user_version(&user, &bhy2);
+		bhy2_get_error_value(&errv, &bhy2);
+		printk("bhy2: kern=%u user=%u err_val=0x%02x\n", kern, user, errv);
+
+		uint8_t bsx[8] = {0};
+		uint32_t bsx_len = 0;
+		int8_t rb = bhy2_get_parameter(BHY2_PARAM_BHY2_BSX_VERSION,
+					       bsx, sizeof(bsx), &bsx_len, &bhy2);
+		printk("bhy2: bsx rslt=%d len=%u %02x%02x%02x%02x\n",
+		       rb, bsx_len, bsx[0], bsx[1], bsx[2], bsx[3]);
+
+		uint8_t vl[32] = {0};
+		bhy2_get_virt_sensor_list(vl, &bhy2);
+		printk("bhy2: virt RV=%u LACC=%u GRA=%u ACC=%u GYRO=%u\n",
+		       !!(vl[34/8] & (1u << (34%8))),
+		       !!(vl[31/8] & (1u << (31%8))),
+		       !!(vl[28/8] & (1u << (28%8))),
+		       !!(vl[4/8]  & (1u << (4%8))),
+		       !!(vl[13/8] & (1u << (13%8))));
+
+		uint8_t pl[32] = {0};
+		uint32_t plen = 0;
+		int8_t rp = bhy2_get_parameter(BHY2_PARAM_SYS_PHYS_SENSOR_PRESENT,
+					       pl, sizeof(pl), &plen, &bhy2);
+		printk("bhy2: phys rslt=%d bits=%02x%02x%02x%02x\n",
+		       rp, pl[0], pl[1], pl[2], pl[3]);
+	}
+
 	bhy2_ready = (ret == BHY2_OK);
 	return bhy2_ready;
 }

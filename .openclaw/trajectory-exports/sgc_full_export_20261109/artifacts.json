@@ -1,0 +1,53 @@
+{
+  "traceSchema": "openclaw-trajectory",
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-09T08:08:40.876Z",
+  "traceId": "94bc1837-2788-4074-9164-b081d972ef8d",
+  "sessionId": "94bc1837-2788-4074-9164-b081d972ef8d",
+  "sessionKey": "agent:main:webchat:ski_gate_chrono",
+  "finalStatus": "error",
+  "aborted": false,
+  "externalAbort": false,
+  "timedOut": false,
+  "idleTimedOut": false,
+  "timedOutDuringCompaction": false,
+  "timedOutDuringToolExecution": false,
+  "timedOutByRunBudget": false,
+  "promptErrorSource": null,
+  "usage": {
+    "usageReport": {
+      "state": "unavailable"
+    },
+    "contextUsage": {
+      "state": "unavailable"
+    }
+  },
+  "promptCache": {
+    "lastCallUsage": {
+      "usageReport": {
+        "state": "unavailable"
+      },
+      "contextUsage": {
+        "state": "unavailable"
+      }
+    },
+    "observation": {
+      "broke": false
+    }
+  },
+  "compactionCount": 0,
+  "assistantTexts": [],
+  "stopReason": "error",
+  "finalPromptText": "Compact the context, please.",
+  "itemLifecycle": {
+    "startedCount": 0,
+    "completedCount": 0,
+    "activeCount": 0
+  },
+  "toolMetas": [],
+  "didSendViaMessagingTool": false,
+  "successfulCronAdds": 0,
+  "messagingToolSentTexts": [],
+  "messagingToolSentMediaUrls": [],
+  "messagingToolSentTargets": []
+}

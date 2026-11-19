@@ -1,0 +1,417 @@
+{
+  "header": {
+    "type": "session",
+    "version": 3,
+    "id": "94bc1837-2788-4074-9164-b081d972ef8d",
+    "timestamp": "2026-11-04T09:53:38.182Z",
+    "cwd": "$OPENCLAW_STATE_DIR/ipcra_ws",
+    "parentSession": "$OPENCLAW_STATE_DIR/agents/main/sessions/2026-11-04T09-03-35-190Z_6d4b4ade-f697-4f8c-b777-6d0b179bca06.jsonl"
+  },
+  "leafId": "e3e5b417-d5df-407b-96f5-8489a7f0bf25",
+  "entries": [
+    {
+      "type": "model_change",
+      "id": "7320b15d",
+      "parentId": null,
+      "timestamp": "2026-10-25T22:13:14.134Z",
+      "provider": "zai",
+      "modelId": "glm-5.3"
+    },
+    {
+      "type": "thinking_level_change",
+      "id": "f3983d18",
+      "parentId": "7320b15d",
+      "timestamp": "2026-10-25T22:13:14.134Z",
+      "thinkingLevel": "low"
+    },
+    {
+      "type": "custom",
+      "customType": "model-snapshot",
+      "data": {
+        "timestamp": 1792966394179,
+        "provider": "zai",
+        "modelApi": "openai-completions",
+        "modelId": "glm-5.3"
+      },
+      "id": "698bed5e",
+      "parentId": "f3983d18",
+      "timestamp": "2026-10-25T22:13:14.179Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792966488476,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "f9a9e2b0",
+      "parentId": "698bed5e",
+      "timestamp": "2026-10-25T22:14:48.476Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792966528363,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "0f8bde0d",
+      "parentId": "f9a9e2b0",
+      "timestamp": "2026-10-25T22:15:28.363Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792966574105,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "58136275",
+      "parentId": "0f8bde0d",
+      "timestamp": "2026-10-25T22:16:14.105Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792966710966,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "34428427",
+      "parentId": "58136275",
+      "timestamp": "2026-10-25T22:18:30.966Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792966835343,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "219a5d3d",
+      "parentId": "34428427",
+      "timestamp": "2026-10-25T22:20:35.343Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792967456170,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "63b2e270",
+      "parentId": "219a5d3d",
+      "timestamp": "2026-10-25T22:30:56.170Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1792999146797,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "969942b6",
+      "parentId": "63b2e270",
+      "timestamp": "2026-10-26T07:19:06.797Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793016447621,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "0eb5171b",
+      "parentId": "969942b6",
+      "timestamp": "2026-10-26T12:07:27.621Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793017674452,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "63a6cc63",
+      "parentId": "0eb5171b",
+      "timestamp": "2026-10-26T12:27:54.452Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793018982145,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "1a8cf464",
+      "parentId": "63a6cc63",
+      "timestamp": "2026-10-26T12:49:42.145Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793021200942,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "079e29b1",
+      "parentId": "1a8cf464",
+      "timestamp": "2026-10-26T13:26:40.942Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793021744605,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "06fe82f3",
+      "parentId": "079e29b1",
+      "timestamp": "2026-10-26T13:35:44.605Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793022146044,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "87c95301",
+      "parentId": "06fe82f3",
+      "timestamp": "2026-10-26T13:42:26.044Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793022496825,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "dbdd8d07",
+      "parentId": "87c95301",
+      "timestamp": "2026-10-26T13:48:16.825Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793023055928,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "b836422b",
+      "parentId": "dbdd8d07",
+      "timestamp": "2026-10-26T13:57:35.928Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793027227862,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "527c35a5",
+      "parentId": "b836422b",
+      "timestamp": "2026-10-26T15:07:07.862Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793027722857,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "68ccd4e0",
+      "parentId": "527c35a5",
+      "timestamp": "2026-10-26T15:15:22.857Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793028893664,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "d60b6b7f",
+      "parentId": "68ccd4e0",
+      "timestamp": "2026-10-26T15:34:53.664Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793035080270,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "9f25d546",
+      "parentId": "d60b6b7f",
+      "timestamp": "2026-10-26T17:18:00.270Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793036050219,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "0a92b9dd",
+      "parentId": "9f25d546",
+      "timestamp": "2026-10-26T17:34:10.219Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793041695208,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "d6aef9b2",
+      "parentId": "0a92b9dd",
+      "timestamp": "2026-10-26T19:08:15.208Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793042323184,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "6315065a",
+      "parentId": "d6aef9b2",
+      "timestamp": "2026-10-26T19:18:43.184Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793042527916,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "fc2b4fba",
+      "parentId": "6315065a",
+      "timestamp": "2026-10-26T19:22:07.916Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793043871677,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "46b2b50c",
+      "parentId": "fc2b4fba",
+      "timestamp": "2026-10-26T19:44:31.677Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793088646843,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "84f54964",
+      "parentId": "46b2b50c",
+      "timestamp": "2026-10-27T08:10:46.843Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793090968495,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "71b99095",
+      "parentId": "84f54964",
+      "timestamp": "2026-10-27T08:49:28.495Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793096445355,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "9fb3cb3e",
+      "parentId": "71b99095",
+      "timestamp": "2026-10-27T10:20:45.355Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": {
+        "timestamp": 1793097192005,
+        "provider": "zai",
+        "modelId": "glm-5.3"
+      },
+      "id": "af1f4022",
+      "parentId": "9fb3cb3e",
+      "timestamp": "2026-10-27T10:33:12.005Z"
+    },
+    {
+      "type": "custom",
+      "customType": "openclaw.cache-ttl",
+      "data": "[Truncated]",
+      "id": "77634c17",
+      "parentId": "af1f4022",
+      "timestamp": "2026-10-27T10:41:40.238Z"
+    },
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]",
+    "[Truncated]"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "traceSchema": "openclaw-trajectory",
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-09T08:08:40.876Z",
+  "traceId": "94bc1837-2788-4074-9164-b081d972ef8d",
+  "sessionId": "94bc1837-2788-4074-9164-b081d972ef8d",
+  "sessionKey": "agent:main:webchat:ski_gate_chrono",
+  "workspaceDir": "$WORKSPACE_DIR",
+  "leafId": "e3e5b417-d5df-407b-96f5-8489a7f0bf25",
+  "eventCount": 4287,
+  "runtimeEventCount": 1202,
+  "transcriptEventCount": 3085,
+  "sourceFiles": {
+    "session": "agent:…rono"
+  },
+  "supplementalFiles": [
+    "metadata.json",
+    "artifacts.json",
+    "prompts.json"
+  ],
+  "contents": [
+    {
+      "path": "metadata.json",
+      "mediaType": "application/json",
+      "bytes": 12510
+    },
+    {
+      "path": "artifacts.json",
+      "mediaType": "application/json",
+      "bytes": 1293
+    },
+    {
+      "path": "prompts.json",
+      "mediaType": "application/json",
+      "bytes": 7527
+    },
+    {
+      "path": "events.jsonl",
+      "mediaType": "application/x-ndjson",
+      "bytes": 11841078
+    },
+    {
+      "path": "session-branch.json",
+      "mediaType": "application/json",
+      "bytes": 10214
+    }
+  ]
+}
