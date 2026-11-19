@@ -61,7 +61,7 @@
 #include "store_layout.h"
 #include "ble_lifecycle.h"
 
-#define REQ_MAX         300     /* 0.25.12: 300 for the F hub-flash service (2+256 hex + CRLF); BLE writes stay capped by MTU anyway */
+#define REQ_MAX         80      /* back to ArduinoFW cap (0.25.13): the 300 bump correlated with dead console RX on 0.25.12; F service uses 32B chunks instead */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
 /* 20 ms (JP 2026-09-29: 25 ms proven clean, push one notch = 12 KB/s).
  * The app's idle watchdog (1.47+) makes flowing streams timeout-proof;
@@ -760,7 +760,7 @@ static void dir_work_handler(struct k_work *w)
 
 /* 0.25.12 F: hub-flash upload state + ASCII-hex decode */
 static uint32_t fw_pos;
-static uint8_t  fw_chunk[128];
+static uint8_t  fw_chunk[32];
 
 static int fw_hexval(char c)
 {
@@ -774,7 +774,7 @@ static void cmd_work_handler(struct k_work *w)
 {
 	/* Copy out FIRST, then free the slot: a write arriving while we
 	 * parse may not mutate the buffer under our feet. */
-	char req[REQ_MAX];
+	static char req[REQ_MAX];   /* 0.25.13: static - serialized by the req_pending single slot */
 
 	strcpy(req, req_buf);
 	req_pending = false;
@@ -1041,7 +1041,7 @@ static void cmd_work_handler(struct k_work *w)
 			const char *h = &req[2];
 			int n = 0;
 
-			while (h[2 * n] && h[2 * n + 1] && n < 128) {
+			while (h[2 * n] && h[2 * n + 1] && n < 32) {
 				int hi = fw_hexval(h[2 * n]);
 				int lo = fw_hexval(h[2 * n + 1]);
 
