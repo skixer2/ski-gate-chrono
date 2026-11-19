@@ -91,6 +91,20 @@ class NordicBleDownloader(private val context: Context) {
         log("cancel requested")
     }
 
+    /** 1.78 (JP 2026-11-19): cancel() sets a STICKY flag. Only
+     * downloadRuns() ever cleared it, so after any app pause every
+     * directory read died instantly (packets=0) and autosync could never
+     * compute "missing" -> downloadRuns() -> clear the flag. Permanent
+     * deadlock until a full app restart: exactly the "sync misfire" JP
+     * reported. Every public entry point now starts from a clean slate;
+     * a cancel that arrives DURING a cycle still aborts that cycle. */
+    private fun clearCancel() {
+        if (cancelled) {
+            cancelled = false
+            log("cancel flag cleared (new session)")
+        }
+    }
+
     private inner class SgcBleManager(context: Context) : BleManager(context) {
         var stateChar: BluetoothGattCharacteristic? = null
         var batteryChar: BluetoothGattCharacteristic? = null
@@ -499,7 +513,7 @@ class NordicBleDownloader(private val context: Context) {
     }
 
     fun downloadRuns(address: String, runIds: List<Int>): BatchResult {
-        cancelled = false
+        clearCancel()
         synchronized(logs) { logs.clear() }
         val done = mutableListOf<DownloadedRun>()
         val failed = mutableListOf<FailedRun>()
@@ -533,6 +547,7 @@ class NordicBleDownloader(private val context: Context) {
      * inherited a frozen timestamp and got filed under the wrong day.
      * @return the epoch the device reports (0 = not synced). */
     fun syncTimeEpoch(address: String): Long {
+        clearCancel()
         val manager = newConnectedManager(address)
         return try {
             manager.syncEpoch()
@@ -547,6 +562,7 @@ class NordicBleDownloader(private val context: Context) {
     /** 1.77: recording device's own name (ABC1), so saved runs carry the
      * unit's real identity next to its MAC. "" when unreadable. */
     fun readDeviceName(address: String): String {
+        clearCancel()
         val manager = newConnectedManager(address)
         return try {
             manager.readName()
@@ -559,6 +575,7 @@ class NordicBleDownloader(private val context: Context) {
     }
 
     fun readRunListJson(address: String): String {
+        clearCancel()
         val manager = newConnectedManager(address)
         return try {
             val entries = pullDirectory(manager)
@@ -579,6 +596,7 @@ class NordicBleDownloader(private val context: Context) {
      * "E 3"/timeout/transport = failure (entry stays).
      */
     fun deleteRuns(address: String, runIds: List<Int>): DeleteResult {
+        clearCancel()
         val done = mutableListOf<Int>()
         val failed = mutableListOf<FailedRun>()
         val manager = newConnectedManager(address)
