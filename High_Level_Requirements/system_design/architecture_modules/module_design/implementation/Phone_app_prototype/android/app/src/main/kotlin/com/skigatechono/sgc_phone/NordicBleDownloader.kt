@@ -201,9 +201,9 @@ class NordicBleDownloader(private val context: Context) {
             return try {
                 writeCharacteristic(c, payload,
                     BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
-                val rb = readCharacteristic(c).await()
-                if (rb == null || rb.size < 4) {
-                    log("time sync: readback short")
+                val rb = readWithCallback(c) ?: return 0L
+                if (rb.size < 4) {
+                    log("time sync: readback short (${rb.size} B)")
                     0L
                 } else {
                     val back = (rb[0].toLong() and 0xFF) or
@@ -223,7 +223,7 @@ class NordicBleDownloader(private val context: Context) {
         fun readName(): String {
             val c = nameChar ?: return ""
             return try {
-                val rb = readCharacteristic(c).await()
+                val rb = readWithCallback(c)
                 val nm = if (rb == null) "" else
                     String(rb, Charsets.UTF_8).trim('\u0000', ' ', '\n', '\r')
                 log("device name: '$nm'")
@@ -232,6 +232,20 @@ class NordicBleDownloader(private val context: Context) {
                 log("device name read failed: ${e.message}")
                 ""
             }
+        }
+
+        /** Blocking single characteristic read: the Nordic library delivers
+         * the value to the notification callback, not the await result. */
+        private fun readWithCallback(c: BluetoothGattCharacteristic): ByteArray? {
+            val latch = CountDownLatch(1)
+            var value: ByteArray? = null
+            setNotificationCallback(c).with { _, data ->
+                value = data.value?.clone()
+                latch.countDown()
+            }
+            readCharacteristic(c).await()
+            latch.await(3, TimeUnit.SECONDS)
+            return value
         }
 
         fun sendRequest(line: String) {
