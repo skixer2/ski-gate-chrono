@@ -443,12 +443,37 @@ void ble_config_start(void)
 			}
 		}
 
-		/* 4.35 V SWITCH -- PENDING JP GO, DO NOT ENABLE YET.
- * JP 2026-11-08: the bench still has the 4.2 V ICP622540PMT connected;
- * enabling this write now would OVERCHARGE that pack.
- * Enable ONLY when the pack is physically swapped to ICP632136HPST.
- * The exact code block is preserved in git commit 8fd1979 (re-insert at
- * this spot). Reg 0x05, value 0x8B = 4.35 V. ONE-WAY door after enable. */
+		/* 0.25.13 (JP 2026-11-19): 4.35 V SWITCH ENABLED - Renata
+		 * ICP632136HPST physically connected to Unit B.
+		 *
+		 * Datasheet BQ25120A 9.6.6, Table 17 (verbatim): reg 0x05 reset
+		 * state 0111 1000 (= 0x78 = 4.20 V); bits B7..B1 are a 7-bit
+		 * code in 10 mV steps; VBATREG = 3.6 V + CODE x 10 mV.
+		 *
+		 *   4.35 V -> CODE 75 (0x4B) -> reg 0x96
+		 *       = B7(640) + B4(80) + B2(20) + B1(10) = 750 mV
+		 *   4.20 V -> CODE 60 (0x3C) -> reg 0x78  (reset default)
+		 *
+		 * CORRECTION: the recipe preserved in git 8fd1979 used 0x8B,
+		 * which decodes to bits 7,3,1 = 690 mV = 4.29 V (and sets the
+		 * reserved B0). It would have left the HPST ~60 mV undercharged
+		 * (safe, but not the specified CV). 0x96 is the correct value.
+		 *
+		 * ONE-WAY DOOR: after this write the charger terminates at
+		 * 4.35 V. A 4.2 V pack (ICP622540PMT) must NEVER be connected to
+		 * firmware carrying this build - it would be overcharged. */
+		uint8_t vb;
+
+		if (bq_read(BQ_BATT_VOLT, &vb) == 0 && vb != 0x96) {
+			if (bq_write(BQ_BATT_VOLT, 0x96) == 0 &&
+			    bq_read(BQ_BATT_VOLT, &vb) == 0) {
+				printk("batt: VBATREG %u mV (HPST 4.35 V lock, was 0x%02x)\n",
+				       3600 + ((vb >> 1) * 10), vb);
+			} else {
+				printk("batt: VBATREG write FAILED - pack undercharges at 4.2 V\n");
+			}
+		}
+
 		k_work_init_delayable(&batt_work, batt_work_handler);
 		k_work_schedule(&batt_work, K_SECONDS(2));
 	}
