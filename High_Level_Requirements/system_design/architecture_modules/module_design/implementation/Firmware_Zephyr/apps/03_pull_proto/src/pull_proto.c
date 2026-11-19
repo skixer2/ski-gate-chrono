@@ -52,13 +52,16 @@
 #include "sensor_synth.h"           /* bench 'S' synthetic runs */
 #include "app_version.h"
 #include "pull_proto.h"
+#include "bhy2/bhy2_zephyr.h"   /* 0.25.12 F: bhy2_zephyr_dev() */
+#include "bhy2/bhy2.h"          /* 0.25.12 F: erase/upload/boot  */
+#include <zephyr/sys/reboot.h>  /* 0.25.12 F: reboot after boot_from_flash */
 #include "store.h"
 #include "ble_config.h"
 #include "recorder.h"
 #include "store_layout.h"
 #include "ble_lifecycle.h"
 
-#define REQ_MAX         80      /* same cap as ArduinoFW g_req[80]   */
+#define REQ_MAX         300     /* 0.25.12: 300 for the F hub-flash service (2+256 hex + CRLF); BLE writes stay capped by MTU anyway */
 #define STREAM_PAYLOAD  240     /* PULL_STREAM_PAYLOAD in config.h   */
 /* 20 ms (JP 2026-09-29: 25 ms proven clean, push one notch = 12 KB/s).
  * The app's idle watchdog (1.47+) makes flowing streams timeout-proof;
@@ -755,6 +758,18 @@ static void dir_work_handler(struct k_work *w)
 	k_work_reschedule(&dir_work, K_MSEC(DIR_LINE_GAP_MS));
 }
 
+/* 0.25.12 F: hub-flash upload state + ASCII-hex decode */
+static uint32_t fw_pos;
+static uint8_t  fw_chunk[128];
+
+static int fw_hexval(char c)
+{
+	if (c >= '0' && c <= '9') { return c - '0'; }
+	if (c >= 'a' && c <= 'f') { return c - 'a' + 10; }
+	if (c >= 'A' && c <= 'F') { return c - 'A' + 10; }
+	return -1;
+}
+
 static void cmd_work_handler(struct k_work *w)
 {
 	/* Copy out FIRST, then free the slot: a write arriving while we
@@ -1003,6 +1018,58 @@ static void cmd_work_handler(struct k_work *w)
 #else
 		console_emit("E 5");                /* not a bench build */
 #endif
+	} else if (cmd == 'F') {
+		/* 0.25.12: BHI260 hub-flash service (bench). JP 2026-11-19:
+		 * unit A latched err 0x21 + zero fusion virt sensors; the cure is
+		 * a hub flash erase (wipes corrupted meta pages) + fresh upload of
+		 * the same image B runs (kern 5978 / user 75 / BSX 04005201).
+		 * ASCII hex over serial, one line per chunk (REQ_MAX=300):
+		 *   Fe              erase hub flash 0..0xFFFFF      -> FE <rslt>
+		 *   Fx<hexdata>     one chunk (<=128 B)             -> FX <rslt> <pos>
+		 *   Fb              boot_from_flash + warm reboot   -> FB <rslt>
+		 * Guard: send only from SLEEP idle (no stream active). */
+		struct bhy2_dev *bdev = bhy2_zephyr_dev();
+
+		if (bdev == NULL || pull_proto_busy()) {
+			console_emit("E 5");
+		} else if (req[1] == 'e') {
+			int8_t r = bhy2_erase_flash(0, BHY2_FLASH_SIZE_1MB, bdev);
+
+			fw_pos = 0;
+			printk("FE %d\n", r);
+		} else if (req[1] == 'x') {
+			const char *h = &req[2];
+			int n = 0;
+
+			while (h[2 * n] && h[2 * n + 1] && n < 128) {
+				int hi = fw_hexval(h[2 * n]);
+				int lo = fw_hexval(h[2 * n + 1]);
+
+				if (hi < 0 || lo < 0) {
+					console_emit("E 3");
+					return;
+				}
+				fw_chunk[n++] = (uint8_t)((hi << 4) | lo);
+			}
+			if (n == 0) {
+				console_emit("E 3");
+				return;
+			}
+			int8_t r = bhy2_upload_firmware_to_flash_partly(fw_chunk, fw_pos, n, bdev);
+
+			if (r == BHY2_OK) {
+				fw_pos += n;
+			}
+			printk("FX %d %u\n", r, fw_pos);
+		} else if (req[1] == 'b') {
+			int8_t r = bhy2_boot_from_flash(bdev);
+
+			printk("FB %d\n", r);
+			k_msleep(500);
+			sys_reboot(SYS_REBOOT_COLD);
+		} else {
+			console_emit("E 3");
+		}
 	} else {
 		console_emit("E 4");                    /* unknown command */
 	}
