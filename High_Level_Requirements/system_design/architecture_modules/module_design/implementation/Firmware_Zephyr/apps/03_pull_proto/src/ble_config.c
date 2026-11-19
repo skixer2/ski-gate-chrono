@@ -362,19 +362,25 @@ void ble_config_batt_debug(void)
 	 * mon_* moving = conversions live (bands are just coarse);
 	 * mon_* frozen forever, especially while charging, = latched. */
 	uint8_t faults = 0, mon_pre = 0, mon_post = 0;
-	uint8_t fastchg = 0, st = 0;
+	uint8_t fastchg = 0, st = 0, vbatreg = 0;
 	int fr = bq_read(BQ_FAULTS, &faults);
 	int mpre = bq_read(BQ_BATT_MON, &mon_pre);
 	int pct = bq_battery_pct();
 	int mpost = bq_read(BQ_BATT_MON, &mon_post);
 	bq_read(BQ_FAST_CHG, &fastchg);   /* 0.23.5: bit1=1 charging paused */
 	bq_read(BQ_STATUS, &st);
+	/* 0.25.13: report the VBATREG register + decoded CV so the 4.35 V
+	 * chemistry lock can be VERIFIED over serial instead of inferred
+	 * from a boot line that only prints on the write (JP 2026-11-19). */
+	int vr = bq_read(BQ_BATT_VOLT, &vbatreg);
 
 	printk("batt_dbg: fr=%d faults=0x%02x mon_pre=0x%02x(%d) "
 	       "pct=%d mon_post=0x%02x(%d) fastchg=0x%02x st=0x%02x "
+	       "vbatreg=0x%02x(%d mV) vbat_rc=%d "
 	       "cache=0x%02x byte=0x%02x\n",
 	       fr, faults, mon_pre, mpre, pct, mon_post, mpost,
-	       fastchg, st, batt_cache, ble_config_battery_byte());
+	       fastchg, st, vbatreg, 3600 + ((vbatreg >> 1) * 10), vr,
+	       batt_cache, ble_config_battery_byte());
 }
 
 uint8_t ble_config_flash_used_pct(void)
