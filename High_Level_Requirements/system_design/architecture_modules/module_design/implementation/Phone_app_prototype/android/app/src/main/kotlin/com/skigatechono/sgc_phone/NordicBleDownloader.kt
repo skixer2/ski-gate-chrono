@@ -44,6 +44,8 @@ class NordicBleDownloader(private val context: Context) {
         private val CHAR_RUN_INFO: UUID = UUID.fromString("5347ABC8-0000-1000-8000-00805F9B34FB")
         private val CHAR_CONSOLE: UUID = UUID.fromString("5347ABCA-0000-1000-8000-00805F9B34FB")
         private val CHAR_CAL: UUID = UUID.fromString("5347ABD0-0000-1000-8000-00805F9B34FB")
+        private val CHAR_TIME: UUID = UUID.fromString("5347ABC0-0000-1000-8000-00805F9B34FB")
+        private val CHAR_NAME: UUID = UUID.fromString("5347ABC1-0000-1000-8000-00805F9B34FB")
 
         /* Stream watchdogs (JP 2026-09-29):
          * IDLE: 2 s without a frame = dead link (1 s is already an
@@ -457,6 +459,65 @@ class NordicBleDownloader(private val context: Context) {
 
         log("V2 batch end: ok=${done.size} failed=${failed.size}")
         return BatchResult(done, failed, synchronized(logs) { logs.toList() })
+    }
+
+    /** 1.77 (JP 2026-11-19): autosync never sent the ABC0 epoch write, so
+     * only a MANUAL connect from the Runs screen ever set the device clock;
+     * runs recorded in between inherited a frozen timestamp and the app
+     * filed them under the wrong day. Called on every autosync cycle before
+     * listing/downloading.
+     * @return the epoch the device reports after the write (0 = not synced). */
+    fun syncTimeEpoch(address: String): Long {
+        val manager = newConnectedManager(address)
+        return try {
+            val now = System.currentTimeMillis() / 1000L
+            val payload = byteArrayOf(
+                (now and 0xFF).toByte(),
+                ((now shr 8) and 0xFF).toByte(),
+                ((now shr 16) and 0xFF).toByte(),
+                ((now shr 24) and 0xFF).toByte(),
+            )
+            val c = manager.getCharacteristic(CHAR_TIME)
+                ?: throw Exception("ABC0 time characteristic unavailable")
+            manager.writeCharacteristic(c, payload,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).await()
+            val rb = manager.readCharacteristic(c).await() ?: ByteArray(0)
+            if (rb.size < 4) {
+                log("time sync: readback short (${rb.size} B)")
+                0L
+            } else {
+                val back = le32(rb, 0)
+                log("time sync: wrote $now, device reports $back")
+                back
+            }
+        } catch (e: Exception) {
+            log("time sync failed: ${e.message}")
+            0L
+        } finally {
+            shutdownManager(manager)
+        }
+    }
+
+    /** 1.77 (JP 2026-11-19): the autosync save path hardcoded the device
+     * name to "SGC", so every run stored from a background download lost
+     * the unit's real identity. Reads ABC1 so the saved record carries the
+     * recording device's name next to its MAC.
+     * @return the device name, or "" when unreadable. */
+    fun readDeviceName(address: String): String {
+        val manager = newConnectedManager(address)
+        return try {
+            val c = manager.getCharacteristic(CHAR_NAME)
+                ?: throw Exception("ABC1 name characteristic unavailable")
+            val rb = manager.readCharacteristic(c).await() ?: ByteArray(0)
+            val name = String(rb, Charsets.UTF_8).trim('\u0000', ' ', '\n', '\r')
+            log("device name: '$name'")
+            name
+        } catch (e: Exception) {
+            log("device name read failed: ${e.message}")
+            ""
+        } finally {
+            shutdownManager(manager)
+        }
     }
 
     fun readRunListJson(address: String): String {
