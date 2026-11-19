@@ -38,6 +38,7 @@ class AutoSyncWorker with WidgetsBindingObserver {
   DateTime? _quietUntil;
   DateTime? _lastScan;
   String? _lastSyncedMac;
+  final Map<String, DateTime> _lastServed = {};
   List<String> _pairedMacs = const [];
 
   final ValueNotifier<String> status = ValueNotifier('');
@@ -120,13 +121,20 @@ class AutoSyncWorker with WidgetsBindingObserver {
       await sub.cancel();
       try { await FlutterBluePlus.stopScan(); } catch (_) {}
       if (matched.isNotEmpty) {
-        final keys = matched.keys.toList();
-        if (matched.length >= 2 && keys.first == _lastSyncedMac) {
-          dev = matched[keys[1]];
-        } else {
-          dev = matched[keys.first];
+        // Starvation fix (DS consult 2026-11-19): serve the matched paired
+        // arm with the oldest last-served time - no same-scan requirement,
+        // so single-visible-arm scans can no longer starve the other arm.
+        DateTime? oldest;
+        for (final k in matched.keys) {
+          final t = _lastServed[k];
+          if (oldest == null || t == null || t.isBefore(oldest)) {
+            oldest = t;
+            dev = matched[k];
+          }
         }
-        _lastSyncedMac = dev!.remoteId.str;
+        final mac = dev!.remoteId.str;
+        _lastServed[mac] = DateTime.now();
+        _lastSyncedMac = mac;
       }
     }
     return dev;

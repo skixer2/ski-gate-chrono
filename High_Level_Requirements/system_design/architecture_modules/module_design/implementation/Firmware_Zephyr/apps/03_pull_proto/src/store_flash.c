@@ -374,6 +374,7 @@ static bool load_index(void)
 	if (hdr.write_cursor < LOG_START || hdr.write_cursor > LOG_END ||
 	    hdr.erased_hi < LOG_START || hdr.erased_hi > LOG_END ||
 	    hdr.erased_lo < LOG_START || hdr.erased_lo > LOG_END ||
+	    hdr.erased_lo > hdr.erased_hi ||
 	    hdr.erased_hi < hdr.write_cursor) {
 		return false;
 	}
@@ -890,6 +891,13 @@ bool store_record_begin(uint8_t arm_side)
 		       "(hi 0x%lx lo 0x%lx)\n",
 		       (unsigned long)erased_hi,
 		       (unsigned long)erased_lo);
+		/* DS consult 2026-11-19 (e): self-heal instead of a
+		 * permanent refusal - schedule the runway recover; the
+		 * next begin succeeds once the REC_TOPUP walk drains.
+		 * sectors==0 (nothing reclaimable) stays IDLE. */
+		if (rec_state == REC_IDLE) {
+			schedule_topup("recover");
+		}
 		return false;
 	}
 
