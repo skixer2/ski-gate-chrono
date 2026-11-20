@@ -173,9 +173,9 @@ def main() -> int:
     c5.truth("F02 row no longer caps the pre-roll at 10 s",
              bool(f02_row) and "10-second (1000-sample)" not in f02_row,
              "old '10-second (1000-sample)' cap wording must be gone from the row")
-    c5.truth("F02 retains the whole armed window",
-             req_mentions(regh, r"entire armed window"),
-             "the arm-to-drop span is the pre-start history")
+    c5.truth("F02 does not cap the retained window at 10 s",
+             req_mentions(regh, r"minimum, not a cap"),
+             "10 s is a floor, not a ceiling")
     # Code side: the drain must NOT truncate to PREROLL_KEEP. The Zephyr
     # recorder pops from slot 0 until the ring empties (ring_pop_oldest has
     # no trim path), so a 25 s arm yields 25 s of pre-start history.

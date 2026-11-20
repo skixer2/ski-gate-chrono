@@ -279,12 +279,24 @@ static volatile bool prod_running;   /* set once drain thread started */
 
 void sensor_prod_suspend(void)
 {
+	struct bhy2_dev *dev;
+
 	if (!prod_running) {
 		return;   /* hub never came up — nothing to park */
 	}
 	k_thread_suspend(sensor_prod_tid);
 
-	struct bhy2_dev *dev = bhy2_zephyr_dev();
+	/* 0.25.19 (2026-11-20): INVALIDATE the snapshot on park. Without this
+	 * the last frame of the previous run stays valid through SLEEP, and the
+	 * FIRST sensor_prod_get_frame() after the next arm returns it — a stale
+	 * pressure from minutes ago. That stale frame is what P0 locked on
+	 * (measured 4/4 on unit B: P0 == the frozen previous baro_pa exactly).
+	 * A stale P0 shifts the whole 2 m drop budget (10.4 Pa/m): too high and
+	 * the drop never fires, too low and the settle-down fires it instantly.
+	 * Both symptoms were seen on the bench. */
+	snap_quat_valid = false;
+
+	dev = bhy2_zephyr_dev();
 
 	if (dev == NULL) {
 		return;

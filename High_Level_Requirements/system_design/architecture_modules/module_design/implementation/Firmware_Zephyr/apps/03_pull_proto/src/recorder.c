@@ -175,10 +175,21 @@ static bool flatline_end_feed(uint32_t pa)
 	return (newest - oldest) <= END_NOISE_PA;
 }
 static uint8_t  sd_calls;         /* 1 Hz progress divider */
+/* P0 settling (0.25.19): average the first N detector calls so a single
+ * transient cannot define the reference pressure.
+ * The detector is called at 10 Hz, so N=8 is 0.8 s — it must stay well
+ * inside the arm-to-drop time (the athlete arms overhead, then moves to
+ * the start), so 8 is a deliberate compromise, NOT a tuned value: it has
+ * not been validated in the field. Raise it only with bench evidence. */
+#define SD_P0_SETTLE_SAMPLES 8u
+static uint32_t sd_p0_acc;        /* P0 accumulator */
+static uint8_t  sd_p0_n;          /* samples accumulated */
 
 static void sd_reset(void)
 {
 	sd_p0_pa = 0;
+	sd_p0_acc = 0;
+	sd_p0_n = 0;
 	rc_last_baro_pa = 0;
 	sd_calls = 0;
 }
@@ -186,11 +197,27 @@ static void sd_reset(void)
 /* Returns true when cumulative descent since P0 lock >= 2.0 m. */
 static bool sd_feed(uint32_t pa)
 {
+	/* 0.25.19 (2026-11-20): do NOT lock P0 on the first frame.
+	 * Measured on unit B: P0 locked 2-7 ms after b1_wake, but the baro
+	 * produces a sample every 62.5 ms (16 Hz), so no FRESH sample can
+	 * exist that soon — the lock was taking the frozen pre-SLEEP frame
+	 * (sensor_prod now invalidates the snapshot on park, but this guard
+	 * keeps a future fast-wake path honest). Wait SD_P0_SETTLE_SAMPLES
+	 * samples and lock on the mean, so a single transient cannot move P0.
+	 * Budget context: 10.4 Pa/m at 880 hPa, so a 10 Pa error is ~1 m of
+	 * the 2.0 m trigger. */
 	if (sd_p0_pa == 0) {
 		if (pa > SD_P0_MIN_PA && pa < SD_P0_MAX_PA) {
-			sd_p0_pa = pa;
+			sd_p0_acc += pa;
+			if (++sd_p0_n < SD_P0_SETTLE_SAMPLES) {
+				return false;
+			}
+			sd_p0_pa = sd_p0_acc / sd_p0_n;
+			sd_p0_acc = 0;
+			sd_p0_n = 0;
 			printk("{\"ev\":\"sd\",\"p0\":%u,\"pa\":%u,"
-			       "\"drp_x100\":0,\"lock\":1}\n", pa, pa);
+			       "\"drp_x100\":0,\"lock\":1}\n",
+			       sd_p0_pa, pa);
 		}
 		return false;
 	}
