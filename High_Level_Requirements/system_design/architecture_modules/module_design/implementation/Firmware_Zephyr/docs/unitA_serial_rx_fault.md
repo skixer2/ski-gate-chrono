@@ -32,11 +32,18 @@ Measured pin assignment (UARTE0 PSEL, both units identical):
 | Field | Register | Unit A | Unit B |
 |---|---|---|---|
 | PSEL.RXD | 0x40002514 | 9 (P0.09) | 9 (P0.09) |
-| PSEL.TXD | 0x4000251C | 10 (P0.10) | 10 (P0.10) |
+| PSEL.TXD | 0x4000250C | **not read** | **not read** |
 
-> NOTE: an external recap stated TX = P0.20. The hardware reads **P0.10** on both
-> units. If P0.20 is what the SAMD11 drives, then this is a second open question —
-> testable by generating console output and sampling P0.10 vs P0.20. Unresolved.
+TX pin per schematic spec §4.8: **P0.20** (module pin 10), matching Nicla
+LPIO1 parity. NOT YET VERIFIED IN SILICON — read 0x4000250C while output is flowing.
+
+> CORRECTION (retracted claim): an earlier revision of this document asserted
+> "hardware says PSEL.TXD = 10 (P0.10) on both units" and used it to flag a
+> contradiction with an external recap. That was **my own register-offset error**:
+> I read 0x40002518, which is not PSEL.TXD. On nRF52 UARTE0 the PSEL block is
+> RTS 0x508 / TXD 0x50C / CTS 0x510 / RXD 0x514. The 0x0a I saw at 0x51C is not a
+> TXD reading. The external recap's P0.20 agrees with the schematic spec, so there
+> is **no contradiction** — the mistake was mine.
 
 ## 2. Symptom
 
