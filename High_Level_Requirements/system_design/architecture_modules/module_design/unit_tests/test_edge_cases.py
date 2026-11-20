@@ -34,7 +34,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Enable test mode", None, 150,
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait pre-roll samples", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -45,13 +45,13 @@ SCENARIOS.append(TestScenario(
                 and int(d.get("r") or 0) >= UNIT_RING_READY
             )),
         TestStep("Force LOGGING (drains ring)", 'l', 500,
-            expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
+            expect_json={"ev": "sm", "from": "ARMED", "to": "LOGGING"}),
         TestStep("Force POST_RUN + wait run_saved", 'p', 500,
             on_response=lambda h, _: h.wait_for_json_event(
                 "run_saved", timeout_ms=10000) is not None),
         TestStep("Wait SLEEP", poll_state='SLEEP', timeout_ms=20000),
         TestStep("Re-arm: ring should reset", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait fill again", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -61,7 +61,7 @@ SCENARIOS.append(TestScenario(
                 and int(d.get("r") or 0) >= UNIT_RING_READY
             )),
         TestStep("Return to SLEEP", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+            expect_json={"ev": "sm", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
 
@@ -78,12 +78,12 @@ SCENARIOS.append(TestScenario(
         *[
             step for _ in range(3) for step in [
                 TestStep("Arm", 'a', 500,
-                    expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+                    expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
                 TestStep("Wait pre-roll", None, 100,
                     on_response=lambda h, _: wait_for_ring_count(
                         h, min_r=50, timeout_ms=10000)),
                 TestStep("Force LOGGING", 'l', 500,
-                    expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
+                    expect_json={"ev": "sm", "from": "ARMED", "to": "LOGGING"}),
                 TestStep("Force POST_RUN + wait run_saved", 'p', 500,
                     on_response=lambda h, _: h.wait_for_json_event(
                         "run_saved", timeout_ms=10000) is not None),
@@ -104,13 +104,13 @@ SCENARIOS.append(TestScenario(
         TestStep("Enable test mode", None, 150,
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Force POST_RUN (no LOGGING)", 'p', 500,
             expect_json={"ev": "state_blocked", "reason": "not_logging"}),
         TestStep("Verify still ARMED (transition blocked)", '?', 300,
             expect_json={"st": "ARMED"}),
         TestStep("Return to SLEEP", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+            expect_json={"ev": "sm", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
 
@@ -123,10 +123,10 @@ SCENARIOS.append(TestScenario(
         *[
             step for _ in range(5) for step in [
                 TestStep("→ ARMED", 'a', 600,
-                    expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+                    expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
                 # ARMED->SLEEP bank erase can take >400 ms; match st in a multi-event burst
                 TestStep("→ SLEEP", 'i', 2000,
-                    expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+                    expect_json={"ev": "sm", "from": "ARMED", "to": "SLEEP"}),
             ]
         ],
     ]
@@ -178,11 +178,11 @@ SCENARIOS.append(TestScenario(
             expect_json={"ev": "cmd", "cmd": "Q"}),
         # Test mode skips live quat magnitude gate
         TestStep("Arm accepts synthetic quat", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Restore identity", 'Q 1 0 0 0', 300,
             expect_json={"ev": "cmd", "cmd": "Q"}),
         TestStep("Return SLEEP", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+            expect_json={"ev": "sm", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
 
@@ -214,7 +214,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Sync baseline (ensure clean 101325)", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm", 'a', 600,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait P0 latch", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -227,7 +227,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Still ARMED (noise shouldn't trigger)", '?', 300,
             expect_json={"st": "ARMED"}),
         TestStep("Return to SLEEP", 'i', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+            expect_json={"ev": "sm", "from": "ARMED", "to": "SLEEP"}),
     ]
 ))
 
@@ -240,7 +240,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Enable test mode", None, 150,
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait pre-roll", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
@@ -255,7 +255,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Verify LOGGING", '?', 300,
             expect_json={"st": "LOGGING"}),
         TestStep("Force POST_RUN + cleanup", 'p', 500,
-            expect_json={"ev": "st", "from": "LOGGING", "to": "POST_RUN"}),
+            expect_json={"ev": "sm", "from": "LOGGING", "to": "POST_RUN"}),
         TestStep("Wait SLEEP", poll_state='SLEEP', timeout_ms=20000),
     ]
 ))
@@ -269,12 +269,12 @@ SCENARIOS.append(TestScenario(
         TestStep("Enable test mode", None, 150,
             on_response=lambda h, _: enable_test_mode(h)),
         TestStep("Arm", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Wait pre-roll", None, 100,
             on_response=lambda h, _: wait_for_ring_count(
                 h, min_r=UNIT_RING_READY, timeout_ms=12000)),
         TestStep("Force LOGGING + wait for live frames", 'l', 2000,
-            expect_json={"ev": "st", "from": "ARMED", "to": "LOGGING"}),
+            expect_json={"ev": "sm", "from": "ARMED", "to": "LOGGING"}),
         TestStep("Force POST_RUN + wait run_saved", 'p', 500,
             on_response=lambda h, _: h.wait_for_json_event(
                 "run_saved", timeout_ms=10000) is not None),

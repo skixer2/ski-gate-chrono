@@ -53,7 +53,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set pressure baseline", 'B 101000', 300,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Enter LOGGING via start detector", None, 100,
             on_response=lambda h, _: _arm_and_start_logging(h, 101000.0, 36.0)),
         # Hold flat: end det samples 0.5 Hz × 10 = 5 s window, dp=0 → end
@@ -77,7 +77,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Set pressure baseline", 'B 101000', 300,
             expect_json={"ev": "cmd", "cmd": "B"}),
         TestStep("Arm device", 'a', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Enter LOGGING via start detector", None, 100,
             on_response=lambda h, _: _arm_and_start_logging(h, 101000.0, 36.0)),
         # Keep P falling for >5 s window so oldest > current (ascent).

@@ -137,19 +137,28 @@ SCENARIOS = []
 # ── S07: producing while ARMED ───────────────────────────────────
 SCENARIOS.append(TestScenario(
     name="S07 - sensor liveness while ARMED",
-    setup_commands=['i'],
-    teardown_commands=['i'],
+    # NOTE on the Zephyr console (verified against src/pull_proto.c):
+    # there is no 'i' command - 'i' answers E 4. SLEEP is entered by arm
+    # timeout, by POST_RUN completion, or at boot. The cycle is a/g/e.
+    setup_commands=[],
+    teardown_commands=[],
     steps=[
-        TestStep("Wake to a known state", 'i', 500,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "SLEEP"}),
         TestStep("Arm the device", 'a', 600,
-            expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
+            expect_json={"ev": "sm", "from": "SLEEP", "to": "ARMED"}),
         TestStep("Prove the producer is ALIVE (counters advancing)",
             None, 100,
             on_response=lambda h, _: check_liveness(h)),
-        TestStep("Verify still ARMED after the window", '?', 400,
-            expect_json={"ev": "status", "st": "ARMED"}),
-        TestStep("Leave via SLEEP", 's', 400,
-            expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
+        # There is no '?'/{"ev":"status"} on the Zephyr build; the state
+        # readout is the {"rec":"<STATE>"} line that 'D' emits on serial.
+        # Asserting on it keeps the "still ARMED" guarantee real rather than
+        # dropping it.
+        TestStep("Verify still ARMED after the window", 'D', 500,
+            on_response=lambda h, _: h.query_state() == "ARMED"),
+        # a/g/e is the bench cycle. 'g' emits only {"rec":"LOGGING"} (there is
+        # no sm event for ARMED->LOGGING - see test_protocol_conformance WARN).
+        TestStep("Start the run", 'g', 600,
+            expect_json={"rec": "LOGGING"}),
+        TestStep("End the run -> POST_RUN -> SLEEP", 'e', 800,
+            expect_json={"ev": "sm", "from": "POST_RUN", "to": "SLEEP"}),
     ]
 ))

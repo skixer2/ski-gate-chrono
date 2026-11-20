@@ -284,36 +284,52 @@ class SGCTestHarness:
         time.sleep(0.05)
 
     def query_state(self) -> str:
-        """Send ? and return just the state name."""
+        """Return the device state name.
+
+        The Zephyr product firmware has NO '?' command (it answers "E 4"
+        unknown); its own README says so. The only state readout on the
+        serial console is the {"rec":"SLEEP"} line that 'D' appends just
+        before {"d_end":N} (pull_proto.c, serial-only extras).
+
+        'D' is used because it is non-destructive and works in every state.
+        It costs a directory listing, so callers that need a tight poll
+        should prefer EXPLICIT state events ({"ev":"sm","to":...}) over this.
+        """
         self._flush()
-        self.send('?')
+        self.send('D')
         time.sleep(0.15)
-        resp = self._read_all(1000)
-        # Try JSON first
-        for line in resp.split('\n'):
-            if line.strip().startswith('{'):
-                try:
-                    obj = json.loads(line.strip())
-                    if obj.get('st'):
-                        return obj['st']
-                except:
-                    pass
-        # Fallback: legacy string parsing
-        for part in resp.split():
-            if part.startswith('STATE:'):
-                return part.split(':')[1]
+        objs = self._read_json_lines(2500)
+        for obj in objs:
+            rec = obj.get('rec')
+            if rec:
+                return rec
+            # Tolerate a future build that restores a status line.
+            if obj.get('st'):
+                return obj['st']
         return "UNKNOWN"
 
     def query_status_json(self) -> Optional[Dict[str, Any]]:
-        """Send ? and return the parsed JSON status object."""
+        """Return a status dict built from what the device actually sends.
+
+        There is no '?'/{"ev":"status"} on the Zephyr build. The genuine
+        surfaces are the 'D' directory terminator pair:
+            {"rec":"<STATE>"}   and   {"free":<n>}
+        so that is what this returns, normalised under the historical keys
+        ("st") to keep existing call sites readable.
+        """
         self._flush()
-        self.send('?')
+        self.send('D')
         time.sleep(0.3)
-        objs = self._read_json_lines(2000)
+        objs = self._read_json_lines(2500)
+        out: Dict[str, Any] = {}
         for obj in objs:
-            if obj.get('ev') == 'status':
-                return obj
-        return None
+            if obj.get('rec') and 'st' not in out:
+                out['st'] = obj['rec']
+            if 'free' in obj and 'free' not in out:
+                out['free'] = obj['free']
+        if 'st' not in out:
+            return None
+        return out
 
     # ── State polling ──────────────────────────────────────────
 
