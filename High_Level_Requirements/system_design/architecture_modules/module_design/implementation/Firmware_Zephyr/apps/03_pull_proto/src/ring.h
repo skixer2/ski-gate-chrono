@@ -14,6 +14,7 @@
 #define SGC_RING_H
 
 #include <stdint.h>
+#include <zephyr/sys/__assert.h>
 #include <stdbool.h>
 #include "bitpacker.h"
 
@@ -39,5 +40,13 @@ uint32_t ring_count(void);
 /* Erase both banks (~20 × 45–100 ms sectors). Called on SLEEP entry,
  * after the state machine's timer stopped. */
 void ring_erase_banks(void);
+
+
+/* The ARM fill cap must fit inside the linear reserve: a larger cap would
+ * silently drop frames (ring_push -> false -> st_skipped) for the remainder
+ * of the window. Ties R02's 30 s to the physical region size. */
+#define SGC_ARM_CAP_SLOTS 3000
+BUILD_ASSERT(SGC_ARM_CAP_SLOTS <= RING_SLOTS,
+	     "ARM_CAP_FITS_RING: ARM fill cap exceeds the linear pre-roll reserve");
 
 #endif /* SGC_RING_H */

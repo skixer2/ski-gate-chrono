@@ -113,6 +113,16 @@ static void rc_stats_print(const char *ev)
  * tick) with the LATEST snapshot pressure in Pa. Integer-only x100
  * fixed point (Zephyr printk has no %f): drop_x100 = dpa*101325/(12*p0).
  * Diagnostic lines: lock, 1 Hz progress, trigger — values, not counters. */
+/* ARM window (JP 2026-11-20: 30 s, authoritative in R02).
+ * Design rationale (JP): RAM would allow a 10 s CIRCULAR buffer, but a fast
+ * circular buffer is impossible on flash -- so the flash design RESERVES the
+ * whole 30 s linearly and never wraps. That reserve is what buys the time to
+ * detect a SLOW 2 m drop. Consequence, accepted: past 30 s nothing more is
+ * captured, and the unit returns to SLEEP (R02 arm timeout).
+ * 3000 slots @ 100 Hz = 30 s. Must stay <= RING_SLOTS (4096) -- see the
+ * compile-time assert in ring.h. */
+#define SD_ARM_CAP_S       30
+#define SD_ARM_CAP_TICKS   (100 * SD_ARM_CAP_S)   /* 3000 */
 #define SD_DROP_X100      200      /* 2.00 m */
 #define SD_P0_MIN_PA      50000u   /* auto-init validity window */
 #define SD_P0_MAX_PA      110000u
@@ -303,9 +313,7 @@ static void rc_work_handler(struct k_work *w)
 				printk("{\"rec\":\"ERR\",\"why\":\"store\"}\n");
 			}
 		}
-		if (ticks >= 100 * 120) {   /* 120 s arm window (JP). NOT the 20 s
-					 * pre-trigger ring depth -- the ring wraps safely
-					 * and keeps the last 20 s before the drop. */
+		if (ticks >= SD_ARM_CAP_TICKS) {
 			printk("{\"rec\":\"SLEEP\",\"ev\":\"arm_timeout\"}\n");
 			printk("{\"ev\":\"sm\",\"from\":\"ARMED\","
 				       "\"to\":\"SLEEP\",\"why\":\"arm_timeout\"}\n");
