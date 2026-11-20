@@ -25,8 +25,14 @@ $ErrorActionPreference = "Stop"
 #       producer is actually producing (rv/lacc/baro alive). Catches
 #       "armed, orange LED, no acquisition" in ~8 s instead of after a lost
 #       field test.
+#
+# 2026-11-20 (later): test_protocol_conformance.py - host-only. Mechanises the
+# documents->tests link: fails when a test asserts an event the firmware cannot
+# emit, or sends a console command character with no handler. It was written
+# after discovering the whole suite targeted the Arduino firmware.
 $hostOnlyTests = @(
-  "test_spec_constants.py"
+  "test_spec_constants.py",
+  "test_protocol_conformance.py"
 )
 
 $smokeTests = @(
@@ -64,7 +70,18 @@ foreach ($t in $hostOnlyTests) {
   }
 }
 
+# A missing unit must not look like a test failure: the daily smoke should still
+# report the host-only gates when the bench is empty.
+$hasDevice = [bool]([System.IO.Ports.SerialPort]::GetPortNames() -contains $Port)
+if (-not $hasDevice) {
+  Write-Host ""
+  Write-Warning "No device on $Port - skipping $($smokeTests.Count) device tests."
+  Write-Host "Host-only gates above still ran. Attach the unit and re-run for the device tier."
+}
+$skipped = 0
+
 foreach ($t in $smokeTests) {
+  if (-not $hasDevice) { $skipped++; continue }
   Write-Host "--- $t ---"
   py sgc_test_harness.py --port $Port $t --run-id $runId
   if ($LASTEXITCODE -ne 0) {
@@ -90,6 +107,10 @@ if (-not $SkipPush -and -not $NoPush) {
 if ($failed) {
   Write-Host "=== SMOKE FAILED ($runId) ==="
   exit 1
+}
+if ($skipped -gt 0) {
+  Write-Host "=== SMOKE PARTIAL ($runId) - host gates passed, $skipped device tests SKIPPED (no unit) ==="
+  exit 2
 }
 Write-Host "=== SMOKE PASSED ($runId) ==="
 exit 0

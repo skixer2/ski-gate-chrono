@@ -26,6 +26,50 @@ Phone/BLE/cloud (📱 I01–I03, Dart) are out of scope here.
 **Fast path:** `.\run_smoke.ps1` / `.\run_core.ps1` / `.\run_full.ps1` (in `unit_tests/`) run these
 tiers and auto-push results to the coordinator — see `tmp_test_results/README.md`.
 
+### 2026-11-20 (later) — the suite was testing a DIFFERENT firmware
+
+Before adding tests, a conformance check found that this whole directory and
+`device/json_protocol.md` were written against the **Arduino** firmware
+(`Firmware_implementation/`), not the Zephyr product firmware
+(`Firmware_Zephyr/apps/03_pull_proto`). Proven, not assumed:
+
+| Surface | Arduino firmware | Zephyr (shipped) |
+|---|---|---|
+| state transition | `{"ev":"st"}` (`test_json.h`) | `{"ev":"sm"}` (5 sites) |
+| status query | `case '?'` (`main.cpp:753`) | no `?` branch, answers `E 4` |
+| state readout | `{"ev":"status","st":...}` | `{"rec":"SLEEP"}` (serial `D` extras) |
+| sleep command | `'i'` | no `'i'` |
+
+The requirement document (F12) already said `"sm"`, and the firmware says `sm`,
+so the TESTS were wrong — that direction follows the truth order, not
+convenience.
+
+**`test_protocol_conformance.py` (new, host-only, <1 s, smoke tier).** Parses the
+event names and console command characters the Zephyr source really implements,
+then FAILs on any assertion the firmware cannot satisfy and WARNs on any event no
+test references. Its value is that it makes the documents→tests link mechanical:
+the next time a suite drifts to another firmware generation, this fails on a
+laptop with no hardware attached.
+
+Migrated at the same time: 52 × `st`→`sm`; harness `query_state()` /
+`query_status_json()` now read the real `{"rec":...}` instead of sending `?`
+(they had been silently returning `UNKNOWN`/`None`, so every caller was blind).
+
+**`coverage_ledger.py` (new, host-only).** Parses all 92 requirement rows from
+`sgc_requirements.md` and reports, per requirement, whether it is covered by an
+automated test, verifiable statically, genuinely manual, phone-side (Dart lane),
+or out of scope (v2 / not applicable in v1). Current honest position:
+
+| Bucket | Count |
+|---|---|
+| device requirements with NO automated test | **37** |
+| manual only | 8 |
+| phone (Dart suite) | 30 |
+| v2 / not applicable | 12 |
+| covered (serial + spec) | 5 |
+
+That 37 is the real work list for "cover as many requirements as possible".
+
 ### 2026-11-20 — additions closing two real regressions
 
 Both came from failures that reached the field, not from theory:
