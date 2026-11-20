@@ -156,6 +156,11 @@ static int bq_write(uint8_t reg, uint8_t val)
 static bool bq_on_vin = true;   /* 0.23.2: VIN state from FAULTS, refreshed per read */
 static uint8_t bq_fail_streak;  /* 0.25.1: consecutive dead reads (fail-safe -> battery) */
 
+/* 0.25.16: forward decl -- batt_work_handler() re-asserts the charger
+ * registers on every poll, but the helper is defined further down. */
+static void bq_regs_assert(void);
+static void bq_charger_assert(void);
+
 static int bq_battery_pct(void)
 {
 	uint8_t faults;
@@ -270,6 +275,12 @@ static void batt_work_handler(struct k_work *w)
 		gpio_pin_configure(g0, 25, bq_on_vin ? GPIO_OUTPUT_LOW
 					: GPIO_OUTPUT_HIGH);
 	}
+	/* 0.25.16 (JP): the BQ keeps its registers only while powered; after
+	 * any real power loss it is back at 4.20 V / 10 mA. Re-assert on
+	 * every poll so a reset part is reprogrammed within one interval
+	 * instead of staying wrong until the next reboot. Two I2C reads on
+	 * the happy path; writes only on mismatch. */
+	bq_regs_assert();
 	int pct = bq_battery_pct();
 	if (pct == -4) {
 		/* 0.25.7: on battery the fix is CD HIGH -> Active BAT (1 ms),
@@ -394,6 +405,77 @@ uint8_t ble_config_cal(void)
 }
 
 /* ── Boot ─────────────────────────────────────────────────────────── */
+/* 0.25.16 (JP 2026-11-20): charger registers are VOLATILE. The BQ25120A
+ * returns to its reset defaults on a true power-on reset (no USB and no
+ * battery) -- observed 2026-11-20 as vbatreg back at 0x78 / ICHG at 10 mA.
+ * JP: "this has to be done at every boot, to be sure" and "We must adapt
+ * the parameters at every boot!" -- so both registers are re-asserted at
+ * boot AND on every battery poll, verified by read-back each time. */
+#define BQ_WANT_FASTCHG 0x9Cu  /* ICHRG_RANGE 1 (40-300 mA) + code 7 = 110 mA */
+#define BQ_WANT_VBATREG 0x96u  /* 4.35 V, code 75 -- Renata ICP632136HPST */
+
+/* Program both charger registers. Independent: a failure on one never
+ * suppresses the other, and a failed READ still attempts the WRITE (the
+ * old guards skipped the write whenever the read failed, which is exactly
+ * how a reset part stayed at its defaults). */
+static void bq_regs_assert(void)
+{
+	uint8_t pre, post;
+
+	if (!bqi2c) {
+		return;
+	}
+
+	pre = 0xFF;
+	(void)bq_read(BQ_FAST_CHG, &pre);
+	if (pre != BQ_WANT_FASTCHG) {
+		if (bq_write(BQ_FAST_CHG, BQ_WANT_FASTCHG) == 0 &&
+		    bq_read(BQ_FAST_CHG, &post) == 0) {
+			printk("batt: ICHG %u mA (was 0x%02x)\n",
+			       40 + ((post >> 2) & 0x1F) * 10, pre);
+		} else {
+			printk("batt: ICHG assert FAILED (was 0x%02x)\n", pre);
+		}
+	}
+
+	pre = 0xFF;
+	(void)bq_read(BQ_BATT_VOLT, &pre);
+	if (pre != BQ_WANT_VBATREG) {
+		if (bq_write(BQ_BATT_VOLT, BQ_WANT_VBATREG) == 0 &&
+		    bq_read(BQ_BATT_VOLT, &post) == 0) {
+			printk("batt: VBATREG %u mV (HPST 4.35 V lock, was 0x%02x)\n",
+			       3600 + ((post >> 1) * 10), pre);
+		} else {
+			printk("batt: VBATREG assert FAILED (was 0x%02x)\n", pre);
+		}
+	}
+}
+
+/* CD polarity is VIN-DEPENDENT (Table 1, SLUSD08A): L on USB = charge
+ * enabled; L on battery = Hi-Z = I2C DEAD; H on battery = Active Battery,
+ * I2C alive. VIN is therefore resolved BEFORE CD is committed, otherwise
+ * a battery-only cold boot bricks its own I2C and can never program the
+ * part. CD is parked HIGH (I2C-safe in both power states) to probe. */
+static void bq_charger_assert(void)
+{
+	const struct device *g0 = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+	bool g0_ok = device_is_ready(g0);
+
+	if (!bqi2c) {
+		return;
+	}
+
+	if (g0_ok) {
+		gpio_pin_configure(g0, 25, GPIO_OUTPUT_HIGH);
+	}
+	(void)bq_battery_pct();		/* resolves bq_on_vin */
+	if (g0_ok) {
+		gpio_pin_configure(g0, 25, bq_on_vin ? GPIO_OUTPUT_LOW
+						     : GPIO_OUTPUT_HIGH);
+	}
+	bq_regs_assert();
+}
+
 void ble_config_start(void)
 {
 	k_work_init_delayable(&cfg_flush, cfg_flush_handler);
@@ -413,72 +495,14 @@ void ble_config_start(void)
 	cfg_load();
 
 	if (bqi2c) {
-		/* 0.23.8 — ROOT CAUSE 2 of the battery saga (st=0x03 B1=1:
-		 * CD_STAT 'CD high, IC disabled'): the BQ25120A CD pin
-		 * (host charge-disable; Nicla wire = nRF P0.25 per ABX00050)
-		 * floats high — the charger has been HARDWARE-DISABLED since
-		 * the Zephyr port began, at every current setting. ArduinoFW
-		 * drove it low ('CD pin port pending' comment, v0.21.4, was
-		 * this exact gap). P0.25 unused by our overlay (verified
-		 * 2026-10-29); Zephyr port-pin number = physical P0.xx. */
-		static const struct device *gpio0 =
-			DEVICE_DT_GET(DT_NODELABEL(gpio0));
-
-		if (device_is_ready(gpio0) &&
-		    gpio_pin_configure(gpio0, 25,
-				       GPIO_OUTPUT_LOW) == 0) {
-			printk("batt: BQ CD (P0.25) driven low - charger ON\n");
-		}
-
-		/* 0.23.7 (JP cell 2026-10-29: Renata ICP622540PMT, 550 mAh
-		 * Li-ion, NTC third wire): the charger ran at the untouched
-		 * factory default 10 mA since day one — "charging" was
-		 * geological (550 mAh / 10 mA = 55 h). Renata standard charge
-		 * 0.2C = 110 mA: full in ~5 h from empty, ~2 h from half.
-		 * FAST_CHG = ICHRG_RANGE 1 (40-300 mA decade) + ICHRG code 7
-		 * (40 + 7x10 = 110 mA) => 0x9C. One boot write + read-back. */
-		uint8_t fastchg;
-
-		if (bq_read(BQ_FAST_CHG, &fastchg) == 0 && fastchg != 0x9C) {
-			if (bq_write(BQ_FAST_CHG, 0x9C) == 0 &&
-			    bq_read(BQ_FAST_CHG, &fastchg) == 0) {
-				printk("batt: ICHG %u mA (was 10 mA default)\n",
-				       40 + ((fastchg >> 2) & 0x1F) * 10);
-			} else {
-				printk("batt: ICHG write FAILED\n");
-			}
-		}
-
-		/* 0.25.13 (JP 2026-11-19): 4.35 V SWITCH ENABLED - Renata
-		 * ICP632136HPST physically connected to Unit B.
-		 *
-		 * Datasheet BQ25120A 9.6.6, Table 17 (verbatim): reg 0x05 reset
-		 * state 0111 1000 (= 0x78 = 4.20 V); bits B7..B1 are a 7-bit
-		 * code in 10 mV steps; VBATREG = 3.6 V + CODE x 10 mV.
-		 *
-		 *   4.35 V -> CODE 75 (0x4B) -> reg 0x96
-		 *       = B7(640) + B4(80) + B2(20) + B1(10) = 750 mV
-		 *   4.20 V -> CODE 60 (0x3C) -> reg 0x78  (reset default)
-		 *
-		 * CORRECTION: the recipe preserved in git 8fd1979 used 0x8B,
-		 * which decodes to bits 7,3,1 = 690 mV = 4.29 V (and sets the
-		 * reserved B0). It would have left the HPST ~60 mV undercharged
-		 * (safe, but not the specified CV). 0x96 is the correct value.
-		 *
-		 * ONE-WAY DOOR: after this write the charger terminates at
-		 * 4.35 V. A 4.2 V pack (ICP622540PMT) must NEVER be connected to
-		 * firmware carrying this build - it would be overcharged. */
-		uint8_t vb;
-
-		if (bq_read(BQ_BATT_VOLT, &vb) == 0 && vb != 0x96) {
-			if (bq_write(BQ_BATT_VOLT, 0x96) == 0 &&
-			    bq_read(BQ_BATT_VOLT, &vb) == 0) {
-				printk("batt: VBATREG %u mV (HPST 4.35 V lock, was 0x%02x)\n",
-				       3600 + ((vb >> 1) * 10), vb);
-			} else {
-				printk("batt: VBATREG write FAILED - pack undercharges at 4.2 V\n");
-			}
-		}
+		/* 0.25.16 (JP 2026-11-20): CD + ICHG + VBATREG are asserted
+		 * here for EVERY boot, in VIN-safe order. See
+		 * bq_charger_assert() -- a battery-only cold boot used to
+		 * drive CD LOW before VIN was known (Hi-Z = I2C dead) and
+		 * skip all three writes if a single read failed.
+		 * ONE-WAY DOOR unchanged: 0x96 = 4.35 V, HPST pack only.
+		 */
+		bq_charger_assert();
 
 		k_work_init_delayable(&batt_work, batt_work_handler);
 		k_work_schedule(&batt_work, K_SECONDS(2));
