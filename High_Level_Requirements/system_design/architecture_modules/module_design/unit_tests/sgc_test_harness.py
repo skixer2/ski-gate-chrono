@@ -229,9 +229,8 @@ class SGCTestHarness:
         """Read serial lines until overall deadline.
 
         Unlike a pure gap-break reader, keep waiting through quiet periods
-        (prepare_preroll erase can silence USB for 0.5–2 s between st and
-        preroll_prep). Stop early only after we already have data AND then
-        see a short empty gap.
+        (the ARMED→SLEEP bank erase can silence USB for 0.5–2 s). Stop
+        early only after we already have data AND then see a short empty gap.
         """
         if not self.ser:
             return ""
@@ -441,9 +440,9 @@ class SGCTestHarness:
                         if step.wait_ms > 0:
                             time.sleep(step.wait_ms / 1000.0)
 
-                        # Determine read timeout. State transitions that may
-                        # emit preroll_prep (ARMED→SLEEP erase) need longer.
-                        # flash self-test = 2× sector erase + program.
+                        # Determine read timeout. ARM/SLEEP transitions run a
+                        # bank erase (can take >400 ms); the flash self-test
+                        # also does 2× sector erase + program.
                         read_to = step.timeout_ms
                         cmd0 = (step.command or '').strip()[:1].lower()
                         if step.expect_json is not None and cmd0 in ('i', 'a', 'p'):
@@ -457,7 +456,7 @@ class SGCTestHarness:
                         # ── JSON assertion mode ────────────────────
                         if step.expect_json is not None:
                             objs = self._read_json_lines(read_to)
-                            # If expect matches a later line (st after preroll_prep),
+                            # If the expected line arrives after another event,
                             # keep reading briefly for multi-event bursts.
                             if not any(self._check_json(o, step.expect_json) for o in objs):
                                 extra = self._read_json_lines(1500)
@@ -473,19 +472,16 @@ class SGCTestHarness:
                                     passed = True
                                     json_data = o
                                     break
-                            # Fallback: ARMED→SLEEP may drop st on USB during
-                            # long erase; if we saw preroll_prep or device is
-                            # already SLEEP, accept the expected st transition.
+                            # Fallback: ARMED→SLEEP may drop the transition
+                            # line on USB during the bank erase; accept it if the
+                            # device is already in the expected target state.
                             if (not passed and cmd0 == 'i'
                                     and isinstance(step.expect_json, dict)
                                     and step.expect_json.get('ev') == 'st'
                                     and step.expect_json.get('to') == 'SLEEP'):
-                                if any(o.get('ev') == 'preroll_prep' for o in objs):
+                                st_now = self.query_state()
+                                if st_now == 'SLEEP':
                                     passed = True
-                                else:
-                                    st_now = self.query_state()
-                                    if st_now == 'SLEEP':
-                                        passed = True
                         elif not step.on_response:
                             # ── legacy string matching ─────────────
                             # Skip this when step has only on_response — the callback

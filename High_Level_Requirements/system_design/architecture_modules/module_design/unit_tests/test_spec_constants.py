@@ -222,7 +222,31 @@ def main() -> int:
              bc.count("bq_regs_assert()") >= 2,
              "a reset part must be fixed within one poll interval")
 
-    for chk in (c, c2, c3, c4, c5):
+    # ── version: VERSION file and the banner must agree ──────────────
+    # 2026-11-20: commit 693a054 bumped VERSION to 0.25.19 but left
+    # app_version.h at 0.25.18. The image built, flashed and reported the
+    # WRONG version over serial and over the ABC6 GATT characteristic —
+    # exactly the drift the app_version.h header comment warns about.
+    app_dir = os.path.normpath(os.path.join(
+        HERE, "..", "implementation", "Firmware_Zephyr", "apps",
+        "03_pull_proto"))
+    c6 = Check("VERSION", "VERSION file and APP_VERSION banner agree")
+    vtxt = read(os.path.join(app_dir, "VERSION"))
+    major = re.search(r"VERSION_MAJOR\s*=\s*(\d+)", vtxt)
+    minor = re.search(r"VERSION_MINOR\s*=\s*(\d+)", vtxt)
+    patch = re.search(r"PATCHLEVEL\s*=\s*(\d+)", vtxt)
+    if major and minor and patch:
+        file_ver = "%s.%s.%s" % (major.group(1), minor.group(1), patch.group(1))
+        hdr = read(os.path.join(app_dir, "src", "app_version.h"))
+        m = re.search(r'#define\s+APP_VERSION\s+"([^"]+)"', hdr)
+        banner_ver = m.group(1) if m else None
+        c6.eq("APP_VERSION == VERSION", file_ver, banner_ver,
+              "VERSION drives the MCUboot-signed image version; "
+              "app_version.h drives the serial banner and ABC6 GATT")
+    else:
+        c6.truth("VERSION file parses", False, "could not read VERSION_MAJOR/MINOR/PATCHLEVEL")
+
+    for chk in (c, c2, c3, c4, c5, c6):
         if chk.failures:
             print("[%s] %s" % (chk.rid, chk.what))
             for f in chk.failures:

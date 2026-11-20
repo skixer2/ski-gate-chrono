@@ -37,8 +37,6 @@ One JSON object per line (JSONL). No pretty-printing. Numeric values use minimal
 | `ok` | bool | Operation success (0/1) |
 | `ver` | string | Firmware version |
 | `cap_s` | int | Arm fill capacity in seconds (30) |
-| `arm_cap` | int | Same as rm (preroll_prep event) |
-| `keep` | int | `PREROLL_KEEP` = 1000 |
 | `total` | int | Total pre-roll slots = 4000 |
 
 ## Events
@@ -47,7 +45,6 @@ One JSON object per line (JSONL). No pretty-printing. Numeric values use minimal
 ```json
 {"ev":"boot","ver":"4.80"}
 {"ev":"init","sub":"flash","ok":1}
-{"ev":"preroll_prep","arm_cap":3000,"total":4000,"keep":1000,"why":"boot"}
 {"ev":"init","sub":"bhy2","ok":1}
 {"ev":"init","sub":"ble","ok":1}
 {"ev":"ready","st":"IDLE","runs":0}
@@ -66,7 +63,6 @@ One JSON object per line (JSONL). No pretty-printing. Numeric values use minimal
 {"ev":"st","from":"ARMED","to":"LOGGING"}
 {"ev":"timeout","from":"ARMED","to":"IDLE"}
 {"ev":"cooldown","from":"POST_RUN","to":"IDLE"}
-{"ev":"preroll_prep","arm_cap":3000,"total":4000,"keep":1000}
 ```
 
 ### Pre-roll full
@@ -117,7 +113,7 @@ Test mode (`T`) enables simulated sensor injection.
 |-----|------|--------------|------|
 | `l` | `g_force_logging` | **skipped** (S04 rate) | cleared |
 | `L` (tm=0) | `g_bench_drain` | **skipped** (S06) | drain path |
-| start det | natural | **active** | trim keep 1000 |
+| start det | natural | **active** | drains the whole armed window |
 
 Unit tests that need end detection must enter LOGGING via start detector, not `l`.
 

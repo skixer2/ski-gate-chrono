@@ -124,7 +124,7 @@ SCENARIOS.append(TestScenario(
             step for _ in range(5) for step in [
                 TestStep("→ ARMED", 'a', 600,
                     expect_json={"ev": "st", "from": "SLEEP", "to": "ARMED"}),
-                # preroll_prep erase can take >400 ms; match st in multi-event burst
+                # ARMED->SLEEP bank erase can take >400 ms; match st in a multi-event burst
                 TestStep("→ SLEEP", 'i', 2000,
                     expect_json={"ev": "st", "from": "ARMED", "to": "SLEEP"}),
             ]
