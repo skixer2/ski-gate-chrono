@@ -145,11 +145,17 @@ static void on_frame(const struct bhy2_fifo_parse_data_info *info, void *priv)
 		const uint8_t *d = info->data_ptr;   /* event = SID + uint24 raw */
 		prod.baro_pa = (uint32_t)d[0] |
 			       ((uint32_t)d[1] << 8) |
-			       ((uint32_t)d[2] << 16);   /* uint24 LE, x0.0078 -> hPa */
+			       ((uint32_t)d[2] << 16);   /* uint24 LE raw counts */
 		prod.n_baro++;
-				/* hPa x50 == Pa/2 (ArduinoFW: pressure.value()*50.0f);
-		 * integer form, <=1 LSB vs the float path. */
-		snap.baro_pa_div2 = (uint16_t)((prod.baro_pa * 39u) / 100u);
+				/* 0.25.15 (JP 2026-11-20): DATASHEET-EXACT scale. The BMP390
+		 * uint24 count is raw/128 hPa (0.0078125 hPa/LSB), not the
+		 * 0.0078 the old *39/100 form assumed -- that was 1.41 hPa
+		 * (~12 m) low at 880 hPa.
+		 *   Pa   = raw * 100/128 = raw * 25/32
+		 *   Pa/2 = raw * 25/64   (exact; hPa x50 == Pa/2)
+		 * Max product raw*25 = 419e6 (fits u32); real pressures
+		 * (50-110 kPa) land in 25k-55k div2, inside uint16. */
+		snap.baro_pa_div2 = (uint16_t)((prod.baro_pa * 25u) / 64u);
 		return;
 	}
 	case BHY2_SENSOR_ID_TEMP: {
