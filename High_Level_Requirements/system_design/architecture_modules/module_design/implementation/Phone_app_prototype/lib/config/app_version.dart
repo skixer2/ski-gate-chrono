@@ -428,6 +428,21 @@
 ///          absent = clean '—' placeholder, no error surfaced);
 ///          cleared on every disconnect/teardown path that clears the
 ///          other connection state.
+///   1.78 - CABLE-PRESENT INDICATION (JP 2026-11-20 "premium products
+///          live on details"). Problem: ABC5 bit7 = "on VIN AND not
+///          full", so at 100 % the charge indication vanished and a
+///          topped-up unit on the cable looked identical to one on
+///          battery; unplug/replug changed nothing because the pack
+///          was full. Fix: read ABCB[3] (the BQ25120A VIN flag the
+///          firmware already exposes, polled every 5 s while linked)
+///          via SGCService.isOnUsb(), and render three distinct
+///          states: bolt = charging; plug + "(on USB)" = full but
+///          still on the cable; nothing = on battery. ABCB is 0.25.4+,
+///          and the read falls back to bit7 on older firmware, so the
+///          UI never reports a false 'no cable'. NOTE: bit 6 of ABC5
+///          could NOT be used for this - it is part of the percentage
+///          (100 = 0x64 sets bit 6), which is why the existing ABCB
+///          diagnostic was the right carrier.
 ///   1.76 - HONEST BATTERY WORDS (JP-agreed 2026-10-29 'app 1.76: honest
 ///          coarse display'; battery saga closed 2026-10-31 at pct=100
 ///          with proper termination). The ABC5 'percent' is % of the TI
@@ -440,7 +455,7 @@
 ///          — below gauge range' regardless of the charging bit; 0x7F
 ///          = '— unknown' unchanged. ⚡ suffix kept when the charging
 ///          bit is set. Single render site (connected card).
-const String APP_VERSION = '1.76.0';
+const String APP_VERSION = '1.78.0';
 
 ///   1.48 - SETTLE 4 s -> 0.5 s: idle watchdog makes bad starts self-correcting.
 

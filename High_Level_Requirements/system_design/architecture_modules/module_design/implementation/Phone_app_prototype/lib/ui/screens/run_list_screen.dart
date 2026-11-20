@@ -51,6 +51,8 @@ class _RunListScreenState extends State<RunListScreen>
   // ABC5 (F-snow-kit): null = unknown (0x7F / read failed).
   int? _batteryPct;
   bool _batteryCharging = false;
+  /// 1.78 (JP 2026-11-20): USB cable present even at 100 % (ABCB[3]).
+  bool _batteryOnUsb = false;
   // 1.75 (JP 2026-10-28): device firmware version (ABC6, FW 0.23.6+) —
   // static per connection: read ONCE at connect-success, never in the
   // 5 s battery poll. Null = old firmware / read failed ('—' on card).
@@ -98,11 +100,15 @@ class _RunListScreenState extends State<RunListScreen>
       try {
         final pct = await sgc.getBattery();
         final charging = await sgc.isCharging();
+        final onUsb = await sgc.isOnUsb();
         if (!mounted) return;
-        if (pct != _batteryPct || charging != _batteryCharging) {
+        if (pct != _batteryPct ||
+            charging != _batteryCharging ||
+            onUsb != _batteryOnUsb) {
           setState(() {
             _batteryPct = pct;
             _batteryCharging = charging;
+            _batteryOnUsb = onUsb;
           });
         }
       } catch (e) {
@@ -213,6 +219,7 @@ class _RunListScreenState extends State<RunListScreen>
       _runCount = null;
       _batteryPct = null;
       _batteryCharging = false;
+      _batteryOnUsb = false;
       _fwVersion = null;
       _flashUsedPct = null;
       _deviceRuns = [];
@@ -593,6 +600,7 @@ class _RunListScreenState extends State<RunListScreen>
           _runCount = null;
           _batteryPct = null;
           _batteryCharging = false;
+          _batteryOnUsb = false;
           _fwVersion = null;
           _flashUsedPct = null;
           _deviceRuns = [];
@@ -694,12 +702,15 @@ class _RunListScreenState extends State<RunListScreen>
         try {
           _batteryPct = await sgc.getBattery();
           _batteryCharging = await sgc.isCharging();
+          _batteryOnUsb = await sgc.isOnUsb();
           debugPrint('[SGC] battery = $_batteryPct%'
-              '${_batteryCharging ? ' (charging)' : ''}');
+              '${_batteryCharging ? ' (charging)' : ''}'
+              '${_batteryOnUsb ? ' [on USB]' : ''}');
         } catch (e) {
           debugPrint('[SGC] battery read failed: $e');
           _batteryPct = null;
           _batteryCharging = false;
+          _batteryOnUsb = false;
         }
         // 1.71: ABC7 used-pct — input for the half-memory sync warning.
         // Never DISPLAYED (JP: no remaining-memory readouts on the card);
@@ -734,6 +745,7 @@ class _RunListScreenState extends State<RunListScreen>
         _runCount = null;
         _batteryPct = null;
         _batteryCharging = false;
+        _batteryOnUsb = false;
         _fwVersion = null;
         _flashUsedPct = null;
         _deviceRuns = [];
@@ -817,6 +829,7 @@ class _RunListScreenState extends State<RunListScreen>
         _runCount = null;
         _batteryPct = null;
         _batteryCharging = false;
+        _batteryOnUsb = false;
         _fwVersion = null;
         _flashUsedPct = null;
         _deviceRuns = [];
@@ -2561,13 +2574,27 @@ class _RunListScreenState extends State<RunListScreen>
 
   /// Battery row: same layout as [_infoRow] (160 label gutter, 4px
   /// vertical) but mixed-style value — word primary (w600), '(NN%)'
-  /// secondary small/grey, ⚡ suffix when the charging bit is set.
+  /// secondary small/grey, then a cable suffix:
+  ///   ⚡              charging
+  ///   🔌 (on USB)  full, still on the cable (1.78: ABCB[3])
+  ///   (nothing)      on battery
   /// Exception: the 0x00 sentinel carries no meaningful charging bit
   /// (a below-gauge voltage is 'Charge me' regardless of the bolt).
   Widget _batteryInfoRow() {
     final (label, sub) = _batteryWords(_batteryPct);
     final showBolt =
         _batteryCharging && _batteryPct != null && _batteryPct! > 0;
+    // 1.78 (JP 2026-11-20) PREMIUM DETAIL - three distinct cable states.
+    // ABC5 bit7 means "on VIN AND not full", so it went DARK at 100 % and a
+    // topped-up unit looked identical to one sitting on battery. Cable
+    // presence comes from ABCB[3] (BQ25120A VIN flag), so now:
+    //   bolt              = charging
+    //   plug + "(on USB)" = full, still on the cable
+    //   nothing           = on battery
+    final onUsbNotCharging = !showBolt && _batteryOnUsb;
+    final toppedUp = onUsbNotCharging &&
+        _batteryPct != null &&
+        _batteryPct! >= 100;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -2584,6 +2611,13 @@ class _RunListScreenState extends State<RunListScreen>
                     style: TextStyle(
                         fontSize: 12, color: Colors.grey.shade600)),
                 if (showBolt) const TextSpan(text: ' ⚡'),
+                if (onUsbNotCharging)
+                  const TextSpan(text: ' 🔌'),
+                if (toppedUp)
+                  TextSpan(
+                      text: ' (on USB)',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.grey.shade600)),
               ]),
             ),
           ),

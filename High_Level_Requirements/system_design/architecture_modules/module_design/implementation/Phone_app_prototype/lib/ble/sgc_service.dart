@@ -26,6 +26,9 @@ class SGCService {
   static const charDiscipline  = '5347ABC3-0000-1000-8000-00805F9B34FB';
   static const charDeviceState = '5347ABC4-0000-1000-8000-00805F9B34FB';
   static const charBattery     = '5347ABC5-0000-1000-8000-00805F9B34FB';
+  /// 1.78 (JP 2026-11-19): battery diagnostics (FW 0.25.4+).
+  /// [0]=faults [1]=read rc [2]=polls [3]=VIN present [4]=recoveries
+  static const charBattDiag    = '5347ABCB-0000-1000-8000-00805F9B34FB';
   static const charFwVersion   = '5347ABC6-0000-1000-8000-00805F9B34FB';
   static const charFlashUsed   = '5347ABC7-0000-1000-8000-00805F9B34FB';
   static const charRunInfo     = '5347ABC8-0000-1000-8000-00805F9B34FB'; // count[2]+age[4]
@@ -198,6 +201,31 @@ class SGCService {
   Future<bool> isCharging() async {
     final v = await _readByte(charBattery);
     return (v & 0x80) != 0;
+  }
+
+  /// 1.78 (JP 2026-11-19): is the USB cable attached, regardless of charge
+  /// state? ABC5 bit7 means "on VIN AND not full" - it drops the instant the
+  /// pack reaches 100%, so a full unit on the cable showed no indication at
+  /// all (JP's 2026-11-20 question). Cable presence lives in ABCB[3] (the
+  /// VIN flag from the BQ25120A FAULTS register, polled 5 s while linked).
+  /// ABCB is 0.25.4+; on older firmware the read fails and we fall back to
+  /// the ABC5 charging bit so the UI never shows a false negative.
+  Future<bool> isOnUsb() async {
+    try {
+      final b = await _readChar(charBattDiag);
+      if (b.length >= 4) return b[3] != 0;
+      return await isCharging();
+    } catch (e) {
+      debugPrint('[SGC] batt-diag read failed (old FW?), using bit7: $e');
+      return await isCharging();
+    }
+  }
+
+  /// 1.78: full charge AND still on the cable ("topped up / held") -
+  /// the state that used to render as nothing at all.
+  Future<bool> isToppedUp(int? pct) async {
+    if (pct == null || pct < 100) return false;
+    return await isOnUsb();
   }
 
   /// 1.75 (JP 2026-10-28): device firmware version — ABC6, read-only
