@@ -303,7 +303,9 @@ static void rc_work_handler(struct k_work *w)
 				printk("{\"rec\":\"ERR\",\"why\":\"store\"}\n");
 			}
 		}
-		if (ticks >= 100 * 20) {    /* 20 s ARM cap (JP, spec v4) */
+		if (ticks >= 100 * 120) {   /* 120 s arm window (JP). NOT the 20 s
+					 * pre-trigger ring depth -- the ring wraps safely
+					 * and keeps the last 20 s before the drop. */
 			printk("{\"rec\":\"SLEEP\",\"ev\":\"arm_timeout\"}\n");
 			printk("{\"ev\":\"sm\",\"from\":\"ARMED\","
 				       "\"to\":\"SLEEP\",\"why\":\"arm_timeout\"}\n");
