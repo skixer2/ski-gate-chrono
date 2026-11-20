@@ -411,7 +411,11 @@ uint8_t ble_config_cal(void)
  * JP: "this has to be done at every boot, to be sure" and "We must adapt
  * the parameters at every boot!" -- so both registers are re-asserted at
  * boot AND on every battery poll, verified by read-back each time. */
-#define BQ_WANT_FASTCHG 0x9Cu  /* ICHRG_RANGE 1 (40-300 mA) + code 7 = 110 mA */
+/* 0.25.17 (JP 2026-11-20 "0.2C, let's be conservative"): the Renata
+ * ICP632136HPST is 500 mAh, so 0.2C = 100 mA -> ICHRG code 6 -> 0x98.
+ * 0x9C (code 7 = 110 mA) was correct for the old 550 mAh pack (0.2C
+ * there), but on 500 mAh it is 0.22C -- above the standard charge. */
+#define BQ_WANT_FASTCHG 0x98u  /* ICHRG_RANGE 1 (40-300 mA) + code 6 = 100 mA */
 #define BQ_WANT_VBATREG 0x96u  /* 4.35 V, code 75 -- Renata ICP632136HPST */
 
 /* Program both charger registers. Independent: a failure on one never
