@@ -47,7 +47,7 @@ Measured pin assignment (UARTE0 PSEL, both units identical):
 - BLE on A is alive: the phone app reads version and runs over GATT while RX is dead.
 - Unit B answers `E 4` on demand from the same PC, same script, same minute.
 
-## 3. Measurements (all SWD, read-only)
+## 3. Measurements (SWD by the agent + multimeter by JP)
 
 Method note: **halt the running app** (`halt`, pc ~0x0002f76a). Do **not** use
 `reset halt` — that drops into the MCUboot DFU-wait loop (pc 0x2688) where UARTE is
@@ -60,6 +60,8 @@ unconfigured and every read is meaningless.
 | GPIO0.IN (0x50000510) bit 9 | **0** | **1** | A's line is low; healthy idle is high |
 | bit 9 while streaming 0x55 | stayed 0 (5 samples) | — | line never toggles |
 | bit 9 with pull-up `PIN_CNF=0x0e` | **still 0** | — | pull-up cannot lift an actively driven line |
+| RX pad resistance to GND (unpowered, JP) | **5 MOhm** | — | open to ground: no PCB short / solder bridge |
+| RX pad voltage (powered, JP) | **0.4 V** | ~1.8-3.3 V | actively clamped near 0 V on A; B idle-high |
 
 **The pull-up test is the decisive one.** An internal pull-up (~13 kOhm) was engaged
 and its readback confirmed (`0x0e`), yet the input stayed 0. A floating or
@@ -68,12 +70,24 @@ misconfigured pin would have gone high. Something external is clamping P0.09 low
 `ERRORSRC` (0x40002480) reads `0x0c` on **both** units — sticky, non-diagnostic.
 Do not cite it as evidence.
 
-### What was NOT measured here
+### Operator multimeter measurements (JP, 2026-11-20)
 
-The external recap also lists an unpowered RX->GND resistance (5 MOhm) and a powered
-pad voltage (0.4 V on A vs ~1.8-3.3 V on B). Those are **good, discriminating numbers**
-but they were not taken in this session (no meter was in the loop). Treat them as
-reported, not verified — worth re-measuring before any rework decision.
+Taken with a multimeter on the RX pad by JP — not by the agent, hence recorded here
+with their own attribution:
+
+| Measurement | Unit A | Unit B | What it proves |
+|---|---|---|---|
+| Resistance RX pad -> GND, unpowered | **5 MOhm** | — | No PCB short, no solder bridge, no dead-short in the translator: the net is electrically open to ground. |
+| Voltage RX pad -> GND, powered (USB attached) | **0.4 V** | ~1.8-3.3 V | A's line is being actively held near ground; B sits at a normal idle high. |
+
+These two are the missing half of the picture and they corroborate the SWD pull-up
+test independently: 5 MOhm unpowered says the clamp is *not* a passive short, and
+0.4 V powered says an active element (level-shifter output FET or an ESD clamp
+diode) is sinking the line. ~0.4 V is the classic signature of a forward-biased
+clamp / saturated FET, not of a resistive short.
+
+Combined conclusion: the fault is an **active clamp inside U13 or the ANNA-B112
+P0.09 ESD structure**, not a PCB defect and not a firmware matter.
 
 ## 4. Ruled out
 
