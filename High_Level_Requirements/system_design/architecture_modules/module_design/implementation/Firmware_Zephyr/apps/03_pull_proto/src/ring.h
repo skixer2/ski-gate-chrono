@@ -29,7 +29,7 @@ void ring_init(void);          /* boot: erase banks (IDLE invariant) */
 void ring_arm_reset(void);
 
 /* Push one slot (arrival ts). false = region exhausted (cannot happen
- * within spec'd ARM ≤ 20 s + drain ≤ backlog; false = bench bug). */
+ * within spec'd ARM ≤ 30 s + drain ≤ backlog; false = bench bug). */
 bool ring_push(const struct sgc_raw_frame *f, uint32_t ts_ms);
 
 /* Pop oldest slot. false = empty. */

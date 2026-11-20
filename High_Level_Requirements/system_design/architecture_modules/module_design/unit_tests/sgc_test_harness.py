@@ -11,7 +11,8 @@ Architecture:
 
 Aligned with FW ≥4.80 / Opt-A linear pre-roll:
     rm = ARM_FILL_CAP = 3000 (~30 s @ 100 Hz)
-    PREROLL_KEEP = 1000 (~10 s kept at LOGGING entry)
+    PREROLL_KEEP = 1000 (~10 s MINIMUM retained at LOGGING entry;
+    the whole armed window is kept, up to 3000 frames / 30 s)
     ring_full fires only at r==3000 (races ARM_TIMEOUT) — prefer
     wait_for_ring_count() for unit tests.
     B / echo p are Pascals. Manual B/Q/L suppress ARM→stream.
@@ -552,7 +553,9 @@ class SGCTestHarness:
 
 # Opt-A linear pre-roll (must match flash_ring.h)
 ARM_FILL_CAP = 3000   # status rm; ring_full at this count
-PREROLL_KEEP = 1000   # frames kept at LOGGING entry / S05 default target
+PREROLL_KEEP = 1000   # MINIMUM frames retained at LOGGING entry (F02:
+                      # "at least 10 s"); the whole armed window is kept,
+                      # up to ARM_FILL_CAP = 3000 / 30 s. S05 default target.
 # Unit tests: enough pre-roll without racing ARM_TIMEOUT (30 s)
 UNIT_RING_READY = 200
 

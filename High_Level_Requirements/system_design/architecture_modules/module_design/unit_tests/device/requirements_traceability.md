@@ -28,10 +28,10 @@ Maps every v1 requirement to the tests that verify it.
 | ID | Requirement | Unit | Integration | System | Acceptance | Notes |
 |----|-------------|------|-------------|--------|------------|-------|
 | **F01** | 100 Hz sensor acquisition ± 1% | U04 (descent triggers), U14 (compression flow) | | S01 (full run) | A01 | 🔧 Frequency verification needs oscilloscope; test mode exercises data flow |
-| **F02** | Linear ARMED pre-roll (cap 3000 ≈ 30 s @ 100 Hz; keep 1000 ≈ 10 s) | U09 (fill past ready), U10 (keeps filling), U11 (resets on re-arm); S05 | | S05 | A01 | Opt-A linear buffer, not circular 500 |
+| **F02** | Linear ARMED pre-roll (cap 3000 ≈ 30 s @ 100 Hz; retain ≥10 s, minimum not cap) | U09 (fill past ready), U10 (keeps filling), U11 (resets on re-arm); S05 | | S05 | A01 | Opt-A linear buffer, not circular 500; drains from slot 0, no 1000-frame truncation |
 | **F03** | Arm via single piezo-button press (P0.02) | U01 | | | A01 | Bench device has the button — no extra hardware needed |
 | **F04** | Dual-mode barometric start: speed > 1.5 m/s OR drop > 2.0 m | U04 (speed), U05 (drop), U06 (no false trigger) | | S01 | A02 | |
-| **F05** | Drain pre-roll pop2+push1 (~1000 keep ≈ 10 s) | U13 (run cycle); S06 | | S06 | A02 | keep=1000 drain ~10.8 s on v4.79 |
+| **F05** | Drain pre-roll pop2+push1 (≥10 s kept; ~30 s at full cap) | U13 (run cycle); S06 | | S06 | A02 | keep=1000 drain ~10.8 s on v4.79; full 30 s cap drains ~30 s |
 | **F06** | Auto-terminate after 10s flatline + stillness | U07 (flatline → POST_RUN), U08 (no premature stop) | | S01 | A02 | |
 | **F07** | Adaptive bit-packing, ≥ 35% compression | U14 (T1/T2/T3 exercised), U15 (all packet types) | | S01 | A03 | 🔧 Compression ratio verification needs decompressed file inspection |
 | **F08** | Circular Flash buffer, auto-overwrite, Flash % via BLE | U13 (run stored), U12 (flash self-test) | I01 (BLE reads flash %) | S01 | A03 | 🔧 Auto-overwrite needs 12+ runs (flash fill) |

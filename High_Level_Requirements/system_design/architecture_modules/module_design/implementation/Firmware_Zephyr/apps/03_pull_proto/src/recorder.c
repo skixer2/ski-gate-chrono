@@ -5,7 +5,7 @@
  * lifecycle. Drives the store's streaming append API.
  *
  *   SLEEP ──'a'/btn-hold──► ARMED ──'g'/drop──► LOGGING ──end──► POST_RUN
- *              │ 20 s timeout                    │ 'e' or budget       │
+ *              │ 30 s timeout                    │ 'e' or budget       │
  *              ▼                                 ▼                     ▼
  *            SLEEP ◄──────────────────────── POST_RUN (store drained) ◄─┘
  *
@@ -22,8 +22,8 @@
  *
  * PRE-ROLL RING — SPEC v4-FINAL (JP, 2026-10-05, supersedes F02/v6.0):
  *   Region 0x0000–0x13FFF (20 sectors, 4096 linear slots × 20 B).
- *   Bank A 0x0–0x9FFF  = 20 s PRE-trigger  max (ARM ≤ 20 s, absolute:
- *                        no trigger at 20 s → back to SLEEP).
+ *   Bank A 0x0–0x9FFF  = 20 s PRE-trigger region (ARM cap 30 s per
+ *                        R02/F02; the cap, not the bank, bounds the arm).
  *   Bank B 0xA000–0x13FFF = 20 s POST-trigger: order-preserving buffer
  *     for post-trigger frames that CANNOT be written directly to the run
  *     while pre-trigger frames still drain (would break timestamp order).
@@ -441,7 +441,7 @@ const char *recorder_state_str(void)
 	return names[rc_state];
 }
 
-void recorder_arm(void)   /* 'a'/button: SLEEP → ARMED (20 s timeout) */
+void recorder_arm(void)   /* 'a'/button: SLEEP → ARMED (30 s timeout) */
 {
 	atomic_set(&cmd_intent, 1);
 	k_work_submit_to_queue(&rec_q, &rc_work);

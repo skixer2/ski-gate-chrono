@@ -5,7 +5,7 @@
 #define SGC_RECORDER_H
 
 void recorder_init(void);
-void recorder_arm(void);      /* 'a'/button — SLEEP → ARMED (20 s cap) */
+void recorder_arm(void);      /* 'a'/button — SLEEP → ARMED (30 s cap) */
 void recorder_start(void);    /* 'g' — ARMED → LOGGING (synthetic;
 			       *   production: 2.0 m drop detector)     */
 void recorder_end(void);      /* 'e' — LOGGING → POST_RUN (synthetic;

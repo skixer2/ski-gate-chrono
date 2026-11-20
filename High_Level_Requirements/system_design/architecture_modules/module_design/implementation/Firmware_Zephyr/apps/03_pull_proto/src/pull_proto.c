@@ -906,7 +906,7 @@ static void cmd_work_handler(struct k_work *w)
 #endif
 	} else if (cmd == 'a' || cmd == 'g' || cmd == 'e') {
 		/* M3 step 1: recording state machine (synthetic producer).
-		 * a=arm (120 s timeout) g=go e=end — production triggers
+		 * a=arm (30 s timeout) g=go e=end — production triggers
 		 * replace g/e with the drop/flatline detectors later. */
 		if (cmd == 'a') {
 			recorder_arm();

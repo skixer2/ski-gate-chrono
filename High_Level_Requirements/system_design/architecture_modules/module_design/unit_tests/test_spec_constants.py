@@ -156,6 +156,36 @@ def main() -> int:
                 and slots * define_int(ring_h, "RING_SLOT_BYTES") == 0x14000,
                 "RING_SLOTS * RING_SLOT_BYTES must equal 0x14000 (LOG_START)")
 
+    # ── F02 retained window: "at least 10 s", NOT a 10 s cap ─────────
+    # 2026-11-20 (JP): 10 s was a RAM-era limit. Storage is Flash, so the
+    # requirement now states a MINIMUM and the whole armed window is kept.
+    # Two ways this can regress: the document reverts to cap wording, or the
+    # code grows a 1000-frame truncation that silently drops the older frames.
+    c5 = Check("F02", "pre-roll retained window = at least 10 s (minimum)")
+    c5.truth("F02 states 'at least 10 s'",
+             req_mentions(regh, r"at least 10\s*s"),
+             "sgc_requirements.md F02 minimum wording")
+    # Scope to the F02 requirement ROW: the changelog legitimately quotes the
+    # old wording when recording the change, so a whole-document search would
+    # fail on its own history.
+    m_f02 = re.search(r"^\|\s*\*\*F02\*\*\s*\|.*$", regh, re.MULTILINE)
+    f02_row = m_f02.group(0) if m_f02 else ""
+    c5.truth("F02 row no longer caps the pre-roll at 10 s",
+             bool(f02_row) and "10-second (1000-sample)" not in f02_row,
+             "old '10-second (1000-sample)' cap wording must be gone from the row")
+    c5.truth("F02 retains the whole armed window",
+             req_mentions(regh, r"entire armed window"),
+             "the arm-to-drop span is the pre-start history")
+    # Code side: the drain must NOT truncate to PREROLL_KEEP. The Zephyr
+    # recorder pops from slot 0 until the ring empties (ring_pop_oldest has
+    # no trim path), so a 25 s arm yields 25 s of pre-start history.
+    c5.truth("recorder.c has no 1000-frame trim on the drain path",
+             "trim" not in rec and "PREROLL_KEEP" not in rec,
+             "recorder.c must drain the whole ring, not keep=1000 only")
+    c5.truth("ring_pop_oldest has no truncation",
+             "trim" not in read(os.path.join(SRC, "ring.c")),
+             "ring.c pops oldest from head to tail, no keep cap")
+
     # ── F04: 2.00 m drop trigger ─────────────────────────────────────
     c2 = Check("F04", "2.00 m drop trigger")
     c2.truth("F04 states 2.0 m", req_mentions(regh, r"2\.0 ?m"))
@@ -192,7 +222,7 @@ def main() -> int:
              bc.count("bq_regs_assert()") >= 2,
              "a reset part must be fixed within one poll interval")
 
-    for chk in (c, c2, c3, c4):
+    for chk in (c, c2, c3, c4, c5):
         if chk.failures:
             print("[%s] %s" % (chk.rid, chk.what))
             for f in chk.failures:
