@@ -40,6 +40,45 @@ Unknown command → `E 4`. Error codes: `1` bad run · `2` bad off/len · `3` ma
 - Ground truth for `S` runs (pole-impact times/amplitudes, turn schedule) prints on serial as it is placed — seed fixed → reproducible.
 - Serial doctrine: one data treatment path (FWR-1/SR-5) — serial and BLE console bytes land in the same capture → `cmd_work` handler.
 
+## Memory budget (measured, 0.25.19 / `b02519c`)
+
+Two cores, and it is easy to attribute the numbers to the wrong one — the build log
+prints the **app first** (line ~432) and the **MCUboot core second** (line ~696),
+because sysbuild builds the app then the bootloader.
+
+| Core | FLASH | RAM | Headroom |
+|---|---|---|---|
+| **app** (`03_pull_proto`) | 168,744 B / 188,080 B (89.72%) | **58,380 B / 64 KB (89.08%)** | ~5.9 KB RAM |
+| **MCUboot** | 40,952 B / 64 KB (62.49%) | 15,744 B / 64 KB (24.02%) | ~48 KB RAM |
+
+Cross-check: `zephyr.bin` sizes are 168,744 B and 40,952 B; the app map's FLASH origin
+is `0x00010000` (slot after the bootloader) while MCUboot's is `0x00000000`.
+
+**The app is the constrained core, not MCUboot.** Marketed "MCUboot eats 89% RAM" is
+wrong — that figure belongs to the app.
+
+Where the app's RAM goes (`zephyr.map`, sections >=512 B):
+
+- `store_flash.c` **10,264 B**: `.bss.save` 4,096 + `.bss.buf` 4,096 (double-buffered
+  flash staging) + `.bss.page` 1,048 + `.bss.entries` 1,024
+- SoftDevice controller `.bss` 1,916 B, MPSL 554 B
+- Stacks: MCUmgr 2,048 + system workqueue 2,048 + ISR 2,048 + BT HCI TX 1,536, plus
+  several 1 KB BT/MPSL stacks
+- `CONFIG_WFA_QT_THREAD_STACK_SIZE=5200` is a Kconfig default with **no WFA subsystem in
+  this image** — a ~5 KB reclaim candidate, but it is a vendor default: change it only
+  with a measurement.
+
+The pre-roll ring is **not** in RAM: 4,096 slots x 20 B live in flash at
+`0x0000-0x13FFF`. That is what allows a 30 s window on a 64 KB part.
+
+Why MCUboot needs 15,744 B: `noinit` 12,416 (boot state that must survive its own
+resets, e.g. swap status), `CONFIG_MAIN_STACK_SIZE=10240`, `bss` 2,873, `datas` 272.
+Config: `CONFIG_BOOT_SWAP_USING_MOVE=y` (no scratch partition — swap-move instead),
+`CONFIG_BOOT_MAX_IMG_SECTORS_AUTO=y`, `CONFIG_HEAP_MEM_POOL_SIZE=0`. So the cost is the
+**main stack + persistent boot state**, not OTA algorithm buffers.
+
+---
+
 ## Source map (`src/`)
 
 `pull_proto.c` (console + D/s/d protocol) · `main.c` (version, boot) · `recorder.c` (arm/go/end state machine, run stats) · `store_flash.c` / `store_layout.h` / `store.h` (index + data sectors, run_id addressing) · `ring.c` · `sensor_prod.c` (BHY2 producer + bench stats thread) · `sensor_synth.c` (`S` generator) · `bitpacker.c` (24 B frames) · `ble_config.c` / `ble_lifecycle.c` (SG service, advertising) · `button.c` / `led_state.c` (triggers, RGB) · `bhy2/` (BHI260AP driver).
