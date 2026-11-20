@@ -15,10 +15,25 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Smoke tier = TEST_CATALOG "smoke": sensor injection + flash + S04 rate.
+#
+# 2026-11-20 additions, both driven by real field/bench failures:
+#   test_spec_constants.py  - host-only, no serial, <1 s. Compares the
+#       REQUIREMENTS document against the SOURCE constants. Catches the
+#       regression class that shipped twice in two days (ARM window 120 s
+#       vs R02's 30 s; baro *39/100 vs datasheet 1/128).
+#   test_s07_sensor_liveness.py - device test. Arms and asserts the sensor
+#       producer is actually producing (rv/lacc/baro alive). Catches
+#       "armed, orange LED, no acquisition" in ~8 s instead of after a lost
+#       field test.
+$hostOnlyTests = @(
+  "test_spec_constants.py"
+)
+
 $smokeTests = @(
   "test_sensor_injection.py",
   "test_flash.py",
-  "test_s04_bhy2_rate.py"
+  "test_s04_bhy2_rate.py",
+  "test_s07_sensor_liveness.py"
 )
 
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
@@ -37,6 +52,18 @@ if ($Clean) {
 }
 
 $failed = $false
+
+# Host-only gates first: they need no serial port and no hardware, so they
+# should fail the run before we ever touch a device.
+foreach ($t in $hostOnlyTests) {
+  Write-Host "--- $t (host-only) ---"
+  py $t
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "FAILED: $t (exit $LASTEXITCODE)"
+    $failed = $true
+  }
+}
+
 foreach ($t in $smokeTests) {
   Write-Host "--- $t ---"
   py sgc_test_harness.py --port $Port $t --run-id $runId

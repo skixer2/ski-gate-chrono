@@ -8,12 +8,14 @@ Unit test: State Machine (v2.20 — Opt-A)
 force-'l' skips end det (S04). U03 uses start/end detectors so the
 full production path SLEEP→ARMED→LOGGING→POST_RUN→SLEEP is covered.
 """
+import time
+
 from sgc_test_harness import (
     TestStep, TestScenario, enable_test_mode,
     wait_for_ring_count, inject_pressure_ramp, UNIT_RING_READY,
 )
 
-TEST_VERSION = "2.26.0"
+TEST_VERSION = "1.1.0"
 
 SCENARIOS = []
 
@@ -92,8 +94,47 @@ SCENARIOS.append(TestScenario(
     ]
 ))
 
-# ── U20: Aborted start — ARM_TIMEOUT (~30 s) → SLEEP (R02) ────────
+# ── U20: Aborted start — ARM_TIMEOUT (30 s) → SLEEP (R02) ────────
 # Long test (~35 s). Not in smoke/core; full tier only.
+#
+# 2026-11-20: this test previously only asserted "SLEEP within 40 s", which
+# passed for a 20 s cap, a 30 s cap AND a 40 s cap -- it could not tell them
+# apart, and so it missed a real regression where the ARM window was
+# silently cut from 30 s to 20 s (commit ddd8ef3). It now measures the
+# ACTUAL armed duration and asserts it lands inside a window around R02's
+# 30 s. Tolerances: the state machine ticks at 100 Hz and the poller samples
+# every 500 ms, so +-5 s is generous while still rejecting 20 s and 120 s.
+ARM_CAP_EXPECT_S = 30
+ARM_CAP_TOL_S = 5
+
+
+def arm_timeout_within_spec(h) -> bool:
+    """Measure how long the unit stays ARMED; require ~ARM_CAP_EXPECT_S."""
+    t0 = time.time()
+    deadline = t0 + (ARM_CAP_EXPECT_S + ARM_CAP_TOL_S + 10)
+    while time.time() < deadline:
+        st = h.query_state()
+        if st == 'SLEEP':
+            held = time.time() - t0
+            lo = ARM_CAP_EXPECT_S - ARM_CAP_TOL_S
+            hi = ARM_CAP_EXPECT_S + ARM_CAP_TOL_S
+            print(f"  ARM held {held:.1f} s (spec {ARM_CAP_EXPECT_S} s "
+                  f"+/-{ARM_CAP_TOL_S} s)")
+            if lo <= held <= hi:
+                return True
+            if held < lo:
+                print(f"  FAIL: armed window TOO SHORT ({held:.1f} s < {lo} s) "
+                      f"- the 2 m drop would not be reachable")
+            else:
+                print(f"  FAIL: armed window TOO LONG ({held:.1f} s > {hi} s) "
+                      f"- violates R02 and may exceed the ring reserve")
+            return False
+        time.sleep(0.5)
+    print(f"  FAIL: still ARMED after {deadline - t0:.0f} s (expected "
+          f"SLEEP at ~{ARM_CAP_EXPECT_S} s)")
+    return False
+
+
 SCENARIOS.append(TestScenario(
     name="U20 — ARM_TIMEOUT → SLEEP (no start)",
     setup_commands=['i'],
@@ -106,8 +147,9 @@ SCENARIOS.append(TestScenario(
         # Flat inject at sea level — start_det must not fire
         TestStep("Hold flat (no descent)", 'B 101325', 200,
             expect_json={"ev": "cmd", "cmd": "B"}),
-        TestStep("Wait ARM_TIMEOUT → SLEEP (~30 s)",
-            poll_state='SLEEP', poll_interval_ms=500, timeout_ms=40000),
+        # Measure the real armed duration instead of just "within 40 s".
+        TestStep("Measure ARM window vs R02 (30 s +/-5)", None, 100,
+            on_response=lambda h, _: arm_timeout_within_spec(h)),
         TestStep("Verify SLEEP after timeout", '?', 400,
             expect_json={"st": "SLEEP"}),
     ]

@@ -17,13 +17,40 @@ Phone/BLE/cloud (📱 I01–I03, Dart) are out of scope here.
 
 | Tier | When | Command (from `unit_tests/`) | ~Time |
 |------|------|------------------------------|-------|
-| **smoke** | After every FW flash | `test_sensor_injection.py` + `test_flash.py` + `test_s04_bhy2_rate.py` | ~2–3 min |
+| **spec** | Every commit / CI, NO hardware | `python3 test_spec_constants.py` | <1 s |
+| **smoke** | After every FW flash | spec + `test_sensor_injection.py` + `test_flash.py` + `test_s04_bhy2_rate.py` + `test_s07_sensor_liveness.py` | ~3 min |
 | **core** | Daily / before claim “green” | smoke + `test_s03` + `test_s05` + `test_s06` + `test_start_detector` + `test_state_machine` | ~8–12 min |
 | **full** | Release / tag candidate | `.\run_full.ps1` (all keep/merge `test_*.py`, S02 near end) | ~15–25 min |
 | **device-only** | Rate/pre-roll bench | `system_tests/run_device_suite.py COM8 -R --with-s03` | ~5–8 min |
 
 **Fast path:** `.\run_smoke.ps1` / `.\run_core.ps1` / `.\run_full.ps1` (in `unit_tests/`) run these
 tiers and auto-push results to the coordinator — see `tmp_test_results/README.md`.
+
+### 2026-11-20 — additions closing two real regressions
+
+Both came from failures that reached the field, not from theory:
+
+1. **`test_spec_constants.py` (new, spec tier, no hardware).** Compares the
+   requirements document against the firmware source constants. This is the
+   class of bug that shipped twice in two days: the ARM window drifted from
+   R02's 30 s to 20 s (commit `ddd8ef3`), and the baro scale used `*39/100`
+   where the datasheet says exactly 1/128 hPa. Neither was catchable by any
+   device test, because both are *constant* drifts. Runs in under a second, so
+   it belongs in every commit, not just after a flash.
+
+2. **`test_s07_sensor_liveness.py` (new, smoke tier).** Arms the unit and
+   asserts the sensor producer is genuinely producing (`rv`/`lacc`/`baro`
+   counters alive and near contract rate), failing loudly on `bhy_stall`.
+   This catches "armed, orange LED, no acquisition" in ~8 s. On 2026-11-20
+   that exact failure cost a lost field run and looked completely healthy:
+   the state machine armed, the LED showed orange, and nothing was recorded.
+   No existing test covered the armed-but-idle state (S04 only runs during
+   LOGGING; U09–U11 check ring count, which a dead producer also leaves at 0).
+
+3. **`U20` tightened (full tier).** It previously asserted only "SLEEP within
+   40 s", which is true for a 20 s cap, a 30 s cap and a 40 s cap alike — so
+   it passed straight through the 30 s→20 s regression. It now measures the
+   actual armed duration and requires 30 s ±5 s.
 
 ```powershell
 $runId = "run_" + (Get-Date -Format "yyyyMMdd_HHmm")
