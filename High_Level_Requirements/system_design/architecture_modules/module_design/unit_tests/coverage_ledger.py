@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""Generate an honest requirement -> automated-test coverage ledger.
+"""Honest requirement -> automated-test coverage ledger.
 
-JP 2026-11-20: "The goal is to cover as many requirements as possible with
-automated tests, and to have a smoke test to execute every day."
+JP 2026-11-20/21: "cover as many requirements as possible with automated tests,
+and have a smoke test to execute every day", "maximum requirement coverage with
+minimal software changes".
 
-This reads sgc_requirements.md (the top of the truth order) and, for each
-requirement, reports how it can be verified automatically:
+WHY THIS IS NOT A GREP FOR 'F04'
+--------------------------------
+The device tests are labelled by their own scheme (U01-U20, S02-S07), not by
+requirement id. The authoritative link between the two is
+`device/requirements_traceability.md`, which this reads: a requirement counts as
+covered only if that matrix attributes a U/S test to it AND a test file really
+implements that U/S id. Grepping test files for "F04" would be wrong in both
+directions (it would credit a file that merely mentions the id in a comment,
+and miss every real test).
 
-  SPEC     - statically, no hardware (constants, protocol, docs conformance)
-  SERIAL   - automated on the bench over the serial console
-  BLE      - automated on the bench over GATT
-  HOST     - pure host unit test (parsers, packers, simulators)
-  MANUAL   - genuinely not automatable (visual LED, physical IP68, RF field...)
-  NONE     - automatable in principle but NO test exists yet  <-- the work list
-
-It does not guess: a requirement is only credited to a test file when that
-file mentions the requirement id in its text. Anything else is NONE.
+Buckets
+  COVERED      traceability maps it to a test that exists in this directory
+  STALE        traceability maps it to a test that does NOT exist (drift)
+  NONE         device requirement, no automated test  <-- the work list
+  MANUAL       device requirement, not automatable (visual/IP/thermal/RF)
+  PHONE        phone requirement -> Dart suite lane
+  OUT_OF_SCOPE v2 only / not applicable in v1 / removed
 """
 import io
 import os
@@ -25,109 +31,118 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 REQ_PATH = os.path.normpath(os.path.join(
     HERE, "..", "..", "..", "..", "sgc_requirements.md"))
+TRACE = os.path.join(HERE, "device", "requirements_traceability.md")
 
-# Keyword heuristics for "not automatable by us".
 MANUAL_HINTS = (
-    ("visual", "visual inspection"),
-    ("ip6", "IP rating - physical"),
-    ("ip 6", "IP rating - physical"),
-    ("drop test", "physical drop"),
-    ("3 m", "physical impact"),
-    ("-20", "thermal chamber"),
-    ("temperature", "thermal"),
-    ("erp", "radiated RF / EMC"),
-    ("battery life", "long-run drain"),
-    ("8 h", "long-run drain"),
-    ("12 h", "long-run drain"),
+    "visual", "ip6", "ip 6", "drop test", "-20", "thermal", "erp",
+    "battery life ", "8 h", "12 h", "24 h", "approtect", "nfc coil",
 )
 
 
 def parse_requirements():
-    """Return [(id, text, verification_text)] from the requirement tables."""
     txt = io.open(REQ_PATH, encoding="utf-8").read()
-    out = []
+    out = {}
     row = re.compile(r"^\| \*\*([FIR]\d+)\*\* \|(.*)$")
     for line in txt.splitlines():
         m = row.match(line.strip())
         if not m:
             continue
-        rid = m.group(1)
-        rest = m.group(2)
-        cells = [c.strip() for c in rest.split("|")]
-        body = cells[0] if cells else ""
-        verify = cells[1] if len(cells) > 1 else ""
-        out.append((rid, body, verify))
+        cells = [c.strip() for c in m.group(2).split("|")]
+        out[m.group(1)] = (cells[0] if cells else "",
+                           cells[1] if len(cells) > 1 else "")
     return out
 
 
-def test_index():
-    """Map requirement id -> [test files that mention it]."""
-    idx = {}
+def parse_traceability():
+    """requirement id -> set of U/S ids the matrix attributes to it."""
+    if not os.path.isfile(TRACE):
+        return {}
+    txt = io.open(TRACE, encoding="utf-8", errors="replace").read()
+    out = {}
+    for line in txt.splitlines():
+        m = re.match(r"^\|\s*\*\*([FIR]\d+)\*\*\s*\|", line)
+        if not m:
+            continue
+        cells = [c.strip() for c in line.split("|")]
+        blob = " ".join(cells[2:])
+        ids = set(re.findall(r"\b([US]\d\d)\b", blob))
+        if ids:
+            out[m.group(1)] = ids
+    return out
+
+
+def implemented_test_ids():
+    """U/S ids that actually have a test in this directory."""
+    have = {}
     for fn in sorted(os.listdir(HERE)):
-        if not (fn.endswith(".py") and (fn.startswith("test_"))):
+        if not (fn.startswith("test_") and fn.endswith(".py")):
             continue
         txt = io.open(os.path.join(HERE, fn), encoding="utf-8",
                       errors="replace").read()
-        for rid in re.findall(r"\b([FIR]\d+)\b", txt):
-            idx.setdefault(rid, set()).add(fn)
-    return idx
+        if "SCENARIOS" not in txt and "TestScenario" not in txt:
+            continue          # meta tool, not a device test
+        for tid in re.findall(r"\b([US]\d\d)\b", txt):
+            have.setdefault(tid, set()).add(fn)
+    return have
 
 
-def classify(rid, body, verify, files):
-    """Bucket one requirement.
-
-    Device vs phone matters: JP's ask was automated tests for the device. Phone
-    requirements are verified by the Dart suite (`flutter test`), which is a
-    different lane and is reported separately rather than counted as a device
-    gap. Scope out v2-only rows and non-applicable rows so the denominator is
-    honest.
-    """
-    blob = (body + " " + verify).lower()
-    if "v2 only" in blob or "v2-only" in blob or "not applicable (v1)" in blob:
-        return "OUT_OF_SCOPE", {"v2 / not applicable in v1"}
-    if "the phone shall" in blob or blob.startswith("phone"):
-        return "PHONE", {"Dart app suite"}
-    if files:
-        names = " ".join(files)
-        if "spec_constants" in names or "protocol_conformance" in names:
-            if len(files) == 1:
-                return "SPEC", files
-        return "SERIAL", files
-    for kw, why in MANUAL_HINTS:
-        if kw in blob:
-            return "MANUAL", {why}
+def classify(rid, body, traced, impl):
+    b = body.lower()
+    if ("v2 only" in b or "v2/" in b or "not applicable (v1)" in b
+            or "dnp footprint only" in b or "reserved for a future" in b):
+        return "OUT_OF_SCOPE", set()
+    if "the phone shall" in b or "the app shall" in b or "phone <-> cloud" in b:
+        return "PHONE", set()
+    if "removed" in b[:60]:
+        return "OUT_OF_SCOPE", set()
+    if rid in traced:
+        real = {t for t in traced[rid] if t in impl}
+        if real:
+            return "COVERED", real
+        return "STALE", traced[rid]
+    for kw in MANUAL_HINTS:
+        if kw in b:
+            return "MANUAL", {kw}
     return "NONE", set()
 
 
 def main():
     reqs = parse_requirements()
-    idx = test_index()
-    buckets = {"SERIAL": [], "SPEC": [], "NONE": [], "MANUAL": [],
-               "PHONE": [], "OUT_OF_SCOPE": []}
-    for rid, body, verify in reqs:
-        kind, files = classify(rid, body, verify, idx.get(rid, set()))
-        buckets[kind].append((rid, body, files))
+    traced = parse_traceability()
+    impl = implemented_test_ids()
+
+    buckets = {}
+    for rid, (body, _v) in sorted(reqs.items()):
+        kind, detail = classify(rid, body, traced, impl)
+        buckets.setdefault(kind, []).append((rid, body, detail))
 
     total = len(reqs)
-    print("SGC requirement coverage — %d requirements parsed from sgc_requirements.md"
-          % total)
+    print("SGC requirement coverage — %d requirements in sgc_requirements.md" % total)
+    print("traceability matrix contributes %d requirement->test links" % len(traced))
     print()
-    for k in ("SERIAL", "SPEC", "NONE", "MANUAL", "PHONE", "OUT_OF_SCOPE"):
-        n = len(buckets[k])
-        print("  %-7s %3d  (%4.1f%%)" % (k, n, 100.0 * n / total if total else 0))
+    for k in ("COVERED", "NONE", "MANUAL", "PHONE", "OUT_OF_SCOPE", "STALE"):
+        n = len(buckets.get(k, []))
+        print("  %-12s %3d  (%4.1f%%)" % (k, n, 100.0 * n / total if total else 0))
     print()
 
-    if buckets["NONE"]:
-        print("=== AUTOMATABLE BUT UNCOVERED (%d) ===" % len(buckets["NONE"]))
-        for rid, body, _ in buckets["NONE"]:
-            print("  %-5s %s" % (rid, re.sub(r"\s+", " ", body)[:110]))
+    if buckets.get("STALE"):
+        print("=== STALE: matrix points at a test that no longer exists (%d) ==="
+              % len(buckets["STALE"]))
+        for rid, _b, d in buckets["STALE"]:
+            print("  %-5s -> %s" % (rid, ", ".join(sorted(d))))
         print()
 
-    if buckets["MANUAL"]:
-        print("=== NOT AUTOMATABLE (%d) ===" % len(buckets["MANUAL"]))
-        for rid, body, why in buckets["MANUAL"]:
-            print("  %-5s %-22s %s" % (rid, ", ".join(sorted(why)) if why else "",
-                                       re.sub(r"\s+", " ", body)[:80]))
+    if buckets.get("NONE"):
+        print("=== DEVICE REQUIREMENTS WITH NO AUTOMATED TEST (%d) — the work list ==="
+              % len(buckets["NONE"]))
+        for rid, body, _d in buckets["NONE"]:
+            print("  %-5s %s" % (rid, re.sub(r"\s+", " ", body)[:104]))
+        print()
+
+    if buckets.get("COVERED"):
+        print("=== COVERED (%d) ===" % len(buckets["COVERED"]))
+        for rid, _b, d in buckets["COVERED"]:
+            print("  %-5s %s" % (rid, ", ".join(sorted(d))))
     return 0
 
 
