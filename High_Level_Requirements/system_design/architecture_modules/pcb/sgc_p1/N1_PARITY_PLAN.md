@@ -54,7 +54,7 @@ Legend: ✅ present & equivalent · 🔵 **better (boosted)** · ❌ **MISSING**
 | Reverse-protection on 5 V aux | D4/D5 PMEG4005 | — | ➖ (no ESLOV) |
 | USB **connector** | J7 micro-USB ZX62-AB-5PA | J1 USB-C USB4085, 5.1 kΩ Rd | 🔵 |
 | USB ESD | (in bridge circuit) | — none — | ❌ verify |
-| **USB↔serial bridge** | **U1 SAMD11 + U14 AP2112K-3.3 + U13 NTS0304 + 100 nF×2 + 100 k×4** | — none — (SWD J3 + BLE OTA instead) | ➖ **deliberate (JP OK 2026-11-04; rev B footprint reserved)** |
+| **USB↔serial bridge** | **U1 SAMD11 + U14 AP2112K-3.3 + U13 NTS0304 + 100 nF×2 + 100 k×4** | — none — (SWD J3 + BLE OTA instead) | ➖ **DROPPED FOR GOOD (JP 2026-11-21): no pad, no reserved block** |
 | **External IO (ESLOV)** | J5 SM05B-SRSS + R36/R37 10k + R38/R39 0R | — | ❌ MISSING |
 | **10-pin expansion header** | J1 2×10 (JTAG_ANNA/JTAG_BHI/SPI1_EXT/I2C1_EXT/LPIO/ADC0/ADC1) | J3 2×5 SWD only | ⚠ partial |
 | Aux 3-pin | J4 BM03B-ACHSS | J4 = LED strip (different) | ➖ |
@@ -86,11 +86,11 @@ qualification, because **three Nicla blocks must NOT be copied verbatim**:
    Boost EN moves to P0.17, BQ CD to P0.08, and BHI RESETN to P0.13 because B402 pin 12 (RESET_N) is
    fixed on P0.18 — which Nicla uses for BHI reset. Already resolved in spec §3.3 (C1/C2/C3).
 2. **Qi charging → USB-C** (Qi dropped v4.2).
-3. **SAMD11 USB bridge — DECIDED (JP "OK!" 2026-11-04): OMIT in rev A, reserve the footprint block for
-   rev B.** It exists on Nicla to give USB programming + serial. We have SWD (J3) and a working BLE OTA
-   path. Copying it costs ~5 ICs (SAMD11, AP2112K-3.3, NTS0304 ×2, TXB0108), a second 3.3 V rail, and 4
-   level-shift nets — and it serves *only* programming/console. Not a parity gap; a deliberate delta.
-   Everything else is cheap and should be closed now.
+3. **SAMD11 USB bridge — REMOVED FROM THE PROJECT (JP 2026-11-21; supersedes the 2026-11-04
+   "reserve for rev B" decision). Once F68 APPROTECT is active in production, SWD — and with it any
+   USB↔SWD bridge — is dead until mass-erase, so a bridge buys nothing on a shipped unit while still
+   costing ~5 ICs, a second 3.3 V rail and 4 level-shift nets on every board. No footprint, no reserved
+   pads, no future provision. Dev access = J3 (SWD) + the UART console pads, both retained.**
 
 ### ✅ DONE 2026-11-04 — G1–G5 closed in `sgc_netlist.py` (validator green)
 
