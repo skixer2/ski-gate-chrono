@@ -329,6 +329,20 @@ static void rc_work_handler(struct k_work *w)
 		} else {
 			st_skipped++;
 		}
+		/* Pre-roll depth telemetry (JP 2026-11-21). Until now NOTHING
+		 * exposed how deep the pre-roll got while ARMED, so F02/F05 could
+		 * only be tested to a floor: "at least N frames survived" - a
+		 * slow or truncated fill looked identical to a healthy one.
+		 * Emitted at 1 Hz, ARMED only, so it costs nothing in the
+		 * LOGGING hot path (which must not printk from drain context),
+		 * and it is cheap enough to leave at 1 Hz in production.
+		 * r  = current ring occupancy (slots)
+		 * rm = arm cap in slots (SGC_ARM_CAP_SLOTS = 3000 = 30 s @100 Hz)
+		 * At 100 Hz tick rate, ticks%100 == 0 is exactly 1 Hz. */
+		if (ticks % 100u == 0u) {
+			printk("{\"ev\":\"ring\",\"r\":%u,\"rm\":%u}\n",
+			       ring_count(), (unsigned)SGC_ARM_CAP_SLOTS);
+		}
 		if (ticks % 10 == 0 && detector_10hz()) {
 			/* Baro-drop START (F04): same transition as 'g'. */
 			if (store_record_begin(ble_config_arm_side())) {

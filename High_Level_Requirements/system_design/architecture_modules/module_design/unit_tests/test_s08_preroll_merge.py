@@ -64,10 +64,27 @@ def preroll_merge(h, _output):
         print("    FAIL: never reached ARMED")
         return False
 
-    # Let the pre-roll fill for a bounded part of the ARM window. We do not wait
-    # the full 30 s: the requirement is that whatever WAS retained gets merged.
+    # Let the pre-roll fill, and MEASURE how deep it actually got.
+    # Firmware >= 0.25.20 emits {"ev":"ring","r":N,"rm":3000} at 1 Hz while
+    # ARMED (added 2026-11-21 exactly for this). Before that, nothing exposed
+    # the fill depth, so this test could only assert a floor.
     import time
     time.sleep(12)
+    h._flush()
+    h.send('D')            # force a console flush window to collect ring lines
+    ring_lines = [o for o in h._read_json_lines(1500) if o.get('ev') == 'ring']
+    measured_depth = max((o.get('r', 0) for o in ring_lines), default=None)
+    rm = max((o.get('rm', 0) for o in ring_lines), default=None)
+    if measured_depth is None:
+        print("    NOTE: no {\"ev\":\"ring\"} line - firmware older than the "
+              "2026-11-21 telemetry; falling back to a floor assertion")
+    else:
+        print("    measured pre-roll depth while ARMED: r=%d / rm=%s slots"
+              % (measured_depth, rm))
+        if measured_depth < MIN_PREROLL_FRAMES_IN_RUN:
+            print("    FAIL: pre-roll only reached %d slots while ARMED "
+                  "(F02: the window must fill)" % measured_depth)
+            return False
 
     # How deep did the pre-roll get? The directory's free line does not expose
     # it, but the ring count is implied by rec_stats after the run, so record a
@@ -104,12 +121,25 @@ def preroll_merge(h, _output):
         print("    FAIL: %d frames were skipped (ring exhausted) - pre-roll lost"
               % skipped)
         return False
-    if frames - expected_live < MIN_PREROLL_FRAMES_IN_RUN:
+    merged = frames - expected_live
+    if measured_depth is not None:
+        # Exact assertion: everything retained must reach the run (allow a
+        # small tolerance for frames pushed between the last ring line and the
+        # trigger, and for the 10 Hz drain asymmetry).
+        floor = max(MIN_PREROLL_FRAMES_IN_RUN, measured_depth - 200)
+        if merged < floor:
+            print("    FAIL: ring held %d slots but only %d reached the run "
+                  "(need >= %d) - F05 merge is dropping pre-roll"
+                  % (measured_depth, merged, floor))
+            return False
+        print("    PASS: %d of %d retained slots merged into the run"
+              % (merged, measured_depth))
+        return True
+    if merged < MIN_PREROLL_FRAMES_IN_RUN:
         print("    FAIL: only %d pre-roll frames reached the run (need >= %d) - "
-              "F05 merge is NOT working"
-              % (frames - expected_live, MIN_PREROLL_FRAMES_IN_RUN))
+              "F05 merge is NOT working" % (merged, MIN_PREROLL_FRAMES_IN_RUN))
         return False
-    print("    PASS: pre-roll merged into the run")
+    print("    PASS: pre-roll merged into the run (floor assertion)")
     return True
 
 
