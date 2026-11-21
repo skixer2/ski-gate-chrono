@@ -429,6 +429,23 @@ SYMBOL_PINS = {
             ("3", "GND",  "passive", "L"),
         ],
     ),
+    "TESTPOINT": dict(
+        prefix="TP", value="TestPoint 1.0mm", hw=2.54,
+        fp="TestPoint:TestPoint_Pad_D1.0mm", ds="",
+        desc="Bare 1.0 mm pad for a pogo-pin probe (UART console). JP 2026-11-21.",
+        pins=[
+            ("1", "1", "passive", "L"),
+        ],
+    ),
+    "PINHOLE-2": dict(
+        prefix="J", value="Pinhole reset 2 pad", hw=5.08,
+        fp="", ds="",
+        desc="2-pad pinhole: short to GND to pull BQ25120A /MR low (>64 ms) = hard system power cycle. JP 2026-11-21.",
+        pins=[
+            ("1", "MR",  "passive", "L"),
+            ("2", "GND", "passive", "L"),
+        ],
+    ),
     "SWD-2X5": dict(
         prefix="J", value="SWD 2x5 1.27mm Cortex Debug",
         fp="", ds="",
@@ -532,7 +549,7 @@ PARTS = [
         "C1": "ISET_R", "C2": "ILIM_R", "C3": "TS_NTC",
         "C4": "+1V8", "C5": "LSLDO_C",
         "D1": "IPRETERM_R", "D2": "BQ_INT", "D3": "NC", "D4": "NC", "D5": "GND",
-        "E1": "NC", "E2": "BQ_CD", "E3": "GND", "E4": "I2C0_SDA", "E5": "I2C0_SCL"}),
+        "E1": "BQ_MR", "E2": "BQ_CD", "E3": "GND", "E4": "I2C0_SDA", "E5": "I2C0_SCL"}),
     dict(ref="C1", sym="C", x=152, y=42, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBUS_IN", "2": "GND"}),   # BQ IN bypass (>=1uF)
     dict(ref="C2", sym="C", x=152, y=52, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="4.7uF", nets={"1": "V_PMID", "2": "GND"}),    # PMID >=3uF, Nicla C10
     dict(ref="C3", sym="C", x=152, y=62, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="10uF",  nets={"1": "+1V8", "2": "GND"}),      # SYS >=4.7uF, Nicla C15
@@ -556,6 +573,16 @@ PARTS = [
     dict(ref="R6", sym="R", x=84, y=164, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="10k",    nets={"1": "+1V8", "2": "GAUGE_ALRT"}), # /ALRT PU
     dict(ref="J2", sym="JST-BAT-3", x=35, y=200, fp=E, dnp=False, nets={
         "1": "VBAT", "2": "TS_NTC", "3": "GND"}),
+
+    # --- Rev A addition (JP 2026-11-21): hard power-cycle pinhole -------------
+    # BQ25120A /MR is 64 ms-debounced. R_MR holds it high; the pinhole shorts
+    # it to GND. Requires USB detached (JP's stated assumption): on VBUS the
+    # PMIC restarts its rails but the board stays powered from USB.
+    dict(ref="J6", sym="PINHOLE-2", x=35, y=225, fp=E, dnp=False, nets={
+        "1": "BQ_MR", "2": "GND"}),
+    dict(ref="R_MR", sym="R", x=55, y=225, fp="Resistor_SMD:R_0402_1005Metric",
+         dnp=False, value="100k",
+         nets={"1": "+1V8", "2": "BQ_MR"}),   # /MR active-low, 100k pull-up
 
     # --- ANNA-B402 (center) ---
     dict(ref="U1", sym="ANNA-B402", x=225, y=132, fp=E, dnp=False, nets={
@@ -663,6 +690,14 @@ PARTS = [
          nets={"1": "BUTTON_RAW", "2": "GND"}),     # K=signal, A=GND: clamps NEGATIVE spikes (was reversed until 2026-11-07 - DS pass-2 catch)
 
     # --- SWD connector (bottom-left) ---
+    # Rev A addition (JP 2026-11-21): the netlist already named UART_TX_TP /
+    # UART_RX_TP, but no pad existed, so there was no physical console access.
+    # 1.0 mm round pads suit a pogo pin probe; UART_TX is the one you need for a
+    # read-only console, UART_RX only for driving commands from the PC.
+    dict(ref="TP_TX", sym="TESTPOINT", x=95, y=258, fp=E, dnp=False,
+         nets={"1": "UART_TX_TP"}),
+    dict(ref="TP_RX", sym="TESTPOINT", x=105, y=258, fp=E, dnp=False,
+         nets={"1": "UART_RX_TP"}),
     dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp=E, dnp=False, nets={
         "1": "+1V8", "2": "SWDIO", "3": "GND", "4": "SWDCLK", "5": "GND",
         "6": "SWO", "7": "NC", "8": "NC", "9": "GND", "10": "RESET_N"}),
@@ -688,7 +723,8 @@ SHEETS = [
     ("5V boost + LED strip reserve (v2 DNP)",      "sch_boost_led.kicad_sch",
      ["U10","U11","L2","D2","R11","R12","C17","C18","C19"]),
     ("Connectors: USB-C / battery / piezo / SWD",  "sch_connectors.kicad_sch",
-     ["J1","J2","J3","J5","R7","R8","C16","D5","R41","D6","D7","J4"]),
+     ["J1","J2","J3","J5","J4","J6","R_MR","TP_TX","TP_RX","R7","R8","C16","D5","R41","D6","D7",
+      "R15","R16","C24"]),
 ]
 
 # Value overrides/defaults: parts without explicit 'value' take symbol default (part number).
@@ -710,9 +746,16 @@ NOTES = [
     (15, 104, 132, 26,
      "CHARGER (spec 4.1/4.7): ISET 1.82k -> ICHG ~110 mA; ILIM 1k -> 200 mA; IPRETERM 4.99k -> 10%; VBATREG default 4.2 V.\n"
      "OD-8: /CD -> P0.08 (B402 pin 50, moved from P0.25 - P0.25 does not exist) + 100k PU to V_PMID (ship-mode capable).\n"
-     "BQ INT -> 100k PU +1V8, NC on MCU (read FAULTS reg, AD-029); /PG TP only. /MR, RESET NC (Nicla P0.18->MR net dropped, C3).\n"
+     "BQ INT -> 100k PU +1V8, NC on MCU (read FAULTS reg, AD-029); /PG TP only. /MR -> J6 pinhole + R_MR 100k PU (+1V8) (rev A addition JP 2026-11-21: hard power-cycle recovery, USB detached). RESET NC (Nicla P0.18->MR net dropped, C3).\n"
      "LS/LDO unused (C4): LSCTRL->GND, VINLS->SYS, LS/LDO 1uF. TS: R_HI (VBUS->TS) + R_LO (TS->GND) + pack NTC - values TBD-JP (OD-4).\n"
      "i2c0 pull-ups 100k to +1V8 (Nicla parity; BQ ds suggests 10k - spec chose Nicla parity). USB-IF inrush note OD-14."),
+    (15, 60, 78, 20,
+     "HARD RESET PINHOLE (rev A, JP 2026-11-21): J6 shorts BQ25120A /MR (E1) to GND for >64 ms ->\n"
+     "the PMIC restarts its rails = a TRUE power cycle, which is the only thing that clears a\n"
+     "wedged MCU (SoftDevice/mbed hang); a soft reset cannot. R_MR 100k pulls /MR high.\n"
+     "Assumption (JP): USB DETACHED - on VBUS the board stays powered, so this only restarts the PMIC.\n"
+     "A soft reset button is deliberately NOT added.\n"
+     "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09), 1.0 mm pads for a pogo probe."),
     (15, 86, 40, 14,
      "USB-C: VBUS 10uF bulk at connector; D+/D- NC; shell stitched to GND.\n"
      "ESD D5 TBD-JP (OD-13: PESD5V0U2UT vs TPD4E05U06)."),
