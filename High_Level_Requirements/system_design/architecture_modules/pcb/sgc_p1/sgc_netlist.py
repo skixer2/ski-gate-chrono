@@ -327,7 +327,7 @@ SYMBOL_PINS = {
     "BMM150": dict(
         prefix="U", value="BMM150",
         fp="", ds="https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf",
-        desc="Bosch BMM150 geomagnetic sensor, 8-bump WLCSP; rides BHI260AP M3 I2C (Nicla U4 parity). G1",
+        desc="Bosch BMM150 geomagnetic sensor, 8-bump WLCSP; rides BHI260AP M3 I2C (Nicla U4 parity). G1. POPULATED and ACTIVE - feeds the 9-axis rotation-vector fusion, so H08 ferromagnetic keep-out APPLIES (JP 2026-11-22).",
         hw=7.62,
         pins=[
             ("A1", "PS",   "input", "L"),
@@ -837,6 +837,12 @@ NOTES = [
      "OD-2: Tag-Connect TC2050 footprint alternative (castellated pads). SWO = B402 pin 16 (optional)."),
     (196, 240, 52, 16,
      "U6 LDC1612 = DNP v2 footprint (unpopulated v1, spec 1/4.6). Coil = 14 mm spiral on CH0 (footprint retained, v2)."),
+    (196, 240, 60, 20,
+     "H08 ACTIVE (JP 2026-11-22): U12 BMM150 is POPULATED and feeds the BHY260AP rotation-vector\n"
+     "(9-axis) fusion -> the logged quaternion depends on the magnetometer. NO permanent magnet,\n"
+     "steel fastener or magnetic latch near U12. Magnetic connectors REJECTED. Magnetic-base probe\n"
+     "fixtures (PCBite-type) PROHIBITED on the bench rig. Add a layout keep-out around U12 and keep\n"
+     "the pogo/probe hardware non-magnetic. H08 was previously annotated N/A - that was stale."),
 ]
 
 # ---------------------------------------------------------------------------
