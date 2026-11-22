@@ -205,7 +205,7 @@ SYMBOL_PINS = {
     "IS31FL3194": dict(
         prefix="U", value="IS31FL3194",
         fp="", ds="https://www.lumissil.com/assets/pdf/core/IS31FL3194_DS.pdf",
-        desc="Lumissil IS31FL3194 RGB LED driver, WLCSP-8, addr 0x53 (fixed 101 0011)",
+        desc="Lumissil IS31FL3194 RGB LED driver, WLCSP-8, addr 0x53 (fixed 101 0011). ALL states are encoded by FLASH RHYTHM, not steady colour (F41, JP 2026-11-22) - see note on sch_sensors.",
         hw=10.16,
         pins=[
             ("A1", "SDB",  "input", "L"),
@@ -839,6 +839,19 @@ NOTES = [
      "OD-2: Tag-Connect TC2050 footprint alternative (castellated pads). SWO = B402 pin 16 (optional)."),
     (196, 240, 52, 16,
      "U6 LDC1612 = DNP v2 footprint (unpopulated v1, spec 1/4.6). Coil = 14 mm spiral on CH0 (footprint retained, v2)."),
+    (150, 200, 100, 34,
+     "F41 LED STATUS = TEMPORAL ENCODING (JP 2026-11-22). Rhythm is the PRIMARY cue, colour secondary:\n"
+     "a blinking LED is identifiable in direct sun and at 5 m where a steady hue is not.\n"
+     "  ARMED      : ORANGE 1 Hz, 50 % duty (500 ms on / 500 ms off)\n"
+     "  SLEEP      : BLUE 100 ms pulse every 2 s (5 %)\n"
+     "  advertising: BLUE 0.5 Hz\n"
+     "  connected  : GREEN slow breathe\n"
+     "  calib >=2  : GREEN double-flash\n"
+     "  uncalib    : BLUE slow flow\n"
+     "  LOGGING    : RED 4 Hz\n"
+     "  low bat/err: YELLOW 8 Hz\n"
+     "Implement with a per-state (period, duty) table; reset the pattern phase on state change so a\n"
+     "mid-off glance cannot be misread as idle. Non-blocking: LED renders via sysworkq, never in ISR."),
     (196, 240, 60, 20,
      "H08 ACTIVE (JP 2026-11-22): U12 BMM150 is POPULATED and feeds the BHY260AP rotation-vector\n"
      "(9-axis) fusion -> the logged quaternion depends on the magnetometer. NO permanent magnet,\n"
