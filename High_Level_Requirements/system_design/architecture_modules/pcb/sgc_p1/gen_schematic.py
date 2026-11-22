@@ -130,7 +130,11 @@ class SheetCtx:
         s.properties = [
             prop("Reference", part["ref"], (x - hw - 2.0, y - top - 1.5)),
             prop("Value", part["value"], (x - hw, y - bot + 2.6)),
-            prop("Footprint", part.get("fp", ""), (x, y), hide=True),
+            # A part without an explicit fp inherits the symbol spec's footprint;
+            # fp=E (empty string) still explicitly blanks it. Previously a part that
+            # simply omitted fp also got "", which silently dropped footprints the
+            # symbol already declared (TP_TX/TP_RX lost TestPoint_Pad_D1.0mm).
+            prop("Footprint", part["fp"] if "fp" in part else spec.get("fp", ""), (x, y), hide=True),
             prop("Datasheet", spec.get("ds", ""), (x, y), hide=True),
             prop("Description", spec.get("desc", ""), (x, y), hide=True),
         ]

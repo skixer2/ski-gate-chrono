@@ -694,10 +694,14 @@ PARTS = [
     # UART_RX_TP, but no pad existed, so there was no physical console access.
     # 1.0 mm round pads suit a pogo pin probe; UART_TX is the one you need for a
     # read-only console, UART_RX only for driving commands from the PC.
-    dict(ref="TP_TX", sym="TESTPOINT", x=95, y=258, fp=E, dnp=False,
+    dict(ref="TP_TX", sym="TESTPOINT", x=95, y=258, dnp=False,
          nets={"1": "UART_TX_TP"}),
-    dict(ref="TP_RX", sym="TESTPOINT", x=105, y=258, fp=E, dnp=False,
+    dict(ref="TP_RX", sym="TESTPOINT", x=105, y=258, dnp=False,
          nets={"1": "UART_RX_TP"}),
+    # Console needs a GND reference within probe-cable reach; J3's GND pins are
+    # 30 mm away and inside the SWD ribbon, so give the UART probe its own GND.
+    dict(ref="TP_GND", sym="TESTPOINT", x=115, y=258, dnp=False,
+         nets={"1": "GND"}),
     dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp=E, dnp=False, nets={
         "1": "+1V8", "2": "SWDIO", "3": "GND", "4": "SWDCLK", "5": "GND",
         "6": "SWO", "7": "NC", "8": "NC", "9": "GND", "10": "RESET_N"}),
@@ -723,7 +727,7 @@ SHEETS = [
     ("5V boost + LED strip reserve (v2 DNP)",      "sch_boost_led.kicad_sch",
      ["U10","U11","L2","D2","R11","R12","C17","C18","C19"]),
     ("Connectors: USB-C / battery / piezo / SWD",  "sch_connectors.kicad_sch",
-     ["J1","J2","J3","J5","J4","J6","R_MR","TP_TX","TP_RX","R7","R8","C16","D5","R41","D6","D7",
+     ["J1","J2","J3","J5","J4","J6","R_MR","TP_TX","TP_RX","TP_GND","R7","R8","C16","D5","R41","D6","D7",
       "R15","R16","C24"]),
 ]
 
@@ -755,7 +759,7 @@ NOTES = [
      "wedged MCU (SoftDevice/mbed hang); a soft reset cannot. R_MR 100k pulls /MR high.\n"
      "Assumption (JP): USB DETACHED - on VBUS the board stays powered, so this only restarts the PMIC.\n"
      "A soft reset button is deliberately NOT added.\n"
-     "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09), 1.0 mm pads for a pogo probe."),
+     "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09) + TP_GND, 1.0 mm pads for a pogo probe."),
     (15, 86, 40, 14,
      "USB-C: VBUS 10uF bulk at connector; D+/D- NC; shell stitched to GND.\n"
      "ESD D5 TBD-JP (OD-13: PESD5V0U2UT vs TPD4E05U06)."),
