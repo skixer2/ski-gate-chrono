@@ -437,6 +437,22 @@ SYMBOL_PINS = {
             ("1", "1", "passive", "L"),
         ],
     ),
+    "MOUNTING-1": dict(
+        prefix="MH", value="Mounting hole 1.6mm", hw=2.54,
+        fp="MountingHole:MountingHole_1.6mm", ds="",
+        desc="NPTH registration hole for the pogo jig. No net (mechanical). JP 2026-11-22.",
+        pins=[
+            ("1", "1", "passive", "L"),
+        ],
+    ),
+    "FIDUCIAL": dict(
+        prefix="FID", value="Fiducial 1mm", hw=2.54,
+        fp="Fiducial:Fiducial_1mm_Mask2mm", ds="",
+        desc="Optical fiducial for jig alignment. No net (mechanical). JP 2026-11-22.",
+        pins=[
+            ("1", "1", "passive", "L"),
+        ],
+    ),
     "PINHOLE-2": dict(
         prefix="J", value="Pinhole reset 2 pad", hw=5.08,
         fp="", ds="",
@@ -702,6 +718,16 @@ PARTS = [
     # 30 mm away and inside the SWD ribbon, so give the UART probe its own GND.
     dict(ref="TP_GND", sym="TESTPOINT", x=115, y=258, dnp=False,
          nets={"1": "GND"}),
+
+    # --- Pogo-jig registration (rev A, JP 2026-11-22) -----------------------
+    # A jig must land 3 pads repeatably, so it needs mechanical registration:
+    # two NPTH holes to pin the fixture and two fiducials for optical alignment.
+    # Placed either side of the 3-pad console row (TP_TX/TP_RX/TP_GND on y=258).
+    # Bare copper / holes only - no part, no BOM cost, valid on production units.
+    dict(ref="MH1", sym="MOUNTING-1", x=85, y=258, dnp=False, nets={"1": "NC"}),
+    dict(ref="MH2", sym="MOUNTING-1", x=125, y=258, dnp=False, nets={"1": "NC"}),
+    dict(ref="FID1", sym="FIDUCIAL", x=80, y=248, dnp=False, nets={"1": "NC"}),
+    dict(ref="FID2", sym="FIDUCIAL", x=130, y=248, dnp=False, nets={"1": "NC"}),
     dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp=E, dnp=False, nets={
         "1": "+1V8", "2": "SWDIO", "3": "GND", "4": "SWDCLK", "5": "GND",
         "6": "SWO", "7": "NC", "8": "NC", "9": "GND", "10": "RESET_N"}),
@@ -727,7 +753,7 @@ SHEETS = [
     ("5V boost + LED strip reserve (v2 DNP)",      "sch_boost_led.kicad_sch",
      ["U10","U11","L2","D2","R11","R12","C17","C18","C19"]),
     ("Connectors: USB-C / battery / piezo / SWD",  "sch_connectors.kicad_sch",
-     ["J1","J2","J3","J5","J4","J6","R_MR","TP_TX","TP_RX","TP_GND","R7","R8","C16","D5","R41","D6","D7",
+     ["J1","J2","J3","J5","J4","J6","R_MR","TP_TX","TP_RX","TP_GND","MH1","MH2","FID1","FID2","R7","R8","C16","D5","R41","D6","D7",
       "R15","R16","C24"]),
 ]
 
@@ -759,7 +785,8 @@ NOTES = [
      "wedged MCU (SoftDevice/mbed hang); a soft reset cannot. R_MR 100k pulls /MR high.\n"
      "Assumption (JP): USB DETACHED - on VBUS the board stays powered, so this only restarts the PMIC.\n"
      "A soft reset button is deliberately NOT added.\n"
-     "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09) + TP_GND, 1.0 mm pads for a pogo probe."),
+     "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09) + TP_GND, 1.0 mm pads for a pogo probe.\n"
+     "POGO JIG: MH1/MH2 1.6 mm NPTH registration holes + FID1/FID2 fiducials flank the pad row (JP 2026-11-22)."),
     (15, 86, 40, 14,
      "USB-C: VBUS 10uF bulk at connector; D+/D- NC; shell stitched to GND.\n"
      "ESD D5 TBD-JP (OD-13: PESD5V0U2UT vs TPD4E05U06)."),
