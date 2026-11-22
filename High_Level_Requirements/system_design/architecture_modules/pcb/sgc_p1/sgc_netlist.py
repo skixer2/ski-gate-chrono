@@ -825,7 +825,9 @@ NOTES = [
      "UART console TP: TX P0.20 (pin 10) / RX P0.09 (pin 22, NFC1 - no NFC coil on board). TP set per OD-3:\n"
      "+1V8, +5V, VBAT, V_PMID, GND, BQ INT, SWD row, UART row, ALRT, LED-data.\n"
      "DNP v2 (footprints retained): LDC1612 U6 + 14mm coil (ADDR=GND -> 0x2A; INTB -> BUTTON net per OD-11; CLKIN tie\n"
-     "GND if internal osc - v2), RV-3028-C7 @0x52 (/INT -> TP, no GPIO steal), BZ1 beeper (P0.09 via 100R/NPN).\n"
+     "GND if internal osc - v2), RV-3028-C7 @0x52 (/INT -> TP, no GPIO steal).\n"
+     "NO BEEPER (JP 2026-11-22): BZ1 removed entirely - no footprint, no GPIO. The old note named P0.09,\n"
+     "which is now UART_RX_TP (console pad), so it was also a pin conflict. F14/I08 corrected to match.\n"
      "nRF P0.24/P0.25 DO NOT EXIST on B402 (spec C1/C2 pin moves). Module USB (pins 21/34/35) unused - NC."),
     (15, 216, 110, 30,
      "BATTERY / POWER TREE (spec 4.8/5): Renata ICP622540PMT 600 mAh 3.7 V LiPo, 3-wire NTC pack, JST-3 user-replaceable\n"
