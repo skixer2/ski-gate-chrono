@@ -102,6 +102,28 @@ YFP-25 DSBGA, U4 MAX17048 TDFN-8, U8 BHI260AP LGA-44, U5 IS31 WLCSP-8, U9 BMP390
 J1 USB4085 mid-mount, J2 JST-3 (PN per OD-4), J3 (2×5 1.27 mm Cortex-Debug style **or Tag-Connect
 TC2050** per OD-2), D1 SMLP34RGB2W3. These can be generated later from the datasheet land patterns.
 
+## Console pads + pogo jig (rev A)
+
+`TP_TX` (P0.20) / `TP_RX` (P0.09) / `TP_GND` are bare 1.0 mm ENIG test points for a
+bidirectional UART console. They carry no part, no BOM line, no assembly step and no
+current, so they stay on production units at zero cost (JP 2026-11-22).
+
+**Registration:** `MH1`/`MH2` are 1.6 mm NPTH holes and `FID1`/`FID2` are optical
+fiducials, so a printed jig can be located. The hole pair is **deliberately asymmetric**
+(17 mm / 13 mm either side of the pad centroid): a symmetric pair lets the jig drop on
+180 degrees rotated, which would land jig-TX on TP_GND and jig-GND on TP_TX - two outputs
+driving each other with no current limiting.
+
+**PROVISIONAL:** there is no PCB layout yet, so the coordinates in `sgc_netlist.py` are
+schematic-sheet millimetres, not board positions. Treat MH/FID and the 10 mm pad pitch as
+intent, not fab data. Final pad/hole datum must be set in layout against the printed jig
+(JP designs and prints the jig). Pad pitch is shown at 10 mm for schematic legibility and
+can be tightened once wire routing is regenerated for the new positions.
+
+**Do NOT use magnetic-base probe fixtures** (e.g. PCBite) on this board: the BMM150 is
+populated and its magnetometer feeds the BHY260AP rotation-vector fusion, so nearby
+permanent magnets corrupt heading and calibration.
+
 ## ERC / validation status
 
 - **Syntax:** both KiCad files parse clean with kiutils (round-trip write + re-read) — see below.

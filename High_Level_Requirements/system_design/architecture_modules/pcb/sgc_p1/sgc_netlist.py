@@ -724,10 +724,16 @@ PARTS = [
     # two NPTH holes to pin the fixture and two fiducials for optical alignment.
     # Placed either side of the 3-pad console row (TP_TX/TP_RX/TP_GND on y=258).
     # Bare copper / holes only - no part, no BOM cost, valid on production units.
-    dict(ref="MH1", sym="MOUNTING-1", x=85, y=258, dnp=False, nets={"1": "NC"}),
-    dict(ref="MH2", sym="MOUNTING-1", x=125, y=258, dnp=False, nets={"1": "NC"}),
-    dict(ref="FID1", sym="FIDUCIAL", x=80, y=248, dnp=False, nets={"1": "NC"}),
-    dict(ref="FID2", sym="FIDUCIAL", x=130, y=248, dnp=False, nets={"1": "NC"}),
+    # ASYMMETRY IS DELIBERATE: the hole pair is NOT symmetric about the pad
+    # centroid (x=105). A symmetric pair lets the jig drop on 180-degrees
+    # rotated, which would land jig-TX on TP_GND and jig-GND on TP_TX - two
+    # outputs driving each other with no current limiting. Offsetting the
+    # second hole by 4 mm makes a flipped jig physically impossible.
+    # Pad centroid 105 | MH1 17 mm left | MH2 13 mm right.
+    dict(ref="MH1", sym="MOUNTING-1", x=88, y=258, dnp=False, nets={"1": "NC"}),
+    dict(ref="MH2", sym="MOUNTING-1", x=118, y=258, dnp=False, nets={"1": "NC"}),
+    dict(ref="FID1", sym="FIDUCIAL", x=82, y=248, dnp=False, nets={"1": "NC"}),
+    dict(ref="FID2", sym="FIDUCIAL", x=118, y=246, dnp=False, nets={"1": "NC"}),
     dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp=E, dnp=False, nets={
         "1": "+1V8", "2": "SWDIO", "3": "GND", "4": "SWDCLK", "5": "GND",
         "6": "SWO", "7": "NC", "8": "NC", "9": "GND", "10": "RESET_N"}),
@@ -786,7 +792,7 @@ NOTES = [
      "Assumption (JP): USB DETACHED - on VBUS the board stays powered, so this only restarts the PMIC.\n"
      "A soft reset button is deliberately NOT added.\n"
      "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09) + TP_GND, 1.0 mm pads for a pogo probe.\n"
-     "POGO JIG: MH1/MH2 1.6 mm NPTH registration holes + FID1/FID2 fiducials flank the pad row (JP 2026-11-22)."),
+     "POGO JIG: MH1/MH2 1.6 mm NPTH + FID1/FID2 fiducials flank the console pads. Hole pair is ASYMMETRIC on purpose (MH1 17 mm / MH2 13 mm from pad centroid) so a 180-deg flipped jig cannot seat. Pad pitch shown 5.08 mm for legibility; final PCB spacing + hole datum to be set in layout against the printed jig (JP prints it)."),
     (15, 86, 40, 14,
      "USB-C: VBUS 10uF bulk at connector; D+/D- NC; shell stitched to GND.\n"
      "ESD D5 TBD-JP (OD-13: PESD5V0U2UT vs TPD4E05U06)."),
