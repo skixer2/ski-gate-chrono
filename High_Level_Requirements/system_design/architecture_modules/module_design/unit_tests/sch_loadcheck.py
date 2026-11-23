@@ -99,8 +99,9 @@ def check(path):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
+    # unit_tests -> module_design -> architecture_modules -> pcb/sgc_p1
     base = os.path.normpath(os.path.join(
-        here, "..", "..", "..", "pcb", "sgc_p1"))
+        here, "..", "..", "pcb", "sgc_p1"))
     if not os.path.isdir(base):
         print("schematic dir not found: %s" % base)
         return 2
