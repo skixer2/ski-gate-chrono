@@ -69,7 +69,7 @@ SYMBOL_PINS = {
     ),
     "CON-3": dict(
         prefix="J", value="JST-SH-3 (TBD-JP)", hw=7.62,
-        fp="Connector_JST:JST_SH_BM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
+        fp="Connector_JST:JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
         ds="https://www.jst-mfg.com/product/detail_en.php?series=SR",
         desc="Off-board SK6812 strip feed: +5V / DATA / GND. Strip glued to pole or in transparent case (v2), NOT on PCB (JP 2026-11-01: space). DNP v1",
         pins=[
@@ -358,7 +358,7 @@ SYMBOL_PINS = {
     ),
     "MX25R6435F": dict(
         prefix="U", value="MX25R6435FZAIL-08G",
-        fp="Package_SO:SOIC-8_5.23x5.23mm_P1.27mm",
+        fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm",
         ds="https://www.macronix.com/en-us/products/NOR-Flash/Serial-NOR-Flash/Pages/spec.aspx?p=MX25R6435F",
         desc="Macronix 64 Mb NOR flash (SGC RawRunStore), SOIC-8 200mil; pin config verbatim v1.6",
         hw=10.16,
@@ -375,7 +375,7 @@ SYMBOL_PINS = {
     ),
     "MX25R1635F": dict(
         prefix="U", value="MX25R1635FZUIH0",
-        fp="Package_SO:SOIC-8_5.23x5.23mm_P1.27mm",
+        fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm",
         ds="https://www.macronix.com/en-us/products/NOR-Flash/Serial-NOR-Flash/Pages/spec.aspx?p=MX25R1635F",
         desc="Macronix 16 Mb NOR flash = BHI260AP FW flash (Nicla U2); OD-5: add to BOM",
         hw=10.16,
@@ -439,7 +439,7 @@ SYMBOL_PINS = {
     ),
     "MOUNTING-1": dict(
         prefix="MH", value="Mounting hole 1.6mm", hw=2.54,
-        fp="MountingHole:MountingHole_1.6mm", ds="",
+        fp="sgc_p1:MountingHole_1.6mm", ds="",
         desc="NPTH registration hole for the pogo jig. No net (mechanical). JP 2026-11-22.",
         pins=[
             ("1", "1", "passive", "L"),
@@ -651,11 +651,11 @@ PARTS = [
     dict(ref="C15", sym="C", x=395, y=175, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "V_PMID", "2": "GND"}), # IS31 decap (value TBD-JP, OD-17)
 
     # --- Flash (bottom-right) ---
-    dict(ref="U7", sym="MX25R6435F", x=300, y=225, fp="Package_SO:SOIC-8_5.23x5.23mm_P1.27mm", dnp=False, nets={
+    dict(ref="U7", sym="MX25R6435F", x=300, y=225, fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm", dnp=False, nets={
         "1": "CS_FLASH", "2": "SPI2_MISO", "3": "NC", "4": "GND",
         "5": "SPI2_MOSI", "6": "SPI2_SCK", "7": "NC", "8": "+1V8"}),
     dict(ref="C8", sym="C", x=348, y=217, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
-    dict(ref="U2", sym="MX25R1635F", x=300, y=258, fp="Package_SO:SOIC-8_5.23x5.23mm_P1.27mm", dnp=False, nets={
+    dict(ref="U2", sym="MX25R1635F", x=300, y=258, fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm", dnp=False, nets={
         "1": "QSPI_CS", "2": "QSPI_IO1", "3": "QSPI_IO2", "4": "GND",
         "5": "QSPI_IO0", "6": "QSPI_SCK", "7": "QSPI_IO3", "8": "+1V8"}),
     dict(ref="C9", sym="C", x=348, y=250, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
