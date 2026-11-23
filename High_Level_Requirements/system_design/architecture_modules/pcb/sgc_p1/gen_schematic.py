@@ -318,7 +318,14 @@ def main():
     root.noConnects = []
     root.textBoxes = []
     root.sheets = sheet_boxes
-    root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")]
+    # KiCad expects the root's sheet_instances to enumerate EVERY sheet path with its
+    # page number, not just "/". With only the root listed, the loader cannot map the
+    # child sheets to pages and reports "annotation errors".
+    root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")] + [
+        HierarchicalSheetInstance(
+            instancePath=root_path + "/" + det_uuid(fn + ":box"),
+            page=str(i + 2))
+        for i, (_t, fn, _r) in enumerate(SHEETS)]
     root.to_file(sch_path)
 
     # ---- .kicad_pro: merge, never clobber ----
