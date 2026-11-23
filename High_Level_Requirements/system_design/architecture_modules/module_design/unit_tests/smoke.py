@@ -143,7 +143,7 @@ class Dev:
 
     def __init__(self, port):
         import serial  # pyserial
-        self.s = serial.Serial(port, 115200, timeout=0.2)
+        self.s = serial.Serial(port, 115200, timeout=0.1)
         time.sleep(0.3)
         self.drain(0.4)
 
@@ -159,7 +159,7 @@ class Dev:
                 time.sleep(0.05)
         return buf.decode("utf-8", "replace")
 
-    def cmd(self, text, secs=1.2):
+    def cmd(self, text, secs=0.9):
         self.s.reset_input_buffer()
         self.s.write((text + "\r\n").encode())
         self.s.flush()
@@ -185,7 +185,7 @@ def dev_version(d):
 
 
 def dev_stacks(d):
-    out = d.cmd("W", 2.0)
+    out = d.cmd("W", 1.6)
     rows = re.findall(r"^ (\S+)\s*:\s*STACK: unused (\d+) usage (\d+) / (\d+)", out, re.M)
     if not rows:
         record("W - thread stack headroom", "FAIL", "no thread analyzer output")
@@ -205,7 +205,7 @@ def dev_stacks(d):
 
 
 def dev_listing(d):
-    out = d.cmd("D", 2.0)
+    out = d.cmd("D", 1.5)
     runs = re.findall(r'\{"run":(\d+),"ts":(\d+),"sz":(\d+),"side":(\d+)\}', out)
     rec = re.search(r'\{"rec":"(\w+)"\}', out)
     free = re.search(r'\{"free":(\d+)\}', out)
