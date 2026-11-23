@@ -17,8 +17,14 @@ import sys
 import collections
 
 UUID_RE = re.compile(r'\(uuid "([0-9a-fA-F-]{36})"\)')
-SHEETFILE_RE = re.compile(r'\(property "Sheetfile" "([^"]+)"\)')
-SHEETNAME_RE = re.compile(r'\(property "Sheetname" "([^"]+)"\)')
+# KiCad 10 wraps properties over several lines:
+#   (property "Sheetfile" "sch_mcu.kicad_sch"
+#     (at 20 30 0) ... )
+# so allow whitespace/newlines between the name and its value.
+SHEETFILE_RE = re.compile(
+    r'\(property\s+"Sheetfile"\s+"([^"]+)"')
+SHEETNAME_RE = re.compile(
+    r'\(property\s+"Sheetname"\s+"([^"]+)"')
 
 
 def collect(base, files):
