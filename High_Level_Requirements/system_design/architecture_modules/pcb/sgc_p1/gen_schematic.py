@@ -85,6 +85,13 @@ def pin_sch_pos(part, pin_num, libsyms):
 
 class SheetCtx:
     """Per-sheet emission context (lists + the per-pin styling rules)."""
+
+    # Power-symbol numbering is PROJECT-wide, not per sheet: KiCad requires every
+    # reference to be unique across the whole hierarchy. A per-sheet counter made
+    # each of the six sheets restart at #PWR01, giving 21 duplicate references and
+    # the "annotation errors" dialog on load.
+    _pwr_seq = 0
+
     def __init__(self):
         self.wires, self.labels, self.ncs, self.symbols, self.boxes = [], [], [], [], []
         self.pwr_n = 0
@@ -102,7 +109,8 @@ class SheetCtx:
 
     def power_sym(self, net, at, root_path):
         self.pwr_n += 1
-        ref = f"#PWR{self.pwr_n:02d}"
+        SheetCtx._pwr_seq += 1
+        ref = f"#PWR{SheetCtx._pwr_seq:02d}"
         s = SchematicSymbol(libraryNickname=STD_NICK.get(net, LIB_NICK), entryName=net, position=Position(X=at[0], Y=at[1], angle=0),
                             unit=1, inBom=True, onBoard=True, dnp=False, uuid=str(uuid.uuid4()))
         s.properties = [prop("Reference", ref, (at[0], at[1]), hide=True),
@@ -257,12 +265,18 @@ def main():
     bx, by = 30.0, 40.0
     for i, (title, fname, refs) in enumerate(SHEETS):
         ctx = SheetCtx()
+        # Symbols living on a CHILD sheet must carry the full path
+        # /<root-uuid>/<this-sheet-box-uuid>. Using the bare root path makes every
+        # sheet's references collide (six sheets each claiming #PWR01, U1, C1...) and
+        # KiCad reports "annotation errors" on load. Deterministic box uuid, same one
+        # the root sheet box uses, so the two always agree.
+        sheet_path = root_path + "/" + det_uuid(fname + ":box")
         for r in refs:
-            ctx.emit_part(by_ref[r], libsyms, root_path)
+            ctx.emit_part(by_ref[r], libsyms, sheet_path)
         nets = set()
         for r in refs:
             nets.update(v for v in by_ref[r]["nets"].values() if v != "NC" and v in POWER_SYMBOLS)
-        ctx.emit_power_anchors(nets, root_path, x_off=12.0 * i)
+        ctx.emit_power_anchors(nets, sheet_path, x_off=12.0 * i)
         for (nx, ny, nw, nh, text) in notes_by_file[fname]:
             ctx.note(nx, ny, nw, nh, text)
         s_uuid = det_uuid(fname)
