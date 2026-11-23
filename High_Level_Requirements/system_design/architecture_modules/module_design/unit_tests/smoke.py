@@ -76,6 +76,7 @@ def host_spec_constants():
     r = subprocess.run([sys.executable, path], capture_output=True, text=True,
                        encoding="utf-8", errors="replace",
                        env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    tail = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
     last = tail[-1] if tail else ""
     if r.returncode == 0:
         record("spec_constants (requirements <-> code)", "PASS", last)
