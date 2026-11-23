@@ -199,8 +199,15 @@ def _quote_uuids(path):
     'An error was found when loading the schematic that has been automatically
     fixed'. Until kiutils quotes uuids itself, fix the file after writing.
     """
-    with io.open(path, encoding="utf-8") as fh:
-        text = fh.read()
+    # kiutils writes with the platform default encoding, which is cp1252 on
+    # Windows - the '\u00a7' (section sign) in some notes lands as 0xA7 and is
+    # not valid UTF-8. Read tolerantly and always write back as UTF-8.
+    with io.open(path, "rb") as fh:
+        raw = fh.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", "replace")
     fixed = re.sub(r'\(uuid\s+([0-9a-fA-F][0-9a-fA-F-]*)\s*\)',
                    r'(uuid "\1")', text)
     if fixed != text:
