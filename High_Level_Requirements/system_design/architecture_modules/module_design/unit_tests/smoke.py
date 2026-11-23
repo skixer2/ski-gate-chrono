@@ -105,6 +105,39 @@ def host_protocol_conformance():
     return False
 
 
+def host_schematic_integrity():
+    """The schematic must not trigger KiCad's silent auto-repair on load.
+
+    Bare (unquoted) uuid tokens are the proven cause of the GUI dialog
+    'An error was found when loading the schematic that has been automatically
+    fixed'. kiutils emits them; gen_schematic post-processes them away. This
+    gate keeps that regression from ever shipping again.
+    """
+    path = os.path.join(HERE, "uuid_scan.py")
+    if not os.path.isfile(path):
+        record("schematic integrity (uuids)", "SKIP", "uuid_scan.py missing")
+        return None
+    base = os.path.normpath(os.path.join(HERE, "..", "..", "pcb", "sgc_p1"))
+    if not os.path.isdir(base):
+        record("schematic integrity (uuids)", "SKIP", "no schematic dir")
+        return None
+    r = subprocess.run([sys.executable, path, base], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace",
+                       env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+    total = ""
+    for ln in lines:
+        if ln.startswith("TOTAL"):
+            total = ln
+    if r.returncode == 0:
+        record("schematic integrity (uuids)", "PASS", total or "all quoted")
+        return True
+    record("schematic integrity (uuids)", "FAIL", total or "bare uuids found")
+    for ln in lines[-8:]:
+        print("        " + ln)
+    return False
+
+
 def host_version_consistency():
     """APP_VERSION, VERSION file and the flashed claim must agree."""
     hdr = os.path.join(FW_APP, "src", "app_version.h")
@@ -297,6 +330,7 @@ def main():
     banner("HOST TIER (no hardware)")
     host_spec_constants()
     host_protocol_conformance()
+    host_schematic_integrity()
     host_version_consistency()
 
     if args.no_hardware:
