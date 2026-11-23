@@ -194,7 +194,9 @@ The 29 uncovered device requirements are the real work list. Sample of high-valu
 | ID | Requested | Source | Status |
 |---|---|---|---|
 | C-001 | Serial `V` command | JP 2026-11-23 18:22 | **DONE — verified live** (0.25.21, `{"ev":"version","ver":"0.25.21"}` at 19:36 UTC) |
-| C-002 | Purge Arduino dialect from device tests | ZioClaw 2026-11-23 (from conformance FAIL) | OPEN — recommended next |
-| C-003 | Correct harness port defaults (COM8 → COM4) | ZioClaw 2026-11-23 | OPEN |
+| C-002 | Device-suite overhaul (NOT a mechanical purge) | ZioClaw 2026-11-23 | OPEN — see §4 update. Scope is larger than first assessed. |
+| C-005 | Stale duplicate schematic tree renamed | ZioClaw 2026-11-23 | **DONE** — `sgc_verify\...\pcb\sgc_p1` → `OBSOLETE_sgc_p1_snapshot_20261121`. That copy (21/11, untracked, pre-dates the 11-23 refdes fixes) emitted "schematic has annotation errors"; the real tree exports a netlist with no warning. |
+| C-003 | Build-dir/tag mismatch in fwbuild_sched.bat | JP 2026-11-23 19:46 | **DONE** — tag forwarded, dir derived; proven: `b0265` built into `C:\sgc\build\b0265` (`BUILD_EXIT_0`, FLASH 169016 = 89.86 %, RAM 58380 = 89.08 %). `buildfw*.bat` also now refuse a missing dir instead of defaulting to the poisoned `latest`. NOT flashed — b0264 already carries 0.25.21; b0265 existed only to prove the fix. |
+| C-003b | Harness port defaults COM8 → COM4 | ZioClaw 2026-11-23 | OPEN |
 | C-004 | `recorder` stack headroom review | JP 2026-11-23 18:22 | OPEN — monitor, not urgent |
 
