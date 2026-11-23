@@ -595,7 +595,7 @@ src/
 ├── state_machine.cpp            # State transitions, timeout timers
 ├── start_detector.cpp           # Barometric descent detection
 ├── end_detector.cpp             # Elevation delta: descent < 2m over 5s
-├── beeper.cpp                   # DNP — footprint only, no beeper in v1 (F14)
+├── beeper.cpp                   # NEVER BUILT — no beeper and no footprint in v1 (F14). Kept only as a record; do not implement.
 ├── led.cpp                      # SK6812-mini strip, TEMPORAL encoding (F41): rhythm is the primary cue, colour secondary. armed=ORANGE 1 Hz 50%, sleep=blue 0.1s/2s, adv=blue 0.5Hz, conn=green slow breathe, calib>=2=green double-flash, logging=RED 4Hz, error=yellow 8Hz. Pattern phase resets on state change. (No beeper: F14.)
 ├── battery.cpp                  # VBAT monitoring, USB-C charging detection, low-battery shutdown
 ├── rfid_reader.cpp              # ⚠️ v2 only — UHF RFID: SPI control, inventory rounds, RSSI-based nearest-tag (F52–F56). Not compiled in v1.

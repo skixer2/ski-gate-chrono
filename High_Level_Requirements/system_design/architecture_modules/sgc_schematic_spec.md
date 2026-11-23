@@ -35,7 +35,7 @@ P1 **standalone custom PCB** (first non-Nicla hardware spin), based on the **u-b
 
 - **Fuel gauge MAX17048 @ 0x36** on the power bus (AD-029; BQ band-gauge demoted to fallback)
 - **USB-C charging** (GCT USB4085 → BQ25120A IN) replacing Qi (dropped v4.2)
-- **No beeper** (DNP footprint retained, v4.2) · **no Qi** (removed)
+- **No beeper** (no footprint at all — F14, JP 2026-11-22) · **no Qi** (removed)
 - Battery: Renata Li-Po, **3-wire NTC** pack (BAT+, GND, NTC), user-replaceable JST-3
 - SK6812-mini ×5 status strip on P0.19 (SGC peripheral) + 5 V boost for full brightness (P1 behavior per hardware doc §7)
 - v2 footprints retained, unpopulated: LDC1612 + coil, RV-3028-C7 RTC, user-SPI header nets, UWB/RFID rails
