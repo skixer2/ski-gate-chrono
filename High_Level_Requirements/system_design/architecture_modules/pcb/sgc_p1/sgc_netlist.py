@@ -31,7 +31,7 @@ SYMBOL_PINS = {
         prefix="D", value="SS34", fp="Diode_SMD:D_SMA",
         ds="", desc="Schottky 40V 3A SMA - MT3608 boost rectifier, V2 LED reserve, DNP v1", hw=5.08,
         pins=[
-            ("1",  "K","power_out", "T"),
+            ("1",  "K","passive", "T"),
             ("2",  "A","passive", "B"),
         ],
     ),
@@ -165,7 +165,7 @@ SYMBOL_PINS = {
             ("A5", "PGND",    "power_in", "L"),
             ("B1", "BAT",     "power_in", "L"),
             ("B2", "BAT",     "power_in", "L"),
-            ("B3", "PMID",    "power_out", "L"),
+            ("B3", "PMID",    "passive",   "L"),
             ("B4", "VINLS",   "power_in", "L"),
             ("B5", "SYS",     "power_out", "L"),
             ("C1", "ISET",    "input", "L"),
