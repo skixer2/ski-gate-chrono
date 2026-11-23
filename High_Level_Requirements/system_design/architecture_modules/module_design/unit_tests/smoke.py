@@ -73,8 +73,9 @@ def banner(t):
 def host_spec_constants():
     """Requirements document vs firmware source constants."""
     path = os.path.join(HERE, "test_spec_constants.py")
-    r = subprocess.run([sys.executable, path], capture_output=True, text=True)
-    tail = (r.stdout or r.stderr).strip().splitlines()
+    r = subprocess.run([sys.executable, path], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace",
+                       env=dict(os.environ, PYTHONIOENCODING="utf-8"))
     last = tail[-1] if tail else ""
     if r.returncode == 0:
         record("spec_constants (requirements <-> code)", "PASS", last)
@@ -88,7 +89,9 @@ def host_spec_constants():
 def host_protocol_conformance():
     """Tests and docs must speak the firmware's real language."""
     path = os.path.join(HERE, "test_protocol_conformance.py")
-    r = subprocess.run([sys.executable, path], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, path], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace",
+                       env=dict(os.environ, PYTHONIOENCODING="utf-8"))
     out = r.stdout or ""
     fails = [l for l in out.splitlines() if l.strip().startswith("FAIL ")]
     if r.returncode == 0:
@@ -288,7 +291,7 @@ def main():
     args = ap.parse_args()
 
     t0 = time.time()
-    banner("SGC DAILY SMOKE  —  " + time.strftime("%Y-%m-%d %H:%M:%S"))
+    banner("SGC DAILY SMOKE  -  " + time.strftime("%Y-%m-%d %H:%M:%S"))
 
     banner("HOST TIER (no hardware)")
     host_spec_constants()
@@ -350,14 +353,14 @@ def main():
     if fails:
         print()
         for name, _, detail in fails:
-            print("  FAILED: %s  —  %s" % (name, detail))
+            print("  FAILED: %s  -  %s" % (name, detail))
         print()
         print("SMOKE FAIL")
         return 1
     if skips:
         print()
         for name, _, detail in skips:
-            print("  SKIPPED: %s  —  %s" % (name, detail))
+            print("  SKIPPED: %s  -  %s" % (name, detail))
         print()
         print("SMOKE INCOMPLETE (skips present, nothing failed)")
         return 0
@@ -367,4 +370,8 @@ def main():
 
 
 if __name__ == "__main__":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     sys.exit(main())
