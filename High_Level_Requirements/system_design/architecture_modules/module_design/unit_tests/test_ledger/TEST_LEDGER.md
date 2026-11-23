@@ -93,6 +93,7 @@ OUT OF SCOPE: <explicit non-goals>
 | Item | Status | Note |
 |---|---|---|
 | **Unit A serial RX dead** | OPEN — hardware suspicion | Unit A does not answer `W`/`D`; Unit B does. Documented in `Firmware_Zephyr/docs/unitA_serial_rx_fault.md`. Not a firmware defect. |
+| **Heap is ZERO** | PROVEN — `CONFIG_HEAP_MEM_POOL_SIZE=0` in the generated `.config` (0.25.21 build). Zero `malloc`/`calloc`/`k_malloc`/`k_heap_alloc` in `src/`. There is no heap to exhaust. RAM risk is stack-only. |
 | **`recorder` stack headroom** | MONITOR — **state-dependent, and my first number was wrong.** Sleeping: 280/1024 used (744 free, 27 %). An earlier sample showed 784/1024 used (240 free) — the deeper call path runs when the work handler is active. So the tight figure is the armed/logging one, not the idle one. No overflow today; no dynamic allocation anywhere. Zephyr stack guard faults rather than corrupting. |
 | **2 × `pin_to_pin` tri-state MISO contention** | OPEN — awaiting JP convention | Schematic gate. |
 | **3 × `power_pin_not_driven`** | OPEN — needs `PWR_FLAG` | Schematic gate. |
