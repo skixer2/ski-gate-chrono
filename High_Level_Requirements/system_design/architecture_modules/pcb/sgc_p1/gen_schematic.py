@@ -245,7 +245,11 @@ def main():
             print(f"WARN: could not reuse root sheet UUID ({_e})")
     if root_uuid is None:
         root_uuid = str(uuid.uuid4())
-    root_path = f"/{root_uuid}"
+    # KiCad's hierarchy path convention: the ROOT sheet is "/", and a child sheet
+    # is "/<that-sheet's-box-uuid>". The root's own uuid is NOT a component of the
+    # path. Including it makes every instance path unresolvable, which is what the
+    # loader reported as "annotation errors" and silently repaired.
+    root_path = "/"
 
     # ---- notes -> sheet of the nearest part ----
     notes_by_file = {fn: [] for _, fn, _ in SHEETS}
@@ -270,7 +274,7 @@ def main():
         # sheet's references collide (six sheets each claiming #PWR01, U1, C1...) and
         # KiCad reports "annotation errors" on load. Deterministic box uuid, same one
         # the root sheet box uses, so the two always agree.
-        sheet_path = root_path + "/" + det_uuid(fname + ":box")
+        sheet_path = root_path + det_uuid(fname + ":box")
         for r in refs:
             ctx.emit_part(by_ref[r], libsyms, sheet_path)
         nets = set()
@@ -323,7 +327,7 @@ def main():
     # child sheets to pages and reports "annotation errors".
     root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")] + [
         HierarchicalSheetInstance(
-            instancePath=root_path + "/" + det_uuid(fn + ":box"),
+            instancePath=root_path + det_uuid(fn + ":box"),
             page=str(i + 2))
         for i, (_t, fn, _r) in enumerate(SHEETS)]
     root.to_file(sch_path)

@@ -26,7 +26,7 @@
     )
     (instances
       (project "sgc_p1"
-        (path "/9578d648-ac4e-4951-9411-0eea7dacbb96" (page "2"))
+        (path "/" (page "2"))
       )
     )
   )
@@ -43,7 +43,7 @@
     )
     (instances
       (project "sgc_p1"
-        (path "/9578d648-ac4e-4951-9411-0eea7dacbb96" (page "3"))
+        (path "/" (page "3"))
       )
     )
   )
@@ -60,7 +60,7 @@
     )
     (instances
       (project "sgc_p1"
-        (path "/9578d648-ac4e-4951-9411-0eea7dacbb96" (page "4"))
+        (path "/" (page "4"))
       )
     )
   )
@@ -77,7 +77,7 @@
     )
     (instances
       (project "sgc_p1"
-        (path "/9578d648-ac4e-4951-9411-0eea7dacbb96" (page "5"))
+        (path "/" (page "5"))
       )
     )
   )
@@ -94,7 +94,7 @@
     )
     (instances
       (project "sgc_p1"
-        (path "/9578d648-ac4e-4951-9411-0eea7dacbb96" (page "6"))
+        (path "/" (page "6"))
       )
     )
   )
@@ -111,18 +111,18 @@
     )
     (instances
       (project "sgc_p1"
-        (path "/9578d648-ac4e-4951-9411-0eea7dacbb96" (page "7"))
+        (path "/" (page "7"))
       )
     )
   )
 
   (sheet_instances
     (path "/" (page "1"))
-    (path "/9578d648-ac4e-4951-9411-0eea7dacbb96/a32dcc37-0a61-5292-9274-6b32d59107b0" (page "2"))
-    (path "/9578d648-ac4e-4951-9411-0eea7dacbb96/350f062a-90df-5e07-b0fa-46aafc35adf0" (page "3"))
-    (path "/9578d648-ac4e-4951-9411-0eea7dacbb96/de481eb9-e789-5231-b35c-c132b3cc681b" (page "4"))
-    (path "/9578d648-ac4e-4951-9411-0eea7dacbb96/18fcbc1f-acaa-5a69-8650-3b43f65b4496" (page "5"))
-    (path "/9578d648-ac4e-4951-9411-0eea7dacbb96/d182ff6e-f121-59b6-94c3-4d1210373680" (page "6"))
-    (path "/9578d648-ac4e-4951-9411-0eea7dacbb96/6c50fd2b-058c-5409-940e-7c5f09b5c9cc" (page "7"))
+    (path "/a32dcc37-0a61-5292-9274-6b32d59107b0" (page "2"))
+    (path "/350f062a-90df-5e07-b0fa-46aafc35adf0" (page "3"))
+    (path "/de481eb9-e789-5231-b35c-c132b3cc681b" (page "4"))
+    (path "/18fcbc1f-acaa-5a69-8650-3b43f65b4496" (page "5"))
+    (path "/d182ff6e-f121-59b6-94c3-4d1210373680" (page "6"))
+    (path "/6c50fd2b-058c-5409-940e-7c5f09b5c9cc" (page "7"))
   )
 )
