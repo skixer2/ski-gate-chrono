@@ -710,23 +710,23 @@ PARTS = [
     # UART_RX_TP, but no pad existed, so there was no physical console access.
     # 1.0 mm round pads suit a pogo pin probe; UART_TX is the one you need for a
     # read-only console, UART_RX only for driving commands from the PC.
-    dict(ref="TP_TX", sym="TESTPOINT", x=95, y=258, dnp=False,
+    dict(ref="TP1", sym="TESTPOINT", x=95, y=258, dnp=False,
          nets={"1": "UART_TX_TP"}),
-    dict(ref="TP_RX", sym="TESTPOINT", x=105, y=258, dnp=False,
+    dict(ref="TP2", sym="TESTPOINT", x=105, y=258, dnp=False,
          nets={"1": "UART_RX_TP"}),
     # Console needs a GND reference within probe-cable reach; J3's GND pins are
     # 30 mm away and inside the SWD ribbon, so give the UART probe its own GND.
-    dict(ref="TP_GND", sym="TESTPOINT", x=115, y=258, dnp=False,
+    dict(ref="TP3", sym="TESTPOINT", x=115, y=258, dnp=False,
          nets={"1": "GND"}),
 
     # --- Pogo-jig registration (rev A, JP 2026-11-22) -----------------------
     # A jig must land 3 pads repeatably, so it needs mechanical registration:
     # two NPTH holes to pin the fixture and two fiducials for optical alignment.
-    # Placed either side of the 3-pad console row (TP_TX/TP_RX/TP_GND on y=258).
+    # Placed either side of the 3-pad console row (TP1/TP2/TP3 on y=258).
     # Bare copper / holes only - no part, no BOM cost, valid on production units.
     # ASYMMETRY IS DELIBERATE: the hole pair is NOT symmetric about the pad
     # centroid (x=105). A symmetric pair lets the jig drop on 180-degrees
-    # rotated, which would land jig-TX on TP_GND and jig-GND on TP_TX - two
+    # rotated, which would land jig-TX on TP3 and jig-GND on TP1 - two
     # outputs driving each other with no current limiting. Offsetting the
     # second hole by 4 mm makes a flipped jig physically impossible.
     # Pad centroid 105 | MH1 17 mm left | MH2 13 mm right.
@@ -759,7 +759,7 @@ SHEETS = [
     ("5V boost + LED strip reserve (v2 DNP)",      "sch_boost_led.kicad_sch",
      ["U10","U11","L2","D2","R11","R12","C17","C18","C19"]),
     ("Connectors: USB-C / battery / piezo / SWD",  "sch_connectors.kicad_sch",
-     ["J1","J2","J3","J5","J4","J6","R42","TP_TX","TP_RX","TP_GND","MH1","MH2","FID1","FID2","R7","R8","C16","D5","R41","D6","D7",
+     ["J1","J2","J3","J5","J4","J6","R42","TP1","TP2","TP3","MH1","MH2","FID1","FID2","R7","R8","C16","D5","R41","D6","D7",
       "R15","R16","C24"]),
 ]
 
@@ -791,7 +791,7 @@ NOTES = [
      "wedged MCU (SoftDevice/mbed hang); a soft reset cannot. R42 100k pulls /MR high.\n"
      "Assumption (JP): USB DETACHED - on VBUS the board stays powered, so this only restarts the PMIC.\n"
      "A soft reset button is deliberately NOT added.\n"
-     "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09) + TP_GND, 1.0 mm pads for a pogo probe.\n"
+     "UART CONSOLE: TP1 = TX (P0.20) / TP2 = RX (P0.09) / TP3 = GND, 1.0 mm pads for a pogo probe.\n"
      "POGO JIG: MH1/MH2 1.6 mm NPTH + FID1/FID2 fiducials flank the console pads. Hole pair is ASYMMETRIC on purpose (MH1 17 mm / MH2 13 mm from pad centroid) so a 180-deg flipped jig cannot seat. Pad pitch shown 5.08 mm for legibility; final PCB spacing + hole datum to be set in layout against the printed jig (JP prints it)."),
     (15, 86, 40, 14,
      "USB-C: VBUS 10uF bulk at connector; D+/D- NC; shell stitched to GND.\n"
