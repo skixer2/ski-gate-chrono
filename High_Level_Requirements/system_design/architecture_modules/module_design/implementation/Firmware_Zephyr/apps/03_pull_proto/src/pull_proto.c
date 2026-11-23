@@ -781,9 +781,17 @@ static void cmd_work_handler(struct k_work *w)
 
 	char cmd = req[0];
 
-	if (cmd == 'D') {
+	if (cmd == 'V') {
+		/* Version query (JP 2026-11-23). Until now the version only
+		 * printed at boot, so checking it required a reset - and a
+		 * reset is exactly what a bench check should not need. The
+		 * harness sends 'V' and reads ev=version; without this branch
+		 * it answered "E 4" and reported "could not read FW version".
+		 * Emits the same JSON shape the harness looks for. */
+		console_emit("{\"ev\":\"version\",\"ver\":\"" APP_VERSION "\"}");
+	} else if (cmd == 'D') {
 		if (dir_active || job_active) {
-			console_emit("E 4");   /* busy — mirrors 's' policy */
+			console_emit("E 4");   /* busy - mirrors 's' policy */
 			return;
 		}
 		dir_n = store_run_count();

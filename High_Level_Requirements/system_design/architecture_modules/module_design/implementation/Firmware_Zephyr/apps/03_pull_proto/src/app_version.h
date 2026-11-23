@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.25.20"   /* 0.25.20: F41 temporal LED pattern table (orange 1Hz ARMED, red 4Hz LOGGING, yellow 8Hz ERROR) - bumped because 0.25.19 shipped without the LED change reaching the image. */
+#define APP_VERSION "0.25.21"   /* 0.25.21: serial 'V' version query implemented (the header claimed a "serial V path" since 0.23.6 but no branch existed; harness got "E 4"). */
 
 #endif /* SGC_APP_VERSION_H */
