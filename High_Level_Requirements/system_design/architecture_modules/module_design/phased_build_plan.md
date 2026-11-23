@@ -45,7 +45,7 @@ Erase, write 256B, read-back, verify. Flash on SPI1 (p4/p5/p3, CS=p26).
 #### 7c — Sensors & BLE Integration ✅ DONE (06-16 20:57)
 - [x] BLE characteristics: state, battery, transfer status, calibration
 - [x] Battery low detection (< 15% forces SLEEP)
-- [x] Qi charging pin, beeper PWM
+- [x] Qi charging pin (~~beeper PWM~~ — beeper removed 2026-11-22, F14)
 - [x] BHY2 meta-event hook via `bhy2_cal_hook.cpp` (captures SENSOR_STATUS events)
 
 #### 7d — Completeness ✅ DONE (06-18)

@@ -35,7 +35,7 @@
 | **F11** | Config R/W via BLE: name, arm side, discipline | 🤖 + 🔧 | Nicla + PC (BLE) | BLE | I02 (read), 🔧 (write+reboot) | ⬜ |
 | **F12** | Sleep after 5 min inactivity | 🤖 + 🔧 | Nicla | (all idle) | U01 (forced), 🔧 (natural timeout) | ✅ |
 | **F13** | Wake from sleep via LDC1612 INTB | 🔧 | Nicla ×2 | Inductive (LDC1612) | Bench: forearms together | 🔧 |
-| **F14** | Audible beeper when armed | 👁️ | Nicla | Beeper (PWM) | Arm → listen | 🔧 |
+| **F14** | **No** audible beeper, no footprint | 👁️ | custom PCB | — | Verify no BZ refdes / no buzzer footprint exists | ✅ n/a |
 | **F37** | Time sync from phone on every connect | 🤖 | Nicla + Phone | BLE | I01 (BLE time write, serial echo) | ✅ |
 | **F38** | BLE MTU ≥ 247 | 🔧 | Nicla + BLE sniffer | BLE | Sniffer: verify MTU exchange | 🔧 |
 | **F39** | BLE bonding (LE Secure Connections) | 🔧 | Nicla + Phone | BLE | Manual: pair/unpair/reconnect | 🔧 |

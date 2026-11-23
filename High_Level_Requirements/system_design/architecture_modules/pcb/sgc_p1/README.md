@@ -91,7 +91,7 @@ boost EN→P0.17 (C1), gauge ALRT→P0.21 + 10k PU, XL2→GND, ANT_INT↔ANT bri
 - BHI **HOSTBOOT(3)/VREG(6)** NC v1 (not in spec §6 — decoupling TBD-JP vs Bosch ds); M1/M2/M3 cluster
   wiring = **copy ABX00050 at capture** (BMM150/BME688 not drawn); BMP390 INT(7) NC (DNC per ds);
   RGB LED common polarity verify (IS31 OUTs are current sinks; spec text says anodes to OUTs).
-- Boost (MT3608 + SK6812 ×5), RV-3028-C7, BZ1, U2/strip passives: **note boxes only** — capture at layout.
+- Boost (MT3608 + SK6812 ×5), RV-3028-C7, U2/strip passives: **note boxes only** — capture at layout. *(BZ1 beeper removed from the project 2026-11-22 — F14, no footprint.)*
 - TP set per OD-3: note only.
 
 ## Footprint guidance

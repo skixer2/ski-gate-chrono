@@ -107,7 +107,7 @@ All Nicla-replica signals exist on the ANNA-B402 **except nRF P0.24 and P0.25** 
 | 19 | GPIO_19 | P0.03 | &spi2 SCK (BHI + U7) | ⚠ Table 4 remark: "standard drive, low-frequency I/O only" — see §3.3 risk R1 |
 | 20 | GPIO_20 | P0.02 | BUTTON (piezo, edge int) / v2 LDC INTB | analog-capable, "standard drive, low-frequency I/O only" — fine for button |
 | 21 | VBUS | — | **NC** | "USB Power input (5V). Must be connected to 5 V for the USB interface to work" — module USB unused |
-| 22 | NFC1/GPIO_22 | P0.09 | UART RX TP / beeper (DNP) | NFC pin warning: never apply an NFC field to NFC pins in GPIO mode (§3.1) — no NFC coil on board |
+| 22 | NFC1/GPIO_22 | P0.09 | UART RX TP (console pad) | NFC pin warning: never apply an NFC field to NFC pins in GPIO mode (§3.1) — no NFC coil on board |
 | 23 | NFC2/GPIO_23 | P0.10 | Spare (NC) | Qi-detect pin retired with Qi |
 | 24 | GPIO_24 | P0.05 | &spi2 MISO (BHI + U7) | analog capable |
 | 25 | GPIO_25 | P0.04 | &spi2 MOSI (BHI + U7) | analog capable |
@@ -247,7 +247,7 @@ RawRunStore 8 MB layout per hardware doc (pre-roll 0x0000–0x13FFF etc.) unchan
 
 - **LDC1612** (WSON-12): SCL 1 / SDA 2 / CLKIN 3 / ADDR 4 → GND (**0x2A**, "when ADDR=L, I2C address = 0x2A") / INTB 5 → BUTTON net P0.02 ("Push-pull output; does not require pull-up") / SD 6 → GND / VDD 7 (+100 nF) / GND 8 / IN0A 9, IN0B 10 (coil ch.0; 14 mm spiral, footprint retained) / IN1A 11, IN1B 12 → GND or 2nd coil pads. Sensor-bus (&i2c1) placement per docs.
 - **RV-3028-C7 RTC @ 0x52** on &i2c1: 7-pin C7 footprint, /INT → TP (unconnected test point, no GPIO steal — per hardware doc §2 I²C map + TOOLS notes). Exact pad map per Micro Crystal datasheet at capture (DNP — not fetched this pass).
-- Beeper BZ1 (DNP): P0.09 via 100 Ω/NPN footprint retained.
+- **Beeper: NONE** (F14, JP 2026-11-22 — dropped entirely; no footprint, no GPIO). P0.09 is the UART RX console pad.
 
 ### 4.7 USB-C — GCT USB4085-GF-A (16-pin; pins verbatim from GCT drawing)
 
@@ -351,7 +351,7 @@ USB-C 5 V ──IN── BQ25120A ──BAT── Renata 600 mAh (3.7 V, NTC 3-w
 2. **Stackup spec sheet** (JLC JLP04xx-class 0.8 mm 4L or equivalent) attached to the quote; impedance-controlled only where SIM requires.
 3. **BOM**: sgc_bom.md **v4.3** + pending adds/changes from this spec: U2 BHI flash (OD-5), level translator (OD-9), Y1 SIT1532AI or none (OD-10), ESD part (OD-13), battery connector PN (OD-4), ANNA-B402 order code (OD-16). B402 module itself = EMS-furnished line item (verify reel/cut-tape + MSL at quote).
 4. **Centroid (XY)** once layout exists; stencil notes: 0.1 mm laser steel; request module-pad aperture check (B402 LGA lands) — ENIG + 0.8 mm board; consider step-stencil not required (no tall fine-pitch mix beyond module).
-5. **DNP list**: LDC1612 + coil, RV-3028-C7, BZ1 beeper, BME688 (if OD-6=DNP), v2 user-SPI/UWB/RFID nets.
+5. **DNP list**: LDC1612 + coil, RV-3028-C7, BME688 (if OD-6=DNP), v2 user-SPI/UWB/RFID nets. *(BZ1 beeper removed from the project 2026-11-22 — not a DNP part.)*
 6. **Assembly notes**: double-sided OK; module last (reflow profile per u-blox MSL/packing note); SWD/UART TP keep-solder-mask-open or pogo pads per OD-2/OD-3.
 7. **Enclosure interfaces** for the mechanical quote: USB-C mid-mount board-edge flush (usb_c spec §3), Ø16 mm button boss, LED window, JST-3 service loop, IP67 cap recess.
 

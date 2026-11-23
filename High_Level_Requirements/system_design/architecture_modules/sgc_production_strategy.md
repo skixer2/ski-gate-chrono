@@ -34,7 +34,7 @@ stays on the BQ25120A band-gauge until the custom board lands at P1.*
 - Does button arming work with gloves on snow?
 - Is BLE range sufficient at race speeds?
 - Is battery life acceptable in -10°C?
-- ~~Does the beeper work through a helmet + wind noise?~~ → beeper DNP (v4.2, footprint retained)
+- ~~Does the beeper work through a helmet + wind noise?~~ → **beeper REMOVED entirely** (F14, JP 2026-11-22: no part, no footprint). Audio is a v2 question to be designed with the enclosure.
 - Firmware hardened through real-world abuse.
 
 **Exit criteria:** 3+ successful on-snow test sessions, no hardware blockers.
@@ -299,7 +299,7 @@ See §5 for the v1 pole-mount mechanical design.*
 | U3 | Level Shifter (74AHCT1G125) | SOT-23-5 | 1 | 3.3V→5V data line shift |
 | U_FG | MAX17048G+T10 fuel gauge (⚠️ v2, AD-029) | TDFN-8 2×2mm | 1 | Battery SoC @ 0x36 on i2c0 (P0.15/16); its passives (0.1 µF VDD decoupling + 10 kΩ ALRT pull-up) count against C1-C4 / R1-R4 |
 | D1-D5 | SK6812-mini RGBW | 2×2mm | 5 | Status indicator LEDs |
-| BZ1 | Piezo beeper (⚠️ DNP) | SMD | 0 | Footprint retained; not populated (v4.2) |
+| ~~BZ1~~ | ~~Piezo beeper~~ | — | — | **REMOVED** (F14, 2026-11-22) |
 | J1 | Battery connector | JST-PH 2-pin | 1 | LiPo battery input |
 | J_USB | USB-C receptacle (GCT USB4085-GF-A) | mid-mount SMD | 1 | USB-C charging (5V → BQ25120 IN) |
 | R_CC1/2 | 5.1 kΩ (1%) | 0402 | 2 | USB-C CC sink pull-downs |
@@ -343,7 +343,7 @@ Piezo button (Langir 16mm) added → ~€7-12 per unit (single qty), ~€6-7 @ 1
 - **QA routine per unit:**
   1. Button test — press → GPIO P0.02 falling-edge pulse captured
   2. SK6812 test pattern — chase sequence, verify all 5 LEDs
-  3. ~~Beeper test — short beep~~ (beeper DNP v4.2)
+  3. ~~Beeper test — short beep~~ (**beeper removed** F14 2026-11-22)
   4. BLE advertising check — verify device broadcasts
   5. BMM150 calibration check
 

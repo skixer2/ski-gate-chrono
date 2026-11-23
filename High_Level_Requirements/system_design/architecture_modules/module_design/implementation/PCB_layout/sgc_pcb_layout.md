@@ -41,7 +41,7 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 │  [ WSON-12      ]  [ PCB spiral trace  ]                │
 │                                                          │
 │  [ SK6812 ×5 ][ Beeper ][ Qi Detect ][ 5V Boost ]     │
-│  [ D1-D5     ][ BZ1    ][ P0.10     ][ MT3608   ]     │
+│  [ D1-D5     ][ --     ][ P0.10     ][ MT3608   ]     │
 │                                                          │
 │  [ Qi Receiver  ][ Qi Coil (wound) ]                     │
 │  [ IP6833 QFN28 ][ 24µH WPC-A11  ]                       │
@@ -125,7 +125,7 @@ Flash = Nicla's MX25R1635F U7 (CS P0.26). See sgc_pcb_netlist.md for full wiring
 | I2C1_SCL | ANNA-B112 pin 37 | LDC1612 (v2) | < 30 mm | |
 | LED_DIN | ANNA-B112 pin 35 | SK6812 D1 | < 20 mm | NZR 800 kHz, via level shifter |
 | BOOST_EN | ANNA-B112 GPIO | MT3608 EN | < 20 mm | HIGH = 5V active |
-| BEEPER | ANNA-B112 pin 21 | BZ1 | < 30 mm | PWM ~4 kHz |
+| ~~BEEPER~~ | — | — | — | **removed 2026-11-22 (F14): no beeper, no footprint** |
 | QI_DETECT | ANNA-B112 pin 22 | Qi receiver | < 20 mm | |
 | BUTTON | ANNA-B112 pin 20 | Langir piezo button | < 15 mm | Falling edge, interrupt |
 | RFID_CS (v2) | ANNA-B112 pin 45 | RFID /CS | < 40 mm | |

@@ -5,7 +5,7 @@ auto-detected in firmware). USB-C charging added (J2 GCT USB4085 + CC pull-downs
 Qi receiver removed from active design (footprints remain DNP).*
 
 *2026-08-13 — v4.1: Qi receiver (IP6833 + coil) dropped → DNP (planarity/centring;
-USB-C + cap as mechanical alternative). Beeper BZ1 → DNP (footprint retained).
+USB-C + cap as mechanical alternative). **No beeper** (F14, JP 2026-11-22).
 Battery JST 3-pin connector provisional (varies by cell model). Discrepancy fixes:
 Y1 crystal + U6 BMP390 added to component reference; stale "Reed Switch" label
 corrected to Langir piezo.*
@@ -128,12 +128,11 @@ From P1 onward (companion carrier PCB): VDD = 5V_BOOST via MT3608 boost converte
 **Data path:** nRF52 P0.19 (3.3V NZR) → 74AHCT1G125 level shifter → SK6812 D1 DIN (5V NZR).
 Level shifter VCC = 5V_BOOST, input from 3.3V GPIO, output to SK6812 data line.
 
-### BZ1 (Piezo Transducer, 10×10mm)
+### BZ1 — REMOVED (no beeper in v1)
 
-| Pin | Connect To |
-|-----|------------|
-| \+ | P0.09 via R12(100Ω) |
-| − | GND |
+**There is no BZ1.** F14 (JP 2026-11-22) dropped the beeper entirely: no part, no
+footprint, no GPIO. The old table wired it to P0.09, which is now the **UART RX console
+pad (TP_RX)** — so that wiring was also a pin conflict. Rationale recorded in F14.
 
 ### QI_DET (Qi Charger Presence)
 
@@ -302,7 +301,7 @@ charging needs **no extra charging IC** — just a receptacle wired as a sink + 
 | U8 | IS31FL3194 | QFN-16 | Nicla stock (RGB LED driver) |
 | U9 | BQ25120A | DSBGA-25 | Nicla stock (charger) |
 | D1–D5 | SK6812-mini | 2×2mm | SGC addition |
-| BZ1 | Piezo transducer | 10×10mm | SGC addition — ⚠️ DNP (footprint retained) |
+| ~~BZ1~~ | ~~Piezo transducer~~ | — | **REMOVED** (F14, 2026-11-22: no beeper, no footprint) |
 | SW1 | Langir piezo button | Ø16mm panel | SGC addition — arming (P0.02) |
 | Q1, Q2 | P-MOSFET | SOT-23 | v2 power gates |
 | L1 | LDC coil | PCB trace, 14mm | ⚠️ v2 only (DNP in v1) |

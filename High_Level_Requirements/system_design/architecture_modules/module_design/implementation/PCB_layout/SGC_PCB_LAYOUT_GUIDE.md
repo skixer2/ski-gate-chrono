@@ -125,7 +125,7 @@ Assign these net classes (already defined in the `.kicad_pro`):
 ```
 Qi coil → IP6833 → V_QI_5V → BQ25120A IN → BAT+ → J1 (battery)
                      │
-BQ25120A → VBAT ──┬── 3.3V LDO → VCC_3V3  (nRF52, flash, beeper, I2C pull-ups)
+BQ25120A → VBAT ──┬── 3.3V LDO → VCC_3V3  (nRF52, flash, I2C pull-ups)
                   ├── 1.8V LDO → VDD_1V8  (BHI260AP, BMP390, LDC1612 v2)
                   └── MT3608 → VDD_5V     (SK6812 ×5, level shifter VCC)
 ```

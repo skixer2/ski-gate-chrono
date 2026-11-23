@@ -35,7 +35,7 @@ It is NOT a bare chip — it's a complete subsystem that gets soldered onto a la
 
 That larger PCB is the **carrier PCB** (custom SGC board, 22 × 55 mm, 4-layer) which:
 - Hosts the ANNA-B402 module as a mounted component (standalone production board — not a companion/carrier for a Nicla)
-- **Adds** all SGC peripherals: LDC1612 proximity, SK6812 × 5, beeper (DNP), USB-C charging, MOSFET power gating, BQ25120 charger
+- **Adds** all SGC peripherals: LDC1612 proximity, SK6812 × 5, USB-C charging, MOSFET power gating, BQ25120 charger *(no beeper — F14)*
 - **Replicates** the Nicla Sense ME wiring exactly (BHI260AP, BMP390, Flash MX25R6435F, IS31FL3194)
 - **Reserves** footprint for v2 (RFID Impinj E310 + UWB DW3000, not populated)
 
@@ -51,7 +51,7 @@ For the production phase, the approach shifts from a ground-up Nicla replica to 
 - A **companion carrier PCB** sits **side-by-side** with the Nicla (NOT stacked —
   Nicla is ~5 mm thick, stacking would exceed enclosure constraints)
 - The carrier PCB contains: LDC1612, 5V boost (SOT-23), level shifter, SK6812 × 5,
-  beeper, battery connector
+  battery connector *(no beeper)*
 - Connection: Nicla edge pins → ribbon cable or rigid flex → carrier PCB
 - EMS partner does panelized assembly + bed-of-nails flashing via SWD
 

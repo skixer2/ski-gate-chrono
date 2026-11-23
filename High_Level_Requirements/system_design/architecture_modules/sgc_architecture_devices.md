@@ -28,7 +28,7 @@
     │ bmp390   │      │ start_det  │     │ file_xfer  │
     │ ldc1612  │      │ end_det    │     └─────┬──────┘
     └────┬─────┘      │ led        │           │
-         │            │ beeper     │           │
+         │            │ --         │           │
          │            │ battery    │           │
          │            └─────┬──────┘           │
          │                  │                  │
@@ -539,7 +539,7 @@ void enter_state(State s) {
     switch (s) {
     case SLEEP:
         led.off();
-        beeper.off();
+        /* beeper removed (F14) */
         // rfid_reader.disable(); — ⚠️ v2 only
         bmp390.sleep();
         bhi260ap.sleep();
@@ -559,13 +559,13 @@ void enter_state(State s) {
         
     case ARMED:
         ring_buffer.reset();
-        beeper.on();
+        /* beeper removed (F14) */
         led.set_green();
         start_detector.reset();
         break;
         
     case LOGGING:
-        beeper.off();
+        /* beeper removed (F14) */
         led.set_red();
         ldc1612.mask_interrupt();  // ignore inductive trigger during run (R03)
         // rfid_reader.set_rate(...) + enable() — ⚠️ v2 only
@@ -1197,23 +1197,34 @@ public:
 
 ---
 
-## 16. Beeper (`beeper.cpp`)
+## 16. Beeper — REMOVED
+
+**No beeper exists in v1 and no footprint is reserved** (F14, JP 2026-11-22). The
+`beeper.cpp` module described below was never built; it is kept only as a record of the
+abandoned design and must not be implemented.
+
+Why it was dropped (recorded so it is not revisited):
+- only +1V8 is available (the +5 V boost is DNP), and a piezo at 1.8 V is inaudible in wind;
+- a piezo disc's sharp resonance defeats sweep/chirp patterns — most of a sweep sits
+  off-resonance, so it is quieter than a fixed tone;
+- H03 is an IP67 case with no sound port;
+- arming confirmation is now solved better by F41 **temporal** LED encoding (rhythm, not
+  colour), which is visible in sun at distance.
+
+If audio is ever wanted, it is a v2 feature designed together with an acoustic chamber.
+
+<details>
+<summary>Historical (abandoned) sketch — do not implement</summary>
 
 ```cpp
 void init() {
-    // GPIO P0.09, PWM at 4 kHz (audible)
-    // Drives surface transducer bonded to enclosure inner wall
-    // IP67: no sound port needed — vibrations conduct through polycarbonate
+    // GPIO P0.09, PWM at 4 kHz (audible)   <-- P0.09 is now UART_RX_TP
 }
 
-void on() {
-    pwm_start(PIN_BEEPER, 4000, 50);  // 50% duty
-}
-
-void off() {
-    pwm_stop(PIN_BEEPER);
-}
+void on() { pwm_start(PIN_BEEPER, 4000, 50); }
+void off() { pwm_stop(PIN_BEEPER); }
 ```
+</details>
 
 ---
 
@@ -1265,7 +1276,7 @@ BitPacker packer;
 FlashManager flash;
 RFIDReader rfid;
 LED led;
-Beeper beeper;
+/* Beeper removed (F14, JP 2026-11-22) — no member. */
 Battery bat;
 SensorFusion sensors;
 uint32_t last_baro_feed_ms = 0;  // for start/end detectors (10 Hz)
@@ -1394,7 +1405,7 @@ void loop() {
     
     // === Always-active peripherals ===
     led.tick();
-    beeper.tick();
+    /* beeper.tick() removed (F14) */
 }
 ```
 

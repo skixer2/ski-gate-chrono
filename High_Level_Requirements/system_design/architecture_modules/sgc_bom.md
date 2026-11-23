@@ -11,10 +11,10 @@ $2.80 @100, $2.50 @1000+ (authorized-reel blend; broker/reel channels dip to
 
 *2026-08-13 — v4.2: Flash U7 committed to MX25R6435F (8 MB, pin-compatible, firmware
 auto-detects size). USB-C charging added as active SGC line (GCT USB4085 + CC pull-downs
-+ ESD + IP67 cap); Qi receiver remains DNP. Beeper BZ1 DNP/optional (footprint retained).*
++ ESD + IP67 cap); Qi receiver remains DNP. **No beeper** (F14, JP 2026-11-22: dropped entirely, no footprint).*
 
 *2026-08-13 — v4.1: Qi receiver dropped (DNP — planarity/centring; USB-C + IP67 cap
-as mechanical alternative). Beeper BZ1 → DNP/optional (footprint retained). Battery
+as mechanical alternative). **No beeper** (F14, JP 2026-11-22). Battery
 JST 3-pin connector flagged provisional (varies by cell model). Flash U7 flagged
 pin-compatible upgrade path (MX25R3235F / MX25R6435F).*
 
