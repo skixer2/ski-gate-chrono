@@ -17,6 +17,7 @@ UUID policy: child sheet files and their sheet boxes get DETERMINISTIC uuid5
 ids (stable across regenerations). The root reuses the uuid of the existing
 sgc_p1.kicad_sch (the .kicad_pro sheet map and any external refs stay valid).
 """
+import io
 import json
 import os
 import re
@@ -190,8 +191,26 @@ class SheetCtx:
             self.glabel("GND", (8.0 + x_off, y - OFF), "left")
 
 
+def _quote_uuids(path):
+    """kiutils emits `(uuid <bare>)`; KiCad 10 wants `(uuid "<quoted>")`.
+
+    A bare token is parsed as a SYMBOL rather than a string, which trips the
+    parser's type check and recovers. That recovery is exactly the GUI dialog
+    'An error was found when loading the schematic that has been automatically
+    fixed'. Until kiutils quotes uuids itself, fix the file after writing.
+    """
+    with io.open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    fixed = re.sub(r'\(uuid\s+([0-9a-fA-F][0-9a-fA-F-]*)\s*\)',
+                   r'(uuid "\1")', text)
+    if fixed != text:
+        with io.open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(fixed)
+    return len(fixed) - len(text)
+
+
 def make_sheet_file(title, page_no, ctx, libsyms, uuid_str):
-    sch = Schematic(version="20231120", generator="sgc_gen", paper=PageSettings(paperSize="A3"))
+    sch = Schematic(version="20260306", generator="sgc_gen", paper=PageSettings(paperSize="A3"))
     sch.uuid = uuid_str
     sch.titleBlock = TitleBlock(
         title=title, date="2026-11-04", revision="A-WIP", company="Ski Gate Chrono",
@@ -285,7 +304,9 @@ def main():
             ctx.note(nx, ny, nw, nh, text)
         s_uuid = det_uuid(fname)
         sch = make_sheet_file(f"SGC P1 - {title}", i + 2, ctx, all_libsymbols, s_uuid)
-        sch.to_file(os.path.join(HERE, fname))
+        _out = os.path.join(HERE, fname)
+        sch.to_file(_out)
+        _quote_uuids(_out)
         total_syms += len(ctx.symbols); total_pwr += ctx.pwr_n
         total_w += len(ctx.wires); total_l += len(ctx.labels); total_nc += len(ctx.ncs)
         print(f"  {fname}: {len(refs)} parts, {ctx.pwr_n} power, {len(ctx.labels)} labels, {len(ctx.boxes)} notes")
@@ -311,7 +332,7 @@ def main():
             bx, by = 30.0, by + 45.0
 
     # ---- root: hierarchy only (Arduino ABX00050 style) ----
-    root = Schematic(version="20231120", generator="sgc_gen", paper=PageSettings(paperSize="A3"))
+    root = Schematic(version="20260306", generator="sgc_gen", paper=PageSettings(paperSize="A3"))
     root.uuid = root_uuid
     root.titleBlock = TitleBlock(
         title="SGC P1 - ANNA-B402 carrier, 22x55mm 4L (hierarchy)", date="2026-11-04",
@@ -334,6 +355,7 @@ def main():
             page=str(i + 2))
         for i, (_t, fn, _r) in enumerate(SHEETS)]
     root.to_file(sch_path)
+    _quote_uuids(sch_path)
 
     # ---- .kicad_pro: merge, never clobber ----
     _existing_pro = None
