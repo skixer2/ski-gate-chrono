@@ -200,3 +200,41 @@ The 29 uncovered device requirements are the real work list. Sample of high-valu
 | C-003b | Harness port defaults COM8 → COM4 | ZioClaw 2026-11-23 | OPEN |
 | C-004 | `recorder` stack headroom review | JP 2026-11-23 18:22 | OPEN — monitor, not urgent |
 
+### 2026-11-23 (later) — THE DEVICE SUITE IS NOT A PURGE JOB. Scope corrected.
+
+My first assessment ("purge the Arduino dialect") was too small. Inspection shows the
+device tests are not mechanically repairable, because the firmware they talk to no
+longer exposes the interface they use:
+
+| What the tests need | Reality in `03_pull_proto` |
+|---|---|
+| Test mode: `T`, inject `B`/`Q`/`L` | **No such commands.** `B` is "BHI bit-bang probe rearm". |
+| Event stream `{"ev":"cmd"}`, `{"ev":"echo"}` | Not emitted. Unknown commands answer `E 4`. |
+| `{"ev":"status"}`, `{"ev":"flash"}` | Not emitted; no status query exists. |
+| Fresh-slate reset between cases | No reset command. `i` (the Arduino SLEEP command) does not exist. |
+| Deterministic sensor input | **Exists, differently:** bench build `CONFIG_SGC_BENCH` provides `S <secs> <gate_interval>` — a synthetic run through the REAL pipeline — and `w <bytes>` for storage-lifecycle. |
+
+So the old suite tests an interface that was deliberately replaced. Rewriting the command
+letters would produce tests that still cannot run.
+
+**The real work is one of two things, and it is a JP decision:**
+
+1. **Rebuild the device suite on the Zephyr bench interface** (`S`, `w`, `D`, `s`, `H`, `W`, `V`).
+   This is new test development — realistic, but days not hours, and it must be written
+   against F-requirements rather than ported from Arduino-era scripts.
+2. **Drop the Arduino-era device tests** and keep what genuinely runs today: the host-only
+   gates, plus the compile-time C suite.
+
+**What genuinely runs today (verified, not assumed):**
+
+| Gate | Status |
+|---|---|
+| `test_spec_constants.py` | **PASS** — requirements ↔ source constants |
+| `test_protocol_conformance.py` | Runs; FAILs on the 10 Arduino-drift items (correctly) |
+| `coverage_ledger.py` | Runs — 91 reqs, 11 covered, 29 device reqs uncovered |
+| `apps/03_pull_proto/tests/test_layout.c` | **NOT YET VERIFIED on this host** — needs a gcc toolchain. My docker attempt mounted an incomplete view of the tree (container saw only `build/`), so the result is inconclusive, not failed. |
+
+**Honest position:** the automated-test work of the last two days (spec drift guard,
+protocol conformance, coverage ledger) is real and valuable — it is what caught all of this.
+The device suite itself is legacy that should be rebuilt or retired, and rebuilding it is
+a scoped project, not a cleanup task.
