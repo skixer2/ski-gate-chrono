@@ -591,12 +591,12 @@ PARTS = [
         "1": "VBAT", "2": "TS_NTC", "3": "GND"}),
 
     # --- Rev A addition (JP 2026-11-21): hard power-cycle pinhole -------------
-    # BQ25120A /MR is 64 ms-debounced. R_MR holds it high; the pinhole shorts
+    # BQ25120A /MR is 64 ms-debounced. R42 holds it high; the pinhole shorts
     # it to GND. Requires USB detached (JP's stated assumption): on VBUS the
     # PMIC restarts its rails but the board stays powered from USB.
     dict(ref="J6", sym="PINHOLE-2", x=35, y=225, fp=E, dnp=False, nets={
         "1": "BQ_MR", "2": "GND"}),
-    dict(ref="R_MR", sym="R", x=55, y=225, fp="Resistor_SMD:R_0402_1005Metric",
+    dict(ref="R42", sym="R", x=55, y=225, fp="Resistor_SMD:R_0402_1005Metric",
          dnp=False, value="100k",
          nets={"1": "+1V8", "2": "BQ_MR"}),   # /MR active-low, 100k pull-up
 
@@ -759,7 +759,7 @@ SHEETS = [
     ("5V boost + LED strip reserve (v2 DNP)",      "sch_boost_led.kicad_sch",
      ["U10","U11","L2","D2","R11","R12","C17","C18","C19"]),
     ("Connectors: USB-C / battery / piezo / SWD",  "sch_connectors.kicad_sch",
-     ["J1","J2","J3","J5","J4","J6","R_MR","TP_TX","TP_RX","TP_GND","MH1","MH2","FID1","FID2","R7","R8","C16","D5","R41","D6","D7",
+     ["J1","J2","J3","J5","J4","J6","R42","TP_TX","TP_RX","TP_GND","MH1","MH2","FID1","FID2","R7","R8","C16","D5","R41","D6","D7",
       "R15","R16","C24"]),
 ]
 
@@ -782,13 +782,13 @@ NOTES = [
     (15, 104, 132, 26,
      "CHARGER (spec 4.1/4.7): ISET 1.82k -> ICHG ~110 mA; ILIM 1k -> 200 mA; IPRETERM 4.99k -> 10%; VBATREG default 4.2 V.\n"
      "OD-8: /CD -> P0.08 (B402 pin 50, moved from P0.25 - P0.25 does not exist) + 100k PU to V_PMID (ship-mode capable).\n"
-     "BQ INT -> 100k PU +1V8, NC on MCU (read FAULTS reg, AD-029); /PG TP only. /MR -> J6 pinhole + R_MR 100k PU (+1V8) (rev A addition JP 2026-11-21: hard power-cycle recovery, USB detached). RESET NC (Nicla P0.18->MR net dropped, C3).\n"
+     "BQ INT -> 100k PU +1V8, NC on MCU (read FAULTS reg, AD-029); /PG TP only. /MR -> J6 pinhole + R42 100k PU (+1V8) (rev A addition JP 2026-11-21: hard power-cycle recovery, USB detached). RESET NC (Nicla P0.18->MR net dropped, C3).\n"
      "LS/LDO unused (C4): LSCTRL->GND, VINLS->SYS, LS/LDO 1uF. TS: R_HI (VBUS->TS) + R_LO (TS->GND) + pack NTC - values TBD-JP (OD-4).\n"
      "i2c0 pull-ups 100k to +1V8 (Nicla parity; BQ ds suggests 10k - spec chose Nicla parity). USB-IF inrush note OD-14."),
     (15, 60, 78, 20,
      "HARD RESET PINHOLE (rev A, JP 2026-11-21): J6 shorts BQ25120A /MR (E1) to GND for >64 ms ->\n"
      "the PMIC restarts its rails = a TRUE power cycle, which is the only thing that clears a\n"
-     "wedged MCU (SoftDevice/mbed hang); a soft reset cannot. R_MR 100k pulls /MR high.\n"
+     "wedged MCU (SoftDevice/mbed hang); a soft reset cannot. R42 100k pulls /MR high.\n"
      "Assumption (JP): USB DETACHED - on VBUS the board stays powered, so this only restarts the PMIC.\n"
      "A soft reset button is deliberately NOT added.\n"
      "UART CONSOLE: TP_TX (P0.20) / TP_RX (P0.09) + TP_GND, 1.0 mm pads for a pogo probe.\n"
