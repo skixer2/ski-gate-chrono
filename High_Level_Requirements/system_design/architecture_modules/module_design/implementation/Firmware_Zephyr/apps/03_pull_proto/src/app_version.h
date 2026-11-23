@@ -7,6 +7,6 @@
 #ifndef SGC_APP_VERSION_H
 #define SGC_APP_VERSION_H
 
-#define APP_VERSION "0.25.19"   /* version-source sync: VERSION file (drives the MCUboot-signed image version) bumped to match the banner — was drifting (file 0.24.7 vs banner 0.25.7, so phone-OTA would have reported 0.24.7). Harness end-to-end test build. */
+#define APP_VERSION "0.25.20"   /* 0.25.20: F41 temporal LED pattern table (orange 1Hz ARMED, red 4Hz LOGGING, yellow 8Hz ERROR) - bumped because 0.25.19 shipped without the LED change reaching the image. */
 
 #endif /* SGC_APP_VERSION_H */
