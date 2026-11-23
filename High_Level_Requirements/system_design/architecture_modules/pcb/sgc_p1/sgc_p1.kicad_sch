@@ -1,98 +1,237 @@
-(kicad_sch (version 20231120) (generator sgc_gen)
-
-  (uuid 9578d648-ac4e-4951-9411-0eea7dacbb96)
-
-  (paper "A3")
-
-  (title_block
-    (title "SGC P1 - ANNA-B402 carrier, 22x55mm 4L (hierarchy)")
-    (date "2026-11-04")
-    (rev "A-WIP")
-    (company "Ski Gate Chrono")
-    (comment 1 "N1 7-page structure per N1_PARITY_PLAN.md - root is hierarchy-only")
-    (comment 2 "generated - not ERC-reviewed")
-  )
-  (lib_symbols)
-
-  (sheet (at 30.0 40.0) (size 70.0 30.0)
-    (stroke (width 0.0) (type solid))
-    (fill (color 0 0 0 0))
-    (uuid a32dcc37-0a61-5292-9274-6b32d59107b0)
-    (property "Sheetname" "Power" (at 33.0 43.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Sheetfile" "sch_power.kicad_sch" (at 33.0 52.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-  )
-
-  (sheet (at 115.0 40.0) (size 70.0 30.0)
-    (stroke (width 0.0) (type solid))
-    (fill (color 0 0 0 0))
-    (uuid 350f062a-90df-5e07-b0fa-46aafc35adf0)
-    (property "Sheetname" "MCU" (at 118.0 43.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Sheetfile" "sch_mcu.kicad_sch" (at 118.0 52.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-  )
-
-  (sheet (at 200.0 40.0) (size 70.0 30.0)
-    (stroke (width 0.0) (type solid))
-    (fill (color 0 0 0 0))
-    (uuid de481eb9-e789-5231-b35c-c132b3cc681b)
-    (property "Sheetname" "Sensors" (at 203.0 43.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Sheetfile" "sch_sensors.kicad_sch" (at 203.0 52.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-  )
-
-  (sheet (at 285.0 40.0) (size 70.0 30.0)
-    (stroke (width 0.0) (type solid))
-    (fill (color 0 0 0 0))
-    (uuid 18fcbc1f-acaa-5a69-8650-3b43f65b4496)
-    (property "Sheetname" "Storage" (at 288.0 43.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Sheetfile" "sch_storage.kicad_sch" (at 288.0 52.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-  )
-
-  (sheet (at 30.0 85.0) (size 70.0 30.0)
-    (stroke (width 0.0) (type solid))
-    (fill (color 0 0 0 0))
-    (uuid d182ff6e-f121-59b6-94c3-4d1210373680)
-    (property "Sheetname" "5V boost + LED strip reserve (v2 DNP)" (at 33.0 88.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Sheetfile" "sch_boost_led.kicad_sch" (at 33.0 97.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-  )
-
-  (sheet (at 115.0 85.0) (size 70.0 30.0)
-    (stroke (width 0.0) (type solid))
-    (fill (color 0 0 0 0))
-    (uuid 6c50fd2b-058c-5409-940e-7c5f09b5c9cc)
-    (property "Sheetname" "Connectors" (at 118.0 88.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-    (property "Sheetfile" "sch_connectors.kicad_sch" (at 118.0 97.0 0)
-      (effects (font (size 1.27 1.27)))
-    )
-  )
-
-  (sheet_instances
-    (path "/" (page "1"))
-    (path "/a32dcc37-0a61-5292-9274-6b32d59107b0" (page "2"))
-    (path "/350f062a-90df-5e07-b0fa-46aafc35adf0" (page "3"))
-    (path "/de481eb9-e789-5231-b35c-c132b3cc681b" (page "4"))
-    (path "/18fcbc1f-acaa-5a69-8650-3b43f65b4496" (page "5"))
-    (path "/d182ff6e-f121-59b6-94c3-4d1210373680" (page "6"))
-    (path "/6c50fd2b-058c-5409-940e-7c5f09b5c9cc" (page "7"))
-  )
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "9578d648-ac4e-4951-9411-0eea7dacbb96")
+	(paper "A3")
+	(title_block
+		(title "SGC P1 - ANNA-B402 carrier, 22x55mm 4L (hierarchy)")
+		(date "2026-11-04")
+		(rev "A-WIP")
+		(company "Ski Gate Chrono")
+		(comment 1 "N1 7-page structure per N1_PARITY_PLAN.md - root is hierarchy-only")
+		(comment 2 "generated - not ERC-reviewed")
+	)
+	(lib_symbols)
+	(sheet
+		(at 285 40)
+		(size 70 30)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "18fcbc1f-acaa-5a69-8650-3b43f65b4496")
+		(property "Sheetname" "Storage"
+			(at 288 43 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sheetfile" "sch_storage.kicad_sch"
+			(at 288 52 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(sheet
+		(at 115 40)
+		(size 70 30)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "350f062a-90df-5e07-b0fa-46aafc35adf0")
+		(property "Sheetname" "MCU"
+			(at 118 43 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sheetfile" "sch_mcu.kicad_sch"
+			(at 118 52 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(sheet
+		(at 115 85)
+		(size 70 30)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "6c50fd2b-058c-5409-940e-7c5f09b5c9cc")
+		(property "Sheetname" "Connectors"
+			(at 118 88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sheetfile" "sch_connectors.kicad_sch"
+			(at 118 97 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(sheet
+		(at 30 40)
+		(size 70 30)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "a32dcc37-0a61-5292-9274-6b32d59107b0")
+		(property "Sheetname" "Power"
+			(at 33 43 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sheetfile" "sch_power.kicad_sch"
+			(at 33 52 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(sheet
+		(at 30 85)
+		(size 70 30)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "d182ff6e-f121-59b6-94c3-4d1210373680")
+		(property "Sheetname" "5V boost + LED strip reserve (v2 DNP)"
+			(at 33 88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sheetfile" "sch_boost_led.kicad_sch"
+			(at 33 97 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(sheet
+		(at 200 40)
+		(size 70 30)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "de481eb9-e789-5231-b35c-c132b3cc681b")
+		(property "Sheetname" "Sensors"
+			(at 203 43 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Sheetfile" "sch_sensors.kicad_sch"
+			(at 203 52 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
 )
