@@ -100,7 +100,7 @@ class SheetCtx:
             effects=Effects(font=F(), justify=Justify(horizontally="right" if facing == "left" else "left")),
             uuid=str(uuid.uuid4())))
 
-    def power_sym(self, net, at):
+    def power_sym(self, net, at, root_path):
         self.pwr_n += 1
         ref = f"#PWR{self.pwr_n:02d}"
         s = SchematicSymbol(libraryNickname=STD_NICK.get(net, LIB_NICK), entryName=net, position=Position(X=at[0], Y=at[1], angle=0),
@@ -110,8 +110,11 @@ class SheetCtx:
                         prop("Footprint", "", (at[0], at[1]), hide=True),
                         prop("Datasheet", "", (at[0], at[1]), hide=True),
                         prop("Description", "", (at[0], at[1]), hide=True)]
+        # Instance path MUST be the root sheet uuid, like every other symbol. A bare "/"
+        # makes KiCad report "annotation errors" and silently rewrite the file on load,
+        # which is why the schematic kept asking to be repaired after every regeneration.
         s.instances = [SymbolProjectInstance(name=PROJECT,
-                       paths=[SymbolProjectPath(sheetInstancePath="/", reference=ref, unit=1)])]
+                       paths=[SymbolProjectPath(sheetInstancePath=root_path, reference=ref, unit=1)])]
         self.symbols.append(s)
 
     def note(self, nx, ny, nw, nh, text):
@@ -163,18 +166,18 @@ class SheetCtx:
                 self.wire(Position(p.X - OFF, p.Y), Position(p.X - OFF, p.Y + OFF))
                 self.glabel(net, (p.X - OFF, p.Y + OFF), "left")
 
-    def emit_power_anchors(self, nets, x_off=0.0):
+    def emit_power_anchors(self, nets, root_path, x_off=0.0):
         """One anchor per power net used on this sheet, left margin column."""
         rails = [n for n in nets if n != "GND"]
         y = 25.0
         for n in rails:
-            self.power_sym(n, (18.0 + x_off, y))
+            self.power_sym(n, (18.0 + x_off, y), root_path)
             self.wire(Position(18.0 + x_off, y), Position(18.0 + x_off, y + OFF))
             self.glabel(n, (18.0 + x_off, y + OFF), "left")
             y += 10.16
         y = 25.0
         if "GND" in nets:
-            self.power_sym("GND", (8.0 + x_off, y))
+            self.power_sym("GND", (8.0 + x_off, y), root_path)
             self.wire(Position(8.0 + x_off, y), Position(8.0 + x_off, y - OFF))
             self.glabel("GND", (8.0 + x_off, y - OFF), "left")
 
@@ -259,7 +262,7 @@ def main():
         nets = set()
         for r in refs:
             nets.update(v for v in by_ref[r]["nets"].values() if v != "NC" and v in POWER_SYMBOLS)
-        ctx.emit_power_anchors(nets, x_off=12.0 * i)
+        ctx.emit_power_anchors(nets, root_path, x_off=12.0 * i)
         for (nx, ny, nw, nh, text) in notes_by_file[fname]:
             ctx.note(nx, ny, nw, nh, text)
         s_uuid = det_uuid(fname)
