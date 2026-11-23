@@ -247,23 +247,23 @@ SYMBOL_PINS = {
             ("1",  "M3SDA",   "input", "L"),          # unused v1
             ("2",  "M3SCL",   "input", "L"),          # unused v1
             ("3",  "HOSTBOOT","input", "L"),          # NC v1 (TBD-JP vs Nicla)
-            ("4",  "QSPI_D0", "input", "L"),
-            ("5",  "QSPI_CLK","input", "L"),
+            ("4",  "QSPI_D0", "bidirectional","L"),
+            ("5",  "QSPI_CLK","output","L"),
             ("6",  "VREG",    "power_out", "L"),      # NC v1; decap TBD-JP (not in spec §6)
             ("7",  "VDDIO",   "power_in", "L"),
-            ("8",  "QSPI_D3", "input", "L"),
+            ("8",  "QSPI_D3", "bidirectional","L"),
             ("9",  "RESETN",  "input", "L"),          # -> P0.13 (moved, spec C3)
             ("10", "HIRQ",    "output", "L"),         # -> P0.14
             ("11", "HSDX",    "input", "L"),          # MOSI <- P0.04
             ("12", "VDDIO",   "power_in", "L"),
             ("13", "M2SCX",   "input", "L"),          # unused v1
-            ("14", "QSPI_CSN","input", "L"),
-            ("15", "QSPI_D1", "input", "L"),
+            ("14", "QSPI_CSN","output","L"),
+            ("15", "QSPI_D1", "bidirectional","L"),
             ("16", "MCSB3",   "input", "L"),          # unused v1
             ("17", "GNDIO",   "power_in", "L"),
             ("18", "MCSB2",   "input", "L"),          # BME688 CS (DNP, OD-6)
             ("19", "MCSB4",   "input", "L"),          # unused v1
-            ("20", "QSPI_D2", "input", "L"),
+            ("20", "QSPI_D2", "bidirectional","L"),
             ("21", "OCSB",    "input", "L"),          # unused v1
             ("22", "ASCX",    "input", "L"),          # unused v1
             ("23", "JTAG_CLK","input", "L"),          # unused v1
