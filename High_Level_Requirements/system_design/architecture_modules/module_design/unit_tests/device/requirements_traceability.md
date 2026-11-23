@@ -40,7 +40,7 @@ Maps every v1 requirement to the tests that verify it.
 | **F11** | Config R/W via BLE: name, arm side, discipline | | I02 (read config chars) | | | 🔧 Write + persist test planned (BLE write + reboot check) |
 | **F12** | SLEEP immediately; System Off after 1 h unconnected | U01 (SLEEP ↔ IDLE forced) | | | A04 | Natural System-Off needs 1 h wait; forced via serial 'i' (constant SLEEP_SYSTEM_OFF_MS) |
 | **F13** | Wake from sleep via piezo button (GPIO sense) | 🔧 | | | A04 | Bench: button press wakes SLEEP/System Off — no extra hardware |
-| **F14** | No beeper in v1 (DNP footprint only) | — | | | | PCB inspection: footprint present, unpopulated — no audio test |
+| **F14** | No beeper in v1 — **no footprint at all** (dropped entirely, JP 2026-11-22) | — | | | | PCB inspection: no BZ refdes, no buzzer footprint — no audio test |
 | **F37** | Time sync from phone on every connect | | I01 (BLE connect triggers time write) | | | 📱 Phone writes `ABC0`; serial echo confirms |
 | **F38** | BLE MTU ≥ 247 | | I01 (verify MTU via BLE) | | | 🔧 BLE sniffer for definitive verification; test mode confirms connection |
 | **F39** | BLE bonding (LE Secure Connections) | 🔧 | | | | 🔧 Pair/unpair/reconnect cycle; ArduinoBLE handles bonding |
