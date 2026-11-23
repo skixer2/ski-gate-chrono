@@ -573,42 +573,48 @@ UNIT_RING_READY = 200
 
 
 def force_state(h: SGCTestHarness, state: str):
-    cmds = {'SLEEP': 's', 'SLEEP': 'i', 'ARMED': 'a', 'LOGGING': 'l', 'POST_RUN': 'p'}
-    cmd = cmds.get(state.upper(), 'i')
-    h.send(cmd)
-    # SLEEP may run prepare_preroll (20 sector erase)
-    time.sleep(1.5 if cmd == 'i' else 0.4)
+    """Drive the unit towards a state using ONLY commands the Zephyr console has.
+
+    Verified against src/pull_proto.c. The Arduino-era letters this used to
+    send ('i' sleep, 'l', 'p') have no branch and answer 'E 4', so they did
+    nothing while looking like they worked. The real cycle is a/g/e, and
+    SLEEP is reached by arm timeout, by run completion, or at boot - there is
+    no "go to sleep" command.
+    """
+    key = state.upper()
+    if key == "ARMED":
+        h.send('a')
+        time.sleep(0.6)
+    elif key == "LOGGING":
+        h.send('g')
+        time.sleep(0.6)
+    elif key == "SLEEP":
+        # No sleep command exists. Ending a run returns POST_RUN -> SLEEP.
+        h.send('e')
+        time.sleep(0.8)
+    else:
+        # POST_RUN / other transient states: nothing to send.
+        pass
     h.drain_serial(200)
 
+
 def enable_test_mode(h: SGCTestHarness) -> bool:
-    """Ensure test mode is ON and injected values are at clean defaults.
+    """NO-OP on the Zephyr build - there is no test/inject mode to enable.
 
-    Ends with B/Q/L so g_manual_frame=true → ARM does NOT open stream
-    (unit tests inject; S03 stream path uses T without B/Q/L, or S).
+    Kept as a named function so callers do not break, but it now tells the
+    truth instead of sending four commands the firmware answers with 'E 4'
+    and then reporting success. On Zephyr:
+      - there is no 'T' test-mode toggle,
+      - there is no 'Q'/'L' sensor injection,
+      - there is no 'i' sleep command.
+    Deterministic input comes from the BENCH build instead
+    (CONFIG_SGC_BENCH): 'S <secs> <gate_interval>' synthesises a run through
+    the REAL pipeline, and 'w <bytes>' exercises the storage lifecycle.
 
-    Always re-asserts B/Q/L even if tm was already on — critical after a
-    prior run on FW≤4.80 where POST_RUN cleared g_manual_frame, and still
-    good hygiene on 4.81+ so every scenario starts from known inject state.
+    Returns False: the caller must not believe an inject mode is active.
     """
-    # Return to SLEEP first so any sticky stream is dropped (FW≥4.81).
-    h.send('i')
-    time.sleep(0.4)
-    h.drain_serial(800)
-    # Toggle test mode
-    h.send('T'); time.sleep(0.15)
-    objs = h._read_json_lines(500)
-    tm_on = any(o.get('tm') for o in objs if o.get('ev') == 'cmd')
-    if not tm_on:
-        h.send('T'); time.sleep(0.15)
-        objs = h._read_json_lines(500)
-        tm_on = any(o.get('tm') for o in objs if o.get('ev') == 'cmd')
-    # Reset injected values to safe defaults (Pa). Order: Q, L, B last
-    # so manual_frame stays set and baro is valid for start det.
-    h.send('Q 1 0 0 0'); time.sleep(0.05)
-    h.send('L 0 0 0'); time.sleep(0.05)
-    h.send('B 101325'); time.sleep(0.08)
-    h.drain_serial(300)
-    return tm_on
+    return False
+
 
 def wait_for_ring_full(h: SGCTestHarness, timeout_ms: int = 35000) -> bool:
     """Poll for ring_full JSON event (r reaches ARM_FILL_CAP=3000).

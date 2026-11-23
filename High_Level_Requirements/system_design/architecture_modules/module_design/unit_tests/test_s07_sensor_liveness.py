@@ -47,7 +47,7 @@ MIN_RV_DELTA = 100      # rv is ~100 Hz; 8 s must yield hundreds
 
 
 def _status_or_telemetry(h):
-    """Read whatever the unit emits: status JSON and/or b1_rate telemetry."""
+    """Read whatever telemetry the unit emits (b1_rate lines)."""
     objs = h._read_json_lines(300)
     return objs or []
 
@@ -148,7 +148,7 @@ SCENARIOS.append(TestScenario(
         TestStep("Prove the producer is ALIVE (counters advancing)",
             None, 100,
             on_response=lambda h, _: check_liveness(h)),
-        # There is no '?'/{"ev":"status"} on the Zephyr build; the state
+        # There is no '?' and no status event on the Zephyr build; the state
         # readout is the {"rec":"<STATE>"} line that 'D' emits on serial.
         # Asserting on it keeps the "still ARMED" guarantee real rather than
         # dropping it.
