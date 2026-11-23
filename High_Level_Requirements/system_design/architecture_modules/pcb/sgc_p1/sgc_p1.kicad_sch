@@ -24,11 +24,6 @@
     (property "Sheetfile" "sch_power.kicad_sch" (at 33.0 52.0 0)
       (effects (font (size 1.27 1.27)))
     )
-    (instances
-      (project "sgc_p1"
-        (path "/" (page "2"))
-      )
-    )
   )
 
   (sheet (at 115.0 40.0) (size 70.0 30.0)
@@ -40,11 +35,6 @@
     )
     (property "Sheetfile" "sch_mcu.kicad_sch" (at 118.0 52.0 0)
       (effects (font (size 1.27 1.27)))
-    )
-    (instances
-      (project "sgc_p1"
-        (path "/" (page "3"))
-      )
     )
   )
 
@@ -58,11 +48,6 @@
     (property "Sheetfile" "sch_sensors.kicad_sch" (at 203.0 52.0 0)
       (effects (font (size 1.27 1.27)))
     )
-    (instances
-      (project "sgc_p1"
-        (path "/" (page "4"))
-      )
-    )
   )
 
   (sheet (at 285.0 40.0) (size 70.0 30.0)
@@ -74,11 +59,6 @@
     )
     (property "Sheetfile" "sch_storage.kicad_sch" (at 288.0 52.0 0)
       (effects (font (size 1.27 1.27)))
-    )
-    (instances
-      (project "sgc_p1"
-        (path "/" (page "5"))
-      )
     )
   )
 
@@ -92,11 +72,6 @@
     (property "Sheetfile" "sch_boost_led.kicad_sch" (at 33.0 97.0 0)
       (effects (font (size 1.27 1.27)))
     )
-    (instances
-      (project "sgc_p1"
-        (path "/" (page "6"))
-      )
-    )
   )
 
   (sheet (at 115.0 85.0) (size 70.0 30.0)
@@ -108,11 +83,6 @@
     )
     (property "Sheetfile" "sch_connectors.kicad_sch" (at 118.0 97.0 0)
       (effects (font (size 1.27 1.27)))
-    )
-    (instances
-      (project "sgc_p1"
-        (path "/" (page "7"))
-      )
     )
   )
 

@@ -299,9 +299,12 @@ def main():
             fileName=prop("Sheetfile", fname, (bx + 3.0, by + 12.0)),
             properties=[],
             pins=[],
-            instances=[HierarchicalSheetProjectInstance(
-                name=PROJECT,
-                paths=[HierarchicalSheetProjectPath(sheetInstancePath=root_path, page=str(i + 2))])])
+            # No `instances` block: KiCad 10 derives each sheet box's instance from the
+            # root `sheet_instances` list and STRIPS a per-box instances block on load.
+            # Emitting one is what produced the "annotation errors ... automatically
+            # fixed" dialog after every regeneration. Confirmed against
+            # `kicad-cli sch upgrade`, which deletes it.
+            instances=[])
         sheet_boxes.append(box)
         bx += 85.0
         if bx > 330.0:
@@ -322,9 +325,9 @@ def main():
     root.noConnects = []
     root.textBoxes = []
     root.sheets = sheet_boxes
-    # KiCad expects the root's sheet_instances to enumerate EVERY sheet path with its
-    # page number, not just "/". With only the root listed, the loader cannot map the
-    # child sheets to pages and reports "annotation errors".
+    # KiCad keeps page numbering for the WHOLE hierarchy here, keyed by "/<box-uuid>".
+    # This is the authoritative list: with only "/" present the loader cannot map the
+    # child sheets to pages and reports annotation errors.
     root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")] + [
         HierarchicalSheetInstance(
             instancePath=root_path + det_uuid(fn + ":box"),
