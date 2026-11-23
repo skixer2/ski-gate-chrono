@@ -61,7 +61,7 @@ OUT OF SCOPE: <explicit non-goals>
 
 ## 2. Active Session Test Case
 
-### TC-2026-11-23-001 — SERIAL 'V' VERSION QUERY + 0.25.21 — OPEN (code committed, build not yet run)
+### TC-2026-11-23-001 — SERIAL 'V' VERSION QUERY + 0.25.21 — CLOSED: PASS (2026-11-23 19:36 UTC)
 
 | Field | Value |
 |---|---|
@@ -72,7 +72,19 @@ OUT OF SCOPE: <explicit non-goals>
 | Gate | `test_protocol_conformance.py` now lists `V` in the console set (was a FAIL: "harness sends 'V' but the Zephyr console has no 'V' branch"). |
 | DONE WHEN | 0.25.21 built, flashed, `V` over COM4 returns `{"ev":"version","ver":"0.25.21"}`, and `test_protocol_conformance.py` no longer lists `V` as a FAIL. |
 
-**State at open (2026-11-23 18:2x UTC):** code patched and committed; **build not yet run**. 0.25.20 remains the flashed image (F41 LED temporal encoding, verified boot banner). This case is NOT closed — do not claim 0.25.21 as running until the flash is verified.
+**RESULT — CLOSED: PASS.**
+
+| Step | Evidence |
+|---|---|
+| Build | `BUILD_EXIT_0`, build dir `C:\sgc\build\p0240a` (the `fwbuild_sched.bat` argument is ignored — the script hardcodes its output dir; worth fixing) |
+| Image gate | `gate_version.py` → **GATE_VER_OK** on `zephyr.signed.hex` |
+| Archive | `C:\sgc\hexsafe\b0264.hex` (476 373 bytes) |
+| Flash | OpenOCD **Verified OK**, `ZFLASH_EXIT_0` |
+| Live query | `V` over COM4 → **`{"ev":"version","ver":"0.25.21"}`** — answered with **no reset** |
+| State after | `D` → `{"rec":"SLEEP"}`, 12 runs intact |
+| Conformance | `V` no longer a FAIL; console set now `BDFHSVWabdegswxy` |
+
+**Note on the build-dir bug:** `fwbuild_sched.bat` takes an argument but `buildfw_off.bat` hardcodes `C:\sgc\build\latest`-style output. Passing `b0264` had no effect; the build landed in `p0240a`. Cosmetic but confusing — worth correcting so build dirs match the tag.
 
 ---
 
@@ -81,7 +93,7 @@ OUT OF SCOPE: <explicit non-goals>
 | Item | Status | Note |
 |---|---|---|
 | **Unit A serial RX dead** | OPEN — hardware suspicion | Unit A does not answer `W`/`D`; Unit B does. Documented in `Firmware_Zephyr/docs/unitA_serial_rx_fault.md`. Not a firmware defect. |
-| **`recorder` stack 240 B free** | MONITOR | 784/1024 used at 0.25.20 (measured via `W`). No overflow with current code — no dynamic allocation anywhere in `src/`, and the tightest thread is static. Risk is future growth, not present behaviour. Zephyr stack guard (`CONFIG_MPU_STACK_GUARD` + `CONFIG_HW_STACK_PROTECTION`) faults instead of corrupting. |
+| **`recorder` stack headroom** | MONITOR — **state-dependent, and my first number was wrong.** Sleeping: 280/1024 used (744 free, 27 %). An earlier sample showed 784/1024 used (240 free) — the deeper call path runs when the work handler is active. So the tight figure is the armed/logging one, not the idle one. No overflow today; no dynamic allocation anywhere. Zephyr stack guard faults rather than corrupting. |
 | **2 × `pin_to_pin` tri-state MISO contention** | OPEN — awaiting JP convention | Schematic gate. |
 | **3 × `power_pin_not_driven`** | OPEN — needs `PWR_FLAG` | Schematic gate. |
 | **Harness port default COM8** | OPEN — stale | Arduino-era default in `run_smoke.ps1` / `run_core.ps1` / `run_full.ps1`. Pass `-Port COM4`. |
@@ -90,7 +102,46 @@ OUT OF SCOPE: <explicit non-goals>
 
 ## 3. Raw logs
 
-*(Protocol says paste raw serial here. Empty because no run has been captured for TC-2026-11-23-001 yet — the build has not been run. Populate this with the actual flash + `V` transcript before closing the case.)*
+### TC-2026-11-23-001 — flash + V query transcript (2026-11-23 19:36 UTC, Unit B / COM4)
+
+Flash (`zflash_b0264.log`, OpenOCD):
+```text
+** Programming Started **
+Info : nRF52832-CIAA(build code: E0) 512kB Flash, 64kB RAM
+Warn : Adding extra erase range, 0x00039588 .. 0x00039fff
+** Programming Finished **
+** Verify Started **
+** Verified OK **
+shutdown command invoked
+ZFLASH_EXIT_0
+```
+
+Live query — `zcmd.py COM4 3 V`:
+```json
+{"ev":"version","ver":"0.25.21"}
+```
+
+State after — `zcmd.py COM4 3 D`:
+```json
+{"rec":"SLEEP"}
+```
+
+### `W` thread analyzer — 0.25.21, sleeping state (COM4)
+
+```text
+ BT RX               : STACK: unused 504  usage 520  / 1024  (50%)
+ recorder            : STACK: unused 744  usage 280  / 1024  (27%)
+ sensor_prod         : STACK: unused 1488 usage 48   / 1536  ( 3%)
+ sensor_prod_stats   : STACK: unused 648  usage 288  / 1024  (28%)
+ mcumgr              : STACK: unused 1768 usage 280  / 2048  (14%)
+ sysworkq            : STACK: unused 1472 usage 576  / 2048  (28%)
+ idle                : STACK: unused 256  usage 64   / 320   (20%)
+```
+
+**This is the IDLE/SLEEPING profile.** An earlier sample taken while the work
+handler was active showed `recorder` at 784/1024 used (240 B free). The tightest
+reading is therefore a function of what the unit is doing — quote the state with
+the number or the number means nothing.
 
 ---
 
@@ -141,7 +192,7 @@ The 29 uncovered device requirements are the real work list. Sample of high-valu
 
 | ID | Requested | Source | Status |
 |---|---|---|---|
-| C-001 | Serial `V` version query | JP 2026-11-23 18:22 | **DONE in code** (0.25.21); build+flash pending |
+| C-001 | Serial `V` command | JP 2026-11-23 18:22 | **DONE — verified live** (0.25.21, `{"ev":"version","ver":"0.25.21"}` at 19:36 UTC) |
 | C-002 | Purge Arduino dialect from device tests | ZioClaw 2026-11-23 (from conformance FAIL) | OPEN — recommended next |
 | C-003 | Correct harness port defaults (COM8 → COM4) | ZioClaw 2026-11-23 | OPEN |
 | C-004 | `recorder` stack headroom review | JP 2026-11-23 18:22 | OPEN — monitor, not urgent |
