@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import uuid
 
 from kiutils.symbol import SymbolLib
@@ -200,9 +201,11 @@ def main():
     libsyms = {s.entryName: s for s in lib.symbols if s.unitId is None}
     # merge KiCad-standard defs (Device:R/C/L, power:GND) for pin geometry
     _b = open(os.path.join(HERE, "std_symbols.txt"), encoding="utf-8").read()
-    open("/tmp/_std_lib.kicad_sym", "w").write(
+    # Portable temp path: /tmp does not exist on Windows, and this generator runs on both.
+    _tmp_lib = os.path.join(tempfile.gettempdir(), "_std_lib.kicad_sym")
+    open(_tmp_lib, "w").write(
         '(kicad_symbol_lib (version 20231120) (generator kicad_symbol_editor)' + chr(10) + _b + chr(10) + ')' + chr(10))
-    _stdlib = SymbolLib.from_file("/tmp/_std_lib.kicad_sym")
+    _stdlib = SymbolLib.from_file(_tmp_lib)
     libsyms.update({s.entryName: s for s in _stdlib.symbols if s.unitId is None})
     all_libsymbols = list(lib.symbols) + list(_stdlib.symbols)
 
