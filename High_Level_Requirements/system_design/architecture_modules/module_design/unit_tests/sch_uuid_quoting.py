@@ -24,7 +24,12 @@ This script finds unquoted uuid tokens in every sheet. Exit 1 if any remain.
 import io
 import os
 import re
+import subprocess
 import sys
+
+REPO = r"C:\Users\v17ni\Documents\projects\ski-gate-chrono"
+RELBASE = ("High_Level_Requirements/system_design/architecture_modules/"
+           "pcb/sgc_p1/")
 
 # (uuid <bare-token>)  -> the token does not start with a double quote
 UNQUOTED_RE = re.compile(r'\(uuid\s+([^"\s()][^\s()]*)\s*\)')
@@ -34,7 +39,24 @@ QUOTED_RE = re.compile(r'\(uuid\s+"([^"]+)"')
 ANY_UUID_RE = re.compile(r'\(uuid\s+([^\s()]+)')
 
 
+def read_rev(rev, name):
+    r = subprocess.run(["git", "-C", REPO, "show",
+                        "%s:%s%s" % (rev, RELBASE, name)],
+                       capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return r.stdout if r.returncode == 0 else None
+
+
 def main():
+    # --rev <commit> audits a historical version instead of the working tree.
+    # This is how the checker proves it can actually SEE the defect: run it
+    # against the commit before the fix and it must exit 1.
+    rev = None
+    args = sys.argv[1:]
+    for i, a in enumerate(args):
+        if a == "--rev" and i + 1 < len(args):
+            rev = args[i + 1]
+
     here = os.path.dirname(os.path.abspath(__file__))
     base = os.path.normpath(os.path.join(here, "..", "..", "pcb", "sgc_p1"))
     if not os.path.isdir(base):
@@ -48,12 +70,20 @@ def main():
 
     total_bad = 0
     total_uuid = 0
+    src = ("git rev %s" % rev) if rev else "working tree"
+    print("auditing: %s" % src)
     print("%-26s %8s %8s  %s" % ("file", "uuids", "unquoted", ""))
     print("-" * 70)
 
     for f in files:
-        text = io.open(os.path.join(base, f), encoding="utf-8",
-                       errors="replace").read()
+        if rev:
+            text = read_rev(rev, f)
+            if text is None:
+                print("%-26s  (absent at %s)" % (f, rev))
+                continue
+        else:
+            text = io.open(os.path.join(base, f), encoding="utf-8",
+                           errors="replace").read()
         quoted = QUOTED_RE.findall(text)
         bare = UNQUOTED_RE.findall(text)
         total_uuid += len(quoted) + len(bare)
