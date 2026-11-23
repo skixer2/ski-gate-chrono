@@ -148,15 +148,26 @@ class Dev:
         self.drain(0.4)
 
     def drain(self, secs=0.4):
-        t0 = time.time()
+        """Collect whatever arrives within a HARD deadline.
+
+        BUG FIXED 2026-11-23: this used to slide the deadline forward on every
+        byte received (t0 = time.time() inside the loop). The unit emits
+        b1_rate telemetry continuously, so the loop never exited and the first
+        device run hung the whole invoke. The deadline must be fixed, and a
+        quiet gap ends the read early.
+        """
+        deadline = time.time() + secs
+        quiet_until = time.time() + min(0.25, secs)
         buf = b""
-        while time.time() - t0 < secs:
+        while time.time() < deadline:
             n = self.s.in_waiting
             if n:
                 buf += self.s.read(n)
-                t0 = time.time()
+                quiet_until = time.time() + 0.15
+            elif time.time() > quiet_until:
+                break
             else:
-                time.sleep(0.05)
+                time.sleep(0.02)
         return buf.decode("utf-8", "replace")
 
     def cmd(self, text, secs=0.9):
