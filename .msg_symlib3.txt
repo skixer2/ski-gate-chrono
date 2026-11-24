@@ -1,0 +1,22 @@
+schematic: symbol library now true KiCad 10 format (20251024)
+
+Replaces the stale 20231120 copy that was still in the repo. sym-lib-table
+loads this library on project open, so KiCad 10 migrated it in memory on every
+single load and reported:
+
+  "An error was found when loading the schematic that has been automatically
+   fixed. Please save the schematic to repair the broken file..."
+
+That is why the dialog survived three rounds of sheet-level fixes: the sheets
+were already clean, but the library never was.
+
+This file is the genuinely upgraded one:
+  version      20251024
+  (hide yes)   99
+  (show_name)  155
+  old-style (effects ... hide)  0
+
+Verified non-destructive: 31 symbols and 272 pins, identical before and after.
+
+gen_symbols.py now runs "kicad-cli sym upgrade" after writing, so regeneration
+can never revert the library to KiCad 8 format again.
