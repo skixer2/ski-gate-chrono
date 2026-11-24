@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
 """
-gen_symbols.py — builds sgc_p1.kicad_sym (KiCad 8 symbol library) from sgc_netlist.py.
+gen_symbols.py — builds sgc_p1.kicad_sym from sgc_netlist.py.
 
 Regeneration source (run from this dir):  python3 gen_symbols.py
-Format: KiCad 8 (kicad_symbol_lib version 20231120), written via kiutils.
+Format: written via kiutils, then post-processed to the CURRENT KiCad format.
+
+WHY THE POST-PROCESS EXISTS (2026-11-24)
+----------------------------------------
+kiutils is a KiCad 8-era library. It stamps the file `(version 20231120)` and
+writes the old property shape `(effects (font ...) hide)`. KiCad 10 auto-upgrades
+that in memory on every load and reports "An error was found when loading the
+schematic that has been automatically fixed. Please save the schematic to repair
+the broken file."
+
+This file is loaded by sym-lib-table, so an old-format library re-introduces the
+dialog even when all seven sheets are clean. Regenerating used to silently undo
+any manual upgrade. Now the generator itself emits the current format.
 """
 import os
+import subprocess
 import sys
 
 from kiutils.symbol import SymbolLib, Symbol, SymbolPin
@@ -108,6 +121,36 @@ def build_symbol(name, spec):
     return root
 
 
+def _upgrade_to_current(path):
+    """Migrate the just-written library to KiCad 10 format.
+
+    kiutils always stamps `(version 20231120)` and the old property shape, so
+    the bytes on disk are old-format no matter what we pass to SymbolLib.
+    `kicad-cli sym upgrade` rewrites in place. If the CLI is missing we fail
+    LOUDLY: silently shipping a KiCad 8 library is what caused the repair dialog
+    to keep coming back.
+    """
+    candidates = [
+        r"C:\Program Files\KiCad\10.0\bin\kicad-cli.exe",
+        r"C:\Progra~1\KiCad\10.0\bin\kicad-cli.exe",
+        "kicad-cli",
+    ]
+    for cli in candidates:
+        try:
+            r = subprocess.run([cli, "sym", "upgrade", path],
+                               capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        out = ((r.stdout or "") + (r.stderr or "")).strip()
+        print(f"  kicad-cli sym upgrade: exit={r.returncode} {out[:90]}")
+        if r.returncode == 0:
+            return True
+    print("  WARNING: kicad-cli not found - library left in OLD format.")
+    print("  KiCad 10 will report 'automatically fixed' on load. Install the")
+    print("  CLI or run: kicad-cli sym upgrade " + path)
+    return False
+
+
 def build_power_symbol(name, style):
     """KiCad-standard-library-style power symbol: pin (len 0) at origin."""
     root = Symbol(entryName=name, isPower=True, inBom=True, onBoard=True,
@@ -159,6 +202,7 @@ def main():
     lib = SymbolLib(version="20231120", generator="sgc_gen", symbols=symbols)
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sgc_p1.kicad_sym")
     lib.to_file(out)
+    _upgrade_to_current(out)
     print(f"wrote {out}: {len(symbols)} symbols")
 
 
