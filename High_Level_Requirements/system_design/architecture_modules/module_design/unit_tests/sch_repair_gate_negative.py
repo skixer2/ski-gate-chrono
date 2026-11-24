@@ -53,6 +53,41 @@ def run_gate(d):
     return r.returncode, ((r.stdout or "") + (r.stderr or ""))
 
 
+def drop_instances(text):
+    """Remove every (instances ...) block from a sheet, paren-balanced.
+
+    The old regex version removed nothing (the file is CRLF + tabs) and the
+    negative test silently reported a false 'gate blind'. Do it by counting
+    parentheses so nesting cannot defeat it.
+    """
+    out = []
+    i = 0
+    removed = 0
+    while True:
+        j = text.find("(instances", i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        out.append(text[i:j])
+        depth = 0
+        k = j
+        while k < len(text):
+            if text[k] == "(":
+                depth += 1
+            elif text[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    k += 1
+                    break
+            k += 1
+        removed += 1
+        # swallow trailing whitespace/CRLF so we do not leave blank lines
+        while k < len(text) and text[k] in " \t\r\n":
+            k += 1
+        i = k
+    return "".join(out), removed
+
+
 def main():
     failures = 0
 
@@ -89,15 +124,18 @@ def main():
     # ---- B: remove sheet-box instances blocks ----
     d = stage("b")
     root = read(os.path.join(d, "sgc_p1.kicad_sch"))
-    # drop every (instances ...) block inside sheet definitions
-    new = re.sub(r'\n\s*\(instances\s*\n(?:[^()]|\([^()]*\))*?\n\s*\)', '', root)
+    new, nrem = drop_instances(root)
     write(os.path.join(d, "sgc_p1.kicad_sch"), new)
     rc, out = run_gate(d)
     print("=" * 60)
-    print("DEFECT B: removed sheet-box instances blocks -> exit %d" % rc)
+    print("DEFECT B: removed %d sheet-box instances block(s) -> exit %d"
+          % (nrem, rc))
     print("=" * 60)
     print(out.strip())
-    if rc == 0:
+    if nrem == 0:
+        print("!! INJECTION FAILED: nothing removed, test proves nothing")
+        failures += 1
+    elif rc == 0:
         print("!! GATE BLIND to defect B")
         failures += 1
     print()

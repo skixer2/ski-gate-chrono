@@ -73,13 +73,18 @@ def check(root_dir):
         problems.append(("FAIL", "no child symbol instance paths found at all"))
 
     # --- 2. sheet box instances blocks ---
-    n_boxes = root.count("(sheet\n") + root.count("(sheet ")
+    # NOTE: the file is CRLF + tab-indented, so match on "(sheet" followed by
+    # WHITESPACE. That excludes (sheet_instances, which has "_" after "sheet".
+    # Counting with "(sheet\n" scored 0 and silently disabled the check below.
+    n_boxes = len(re.findall(r'\(sheet\s', root))
     n_proj = root.count('(project "')
-    pages = sorted(set(re.findall(r'\(page "([^"]*)"\)', root)))
+    pages = re.findall(r'\(page "([^"]*)"\)', root)
     stats["sheet_boxes"] = n_boxes
     stats["instances_projects"] = n_proj
-    stats["pages"] = pages
-    if n_proj < n_boxes or n_proj == 0:
+    stats["pages"] = sorted(set(pages), key=lambda x: int(x) if x.isdigit() else 999)
+    if n_boxes == 0:
+        problems.append(("FAIL", "root sheet has no (sheet) boxes at all"))
+    elif n_proj < n_boxes:
         problems.append(
             ("FAIL", "only %d sheet-box instances block(s) for %d box(es)"
              % (n_proj, n_boxes)))
@@ -87,6 +92,8 @@ def check(root_dir):
         problems.append(
             ("FAIL", "%d page number(s) for %d box(es) + root"
              % (len(pages), n_boxes)))
+    elif len(set(pages)) != len(pages):
+        problems.append(("FAIL", "duplicate page numbers: %s" % pages))
 
     # --- 3. embedded_fonts on root ---
     has_ef = "embedded_fonts" in root
