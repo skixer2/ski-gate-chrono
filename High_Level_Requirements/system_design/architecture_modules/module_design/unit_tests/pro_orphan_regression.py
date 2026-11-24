@@ -44,6 +44,11 @@ def collect_uuids(d):
 
 
 def top_level(d):
+    """Return (uuid, name) pairs from .kicad_pro sheets[].
+
+    Real format is [["<uuid>", "<name>"], ...] -- a list of pairs, not a flat
+    list of uuid strings.
+    """
     p = os.path.join(d, "sgc_p1.kicad_pro")
     if not os.path.isfile(p):
         return None
@@ -52,16 +57,33 @@ def top_level(d):
     except Exception as e:
         return "unparseable: %s" % e
     s = pro.get("sheets")
-    return s[0] if isinstance(s, list) and s else None
+    out = []
+    if isinstance(s, list):
+        for item in s:
+            if isinstance(item, (list, tuple)) and item:
+                out.append((item[0], item[1] if len(item) > 1 else ""))
+            elif isinstance(item, str):
+                out.append((item, ""))
+    return out
+
+
+def report(tag, d):
+    uuids = collect_uuids(d)
+    tl = top_level(d)
+    print(tag)
+    if tl is None:
+        print("  no .kicad_pro")
+        return None, uuids
+    for u, n in tl:
+        ok = u in uuids
+        print("  top_level_sheets: %s (%s) -> %s"
+              % (u, n or "?", "resolves" if ok else "ORPHAN"))
+    return tl, uuids
 
 
 def main():
-    live_uuids = collect_uuids(SRC)
-    live_tl = top_level(SRC)
-    print("LIVE tree")
-    print("  top_level_sheets: %s" % live_tl)
-    print("  resolves to a real sheet: %s\n"
-          % ("YES" if live_tl in live_uuids else "NO - ORPHAN"))
+    live_tl, live_uuids = report("LIVE tree", SRC)
+    print()
 
     work = os.path.join(tempfile.gettempdir(), "sgc_proreg")
     if os.path.isdir(work):
@@ -80,18 +102,16 @@ def main():
         print("generator failed, cannot assess")
         return 1
 
-    new_tl = top_level(work)
-    new_uuids = collect_uuids(work)
-    print("  top_level_sheets: %s" % new_tl)
-    ok = new_tl in new_uuids
-    print("  resolves to a real sheet: %s\n" % ("YES" if ok else "NO - ORPHAN"))
-
-    if ok:
+    new_tl, new_uuids = report("REGENERATED tree", work)
+    print()
+    orphans = [(u, n) for u, n in (new_tl or []) if u not in new_uuids]
+    if not orphans:
         print("PRO RECONCILE OK: generator keeps .kicad_pro consistent.")
         return 0
 
     print("ORPHAN REINTRODUCED BY REGENERATION.")
-    print("  .kicad_pro points at %s" % new_tl)
+    for u, n in orphans:
+        print("  .kicad_pro points at %s (%s) - not in any sheet" % (u, n))
     print("  sheets actually contain: %s" % sorted(new_uuids))
     print()
     print("gen_schematic.py must write/reconcile top_level_sheets itself,")
