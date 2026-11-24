@@ -216,6 +216,33 @@ def _quote_uuids(path):
     return len(fixed) - len(text)
 
 
+def _ensure_embedded_fonts(path):
+    """Append (embedded_fonts no) if the root sheet lacks it.
+
+    KiCad 9+ writes this token into every schematic it saves, including the
+    hierarchy-only root. PROVEN 2026-11-24 by diffing KiCad 10's own repair save
+    (commit 6a3918f6), which appended it to the root sheet. A root without it is
+    completed on load = another reason for the "automatically fixed" dialog.
+    """
+    with io.open(path, "rb") as fh:
+        raw = fh.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", "replace")
+    if "embedded_fonts" in text:
+        return False
+    # insert just before the final closing paren of the file
+    idx = text.rstrip().rfind(")")
+    if idx < 0:
+        return False
+    body = text[:idx].rstrip()
+    text = body + "\n\t(embedded_fonts no)\n)\n"
+    with io.open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+    return True
+
+
 def make_sheet_file(title, page_no, ctx, libsyms, uuid_str):
     sch = Schematic(version="20260306", generator="sgc_gen", paper=PageSettings(paperSize="A3"))
     sch.uuid = uuid_str
@@ -299,12 +326,20 @@ def main():
     bx, by = 30.0, 40.0
     for i, (title, fname, refs) in enumerate(SHEETS):
         ctx = SheetCtx()
-        # Symbols living on a CHILD sheet must carry the full path
-        # /<root-uuid>/<this-sheet-box-uuid>. Using the bare root path makes every
-        # sheet's references collide (six sheets each claiming #PWR01, U1, C1...) and
-        # KiCad reports "annotation errors" on load. Deterministic box uuid, same one
-        # the root sheet box uses, so the two always agree.
-        sheet_path = root_path + det_uuid(fname + ":box")
+        # Symbols living on a CHILD sheet must carry the FULL path
+        #   /<root-uuid>/<this-sheet-box-uuid>
+        # PROVEN 2026-11-24 by diffing KiCad 10's own repair save (commit 6a3918f6):
+        # it rewrote every symbol instance path from
+        #     /350f062a-...              (box uuid alone - unresolvable)
+        # to
+        #     /9578d648-.../350f062a-... (root uuid + box uuid)
+        # The old comment below claimed the full path was already used, but
+        # root_path is "/" so the code emitted the box uuid alone. That single
+        # missing component is what made KiCad report
+        #   "An error was found when loading the schematic that has been
+        #    automatically fixed"
+        # on every open, for every symbol, in every child sheet.
+        sheet_path = "/" + root_uuid + "/" + det_uuid(fname + ":box")
         for r in refs:
             ctx.emit_part(by_ref[r], libsyms, sheet_path)
         nets = set()
@@ -331,12 +366,21 @@ def main():
             fileName=prop("Sheetfile", fname, (bx + 3.0, by + 12.0)),
             properties=[],
             pins=[],
-            # No `instances` block: KiCad 10 derives each sheet box's instance from the
-            # root `sheet_instances` list and STRIPS a per-box instances block on load.
-            # Emitting one is what produced the "annotation errors ... automatically
-            # fixed" dialog after every regeneration. Confirmed against
-            # `kicad-cli sch upgrade`, which deletes it.
-            instances=[])
+        # Each sheet box MUST carry an (instances ...) block naming the project
+        # and its page number. PROVEN 2026-11-24 by diffing KiCad 10's own repair
+        # save (commit 6a3918f6): it ADDED one to all six boxes.
+        #
+        # The comment that used to sit here claimed KiCad "STRIPS a per-box
+        # instances block on load" and that emitting one caused annotation
+        # errors. That was exactly backwards - omitting it is what forced KiCad
+        # to synthesise the block and report
+        #   "An error was found when loading the schematic that has been
+        #    automatically fixed."
+        # Page numbers come from KiCad's own output: 2,3,4,5,6,7 in SHEETS order.
+        instances=[HierarchicalSheetProjectInstance(
+            project="sgc_p1",
+            paths=[HierarchicalSheetProjectPath(
+                sheetInstancePath="/" + root_uuid, page=str(i + 2))])])
         sheet_boxes.append(box)
         bx += 85.0
         if bx > 330.0:
@@ -365,6 +409,7 @@ def main():
     root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")]
     root.to_file(sch_path)
     _quote_uuids(sch_path)
+    _ensure_embedded_fonts(sch_path)
 
     # ---- .kicad_pro: merge, never clobber ----
     _existing_pro = None
