@@ -353,14 +353,12 @@ def main():
     root.noConnects = []
     root.textBoxes = []
     root.sheets = sheet_boxes
-    # KiCad keeps page numbering for the WHOLE hierarchy here, keyed by "/<box-uuid>".
-    # This is the authoritative list: with only "/" present the loader cannot map the
-    # child sheets to pages and reports annotation errors.
-    root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")] + [
-        HierarchicalSheetInstance(
-            instancePath=root_path + det_uuid(fn + ":box"),
-            page=str(i + 2))
-        for i, (_t, fn, _r) in enumerate(SHEETS)]
+    # KiCad 10 stores ONLY the root page here: verified by feeding a 7-entry
+    # block through `kicad-cli sch upgrade` and watching it collapse to a single
+    # (path "/" (page "1")). Child page numbers are NOT kept in sheet_instances
+    # in the current format, so emitting 7 entries is the legacy shape and gives
+    # KiCad something to normalise on load. Emit one entry.
+    root.sheetInstances = [HierarchicalSheetInstance(instancePath="/", page="1")]
     root.to_file(sch_path)
     _quote_uuids(sch_path)
 

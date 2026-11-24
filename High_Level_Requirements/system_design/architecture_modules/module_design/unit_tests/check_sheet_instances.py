@@ -1,19 +1,27 @@
-"""Check the root sheet_instances block against the real page count.
+"""Root sheet_instances must contain ONLY the root page in KiCad 10.
 
-A 7-sheet hierarchy must enumerate every page path in the root's
-(sheet_instances ...) block:
+HISTORY / WHY THIS CHECK WAS REWRITTEN TWICE
+--------------------------------------------
+2026-10-xx commit d8932503 "root sheet_instances must enumerate every child
+page" added 7 entries because a loader complained. That was correct for the
+KiCad 8 format.
+
+On 2026-11-24 I verified the opposite for KiCad 10: feed a 7-entry block to
+`kicad-cli sch upgrade` and it collapses to exactly one entry,
 
     (sheet_instances
-      (path "/" (page "1"))
-      (path "/<box-uuid-1>" (page "2"))
-      ... 7 total
+      (path "/"
+        (page "1")
+      )
     )
 
-If only "/" is present, the child pages have no page numbers and KiCad has to
-assign/repair them on load. An earlier commit (d8932503) fixed exactly this and
-it may have regressed when the sheets were regenerated.
+Child page numbers are NOT stored here in the current format. So a 7-entry
+block is a legacy shape that KiCad normalises on load - i.e. something to
+repair. This check now enforces the KiCad 10 shape.
+
+I had the wrong rule in the file for a day because I trusted an old commit
+message over a fresh measurement. Measure, do not remember.
 """
-import glob
 import io
 import os
 import re
@@ -30,56 +38,35 @@ def read(p):
 
 
 def main():
-    root_p = os.path.join(D, "sgc_p1.kicad_sch")
-    root = read(root_p)
-
-    # all child sheet boxes declared in the root
-    boxes = re.findall(r'\(sheet\b.*?\(uuid "([0-9a-f-]{36})"', root, re.S)
-    print("child sheet boxes in root: %d" % len(boxes))
-    for b in boxes:
-        print("  %s" % b)
-
-    # the sheet_instances block
+    root = read(os.path.join(D, "sgc_p1.kicad_sch"))
     m = re.search(r'\(sheet_instances(.*?)\n\t\)', root, re.S)
-    print()
     if not m:
-        print("NO sheet_instances BLOCK  <-- KiCad must rebuild page numbers")
+        print("FAIL: no sheet_instances block")
         return 1
     body = m.group(1)
-    print("=== sheet_instances body ===")
-    print(body.rstrip())
-    print()
-
     paths = re.findall(r'\(path "([^"]*)"', body)
     pages = re.findall(r'\(page "([^"]*)"', body)
-    print("entries: %d   paths: %d   pages: %d" % (len(paths), len(paths),
-                                                   len(pages)))
+
+    boxes = re.findall(r'\(sheet\b.*?\(uuid "([0-9a-f-]{36})"', root, re.S)
+
+    print("child sheets: %d" % len(boxes))
+    print("sheet_instances: %d path(s) %s  page(s) %s" % (len(paths), paths,
+                                                          pages))
     print()
 
-    expected = len(boxes) + 1   # children + root
-    problems = []
-    if len(paths) < expected:
-        problems.append("expected %d page paths (root + %d children), found %d"
-                        % (expected, len(boxes), len(paths)))
-    missing = [b for b in boxes
-               if ('"/%s"' % b) not in body and ("/%s" % b) not in body]
-    if missing:
-        problems.append("%d child box(es) missing from sheet_instances: %s"
-                        % (len(missing), ", ".join(m[:8] for m in missing)))
-    if pages != sorted(pages) and pages:
-        pass
+    if paths == ["/"] and pages == ["1"]:
+        print("OK: KiCad 10 shape - single root page, nothing to normalise")
+        return 0
 
-    if problems:
-        print("DEFECTS:")
-        for p in problems:
-            print("  ! " + p)
-        print()
-        print("A child page with no (path \"/<uuid>\" (page \"N\")) entry has no")
-        print("page number. KiCad assigns one on load and asks to save = repair.")
-        return 1
-
-    print("sheet_instances enumerates every page - OK")
-    return 0
+    print("FAIL: expected exactly (path \"/\" (page \"1\"))")
+    if len(paths) > 1:
+        print("  %d child page paths present - this is the LEGACY shape." %
+              (len(paths) - 1))
+        print("  KiCad 10 strips them on load. Emit only the root entry.")
+    print("  actual block:")
+    for ln in body.rstrip().splitlines():
+        print("    " + ln.strip())
+    return 1
 
 
 if __name__ == "__main__":
