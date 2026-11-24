@@ -72,14 +72,20 @@ def main():
         shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
     for f in os.listdir(SRC):
-        if f.endswith((".py", ".kicad_sym", ".kicad_pro")) or \
+        if f.endswith((".py", ".kicad_sym", ".kicad_pro", ".txt")) or \
            f.startswith(("sym-lib", "fp-lib")):
             shutil.copy2(os.path.join(SRC, f), os.path.join(work, f))
+    if os.path.isdir(os.path.join(SRC, "sgc_p1.pretty")):
+        shutil.copytree(os.path.join(SRC, "sgc_p1.pretty"),
+                        os.path.join(work, "sgc_p1.pretty"), dirs_exist_ok=True)
     r = subprocess.run([sys.executable, "gen_schematic.py"], cwd=work,
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace",
                        env=dict(os.environ, PYTHONIOENCODING="utf-8"))
     print("\ngenerator exit=%d (clean dir, no existing sheets)" % r.returncode)
+    if r.returncode != 0:
+        print("--- generator output ---")
+        print(((r.stdout or "") + (r.stderr or ""))[-1200:])
     report("GENERATED fresh", os.path.join(work, "sch_power.kicad_sch"))
 
     # and the committed version
