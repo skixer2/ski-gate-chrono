@@ -205,6 +205,38 @@ def host_lib_format():
     return False
 
 
+def host_kicad_fixpoint():
+    """Is the schematic a FIXED POINT under KiCad 10?
+
+    This is the only test that actually corresponds to the user-visible dialog.
+    Force KiCad to parse and rewrite each sheet twice; if pass 1 == pass 2, KiCad
+    has nothing left to repair and the 'automatically fixed' dialog cannot fire.
+
+    Everything else in the host tier checks a proxy. This checks the real thing.
+    """
+    path = os.path.join(HERE, "kicad_fixpoint.py")
+    if not os.path.isfile(path):
+        record("kicad fixed point", "SKIP", "kicad_fixpoint.py missing")
+        return None
+    base = os.path.normpath(os.path.join(HERE, "..", "..", "pcb", "sgc_p1"))
+    if not os.path.isdir(base):
+        record("kicad fixed point", "SKIP", "no schematic dir")
+        return None
+    r = subprocess.run([sys.executable, path, base], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace",
+                       env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+    unstable = [l.strip() for l in lines if "UNSTABLE" in l]
+    if r.returncode == 0:
+        record("kicad fixed point", "PASS", "all sheets stable under rewrite")
+        return True
+    record("kicad fixed point", "FAIL",
+           (unstable[0] if unstable else "sheets not at a fixed point"))
+    for ln in unstable[:5]:
+        print("        " + ln)
+    return False
+
+
 def host_version_consistency():
     """APP_VERSION, VERSION file and the flashed claim must agree."""
     hdr = os.path.join(FW_APP, "src", "app_version.h")
@@ -400,6 +432,7 @@ def main():
     host_schematic_integrity()
     host_project_consistency()
     host_lib_format()
+    host_kicad_fixpoint()
     host_version_consistency()
 
     if args.no_hardware:
