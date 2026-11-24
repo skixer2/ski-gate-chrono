@@ -302,10 +302,17 @@ def main():
             print(f"WARN: could not reuse root sheet UUID ({_e})")
     if root_uuid is None:
         root_uuid = str(uuid.uuid4())
-    # KiCad's hierarchy path convention: the ROOT sheet is "/", and a child sheet
-    # is "/<that-sheet's-box-uuid>". The root's own uuid is NOT a component of the
-    # path. Including it makes every instance path unresolvable, which is what the
-    # loader reported as "annotation errors" and silently repaired.
+    # KiCad's hierarchy path convention (verified against KiCad 10's own repaired
+    # output, commit 6a3918f6):
+    #     root sheet  -> "/"
+    #     child sheet -> "/<ROOT-UUID>/<child-sheet-box-uuid>"
+    # The root uuid IS a component of every child's instance path. Omitting it
+    # makes every instance path unresolvable, which is exactly what produced the
+    # "An error was found when loading the schematic that has been automatically
+    # fixed" dialog on every open. A previous comment here claimed the root uuid
+    # was NOT part of the path -- that wrong belief kept the bug alive through
+    # five rounds of fixes. Do not reintroduce it: child sheet_path below must be
+    # built from root_uuid, never from root_path alone.
     root_path = "/"
 
     # ---- notes -> sheet of the nearest part ----
