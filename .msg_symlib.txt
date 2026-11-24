@@ -1,0 +1,19 @@
+schematic: commit the KiCad 10 symbol library (20231120 -> 20251024)
+
+The library was upgraded on JP-PC on 2026-11-24 but never committed, so git HEAD
+still carried version 20231120 with 99 old-style "(effects ...) hide" tokens and
+no "(hide yes)" / "(show_name ...)" tokens.
+
+sym-lib-table loads this file on project open. KiCad 10 therefore migrated it in
+memory on EVERY load and reported:
+
+  "An error was found when loading the schematic that has been automatically
+   fixed. Please save the schematic to repair the broken file..."
+
+which is why the dialog persisted through three rounds of sheet-level fixes. The
+seven .kicad_sch sheets were already clean (1364 quoted uuids, 0 bare; 1912
+show_name tokens; 1264 hide-yes tokens).
+
+Regenerated with the fixed gen_symbols.py, which now runs
+"kicad-cli sym upgrade" after writing so the pipeline can never reintroduce
+KiCad 8 format. Verified non-destructive: 31 symbols, 272 pins, before and after.
