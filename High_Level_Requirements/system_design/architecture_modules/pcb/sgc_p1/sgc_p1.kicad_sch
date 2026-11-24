@@ -48,6 +48,13 @@
 				)
 			)
 		)
+		(instances
+			(project "sgc_p1"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96"
+					(page "7")
+				)
+			)
+		)
 	)
 	(sheet
 		(at 115 40)
@@ -81,6 +88,13 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96"
+					(page "4")
 				)
 			)
 		)
@@ -120,6 +134,13 @@
 				)
 			)
 		)
+		(instances
+			(project "sgc_p1"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96"
+					(page "5")
+				)
+			)
+		)
 	)
 	(sheet
 		(at 30 40)
@@ -153,6 +174,13 @@
 			(effects
 				(font
 					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "sgc_p1"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96"
+					(page "2")
 				)
 			)
 		)
@@ -192,6 +220,13 @@
 				)
 			)
 		)
+		(instances
+			(project "sgc_p1"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96"
+					(page "3")
+				)
+			)
+		)
 	)
 	(sheet
 		(at 200 40)
@@ -228,10 +263,18 @@
 				)
 			)
 		)
+		(instances
+			(project "sgc_p1"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96"
+					(page "6")
+				)
+			)
+		)
 	)
 	(sheet_instances
 		(path "/"
 			(page "1")
 		)
 	)
+	(embedded_fonts no)
 )

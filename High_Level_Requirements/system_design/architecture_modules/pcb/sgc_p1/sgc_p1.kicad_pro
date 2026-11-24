@@ -686,15 +686,23 @@
   "sheets": [
     [
       "9578d648-ac4e-4951-9411-0eea7dacbb96",
-      "Root"
+      "sgc_p1"
     ],
     [
       "a32dcc37-0a61-5292-9274-6b32d59107b0",
       "Power"
     ],
     [
+      "d182ff6e-f121-59b6-94c3-4d1210373680",
+      "5V boost + LED strip reserve (v2 DNP)"
+    ],
+    [
       "350f062a-90df-5e07-b0fa-46aafc35adf0",
       "MCU"
+    ],
+    [
+      "6c50fd2b-058c-5409-940e-7c5f09b5c9cc",
+      "Connectors"
     ],
     [
       "de481eb9-e789-5231-b35c-c132b3cc681b",
@@ -703,14 +711,6 @@
     [
       "18fcbc1f-acaa-5a69-8650-3b43f65b4496",
       "Storage"
-    ],
-    [
-      "d182ff6e-f121-59b6-94c3-4d1210373680",
-      "5V boost + LED strip reserve (v2 DNP)"
-    ],
-    [
-      "6c50fd2b-058c-5409-940e-7c5f09b5c9cc",
-      "Connectors"
     ]
   ],
   "text_variables": {},

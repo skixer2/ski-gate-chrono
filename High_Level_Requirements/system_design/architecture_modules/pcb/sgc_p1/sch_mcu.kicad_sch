@@ -9714,7 +9714,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/350f062a-90df-5e07-b0fa-46aafc35adf0"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96/350f062a-90df-5e07-b0fa-46aafc35adf0"
 					(reference "#PWR06")
 					(unit 1)
 				)
@@ -9793,7 +9793,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/350f062a-90df-5e07-b0fa-46aafc35adf0"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96/350f062a-90df-5e07-b0fa-46aafc35adf0"
 					(reference "C23")
 					(unit 1)
 				)
@@ -9878,7 +9878,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/350f062a-90df-5e07-b0fa-46aafc35adf0"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96/350f062a-90df-5e07-b0fa-46aafc35adf0"
 					(reference "Y1")
 					(unit 1)
 				)
@@ -10119,7 +10119,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/350f062a-90df-5e07-b0fa-46aafc35adf0"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96/350f062a-90df-5e07-b0fa-46aafc35adf0"
 					(reference "U1")
 					(unit 1)
 				)
@@ -10196,7 +10196,7 @@
 		)
 		(instances
 			(project "sgc_p1"
-				(path "/350f062a-90df-5e07-b0fa-46aafc35adf0"
+				(path "/9578d648-ac4e-4951-9411-0eea7dacbb96/350f062a-90df-5e07-b0fa-46aafc35adf0"
 					(reference "#PWR07")
 					(unit 1)
 				)
