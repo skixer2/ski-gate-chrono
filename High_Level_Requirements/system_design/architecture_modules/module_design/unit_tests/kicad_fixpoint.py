@@ -1,4 +1,20 @@
-"""Fixed-point test: is the schematic stable under KiCad 10?
+"""SUPERSEDED - DO NOT WIRE INTO SMOKE. THIS TEST IS PROVEN BLIND.
+
+fixpoint_negative_test.py stripped the root uuid from all 101 child instance
+paths (the exact defect that caused the "automatically fixed" dialog) and this
+script still printed ALL SHEETS ARE FIXED POINTS. kicad-cli normalises instance
+paths silently during parse, so a parse-rewrite comparison cannot observe this
+defect class. It answers a real question; it is simply not THE question.
+
+Use sch_repair_gate.py instead: direct assertions on the three things KiCad adds
+(child instance paths, sheet-box instances blocks, root embedded_fonts), proven
+able to fail on all three by sch_repair_gate_negative.py.
+
+Kept only as the historical record of why the fixed-point idea fails.
+
+--- original docstring ---
+
+Fixed-point test: is the schematic stable under KiCad 10?
 
 The only question that matters. Take a sheet, force KiCad to parse and rewrite
 it twice, and compare pass 1 with pass 2.
