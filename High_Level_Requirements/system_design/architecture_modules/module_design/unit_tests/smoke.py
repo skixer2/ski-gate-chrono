@@ -138,6 +138,38 @@ def host_schematic_integrity():
     return False
 
 
+def host_project_consistency():
+    """The .kicad_pro must not reference sheet uuids that do not exist.
+
+    This is the defect class kicad-cli cannot see: it never reads the project
+    file, so export/ERC/netlist stay green while the GUI cannot bind the
+    hierarchy and raises a load error. A stale top_level_sheets uuid survived
+    weeks of green checks that way.
+    """
+    path = os.path.join(HERE, "pro_reconcile.py")
+    if not os.path.isfile(path):
+        record("project file consistency", "SKIP", "pro_reconcile.py missing")
+        return None
+    pro = os.path.normpath(os.path.join(
+        HERE, "..", "..", "pcb", "sgc_p1", "sgc_p1.kicad_pro"))
+    if not os.path.isfile(pro):
+        record("project file consistency", "SKIP", "no .kicad_pro here")
+        return None
+    r = subprocess.run([sys.executable, path], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace",
+                       env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+    if r.returncode == 0:
+        record("project file consistency", "PASS", "no orphan sheet uuids")
+        return True
+    orphans = [l.strip() for l in lines if "ORPHAN" in l or "MISMATCH" in l]
+    detail = orphans[0] if orphans else (lines[-1] if lines else "failed")
+    record("project file consistency", "FAIL", detail)
+    for ln in orphans[:6]:
+        print("        " + ln)
+    return False
+
+
 def host_version_consistency():
     """APP_VERSION, VERSION file and the flashed claim must agree."""
     hdr = os.path.join(FW_APP, "src", "app_version.h")
@@ -331,6 +363,7 @@ def main():
     host_spec_constants()
     host_protocol_conformance()
     host_schematic_integrity()
+    host_project_consistency()
     host_version_consistency()
 
     if args.no_hardware:

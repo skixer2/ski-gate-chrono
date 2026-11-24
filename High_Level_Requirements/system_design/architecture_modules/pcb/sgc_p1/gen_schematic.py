@@ -395,6 +395,13 @@ def main():
     }
     if _existing_pro is not None:
         _existing_pro["sheets"] = pro["sheets"]   # sheet map is authoritative from the generator
+        # top_level_sheets MUST also be maintained. Leaving it alone is how a
+        # stale uuid (4921ceaf..., from before root-uuid reuse) survived and
+        # left the project unable to bind the hierarchy on load - a defect no
+        # kicad-cli check can see, because the CLI never reads the .kicad_pro.
+        _existing_pro.setdefault("schematic", {})["top_level_sheets"] = [
+            {"filename": "sgc_p1.kicad_sch", "name": "sgc_p1",
+             "uuid": root_uuid}]
         _existing_pro.setdefault("meta", {})["filename"] = "sgc_p1.kicad_pro"
         pro = _existing_pro
     with open(pro_path, "w", encoding="utf-8") as f:
