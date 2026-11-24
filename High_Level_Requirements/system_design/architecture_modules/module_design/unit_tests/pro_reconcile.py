@@ -36,6 +36,10 @@ def sheet_uuids():
 
 
 def main():
+    if not os.path.isfile(PRO):
+        print("no .kicad_pro at %s" % PRO)
+        print("SKIP: schematic not checked out on this host")
+        return 0
     raw = io.open(PRO, "rb").read()
     pro_text = raw.decode("utf-8-sig")
     j = json.loads(pro_text)
