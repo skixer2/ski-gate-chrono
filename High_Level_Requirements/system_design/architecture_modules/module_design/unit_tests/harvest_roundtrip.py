@@ -44,11 +44,26 @@ def pos_in(text, ref):
 
 
 def table_xy(text, ref):
-    m = re.search(r'dict\(\s*ref="%s"[^)]*' % re.escape(ref), text, re.S)
+    """Read x=/y= for a ref from the PARTS table.
+
+    NOTE: do NOT use r'dict\(\s*ref="X"[^)]*' -- the first ")" appears in the
+    nets dict (e.g. nets={"1": "+1V8"}), so the block gets truncated before
+    x=/y= are seen, and stale values are reported. Walk parentheses instead.
+    """
+    m = re.search(r'dict\(\s*ref="%s"' % re.escape(ref), text)
     if not m:
         return None
-    xm = re.search(r'\bx=(-?[\d.]+)', m.group(0))
-    ym = re.search(r'\by=(-?[\d.]+)', m.group(0))
+    depth = 1
+    i = m.start() + len("dict(")
+    while i < len(text) and depth > 0:
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+        i += 1
+    block = text[m.start():i]
+    xm = re.search(r'\bx=(-?[\d.]+)', block)
+    ym = re.search(r'\by=(-?[\d.]+)', block)
     return (float(xm.group(1)), float(ym.group(1))) if xm and ym else None
 
 
