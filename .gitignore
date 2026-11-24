@@ -54,6 +54,19 @@ High_Level_Requirements/system_design/architecture_modules/module_design/unit_te
 # Raw hex dumps (runtime test artifacts)
 High_Level_Requirements/system_design/system_tests/results/*.txt
 
+# KiCad local/transient files - never design sources.
+# .history/ is KiCad's own backup dir: it is a NESTED GIT REPO, so `git add`
+# reports "adding embedded git repository" and drags it in by accident.
+.history/
+*.kicad_prl
+_autosave-*
+fp-info-cache
+*-backups/
+*.lck
+~*.lck
+# KiCad crash/autosave copies of sheets (real sheets are never suffixed)
+*.kicad_sch.corrupt-*
+
 # SSH keys / secrets (never commit)
 **/secrets.env
 **/*_sgc
