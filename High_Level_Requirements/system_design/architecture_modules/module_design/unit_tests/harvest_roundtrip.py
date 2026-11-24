@@ -72,6 +72,14 @@ def main():
     if os.path.isdir(work):
         shutil.rmtree(work, ignore_errors=True)
     os.makedirs(work)
+
+    # HARD GUARD: refuse to run if the sandbox is not a distinct path. This test
+    # previously called harvest_placement.py without --pcb, so it wrote 18 live
+    # coordinate changes into the real sgc_netlist.py (2026-11-24, restored).
+    if os.path.normcase(os.path.abspath(work)) == \
+            os.path.normcase(os.path.abspath(SRC)):
+        print("REFUSING: sandbox path equals the live repo")
+        return 2
     for f in os.listdir(SRC):
         s = os.path.join(SRC, f)
         if os.path.isfile(s) and not f.endswith((".pdf", ".kicad_pcb")):
@@ -106,8 +114,8 @@ def main():
 
     print("\nSTEP 3  harvest --apply (sandbox)")
     r = subprocess.run([sys.executable, os.path.join(HERE, "harvest_placement.py"),
-                        "--apply"], cwd=work, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace",
+                        "--pcb", work, "--apply"], cwd=work, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace",
                        env=dict(os.environ, PYTHONIOENCODING="utf-8"))
     out = (r.stdout or "") + (r.stderr or "")
     for ln in out.splitlines():

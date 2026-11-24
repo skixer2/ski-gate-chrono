@@ -33,7 +33,17 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# SAFETY: the project directory must be overridable. Without this, running the
+# tool from a SANDBOX copy still resolved the LIVE repo via __file__, and wrote
+# 18 coordinate changes into the real sgc_netlist.py (2026-11-24). Tests that
+# call this tool MUST pass --pcb <sandbox>. Default stays the live path.
 PCB = os.path.normpath(os.path.join(HERE, "..", "..", "pcb", "sgc_p1"))
+for _i, _a in enumerate(sys.argv):
+    if _a == "--pcb" and _i + 1 < len(sys.argv):
+        PCB = os.path.abspath(sys.argv[_i + 1])
+    elif _a.startswith("--pcb="):
+        PCB = os.path.abspath(_a.split("=", 1)[1])
 NETLIST = os.path.join(PCB, "sgc_netlist.py")
 
 
