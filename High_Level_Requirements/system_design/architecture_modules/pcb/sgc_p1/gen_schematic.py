@@ -239,6 +239,10 @@ def main():
     # merge KiCad-standard defs (Device:R/C/L, power:GND) for pin geometry
     _b = open(os.path.join(HERE, "std_symbols.txt"), encoding="utf-8").read()
     # Portable temp path: /tmp does not exist on Windows, and this generator runs on both.
+    # The version stamp here only affects a THROWAWAY temp lib used to read pin
+    # geometry through kiutils; it is never shipped. The real library that gets
+    # written to disk is sgc_p1.kicad_sym, produced by gen_symbols.py, which
+    # upgrades itself to the current KiCad format via kicad-cli sym upgrade.
     _tmp_lib = os.path.join(tempfile.gettempdir(), "_std_lib.kicad_sym")
     open(_tmp_lib, "w").write(
         '(kicad_symbol_lib (version 20231120) (generator kicad_symbol_editor)' + chr(10) + _b + chr(10) + ')' + chr(10))
