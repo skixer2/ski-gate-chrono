@@ -205,35 +205,50 @@ def host_lib_format():
     return False
 
 
-def host_kicad_fixpoint():
-    """Is the schematic a FIXED POINT under KiCad 10?
+def host_sch_repair():
+    """Does the schematic carry all three of KiCad's own repairs?
 
-    This is the only test that actually corresponds to the user-visible dialog.
-    Force KiCad to parse and rewrite each sheet twice; if pass 1 == pass 2, KiCad
-    has nothing left to repair and the 'automatically fixed' dialog cannot fire.
+    HISTORY - read before touching this. A previous version of this check was
+    kicad_fixpoint.py, which asked whether the sheet was a "fixed point" under
+    repeated KiCad parse+rewrite. fixpoint_negative_test.py proved it BLIND:
+    strip the root uuid from all 101 child instance paths and it still printed
+    ALL SHEETS ARE FIXED POINTS. kicad-cli normalises instance paths silently
+    during parse, so no parse-rewrite comparison can see this defect class.
 
-    Everything else in the host tier checks a proxy. This checks the real thing.
+    That blind check was briefly wired in here and reported PASS. It is now
+    replaced by direct assertions on the three things KiCad actually adds:
+      1. child symbol instance paths start with /<root-uuid>/
+      2. each sheet box has an (instances (project ... (path ... (page N))))
+      3. the root has (embedded_fonts ...)
+    Independently proven able to fail on all three defect classes by
+    sch_repair_gate_negative.py.
     """
-    path = os.path.join(HERE, "kicad_fixpoint.py")
-    if not os.path.isfile(path):
-        record("kicad fixed point", "SKIP", "kicad_fixpoint.py missing")
+    gate = os.path.join(HERE, "sch_repair_gate.py")
+    if not os.path.isfile(gate):
+        record("schematic repair", "SKIP", "sch_repair_gate.py missing")
         return None
     base = os.path.normpath(os.path.join(HERE, "..", "..", "pcb", "sgc_p1"))
     if not os.path.isdir(base):
-        record("kicad fixed point", "SKIP", "no schematic dir")
+        record("schematic repair", "SKIP", "no schematic dir")
         return None
-    r = subprocess.run([sys.executable, path, base], capture_output=True,
+    r = subprocess.run([sys.executable, gate, base], capture_output=True,
                        text=True, encoding="utf-8", errors="replace",
                        env=dict(os.environ, PYTHONIOENCODING="utf-8"))
-    lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
-    unstable = [l.strip() for l in lines if "UNSTABLE" in l]
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
     if r.returncode == 0:
-        record("kicad fixed point", "PASS", "all sheets stable under rewrite")
+        # surface the real counts, not just "ok"
+        good = ""
+        for ln in out.splitlines():
+            if "instance paths:" in ln:
+                good = ln.split(":", 1)[1].strip()
+        record("schematic repair", "PASS",
+               (good + " paths, pages, fonts ok") if good else "all 3 repairs present")
         return True
-    record("kicad fixed point", "FAIL",
-           (unstable[0] if unstable else "sheets not at a fixed point"))
-    for ln in unstable[:5]:
-        print("        " + ln)
+    bad = [l.strip() for l in out.splitlines() if l.strip().startswith("!")]
+    record("schematic repair", "FAIL",
+           bad[0].lstrip("! ") if bad else "KiCad repairs missing")
+    for ln in bad[1:5]:
+        print("        " + ln.lstrip("! "))
     return False
 
 
@@ -432,7 +447,7 @@ def main():
     host_schematic_integrity()
     host_project_consistency()
     host_lib_format()
-    host_kicad_fixpoint()
+    host_sch_repair()
     host_version_consistency()
 
     if args.no_hardware:
