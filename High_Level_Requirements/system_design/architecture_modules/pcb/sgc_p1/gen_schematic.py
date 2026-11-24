@@ -378,7 +378,7 @@ def main():
         #    automatically fixed."
         # Page numbers come from KiCad's own output: 2,3,4,5,6,7 in SHEETS order.
         instances=[HierarchicalSheetProjectInstance(
-            project="sgc_p1",
+            name="sgc_p1",
             paths=[HierarchicalSheetProjectPath(
                 sheetInstancePath="/" + root_uuid, page=str(i + 2))])])
         sheet_boxes.append(box)
