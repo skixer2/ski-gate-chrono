@@ -170,6 +170,41 @@ def host_project_consistency():
     return False
 
 
+def host_lib_format():
+    """The symbol library must be in CURRENT KiCad format, not KiCad 8.
+
+    sym-lib-table loads it on project open. An old-format library makes KiCad 10
+    migrate it in memory every load and report 'automatically fixed' - while
+    every sheet-level check stays green, because the defect is not in a sheet.
+    """
+    path = os.path.join(HERE, "lib_format_check.py")
+    if not os.path.isfile(path):
+        record("symbol library format", "SKIP", "lib_format_check.py missing")
+        return None
+    pro = os.path.normpath(os.path.join(
+        HERE, "..", "..", "pcb", "sgc_p1", "sgc_p1.kicad_sym"))
+    if not os.path.isfile(pro):
+        record("symbol library format", "SKIP", "no .kicad_sym here")
+        return None
+    r = subprocess.run([sys.executable, path], capture_output=True,
+                       text=True, encoding="utf-8", errors="replace",
+                       env=dict(os.environ, PYTHONIOENCODING="utf-8"))
+    lines = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
+    detail = ""
+    for ln in lines:
+        if ln.startswith("sgc_p1.kicad_sym") or ".kicad_sym " in ln:
+            detail = ln.strip()
+    if r.returncode == 0:
+        record("symbol library format", "PASS", detail or "current format")
+        return True
+    bad = [l.strip() for l in lines if l.strip().startswith("!")]
+    record("symbol library format", "FAIL",
+           bad[0] if bad else (detail or "old format"))
+    for ln in bad[:5]:
+        print("        " + ln)
+    return False
+
+
 def host_version_consistency():
     """APP_VERSION, VERSION file and the flashed claim must agree."""
     hdr = os.path.join(FW_APP, "src", "app_version.h")
@@ -364,6 +399,7 @@ def main():
     host_protocol_conformance()
     host_schematic_integrity()
     host_project_consistency()
+    host_lib_format()
     host_version_consistency()
 
     if args.no_hardware:
