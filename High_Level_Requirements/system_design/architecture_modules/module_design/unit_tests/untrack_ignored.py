@@ -45,11 +45,20 @@ def main():
         print("  %-74s  %s" % (f, rule))
 
     print()
-    # safety: never untrack anything that looks like source or a review artifact
+    # Protect by MEANING, not just extension. The first version of this was
+    # extension-based and would have untracked the Android app's launcher
+    # icons, which AndroidManifest.xml references by name - breaking the build.
+    PROTECT_PATHS = (
+        "android/app/src/main/res/",   # launcher icons: referenced by manifest
+        "mechanics/",                   # design figures: the only copies
+        "InputInformation/",            # vendor reference captures
+    )
     PROTECT = (".py", ".md", ".kicad_sch", ".kicad_sym", ".kicad_pro",
                ".kicad_pcb", ".kicad_mod", ".net", ".rpt", ".txt", ".yaml",
                ".yml", ".json", ".bat", ".ps1")
-    keep = [f for f in files if f.lower().endswith(PROTECT)]
+    keep = [f for f in files
+            if f.lower().endswith(PROTECT)
+            or any(seg in f.replace("\\", "/") for seg in PROTECT_PATHS)]
     drop = [f for f in files if f not in keep]
 
     if keep:
