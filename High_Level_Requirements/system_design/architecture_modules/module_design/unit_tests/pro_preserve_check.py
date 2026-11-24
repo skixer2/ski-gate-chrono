@@ -102,9 +102,29 @@ def main():
     if preserved:
         print("PRESERVED: .kicad_pro untouched by regeneration.")
         return 0
-    print("CLOBBER RISK: regeneration modifies .kicad_pro.")
-    print("If JP tunes net classes / design rules / ERC settings in the GUI and")
-    print("then runs gen_schematic.py, those edits are overwritten.")
+
+    # Distinguish cosmetic churn (sheet map) from real settings loss.
+    SETTINGS = ("net_settings", "erc", "pcbnew", "board", "libraries",
+                "text_variables", "cvpcb", "meta", "component_class_settings",
+                "tuning_profiles")
+    settings_changed = [k for k, _, _ in changed
+                        if any(k.startswith("/" + s) for s in SETTINGS)]
+    print("SUMMARY")
+    print("  settings leaves changed: %d  (of %d total)"
+          % (len(settings_changed), len(before_flat)))
+    print("  sheet-map leaves changed: %d" % (len(changed) - len(settings_changed)))
+    if lost_keys:
+        print("  sections lost: %s" % ", ".join(sorted(lost_keys)))
+    print()
+    if not settings_changed and not lost_keys:
+        print("PRESERVED: all user-facing settings intact; only the sheet map")
+        print("differs (root uuid changes by design on each generation).")
+        return 0
+    print("CLOBBER RISK: regeneration modifies real project settings:")
+    for k in settings_changed[:15]:
+        print("  %s" % k)
+    print("JP tuning net classes / design rules / ERC in the GUI, then running")
+    print("gen_schematic.py, would lose those edits.")
     return 1
 
 

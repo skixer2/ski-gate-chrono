@@ -419,6 +419,9 @@ def main():
                 _existing_pro = json.load(_f)
         except Exception as _e:
             print(f"WARN: existing .kicad_pro unreadable ({_e}) - regenerating a minimal one")
+    # Root entry name must match top_level_sheets below ("sgc_p1"), not the
+    # KiCad default "Root" - otherwise the .kicad_pro says the top sheet is
+    # called sgc_p1 in one place and Root in another.
     pro = {
         "board": {"design_settings": {}, "layer_presets": [], "viewports": []},
         "boards": [], "cvpcb": {"equivalence_files": []},
@@ -436,12 +439,24 @@ def main():
                                   "pos_files": "", "specctra_dsn": "", "step": "", "svg": "",
                                   "vrml": ""}, "page_layout_descr_file": ""},
         "schematic": {"legacy_lib_dir": "", "legacy_lib_list": []},
-        "sheets": [[root_uuid, "Root"]] + [[det_uuid(fn + ":box"), t.split(":")[0].strip()]
-                                           for t, fn, _ in SHEETS],
+        "sheets": [[root_uuid, "sgc_p1"]] + [[det_uuid(fn + ":box"), t.split(":")[0].strip()]
+                                               for t, fn, _ in SHEETS],
         "text_variables": {},
     }
     if _existing_pro is not None:
-        _existing_pro["sheets"] = pro["sheets"]   # sheet map is authoritative from the generator
+        _new_sheets = pro["sheets"]
+        _old_sheets = _existing_pro.get("sheets")
+        # Preserve the existing order when the sheet SET is unchanged. The order
+        # here is presentational (page numbers live in each sheet's instances
+        # block), but rewriting it on every run creates pointless diff churn and
+        # makes a real change harder to spot in review.
+        if isinstance(_old_sheets, list) and \
+                {s[0] for s in _old_sheets if isinstance(s, list) and s} == \
+                {s[0] for s in _new_sheets}:
+            _by_uuid = {s[0]: s for s in _new_sheets}
+            _new_sheets = [_by_uuid[s[0]] for s in _old_sheets
+                           if isinstance(s, list) and s and s[0] in _by_uuid]
+        _existing_pro["sheets"] = _new_sheets   # sheet map is authoritative
         # top_level_sheets MUST also be maintained. Leaving it alone is how a
         # stale uuid (4921ceaf..., from before root-uuid reuse) survived and
         # left the project unable to bind the hierarchy on load - a defect no
