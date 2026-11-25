@@ -549,7 +549,7 @@ PARTS = [
     dict(ref="C19", sym="C", x=254, y=276, fp="Capacitor_SMD:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
     dict(ref="J4", sym="CON-3", x=278, y=276, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND"}),
     # --- USB-C + CC resistors + bulk cap (left edge, top) ---
-    dict(ref="J1",  sym="USB4085",    x=52,  y=55,  fp=E, dnp=False, nets={
+    dict(ref="J1",  sym="USB4085",    x=52,  y=55,  fp="sgc_p1:USB_C_Receptacle_GCT_USB4085", dnp=False, nets={
         "A1": "GND", "A4": "VBUS_USB", "A5": "CC1", "A6": "NC", "A7": "NC", "A8": "NC",
         "A9": "VBUS_USB", "A12": "GND", "S1": "GND", "S2": "GND",
         "B12": "GND", "B9": "VBUS_USB", "B8": "NC", "B7": "NC", "B6": "NC",
@@ -587,14 +587,14 @@ PARTS = [
         "6": "GND", "7": "I2C0_SCL", "8": "I2C0_SDA", "EP": "GND"}),
     dict(ref="C7", sym="C", x=95, y=140, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "VBAT", "2": "GND"}),   # gauge VDD bypass
     dict(ref="R6", sym="R", x=84, y=164, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="10k",    nets={"1": "+1V8", "2": "GAUGE_ALRT"}), # /ALRT PU
-    dict(ref="J2", sym="JST-BAT-3", x=35, y=200, fp=E, dnp=False, nets={
+    dict(ref="J2", sym="JST-BAT-3", x=35, y=200, fp="sgc_p1:JST_ACH_BM03B-ACHSS-GAN-ETF_1x03-1MP_P1.20mm_Vertical", dnp=False, nets={
         "1": "VBAT", "2": "TS_NTC", "3": "GND"}),
 
     # --- Rev A addition (JP 2026-11-21): hard power-cycle pinhole -------------
     # BQ25120A /MR is 64 ms-debounced. R42 holds it high; the pinhole shorts
     # it to GND. Requires USB detached (JP's stated assumption): on VBUS the
     # PMIC restarts its rails but the board stays powered from USB.
-    dict(ref="J6", sym="PINHOLE-2", x=35, y=225, fp=E, dnp=False, nets={
+    dict(ref="J6", sym="PINHOLE-2", x=35, y=225, fp="sgc_p1:PINHOLE-2", dnp=False, nets={
         "1": "BQ_MR", "2": "GND"}),
     dict(ref="R42", sym="R", x=55, y=225, fp="Resistor_SMD:R_0402_1005Metric",
          dnp=False, value="100k",
@@ -734,7 +734,7 @@ PARTS = [
     dict(ref="MH2", sym="MOUNTING-1", x=118, y=258, dnp=False, nets={"1": "NC"}),
     dict(ref="FID1", sym="FIDUCIAL", x=82, y=248, dnp=False, nets={"1": "NC"}),
     dict(ref="FID2", sym="FIDUCIAL", x=118, y=246, dnp=False, nets={"1": "NC"}),
-    dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp=E, dnp=False, nets={
+    dict(ref="J3", sym="SWD-2X5", x=60, y=258, fp="sgc_p1:PinHeader_2x05_P1.27mm_Vertical", dnp=False, nets={
         "1": "+1V8", "2": "SWDIO", "3": "GND", "4": "SWDCLK", "5": "GND",
         "6": "SWO", "7": "NC", "8": "NC", "9": "GND", "10": "RESET_N"}),
 ]
