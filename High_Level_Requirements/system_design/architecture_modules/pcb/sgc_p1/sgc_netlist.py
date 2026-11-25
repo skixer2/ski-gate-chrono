@@ -559,7 +559,7 @@ PARTS = [
     dict(ref="C16", sym="C", x=60, y=80, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="10uF", nets={"1": "VBUS_USB", "2": "GND"}),  # VBUS bulk @ conn
 
     # --- Charger subsystem (top-left) ---
-    dict(ref="U3", sym="BQ25120A", x=120, y=58, fp=E, dnp=False, nets={
+    dict(ref="U3", sym="BQ25120A", x=120, y=58, fp="sgc_p1:Texas_DSBGA-25_YFP0025_1.6x1.6mm_Layout5x5_P0.4mm", dnp=False, nets={
         "A1": "GND", "A2": "VBUS_IN", "A3": "V_PMID", "A4": "SW_NODE", "A5": "GND",
         "B1": "VBAT", "B2": "VBAT", "B3": "V_PMID", "B4": "+1V8", "B5": "+1V8",
         "C1": "ISET_R", "C2": "ILIM_R", "C3": "TS_NTC",
@@ -661,7 +661,7 @@ PARTS = [
     dict(ref="C9", sym="C", x=348, y=250, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
 
     # --- LDC1612 v2 DNP footprint (sensor bus) ---
-    dict(ref="U6", sym="LDC1612", x=160, y=245, fp=E, dnp=True, nets={
+    dict(ref="U6", sym="LDC1612", x=160, y=245, fp="sgc_p1:WSON-12-1EP_4x4mm_P0.5mm_EP2.6x3mm", dnp=True, nets={
         "1": "I2C1_SCL", "2": "I2C1_SDA", "3": "NC", "4": "GND", "5": "BUTTON",
         "6": "GND", "7": "+1V8", "8": "GND",
         "9": "LDC_CH0A", "10": "LDC_CH0B", "11": "LDC_CH1A", "12": "LDC_CH1B"}),
