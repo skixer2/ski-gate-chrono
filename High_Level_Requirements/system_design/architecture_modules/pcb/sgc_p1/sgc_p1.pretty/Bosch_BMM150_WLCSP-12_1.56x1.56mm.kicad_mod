@@ -1,0 +1,70 @@
+(footprint "Bosch_BMM150_WLCSP-12_1.56x1.56mm"
+	(version 20241229)
+	(generator zio)
+	(descr "BMM150 WLCSP-12 1.56x1.56 checkerboard; lands dia 0.283 per DS Fig 24 BST-BMM150-DS001-01")
+	(attr smd)
+	(layer "F.Cu")
+	(fp_text reference "REF**" (at 0 -1.28) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.1))))
+	(fp_text value "Bosch_BMM150_WLCSP-12_1.56x1.56mm" (at 0 1.28) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.1))))
+	(fp_rect (start -0.98 -0.98) (end 0.98 0.98) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd"))
+	(pad "E1" smd circle
+		(at -0.58 -0.566)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "C1" smd circle
+		(at 0.0175 -0.566)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "A1" smd circle
+		(at 0.58 -0.566)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "D2" smd circle
+		(at -0.28 -0.283)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "B2" smd circle
+		(at 0.3 -0.283)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "E3" smd circle
+		(at -0.58 0.0)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "A3" smd circle
+		(at 0.58 0.0)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "D4" smd circle
+		(at -0.28 0.283)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "B4" smd circle
+		(at 0.3 0.283)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "E5" smd circle
+		(at -0.58 0.566)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "C5" smd circle
+		(at 0.0175 0.566)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "A5" smd circle
+		(at 0.58 0.566)
+		(size 0.283 0.283)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+)

@@ -1,0 +1,60 @@
+(footprint "Bosch_BMP390_LGA-10_2x2mm"
+	(version 20241229)
+	(generator zio)
+	(descr "BMP390 LGA-10 2.0x2.0 metal-lid; pads 1:1 per DS 7.1 bottom view = recommended landing 7.2; outer cols span 1.525, inner pitch 0.5, row pitch 1.0; BST-BMP390-DS002-07")
+	(attr smd)
+	(layer "F.Cu")
+	(fp_text reference "REF**" (at 0 -1.5) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.1))))
+	(fp_text value "Bosch_BMP390_LGA-10_2x2mm" (at 0 1.5) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.1))))
+	(fp_rect (start -1.2 -1.2) (end 1.2 1.2) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd"))
+	(pad "3" smd rect
+		(at -0.7625 -0.5)
+		(size 0.275 0.25)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "2" smd rect
+		(at -0.25 -0.5)
+		(size 0.25 0.275)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "1" smd rect
+		(at 0.25 -0.5)
+		(size 0.25 0.275)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "10" smd rect
+		(at 0.7625 -0.5)
+		(size 0.275 0.25)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "4" smd rect
+		(at -0.7625 0.0)
+		(size 0.275 0.25)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "9" smd rect
+		(at 0.7625 0.0)
+		(size 0.275 0.25)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "5" smd rect
+		(at -0.7625 0.5)
+		(size 0.275 0.25)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "6" smd rect
+		(at -0.25 0.5)
+		(size 0.25 0.275)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "7" smd rect
+		(at 0.25 0.5)
+		(size 0.25 0.275)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "8" smd rect
+		(at 0.7625 0.5)
+		(size 0.275 0.25)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+)

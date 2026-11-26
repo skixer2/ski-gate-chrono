@@ -637,13 +637,13 @@ PARTS = [
     dict(ref="C11", sym="C", x=385, y=52, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C6
     dict(ref="C12", sym="C", x=385, y=64, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C7
     dict(ref="C13", sym="C", x=385, y=76, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C12/C13
-    dict(ref="U9", sym="BMP390", x=330, y=130, fp=E, dnp=False, nets={
+    dict(ref="U9", sym="BMP390", x=330, y=130, fp="sgc_p1:Bosch_BMP390_LGA-10_2x2mm", dnp=False, nets={
         "1": "+1V8", "2": "M1_SCK", "3": "GND", "4": "M1_MOSI", "5": "M1_MISO",
         "6": "M1_CSB1", "7": "NC", "8": "GND", "9": "GND", "10": "+1V8"}),
     dict(ref="C14", sym="C", x=365, y=132, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}), # BMP390 decap
 
     # --- RGB LED + driver (right-bottom) ---
-    dict(ref="U5", sym="IS31FL3194", x=315, y=175, fp=E, dnp=False, nets={
+    dict(ref="U5", sym="IS31FL3194", x=315, y=175, fp="sgc_p1:Lumissil_WLCSP-8_0.99x1.59mm_P0.4mm_IS31FL3194", dnp=False, nets={
         "A1": "V_PMID", "B1": "I2C0_SDA", "C1": "I2C0_SCL", "D1": "GND",
         "A2": "V_PMID", "B2": "LED_R", "C2": "LED_G", "D2": "LED_B"}),
     dict(ref="D1", sym="LED_RGB", x=372, y=175, fp=E, dnp=False, value="SMLP34RGB2W3", nets={
@@ -673,7 +673,7 @@ PARTS = [
     # BHI260AP BST-BHI260AP-DS000-02 pad table. NO nRF GPIO consumed by G1-G3.
     # =======================================================================
     # --- G1 BMM150 magnetometer (CS routed to MCSB4 per Nicla "19 CS1" abx:791 - arbitration 2026-11-07: DS-A claim "Nicla ties CSB to GND" was WRONG, DS-B right; BHI MCSB4 internal pull-up sets BMM150 I2C addr with SDO=GND): rides BHI260AP M3 I2C (P0.02/P0.20/P0.21 on Nicla) ---
-    dict(ref="U12", sym="BMM150", x=400, y=100, fp=E, dnp=False, nets={
+    dict(ref="U12", sym="BMM150", x=400, y=100, fp="sgc_p1:Bosch_BMM150_WLCSP-12_1.56x1.56mm", dnp=False, nets={
         "A1": "M3_PS", "A3": "M3_SCL", "A5": "M3_CS", "B2": "+1V8", "B4": "M3_SDA",
         "C1": "GND", "C5": "GND", "D2": "NC", "D4": "NC", "E1": "GND", "E3": "GND", "E5": "+1V8"}),
     dict(ref="R18", sym="R", x=372, y=100, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SCL"}),  # M3 I2C SCL pull-up (required for I2C mode)
@@ -682,7 +682,7 @@ PARTS = [
     dict(ref="R40", sym="R", x=400, y=120, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="0R", nets={"1": "M3_PS", "2": "+1V8"}),       # PS -> VDDIO = I2C mode (Nicla VDDIO)
 
     # --- G2 BME688 environment T/RH/P/gas: rides BHI260AP M1 SPI, CS = MCSB2 pad 18 ---
-    dict(ref="U13", sym="BME688", x=400, y=140, fp=E, dnp=False, nets={
+    dict(ref="U13", sym="BME688", x=400, y=140, fp="sgc_p1:Bosch_BME688_LGA-8_3x3mm_P0.8mm", dnp=False, nets={
         "1": "GND", "2": "M1_CSB2", "3": "M1_MOSI", "4": "M1_SCK",
         "5": "M1_MISO", "6": "+1V8", "7": "GND", "8": "+1V8"}),
     dict(ref="C22", sym="C", x=400, y=152, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BME688 decap (G5)

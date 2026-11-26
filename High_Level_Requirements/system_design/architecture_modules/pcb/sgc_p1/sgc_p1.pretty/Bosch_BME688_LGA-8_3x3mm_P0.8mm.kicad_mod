@@ -1,0 +1,50 @@
+(footprint "Bosch_BME688_LGA-8_3x3mm_P0.8mm"
+	(version 20241229)
+	(generator zio)
+	(descr "BME688 LGA-8 3.0x3.0 metal-lid; 4+4 pads pitch 0.8 span 2.4 pad 0.28 per DS 7.3 bottom view BST-BME688-DS000-00; clockwise numbering")
+	(attr smd)
+	(layer "F.Cu")
+	(fp_text reference "REF**" (at 0 -2.0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.1))))
+	(fp_text value "Bosch_BME688_LGA-8_3x3mm_P0.8mm" (at 0 2.0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.1))))
+	(fp_rect (start -1.7 -1.7) (end 1.7 1.7) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd"))
+	(pad "1" smd circle
+		(at -1.2 -1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "2" smd circle
+		(at -0.4 -1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "3" smd circle
+		(at 0.4 -1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "4" smd circle
+		(at 1.2 -1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "8" smd circle
+		(at -1.2 1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "7" smd circle
+		(at -0.4 1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "6" smd circle
+		(at 0.4 1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "5" smd circle
+		(at 1.2 1.2)
+		(size 0.28 0.28)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+)
