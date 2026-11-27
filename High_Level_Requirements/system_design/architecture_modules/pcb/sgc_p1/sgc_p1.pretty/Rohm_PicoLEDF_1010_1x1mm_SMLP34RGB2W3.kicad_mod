@@ -1,0 +1,30 @@
+(footprint "Rohm_PicoLEDF_1010_1x1mm_SMLP34RGB2W3"
+	(version 20241229)
+	(generator zio)
+	(descr "Rohm SMLP34RGB2W3 PicoLED RGB 1.0x1.0mm 4-terminal; lands 0.45x0.45 pitch 0.85 per DS recommended solder pattern; 1=COM anode 2=R 3=B 4=G; DS 2021.6 Rev.011 p1+p8")
+	(attr smd)
+	(layer "F.Cu")
+	(fp_text reference "REF**" (at 0 -1.1) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.08))))
+	(fp_text value "Rohm_PicoLEDF_1010_1x1mm_SMLP34RGB2W3" (at 0 1.1) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.08))))
+	(fp_rect (start -0.65 -0.65) (end 0.65 0.65) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd"))
+	(pad "1" smd rect
+		(at -0.425 -0.425)
+		(size 0.45 0.45)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "4" smd rect
+		(at 0.425 -0.425)
+		(size 0.45 0.45)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "2" smd rect
+		(at -0.425 0.425)
+		(size 0.45 0.45)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+	(pad "3" smd rect
+		(at 0.425 0.425)
+		(size 0.45 0.45)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+	)
+)
