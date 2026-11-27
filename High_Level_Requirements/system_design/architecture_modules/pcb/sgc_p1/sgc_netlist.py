@@ -622,7 +622,7 @@ PARTS = [
         "53": "GND", "54": "GND", "55": "GND", "56": "GND"}),
 
     # --- Sensor cluster (right) ---
-    dict(ref="U8", sym="BHI260AP", x=330, y=65, fp=E, dnp=False, nets={"3": "HOSTBOOT", "6": "VREG", 
+    dict(ref="U8", sym="BHI260AP", x=330, y=65, fp="sgc_p1:Bosch_BHI260AP_LGA-44_P0.4mm_2ring", dnp=False, nets={"3": "HOSTBOOT", "6": "VREG", 
         "1": "M3_SDA", "2": "M3_SCL", "4": "QSPI_IO0", "5": "QSPI_SCK",
         "7": "+1V8", "8": "QSPI_IO3", "9": "BHI_RESET", "10": "BHI_HIRQ",
         "11": "SPI2_MOSI", "12": "+1V8", "13": "NC", "14": "QSPI_CS", "15": "QSPI_IO1",
