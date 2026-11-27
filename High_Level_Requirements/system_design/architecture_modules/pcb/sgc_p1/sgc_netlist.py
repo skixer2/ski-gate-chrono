@@ -28,7 +28,7 @@ P = 2.54  # pin pitch (mm)
 # ---------------------------------------------------------------------------
 SYMBOL_PINS = {
     "D_SCHOTTKY": dict(
-        prefix="D", value="SS34", fp="Diode_SMD:D_SMA",
+        prefix="D", value="SS34", fp="sgc_p1:D_SMA",
         ds="", desc="Schottky 40V 3A SMA - MT3608 boost rectifier, V2 LED reserve, DNP v1", hw=5.08,
         pins=[
             ("1",  "K","passive", "T"),
@@ -36,7 +36,7 @@ SYMBOL_PINS = {
         ],
     ),
     "MT3608": dict(
-        prefix="U", value="MT3608", fp="Package_TO_SOT_SMD:SOT-23-6",
+        prefix="U", value="MT3608", fp="sgc_p1:SOT-23-6",
         ds="https://www.jlcpcb.com/partdetail/Aerosemi-MT3608_C84817.html", desc="Aerosemi MT3608 boost 2.0-24V in, 1.2MHz, EN shutdown ~2uA (pin6 NC not drawn). V2 LED reserve, DNP v1", hw=7.62,
         pins=[
             ("5",  "IN","power_in", "L"),
@@ -46,7 +46,7 @@ SYMBOL_PINS = {
             ("2",  "GND","power_in", "B"),
         ]),
     "TXS0102": dict(
-        prefix="U", value="TXS0102 (OD-9 TBD)", fp="Package_SO:VSSOP-8_2.3x2mm_P0.5mm",
+        prefix="U", value="TXS0102 (OD-9 TBD)", fp="sgc_p1:VSSOP-8_2.3x2mm_P0.5mm",
         ds="https://www.ti.com/lit/ds/symlink/txs0102.pdf", desc="TI TXS0102-class dual-supply translator VCCA +1V8 / VCCB +5V for SK6812 DIN level. V2 LED reserve, DNP v1", hw=7.62,
         pins=[
             ("1",  "VCCA","power_in", "L"),
@@ -60,7 +60,7 @@ SYMBOL_PINS = {
         ]),
     "CON-2": dict(
         prefix="J", value="JST-SH-2 piezo (TBD-JP)", hw=10.16,
-        fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal",
+        fp="sgc_p1:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal",
         ds="", desc="Off-board piezo arming button (Langir 16mm, arch doc 3) - water-resistant press sensing",
         pins=[
             ("1",  "PIN1","passive", "L"),
@@ -69,7 +69,7 @@ SYMBOL_PINS = {
     ),
     "CON-3": dict(
         prefix="J", value="JST-SH-3 (TBD-JP)", hw=7.62,
-        fp="Connector_JST:JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
+        fp="sgc_p1:JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
         ds="https://www.jst-mfg.com/product/detail_en.php?series=SR",
         desc="Off-board SK6812 strip feed: +5V / DATA / GND. Strip glued to pole or in transparent case (v2), NOT on PCB (JP 2026-11-01: space). DNP v1",
         pins=[
@@ -358,7 +358,7 @@ SYMBOL_PINS = {
     ),
     "MX25R6435F": dict(
         prefix="U", value="MX25R6435FZAIL-08G",
-        fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm",
+        fp="sgc_p1:SOIC-8_5.23x5.23mm_P1.27mm",
         ds="https://www.macronix.com/en-us/products/NOR-Flash/Serial-NOR-Flash/Pages/spec.aspx?p=MX25R6435F",
         desc="Macronix 64 Mb NOR flash (SGC RawRunStore), SOIC-8 200mil; pin config verbatim v1.6",
         hw=10.16,
@@ -375,7 +375,7 @@ SYMBOL_PINS = {
     ),
     "MX25R1635F": dict(
         prefix="U", value="MX25R1635FZUIH0",
-        fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm",
+        fp="sgc_p1:SOIC-8_5.23x5.23mm_P1.27mm",
         ds="https://www.macronix.com/en-us/products/NOR-Flash/Serial-NOR-Flash/Pages/spec.aspx?p=MX25R1635F",
         desc="Macronix 16 Mb NOR flash = BHI260AP FW flash (Nicla U2); OD-5: add to BOM",
         hw=10.16,
@@ -431,7 +431,7 @@ SYMBOL_PINS = {
     ),
     "TESTPOINT": dict(
         prefix="TP", value="TestPoint 1.0mm", hw=2.54,
-        fp="TestPoint:TestPoint_Pad_D1.0mm", ds="",
+        fp="sgc_p1:TestPoint_Pad_D1.0mm", ds="",
         desc="Bare 1.0 mm pad for a pogo-pin probe (UART console). JP 2026-11-21.",
         pins=[
             ("1", "1", "passive", "L"),
@@ -447,7 +447,7 @@ SYMBOL_PINS = {
     ),
     "FIDUCIAL": dict(
         prefix="FID", value="Fiducial 1mm", hw=2.54,
-        fp="Fiducial:Fiducial_1mm_Mask2mm", ds="",
+        fp="sgc_p1:Fiducial_1mm_Mask2mm", ds="",
         desc="Optical fiducial for jig alignment. No net (mechanical). JP 2026-11-22.",
         pins=[
             ("1", "1", "passive", "L"),
@@ -532,21 +532,21 @@ PARTS = [
     # --- V2 LED STRIP RESERVE (JP 2026-10-31 b): all DNP v1 ---
     dict(ref="U11", sym="TXS0102", x=198, y=258, dnp=True, nets={"1": "+1V8", "2": "SK6812_DATA", "3": "NC", "4": "GND", "5": "NC", "6": "LED_DIN_5V", "7": "+1V8", "8": "+5V"}),
     dict(ref="U10", sym="MT3608", x=238, y=258, dnp=True, nets={"1": "BOOST_SW", "2": "GND", "3": "BOOST_FB", "4": "BOOST_EN", "5": "VBAT"}),
-    dict(ref="L2", sym="L", x=270, y=258, fp="Inductor_SMD:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
-    dict(ref="D2", sym="D_SCHOTTKY", x=272, y=240, dnp=True, fp="Diode_SMD:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
-    dict(ref="R15", sym="R", x=190, y=62, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="24k 1%", nets={"1": "VBUS_USB", "2": "TS_NTC"}),  # TS R_HI (DS solve 2026-11-08: cold 0C at 39.95% vs V_COLD 39.8%)
-    dict(ref="R16", sym="R", x=190, y=72, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="36k 1%", nets={"1": "TS_NTC", "2": "GND"}),  # TS R_LO (hot 45C at 15.1% vs V_HOT 15.0%)
-    dict(ref="C24", sym="C", x=232, y=118, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF", nets={"1": "+1V8", "2": "GND"}),  # U1 VCC local (DS pass-2: Nicla C17 parity + u-blox SIM VCC caps mandate)
-    dict(ref="R14", sym="R", x=266.7, y=36.83, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k",
+    dict(ref="L2", sym="L", x=270, y=258, fp="sgc_p1:L_0805_2012Metric", dnp=True, value="4.7uH 2A", nets={"1": "BOOST_SW", "2": "VBAT"}),  # 2026-11-03: L2 belongs VBAT->SW (was on the diode slot - spec bug)
+    dict(ref="D2", sym="D_SCHOTTKY", x=272, y=240, dnp=True, fp="sgc_p1:D_SMA", value="SS34 (TBD-JP)", nets={"1": "+5V", "2": "BOOST_SW"}),
+    dict(ref="R15", sym="R", x=190, y=62, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="24k 1%", nets={"1": "VBUS_USB", "2": "TS_NTC"}),  # TS R_HI (DS solve 2026-11-08: cold 0C at 39.95% vs V_COLD 39.8%)
+    dict(ref="R16", sym="R", x=190, y=72, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="36k 1%", nets={"1": "TS_NTC", "2": "GND"}),  # TS R_LO (hot 45C at 15.1% vs V_HOT 15.0%)
+    dict(ref="C24", sym="C", x=232, y=118, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="1uF", nets={"1": "+1V8", "2": "GND"}),  # U1 VCC local (DS pass-2: Nicla C17 parity + u-blox SIM VCC caps mandate)
+    dict(ref="R14", sym="R", x=266.7, y=36.83, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="10k",
          nets={"1": "+1V8", "2": "BHI_HIRQ"}),  # 0.25.x JP 2026-11-07: BHI HIRQ pull-up (Nicla R21 parity, DS review flag)
-        dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="Resistor_SMD:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
-    dict(ref="C20", sym="C", x=287.02, y=50.8, dnp=False, fp="Capacitor_SMD:C_0402_1005Metric", value="220n", nets={"1": "VREG", "2": "GND"}),
-    dict(ref="J5", sym="CON-2", x=109.22, y=246.38, dnp=False, fp="Connector_JST:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", value="JST-SH-2 piezo (TBD-JP)", nets={"1": "BUTTON_RAW", "2": "GND"}),  # 2026-11-03: boost rectifier added
-    dict(ref="R11", sym="R", x=190, y=276, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
-    dict(ref="R12", sym="R", x=206, y=276, fp="Resistor_SMD:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
-    dict(ref="C17", sym="C", x=222, y=276, fp="Capacitor_SMD:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
-    dict(ref="C18", sym="C", x=238, y=276, fp="Capacitor_SMD:C_0805_2012Metric", dnp=True, value="22uF", nets={"1": "+5V", "2": "GND"}),
-    dict(ref="C19", sym="C", x=254, y=276, fp="Capacitor_SMD:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
+        dict(ref="R13", sym="R", x=287.02, y=40.64, dnp=False, fp="sgc_p1:R_0402_1005Metric", value="10k 1%", nets={"1": "HOSTBOOT", "2": "GND"}),
+    dict(ref="C20", sym="C", x=287.02, y=50.8, dnp=False, fp="sgc_p1:C_0402_1005Metric", value="220n", nets={"1": "VREG", "2": "GND"}),
+    dict(ref="J5", sym="CON-2", x=109.22, y=246.38, dnp=False, fp="sgc_p1:JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal", value="JST-SH-2 piezo (TBD-JP)", nets={"1": "BUTTON_RAW", "2": "GND"}),  # 2026-11-03: boost rectifier added
+    dict(ref="R11", sym="R", x=190, y=276, fp="sgc_p1:R_0402_1005Metric", dnp=True, value="75k 1%", nets={"1": "+5V", "2": "BOOST_FB"}),
+    dict(ref="R12", sym="R", x=206, y=276, fp="sgc_p1:R_0402_1005Metric", dnp=True, value="10k 1%", nets={"1": "BOOST_FB", "2": "GND"}),
+    dict(ref="C17", sym="C", x=222, y=276, fp="sgc_p1:C_0603_1608Metric", dnp=True, value="10uF", nets={"1": "VBAT", "2": "GND"}),
+    dict(ref="C18", sym="C", x=238, y=276, fp="sgc_p1:C_0805_2012Metric", dnp=True, value="22uF", nets={"1": "+5V", "2": "GND"}),
+    dict(ref="C19", sym="C", x=254, y=276, fp="sgc_p1:C_0402_1005Metric", dnp=True, value="22pF", nets={"1": "+5V", "2": "BOOST_FB"}),
     dict(ref="J4", sym="CON-3", x=278, y=276, dnp=True, nets={"1": "+5V", "2": "LED_DIN_5V", "3": "GND"}),
     # --- USB-C + CC resistors + bulk cap (left edge, top) ---
     dict(ref="J1",  sym="USB4085",    x=52,  y=55,  fp="sgc_p1:USB_C_Receptacle_GCT_USB4085", dnp=False, nets={
@@ -554,9 +554,9 @@ PARTS = [
         "A9": "VBUS_USB", "A12": "GND", "S1": "GND", "S2": "GND",
         "B12": "GND", "B9": "VBUS_USB", "B8": "NC", "B7": "NC", "B6": "NC",
         "B5": "CC2", "B4": "VBUS_USB", "B1": "GND", "S3": "GND", "S4": "GND"}),
-    dict(ref="R7",  sym="R", x=75, y=25, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="5.1k 1%", nets={"1": "CC1", "2": "GND"}),   # Rd sink CC1
-    dict(ref="R8",  sym="R", x=85, y=25, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="5.1k 1%", nets={"1": "CC2", "2": "GND"}),   # Rd sink CC2
-    dict(ref="C16", sym="C", x=60, y=80, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="10uF", nets={"1": "VBUS_USB", "2": "GND"}),  # VBUS bulk @ conn
+    dict(ref="R7",  sym="R", x=75, y=25, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="5.1k 1%", nets={"1": "CC1", "2": "GND"}),   # Rd sink CC1
+    dict(ref="R8",  sym="R", x=85, y=25, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="5.1k 1%", nets={"1": "CC2", "2": "GND"}),   # Rd sink CC2
+    dict(ref="C16", sym="C", x=60, y=80, fp="sgc_p1:C_0603_1608Metric", dnp=False, value="10uF", nets={"1": "VBUS_USB", "2": "GND"}),  # VBUS bulk @ conn
 
     # --- Charger subsystem (top-left) ---
     dict(ref="U3", sym="BQ25120A", x=120, y=58, fp="sgc_p1:Texas_DSBGA-25_YFP0025_1.6x1.6mm_Layout5x5_P0.4mm", dnp=False, nets={
@@ -566,27 +566,27 @@ PARTS = [
         "C4": "+1V8", "C5": "LSLDO_C",
         "D1": "IPRETERM_R", "D2": "BQ_INT", "D3": "NC", "D4": "NC", "D5": "GND",
         "E1": "BQ_MR", "E2": "BQ_CD", "E3": "GND", "E4": "I2C0_SDA", "E5": "I2C0_SCL"}),
-    dict(ref="C1", sym="C", x=152, y=42, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBUS_IN", "2": "GND"}),   # BQ IN bypass (>=1uF)
-    dict(ref="C2", sym="C", x=152, y=52, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="4.7uF", nets={"1": "V_PMID", "2": "GND"}),    # PMID >=3uF, Nicla C10
-    dict(ref="C3", sym="C", x=152, y=62, fp="Capacitor_SMD:C_0603_1608Metric", dnp=False, value="10uF",  nets={"1": "+1V8", "2": "GND"}),      # SYS >=4.7uF, Nicla C15
-    dict(ref="C4", sym="C", x=152, y=72, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBAT", "2": "GND"}),      # BAT bypass
-    dict(ref="C5", sym="C", x=152, y=82, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "+1V8", "2": "GND"}),      # VINLS (-> SYS per C4 rule)
-    dict(ref="C6", sym="C", x=152, y=92, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "LSLDO_C", "2": "GND"}),   # LS/LDO stability
-    dict(ref="L1", sym="L", x=150, y=30, fp="Inductor_SMD:L_0603_1608Metric",  dnp=False, value="2.2uH", nets={"1": "SW_NODE", "2": "+1V8"}),   # Nicla MLZ1608A2R2WT000
-    dict(ref="R1", sym="R", x=168, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1.82k 1%", nets={"1": "ISET_R", "2": "GND"}),      # ICHG ~110 mA (OD-15)
-    dict(ref="R2", sym="R", x=168, y=58, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="1k 1%",    nets={"1": "ILIM_R", "2": "GND"}),       # ILIM 200 mA
-    dict(ref="R3", sym="R", x=168, y=68, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.99k 1%", nets={"1": "IPRETERM_R", "2": "GND"}),  # term/prechg 10%
-    dict(ref="R4", sym="R", x=168, y=80, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_CD"}),       # CD PU +1V8 (JP GO 2026-11-08: V_PMID overdrove U1.50 abs-max via 100k; +1V8 keeps cold-boot-active guarantee - BQ POR = load switch on - and correct ship persistence)
-    dict(ref="R5", sym="R", x=168, y=92, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_INT"}),       # BQ INT PU
-    dict(ref="R9", sym="R", x=184, y=48, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SDA"}),     # i2c0 PU (Nicla parity)
-    dict(ref="R10",sym="R", x=184, y=60, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
+    dict(ref="C1", sym="C", x=152, y=42, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBUS_IN", "2": "GND"}),   # BQ IN bypass (>=1uF)
+    dict(ref="C2", sym="C", x=152, y=52, fp="sgc_p1:C_0603_1608Metric", dnp=False, value="4.7uF", nets={"1": "V_PMID", "2": "GND"}),    # PMID >=3uF, Nicla C10
+    dict(ref="C3", sym="C", x=152, y=62, fp="sgc_p1:C_0603_1608Metric", dnp=False, value="10uF",  nets={"1": "+1V8", "2": "GND"}),      # SYS >=4.7uF, Nicla C15
+    dict(ref="C4", sym="C", x=152, y=72, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "VBAT", "2": "GND"}),      # BAT bypass
+    dict(ref="C5", sym="C", x=152, y=82, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "+1V8", "2": "GND"}),      # VINLS (-> SYS per C4 rule)
+    dict(ref="C6", sym="C", x=152, y=92, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="1uF",   nets={"1": "LSLDO_C", "2": "GND"}),   # LS/LDO stability
+    dict(ref="L1", sym="L", x=150, y=30, fp="sgc_p1:L_0603_1608Metric",  dnp=False, value="2.2uH", nets={"1": "SW_NODE", "2": "+1V8"}),   # Nicla MLZ1608A2R2WT000
+    dict(ref="R1", sym="R", x=168, y=48, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="1.82k 1%", nets={"1": "ISET_R", "2": "GND"}),      # ICHG ~110 mA (OD-15)
+    dict(ref="R2", sym="R", x=168, y=58, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="1k 1%",    nets={"1": "ILIM_R", "2": "GND"}),       # ILIM 200 mA
+    dict(ref="R3", sym="R", x=168, y=68, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="4.99k 1%", nets={"1": "IPRETERM_R", "2": "GND"}),  # term/prechg 10%
+    dict(ref="R4", sym="R", x=168, y=80, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_CD"}),       # CD PU +1V8 (JP GO 2026-11-08: V_PMID overdrove U1.50 abs-max via 100k; +1V8 keeps cold-boot-active guarantee - BQ POR = load switch on - and correct ship persistence)
+    dict(ref="R5", sym="R", x=168, y=92, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="100k",     nets={"1": "+1V8", "2": "BQ_INT"}),       # BQ INT PU
+    dict(ref="R9", sym="R", x=184, y=48, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SDA"}),     # i2c0 PU (Nicla parity)
+    dict(ref="R10",sym="R", x=184, y=60, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
 
     # --- Fuel gauge + battery (bottom-left) ---
     dict(ref="U4", sym="MAX17048", x=60, y=150, fp="sgc_p1:Maxim_TDFN-8-1EP_2x2mm_P0.5mm_EP0.8x1.38mm_MAX17048", dnp=False, nets={
         "1": "GND", "2": "VBAT", "3": "VBAT", "4": "GND", "5": "GAUGE_ALRT",
         "6": "GND", "7": "I2C0_SCL", "8": "I2C0_SDA", "EP": "GND"}),
-    dict(ref="C7", sym="C", x=95, y=140, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "VBAT", "2": "GND"}),   # gauge VDD bypass
-    dict(ref="R6", sym="R", x=84, y=164, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="10k",    nets={"1": "+1V8", "2": "GAUGE_ALRT"}), # /ALRT PU
+    dict(ref="C7", sym="C", x=95, y=140, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "VBAT", "2": "GND"}),   # gauge VDD bypass
+    dict(ref="R6", sym="R", x=84, y=164, fp="sgc_p1:R_0402_1005Metric",  dnp=False, value="10k",    nets={"1": "+1V8", "2": "GAUGE_ALRT"}), # /ALRT PU
     dict(ref="J2", sym="JST-BAT-3", x=35, y=200, fp="sgc_p1:JST_ACH_BM03B-ACHSS-GAN-ETF_1x03-1MP_P1.20mm_Vertical", dnp=False, nets={
         "1": "VBAT", "2": "TS_NTC", "3": "GND"}),
 
@@ -596,7 +596,7 @@ PARTS = [
     # PMIC restarts its rails but the board stays powered from USB.
     dict(ref="J6", sym="PINHOLE-2", x=35, y=225, fp="sgc_p1:PINHOLE-2", dnp=False, nets={
         "1": "BQ_MR", "2": "GND"}),
-    dict(ref="R42", sym="R", x=55, y=225, fp="Resistor_SMD:R_0402_1005Metric",
+    dict(ref="R42", sym="R", x=55, y=225, fp="sgc_p1:R_0402_1005Metric",
          dnp=False, value="100k",
          nets={"1": "+1V8", "2": "BQ_MR"}),   # /MR active-low, 100k pull-up
 
@@ -633,14 +633,14 @@ PARTS = [
         "34": "CS_BHI", "35": "NC", "36": "GND", "37": "NC", "38": "M1_CSB1",
         "39": "NC", "40": "NC", "41": "NC", "42": "+1V8",
         "43": "M1_MISO", "44": "M1_MOSI"}),
-    dict(ref="C10", sym="C", x=385, y=40, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="1uF",  nets={"1": "+1V8", "2": "GND"}),  # BHI bank C5
-    dict(ref="C11", sym="C", x=385, y=52, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C6
-    dict(ref="C12", sym="C", x=385, y=64, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C7
-    dict(ref="C13", sym="C", x=385, y=76, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C12/C13
+    dict(ref="C10", sym="C", x=385, y=40, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="1uF",  nets={"1": "+1V8", "2": "GND"}),  # BHI bank C5
+    dict(ref="C11", sym="C", x=385, y=52, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C6
+    dict(ref="C12", sym="C", x=385, y=64, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C7
+    dict(ref="C13", sym="C", x=385, y=76, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),  # BHI bank C12/C13
     dict(ref="U9", sym="BMP390", x=330, y=130, fp="sgc_p1:Bosch_BMP390_LGA-10_2x2mm", dnp=False, nets={
         "1": "+1V8", "2": "M1_SCK", "3": "GND", "4": "M1_MOSI", "5": "M1_MISO",
         "6": "M1_CSB1", "7": "NC", "8": "GND", "9": "GND", "10": "+1V8"}),
-    dict(ref="C14", sym="C", x=365, y=132, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}), # BMP390 decap
+    dict(ref="C14", sym="C", x=365, y=132, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}), # BMP390 decap
 
     # --- RGB LED + driver (right-bottom) ---
     dict(ref="U5", sym="IS31FL3194", x=315, y=175, fp="sgc_p1:Lumissil_WLCSP-8_0.99x1.59mm_P0.4mm_IS31FL3194", dnp=False, nets={
@@ -648,17 +648,17 @@ PARTS = [
         "A2": "V_PMID", "B2": "LED_R", "C2": "LED_G", "D2": "LED_B"}),
     dict(ref="D1", sym="LED_RGB", x=372, y=175, fp="sgc_p1:Rohm_PicoLEDF_1010_1x1mm_SMLP34RGB2W3", dnp=False, value="SMLP34RGB2W3", nets={
         "R": "LED_R", "G": "LED_G", "B": "LED_B", "COM": "V_PMID"}),
-    dict(ref="C15", sym="C", x=395, y=175, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "V_PMID", "2": "GND"}), # IS31 decap (value TBD-JP, OD-17)
+    dict(ref="C15", sym="C", x=395, y=175, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "V_PMID", "2": "GND"}), # IS31 decap (value TBD-JP, OD-17)
 
     # --- Flash (bottom-right) ---
-    dict(ref="U7", sym="MX25R6435F", x=300, y=225, fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm", dnp=False, nets={
+    dict(ref="U7", sym="MX25R6435F", x=300, y=225, fp="sgc_p1:SOIC-8_5.23x5.23mm_P1.27mm", dnp=False, nets={
         "1": "CS_FLASH", "2": "SPI2_MISO", "3": "NC", "4": "GND",
         "5": "SPI2_MOSI", "6": "SPI2_SCK", "7": "NC", "8": "+1V8"}),
-    dict(ref="C8", sym="C", x=348, y=217, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
-    dict(ref="U2", sym="MX25R1635F", x=300, y=258, fp="Package_SO:SOIC-8_5.3x5.3mm_P1.27mm", dnp=False, nets={
+    dict(ref="C8", sym="C", x=348, y=217, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
+    dict(ref="U2", sym="MX25R1635F", x=300, y=258, fp="sgc_p1:SOIC-8_5.23x5.23mm_P1.27mm", dnp=False, nets={
         "1": "QSPI_CS", "2": "QSPI_IO1", "3": "QSPI_IO2", "4": "GND",
         "5": "QSPI_IO0", "6": "QSPI_SCK", "7": "QSPI_IO3", "8": "+1V8"}),
-    dict(ref="C9", sym="C", x=348, y=250, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
+    dict(ref="C9", sym="C", x=348, y=250, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),
 
     # --- LDC1612 v2 DNP footprint (sensor bus) ---
     dict(ref="U6", sym="LDC1612", x=160, y=245, fp="sgc_p1:WSON-12-1EP_4x4mm_P0.5mm_EP2.6x3mm", dnp=True, nets={
@@ -676,21 +676,21 @@ PARTS = [
     dict(ref="U12", sym="BMM150", x=400, y=100, fp="sgc_p1:Bosch_BMM150_WLCSP-12_1.56x1.56mm", dnp=False, nets={
         "A1": "M3_PS", "A3": "M3_SCL", "A5": "M3_CS", "B2": "+1V8", "B4": "M3_SDA",
         "C1": "GND", "C5": "GND", "D2": "NC", "D4": "NC", "E1": "GND", "E3": "GND", "E5": "+1V8"}),
-    dict(ref="R18", sym="R", x=372, y=100, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SCL"}),  # M3 I2C SCL pull-up (required for I2C mode)
-    dict(ref="R29", sym="R", x=372, y=110, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SDA"}),  # M3 I2C SDA pull-up (required for I2C mode)
-    dict(ref="C21", sym="C", x=400, y=112, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BMM150 decap (G5)
-    dict(ref="R40", sym="R", x=400, y=120, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="0R", nets={"1": "M3_PS", "2": "+1V8"}),       # PS -> VDDIO = I2C mode (Nicla VDDIO)
+    dict(ref="R18", sym="R", x=372, y=100, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SCL"}),  # M3 I2C SCL pull-up (required for I2C mode)
+    dict(ref="R29", sym="R", x=372, y=110, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="10k", nets={"1": "+1V8", "2": "M3_SDA"}),  # M3 I2C SDA pull-up (required for I2C mode)
+    dict(ref="C21", sym="C", x=400, y=112, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BMM150 decap (G5)
+    dict(ref="R40", sym="R", x=400, y=120, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="0R", nets={"1": "M3_PS", "2": "+1V8"}),       # PS -> VDDIO = I2C mode (Nicla VDDIO)
 
     # --- G2 BME688 environment T/RH/P/gas: rides BHI260AP M1 SPI, CS = MCSB2 pad 18 ---
     dict(ref="U13", sym="BME688", x=400, y=140, fp="sgc_p1:Bosch_BME688_LGA-8_3x3mm_P0.8mm", dnp=False, nets={
         "1": "GND", "2": "M1_CSB2", "3": "M1_MOSI", "4": "M1_SCK",
         "5": "M1_MISO", "6": "+1V8", "7": "GND", "8": "+1V8"}),
-    dict(ref="C22", sym="C", x=400, y=152, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BME688 decap (G5)
+    dict(ref="C22", sym="C", x=400, y=152, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # BME688 decap (G5)
 
     # --- G3 Y1 32.768 kHz MEMS XO (SIT1532AI) -> XL1 P0.00, XL2 P0.01 -> GND ---
     dict(ref="Y1", sym="SIT1532", x=395, y=60, fp="sgc_p1:SIT1532_CSP-4_1p5x0p8mm", dnp=False, nets={
         "1": "GND", "2": "32K_XL1", "3": "+1V8", "4": "GND"}),
-    dict(ref="C23", sym="C", x=395, y=72, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # Y1 decap
+    dict(ref="C23", sym="C", x=395, y=72, fp="sgc_p1:C_0402_1005Metric", dnp=False, value="100n", nets={"1": "+1V8", "2": "GND"}),    # Y1 decap
 
     # --- G4 D3 VBUS series protection (Nicla D3 PMEG4005EPK parity) ---
     dict(ref="D5", sym="D_SCHOTTKY", x=100, y=40, fp="sgc_p1:D_SOD-1608_DFN1608D-2", dnp=False, value="PMEG4005EPK",
@@ -699,10 +699,10 @@ PARTS = [
     # --- Piezo arming protection (JP 2026-11-04: "add whatever is needed") ---
     # A piezo disc is a capacitive generator: mechanical shock can spike far past the rail.
     # R41 limits the fault current into the B402 pin; D6/D7 clamp overshoot to both rails.
-    dict(ref="R41", sym="R", x=109.22, y=236, fp="Resistor_SMD:R_0402_1005Metric", dnp=False, value="100k", nets={"1": "BUTTON_RAW", "2": "BUTTON"}),
-    dict(ref="D6", sym="D_SCHOTTKY", x=118, y=232, fp="Diode_SMD:D_SOD-323", dnp=False, value="BAT42WS (clamp)",
+    dict(ref="R41", sym="R", x=109.22, y=236, fp="sgc_p1:R_0402_1005Metric", dnp=False, value="100k", nets={"1": "BUTTON_RAW", "2": "BUTTON"}),
+    dict(ref="D6", sym="D_SCHOTTKY", x=118, y=232, fp="sgc_p1:D_SOD-323", dnp=False, value="BAT42WS (clamp)",
          nets={"1": "+1V8", "2": "BUTTON_RAW"}),    # K->rail: clamps positive spike
-    dict(ref="D7", sym="D_SCHOTTKY", x=118, y=240, fp="Diode_SMD:D_SOD-323", dnp=False, value="BAT42WS (clamp)",
+    dict(ref="D7", sym="D_SCHOTTKY", x=118, y=240, fp="sgc_p1:D_SOD-323", dnp=False, value="BAT42WS (clamp)",
          nets={"1": "BUTTON_RAW", "2": "GND"}),     # K=signal, A=GND: clamps NEGATIVE spikes (was reversed until 2026-11-07 - DS pass-2 catch)
 
     # --- SWD connector (bottom-left) ---
