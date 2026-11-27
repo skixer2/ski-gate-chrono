@@ -131,3 +131,10 @@ positions (not body centers); the checker uses true pad extents rotated about th
 - Real-pad corrections from verify_pcb: J4 -> (3.075, 18.0) rot90; J5 -> (2.9, 47.5); J6 -> (22.0, 28.5); U11 -> (10.4, 18.1); J3 -> (6.08, 14.0); C12 -> (15.7, 42.4); C21 -> (17.8, 43.9); R11 -> (7.0, 18.1); R12 -> (7.0, 16.6); R41 -> (6.5, 46.9); MH1 -> (2.0, 23.4); TP rail -> y 22.4; L2/C17/C18/C19/D2 DNP-block respaced.
 - Board centered on A4 sheet at (139, 56.5) - no manual move needed.
 - NOTE: placement_check.py P dict remains the single source of truth; this file's table above is the v2 baseline (superseded positions tracked in git).
+
+## Design decisions locked (JP, 2026-11-27)
+
+- **D-LAYOUT**: all-top disposition STAYS for rev A. Nicla-style two-face move REJECTED for now: battery (ICP632136HPST 21.5x39.5x6.95 max) occupies the whole bottom face; sensor-face move = rev-B candidate only if field data shows air-coupling issues (BME688/BMP390).
+- **D-USB**: USB-C (GCT USB4085, Dip Type top mount, shell flush with board edge, tongue overhangs) STAYS for rev A. Pogo-dock charging REJECTED (second product: dock design+fab+alignment for a benefit a silicone cap delivers). Waterproofing = enclosure gasket + silicone USB cap. Rev-B candidate: IP-rated USB-C receptacle swap (verify footprint compatibility then).
+- **D-MOUNT**: board glued into casing (PU adhesive or VHB) - battery swap = rework anyway, so removability adds no value; the 2x 1.6mm NPTH holes stay for the pogo-jig registration (programming fixture). Screw bosses = rev-B option only if field issues.
+- Note: JP's '3 holes off board' screenshot (13:41 UTC) showed the PRE-fix file (J1 at old provisional spot, B-row + back stakes off-board). Current v2.2 file has ALL TH holes inside (nearest 1.24mm from edge, fab-safe). Reload/revert in KiCad to see it.
