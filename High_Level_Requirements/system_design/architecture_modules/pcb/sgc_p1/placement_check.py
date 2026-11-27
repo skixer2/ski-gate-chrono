@@ -16,11 +16,11 @@ P = {
  # ref: (x, y, rot, ext(x0,y0,x1,y1), exempt_edge, note)
  "U1":  (11.0, 51.2, 0,  (-3.05, -3.05, 3.05, 3.05), set(), "ANNA-B402 antenna to top edge"),
  "J1":  (8.03, 1.0,  0,  (-1.8, -0.35, 7.75, 5.21),  set(("ymin",)), "USB-C mid-mount; GCT edge offset TBD at PCB"),
- "J3":  (6.08, 11.0, 90, (-0.5, -0.5, 1.77, 5.58),   set(), "SWD 2x5 1.27 TH; battery pocket must clear bottom pins"),
+ "J3":  (6.08, 14.0, 90, (-0.5, -0.5, 1.77, 5.58),   set(), "SWD 2x5 1.27 TH; battery pocket must clear bottom pins"),
  "J2":  (18.8, 8.0,  0,  (-2.7, -2.3, 2.7, 2.3),     set(), "battery JST-ACH"),
- "J5":  (3.4,  48.2, 0,  (-2.6, -1.75, 2.6, 1.75),   set(), "ext button/piezo hookup TBD-JP"),
- "J4":  (2.2,  52.6, 0,  (-1.6, -0.8, 1.6, 0.8),     set(), "DNP SK6812 strip hookup, outside antenna x-band"),
- "J6":  (22.0, 31.6, 270,(-1.1, -1.1, 3.64, 1.1),    set(("xmax",)), "castellated pinholes straddle right edge BY DESIGN"),
+ "J5":  (2.9,  47.5, 0,  (-2.6, -1.75, 2.6, 1.75),   set(), "ext button/piezo hookup TBD-JP"),
+ "J4":  (3.075, 18.0, 90,  (-1.6, -0.8, 1.6, 0.8),     set(), "DNP SK6812 strip hookup, outside antenna x-band"),
+ "J6":  (22.0, 28.5, 270,(-1.1, -1.1, 3.64, 1.1),    set(("xmax",)), "castellated pinholes straddle right edge BY DESIGN"),
  "U3":  (10.2, 7.6,  0,  (-0.91, -0.91, 0.91, 0.91), set(), "BQ25120A"),
  "U4":  (14.2, 7.6,  0,  (-1.35, -0.89, 1.35, 0.89), set(), "MAX17048"),
  "L1":  (7.6,  7.6,  0,  (-1.1, -0.5, 1.1, 0.5),     set(), "charger inductor"),
@@ -49,10 +49,10 @@ P = {
  "U9":  (5.8,  41.4, 0,  (-1.0, -1.0, 1.0, 1.0),     set(), "BMP390"),
  "U12": (17.8, 42.2, 0,  (-0.78, -0.78, 0.78, 0.78), set(), "BMM150, >=10mm to coil zone"),
  "U13": (7.0,  44.4, 0,  (-1.5, -1.5, 1.5, 1.5),     set(), "BME688, vent to top"),
- "C10": (4.1,  43.4, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
- "C11": (14.3, 39.55, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
- "C12": (15.4, 40.7, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BHI bank"),
- "C13": (19.8, 42.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BMM150 decap"),
+ "C10": (4.3,  43.4, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
+ "C11": (14.3, 41.3, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
+ "C12": (15.7, 42.4, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BHI bank"),
+ "C13": (19.8, 42.6, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BMM150 decap"),
  "C20": (10.2, 35.9, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BHI VREG"),
  "R13": (8.6,  37.0, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "HOSTBOOT pd"),
  "R14": (13.3, 36.6, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "HIRQ pu"),
@@ -62,35 +62,35 @@ P = {
  "R42": (8.6,  33.4, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "QSPI pull"),
  "U2":  (4.0,  36.6, 90, (-2.2, -3.4, 2.2, 3.4),     set(), "MX25R1635F SOIC8"),
  "U7":  (17.9, 36.6, 90, (-2.2, -3.4, 2.2, 3.4),     set(), "MX25R6435F SOIC8"),
- "C8":  (3.0,  40.0, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
- "C9":  (19.0, 40.0, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
- "C14": (3.6,  41.6, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
- "C21": (15.8, 42.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BMM150 decap"),
+ "C8":  (2.6,  41.15, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
+ "C9":  (19.9, 41.4, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
+ "C14": (3.4,  42.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),
+ "C21": (17.8, 43.9, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BMM150 decap"),
  "C22": (9.8,  44.6, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "BME688 decap"),
  "C23": (8.6,  38.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "Y1 decap"),
  "C24": (16.5, 45.7, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "U1 VCC local"),
  "U5":  (14.8, 44.2, 0,  (-0.5, -0.8, 0.5, 0.8),     set(), "IS31FL3194"),
  "D1":  (14.6, 46.2, 0,  (-0.65, -0.65, 0.65, 0.65), set(), "status RGB"),
  "C15": (13.2, 44.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "IS31 decap"),
- "R41": (7.2,  46.8, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "button divider"),
+ "R41": (6.5,  46.9, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "button divider"),
  "U6":  (11.0, 27.5, 0,  (-2.0, -1.6, 2.0, 1.6),     set(), "DNP LDC1612 + coil spiral at PCB"),
  # DNP boost/level-shift option block
  "U10": (9.2,  14.6, 0,  (-1.5, -1.5, 1.5, 1.5),     set(), "DNP MT3608"),
- "U11": (9.2,  18.1, 0,  (-1.6, -1.6, 1.6, 1.6),     set(), "DNP TXS0102"),
- "L2":  (12.4, 14.0, 0,  (-1.35, -0.5, 1.35, 0.5),   set(), "DNP"),
- "D2":  (18.0, 14.2, 0,  (-3.3, -0.8, 3.3, 0.8),     set(), "DNP SS34 SMA"),
- "R11": (5.8,  18.1, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "DNP"),
- "R12": (3.8,  18.1, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "DNP"),
- "C17": (12.3, 16.2, 0,  (-1.1, -0.5, 1.1, 0.5),     set(), "DNP"),
- "C18": (15.05, 16.2, 0,  (-1.35, -0.5, 1.35, 0.5),   set(), "DNP"),
- "C19": (17.6, 16.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "DNP"),
+ "U11": (10.4, 18.1, 0,  (-1.6, -1.6, 1.6, 1.6),     set(), "DNP TXS0102"),
+ "L2":  (13.0, 14.0, 0,  (-1.35, -0.5, 1.35, 0.5),   set(), "DNP"),
+ "D2":  (18.5, 14.2, 0,  (-3.3, -0.8, 3.3, 0.8),     set(), "DNP SS34 SMA"),
+ "R11": (7.0,  18.1, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "DNP"),
+ "R12": (7.0,  16.6, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "DNP"),
+ "C17": (12.9, 16.2, 0,  (-1.1, -0.5, 1.1, 0.5),     set(), "DNP"),
+ "C18": (15.9, 16.2, 0,  (-1.35, -0.5, 1.35, 0.5),   set(), "DNP"),
+ "C19": (18.5, 16.2, 0,  (-0.75, -0.35, 0.75, 0.35), set(), "DNP"),
  "D5":  (13.4, 19.0, 0,  (-0.87, -0.4, 0.87, 0.4),   set(), "PMEG4005 SOD-1608"),
  "D6":  (16.25, 19.0, 0,  (-1.6, -0.65, 1.6, 0.65),   set(), "BAT42WS"),
  "D7":  (19.8, 19.0, 0,  (-1.6, -0.65, 1.6, 0.65),   set(), "BAT42WS"),
- "TP1": (4.0,  21.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
- "TP2": (11.0, 21.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
- "TP3": (17.0, 21.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
- "MH1": (2.0,  21.4, 0,  (-0.8, -0.8, 0.8, 0.8),     set(), "NPTH"),
+ "TP1": (4.0,  22.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
+ "TP2": (11.0, 22.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
+ "TP3": (17.0, 22.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
+ "MH1": (2.0,  23.4, 0,  (-0.8, -0.8, 0.8, 0.8),     set(), "NPTH"),
  "MH2": (20.4, 46.0, 0,  (-0.8, -0.8, 0.8, 0.8),     set(), "NPTH"),
  "FID1":(20.6, 1.6,  0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
  "FID2":(20.6, 53.4, 0,  (-0.75, -0.75, 0.75, 0.75), set(), ""),
@@ -124,42 +124,46 @@ def gap(a, b):
     dy = max(b[1] - a[3], a[1] - b[3], 0)
     return (dx * dx + dy * dy) ** 0.5 if dx and dy else max(dx, dy)
 
-fails = []
-placed = set(P)
-missing = ALL_REFS - placed
-extra = placed - ALL_REFS
-if missing: fails.append("MISSING refs: " + ",".join(sorted(missing)))
-if extra: fails.append("EXTRA refs: " + ",".join(sorted(extra)))
+def run_checks():
+    fails = []
+    placed = set(P)
+    missing = ALL_REFS - placed
+    extra = placed - ALL_REFS
+    if missing: fails.append("MISSING refs: " + ",".join(sorted(missing)))
+    if extra: fails.append("EXTRA refs: " + ",".join(sorted(extra)))
 
-R = {k: rect(k) for k in P}
-refs = sorted(P)
-for i in range(len(refs)):
-    for j in range(i + 1, len(refs)):
-        a, b = refs[i], refs[j]
-        g = gap(R[a][:4], R[b][:4])
-        if g < 0.3:
-            fails.append("OVERLAP/GAP %.2f %s-%s" % (g, a, b))
+    R = {k: rect(k) for k in P}
+    refs = sorted(P)
+    for i in range(len(refs)):
+        for j in range(i + 1, len(refs)):
+            a, b = refs[i], refs[j]
+            g = gap(R[a][:4], R[b][:4])
+            if g < 0.3:
+                fails.append("OVERLAP/GAP %.2f %s-%s" % (g, a, b))
 
-for ref in refs:
-    x0, y0, x1, y1, ex = R[ref]
-    if "xmin" not in ex and x0 < 0.5: fails.append("EDGE %s xmin=%.2f" % (ref, x0))
-    if "ymin" not in ex and y0 < 0.5 and ref != "J1": fails.append("EDGE %s ymin=%.2f" % (ref, y0))
-    if "xmax" not in ex and x1 > W - 0.5: fails.append("EDGE %s xmax=%.2f" % (ref, x1))
-    if "ymax" not in ex and y1 > H - 0.5: fails.append("EDGE %s ymax=%.2f" % (ref, y1))
-    if ref != "U1":
-        gx = max(ANT[0] - x1, x0 - ANT[2], 0); gy = max(ANT[1] - y1, y0 - ANT[3], 0)
-        d = (gx * gx + gy * gy) ** 0.5 if gx and gy else max(gx, gy)
-        if d < 0.3: fails.append("ANTENNA-ZONE %s d=%.2f" % (ref, d))
-    if ref not in ("U6",):
-        gx = max(COIL[0] - x1, x0 - COIL[2], 0); gy = max(COIL[1] - y1, y0 - COIL[3], 0)
-        d = (gx * gx + gy * gy) ** 0.5 if gx and gy else max(gx, gy)
-        if d < 0.3: fails.append("COIL-ZONE %s d=%.2f" % (ref, d))
+    for ref in refs:
+        x0, y0, x1, y1, ex = R[ref]
+        if "xmin" not in ex and x0 < 0.5: fails.append("EDGE %s xmin=%.2f" % (ref, x0))
+        if "ymin" not in ex and y0 < 0.5 and ref != "J1": fails.append("EDGE %s ymin=%.2f" % (ref, y0))
+        if "xmax" not in ex and x1 > W - 0.5: fails.append("EDGE %s xmax=%.2f" % (ref, x1))
+        if "ymax" not in ex and y1 > H - 0.5: fails.append("EDGE %s ymax=%.2f" % (ref, y1))
+        if ref != "U1":
+            gx = max(ANT[0] - x1, x0 - ANT[2], 0); gy = max(ANT[1] - y1, y0 - ANT[3], 0)
+            d = (gx * gx + gy * gy) ** 0.5 if gx and gy else max(gx, gy)
+            if d < 0.3: fails.append("ANTENNA-ZONE %s d=%.2f" % (ref, d))
+        if ref not in ("U6",):
+            gx = max(COIL[0] - x1, x0 - COIL[2], 0); gy = max(COIL[1] - y1, y0 - COIL[3], 0)
+            d = (gx * gx + gy * gy) ** 0.5 if gx and gy else max(gx, gy)
+            if d < 0.3: fails.append("COIL-ZONE %s d=%.2f" % (ref, d))
 
-x0, y0, x1, y1, _ = R["U12"]
-gx = max(COIL[0] - x1, x0 - COIL[2], 0); gy = max(COIL[1] - y1, y0 - COIL[3], 0)
-d12 = (gx * gx + gy * gy) ** 0.5 if gx and gy else max(gx, gy)
-if d12 < 10.0: fails.append("U12->COIL %.2f < 10.0" % d12)
+    x0, y0, x1, y1, _ = R["U12"]
+    gx = max(COIL[0] - x1, x0 - COIL[2], 0); gy = max(COIL[1] - y1, y0 - COIL[3], 0)
+    d12 = (gx * gx + gy * gy) ** 0.5 if gx and gy else max(gx, gy)
+    if d12 < 10.0: fails.append("U12->COIL %.2f < 10.0" % d12)
 
-print("FAIL %d" % len(fails) if fails else "PASS")
-for f in fails: print(" ", f)
-sys.exit(1 if fails else 0)
+    print("FAIL %d" % len(fails) if fails else "PASS")
+    for f in fails: print(" ", f)
+    return fails
+
+if __name__ == "__main__":
+    sys.exit(1 if run_checks() else 0)

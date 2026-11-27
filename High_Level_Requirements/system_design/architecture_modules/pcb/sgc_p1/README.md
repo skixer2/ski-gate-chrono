@@ -33,6 +33,13 @@ python3 gen_symbols.py       # 1. regenerate sgc_p1.kicad_sym from SYMBOL_PINS
 python3 gen_schematic.py     # 2. write root + child sheets; AUTO re-applies JP's placements
 python3 validate_sgc_p1.py   # 3. mandatory validation (all sheets round-trip + union)
 
+PCB stage (since 2026-11-27):
+
+python3 gen_pcb.py          # 4. generate sgc_p1.kicad_pcb: 22x55 board, 79 parts placed per
+                            #    PLACEMENT_PLAN v2 (placement_check.P), pads netted from netlist
+python3 verify_pcb.py       # 5. semantic gate: re-reads the board file, transforms back to
+                            #    plan space, enforces gaps/edges/keepouts on TRUE pad geometry
+
 JP placement preservation (since 2026-11-27): JP moves symbols in KiCad and saves;
 'preserve' harvests his positions into layout_positions.json (committed), and
 gen_schematic.py translates each part + its labels/stubs/props accordingly.
