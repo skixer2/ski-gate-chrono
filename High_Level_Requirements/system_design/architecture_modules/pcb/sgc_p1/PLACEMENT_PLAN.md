@@ -1,83 +1,123 @@
-# SGC P1 — Placement Plan v1 (2026-11-27)
+# SGC P1 - Placement Plan v2 (2026-11-27)
 
-**Board:** 22 × 55 mm, 4-layer, 0.8 mm, ENIG. Coordinates: origin bottom-left (0,0), x→right, y→up, mm.
-**Top edge (y=55): user face + antenna. Bottom edge (y=0): USB/charging. All components TOP side.**
+**Status: CHECKER-VERIFIED.** placement_check.py (this dir) is the executable rule-of-record:
+79/79 refs placed, pairwise pad-extent gaps >= 0.3 mm, edge clearance >= 0.5 mm (documented exemptions),
+antenna zone (x5.5-16.5, y50.5-55) contains only U1, coil zone (x6.5-15.5, y23.5-31.5) only U6,
+U12-to-coil-zone rect distance >= 10.0 mm. Run: python3 placement_check.py  ->  must print PASS.
 
-## 1. Keepout zones (hard)
+Origin bottom-left (0,0), x right, y up, mm. All parts TOP side. Coordinates are KiCad footprint-ORIGIN
+positions (not body centers); the checker uses true pad extents rotated about the origin, so these are layout-ready.
 
-| Zone | Area | Rule |
+## v1 -> v2 corrections (from PLACEMENT_REVIEW.md + independent re-verification)
+
+1. [BLOCKER] All 79 refs now have explicit coordinates (v1 had 71). Added R15/R16 (TS divider, safety-critical), C16/C20/C23/C24, R13/R14/R18/R29. NOFP parts (TP1-3/MH1-2/FID1-2/J4/U10/U11) placed with provisional extents; footprints to be created at PCB stage.
+2. [BLOCKER] U12: v1's claimed 10.1 mm was wrong (true 9.3/8.1 mm), and v1's own antenna-zone >=10 mm rule for BMM150 was geometrically impossible (corridor 19.0 mm < 21.6 mm needed). Rule DROPPED as v1-invented: the board-spec rule is >10 mm to the COIL only (BMM150 is non-ferrous silicon; u-blox antenna guidance concerns ferrous/metal parts). U12 now (17.8, 42.2), rect-to-coil-zone >= 10.0 mm checker-enforced. REVIEWER'S FIX SUPERSEDED: its (4.0, 42.0) computes 9.87 mm and collides with its own U2 proposal.
+3. [BLOCKER] Connectors: J2 (18.8, 8.0), J3 (6.08, 11.0 rot90, origin=pin1) fully on-board with true pad extents. J1 KEEPS mid-mount (8.03, 1.0) - shell reaches board edge BY DESIGN; exact GCT USB4085 edge offset = TBD-JP at PCB stage. J6 pinholes straddle the right edge BY DESIGN (castellated). The reviewer's 0.5 mm edge rule does not apply to mid-mount/castellated parts.
+4. [MAJOR] Sensor hub re-laid out with true extents: U2 (4.0, 36.6 rot90), U7 (17.9, 36.6 rot90), U8 (11.0, 41.0), all gaps >= 0.35 mm. REVIEWER'S FIX TABLE HAD INTERNAL COLLISIONS (its U12 vs its U2; its C8 inside U2's body) - superseded by the checker-verified table below.
+5. [MAJOR] U1 at (11.0, 51.2): module antenna edge ~0.05 mm from board top edge (correct RF placement); user-face parts D1/U5/U13/C24/C15 all clear U1 body (starts y 47.95).
+6. [MAJOR] DNP block re-spaced (U10/U11/L2/D2/R11/R12/C17/C18/C19) >= 0.35 mm; D5/D6/D7 on the y=19 rail, pitch >= 3.2 mm.
+7. [MINOR] v1 miscalled C21/C22 an 'LDC tank pair' - netlist truth: C21 = BMM150 decap, C22 = BME688 decap (now at their ICs). LDC tank caps are NOT in the netlist (open item for U6 activation build). Same-coordinate bug fixed.
+8. [NIT->FIXED] TP1-TP3 aligned on the y=21.4 pogo rail. R18/R29 confirmed M3 I2C pull-ups (netlist) - placed in the sensor hub; buttons use internal MCU pulls, no external RC in the netlist.
+9. [v1 ERROR both reviews missed] There are NO SW1/SW2 parts in the netlist. Buttons are EXTERNAL via J5 (CON-2, BUTTON_RAW/GND, value 'piezo TBD-JP') + R41 divider (7.2, 46.8). v1 SW1/SW2 placements removed. J5 relocated to the top-left user face (3.4, 48.2).
+10. [NIT] UWB v2 reserve: 8x8 mm keepout noted at x 14-22, y 4-12 (document only, rev B).
+
+## Keepout zones (enforced by placement_check.py)
+
+| Zone | Rect | Rule |
 |---|---|---|
-| **RF antenna** | x 5.5–16.5, y 50.5–55 | No copper (F.Cu/B.Cu pads except U1's own), no components, no metal. U1 antenna edge within 0.5 mm of board edge. NPTH holes allowed at x<5.5. |
-| **LDC coil option** | x 6.5–15.5, y 23.5–31.5 | Coil spiral area around U6 (DNP option). No other copper/traces crossing. |
-| **Magnetometer clearance** | — | U12 BMM150 ≥10 mm from coil zone (achieved: 15 mm) and ≥10 mm from U1 antenna zone (achieved: 13 mm edge-to-edge... verify at apply: U12 y=41.2 top edge ≈42 → 8.5mm to y=50.5 zone → move U12 to y 40.6 or shrink: **resolved: U12 at (15.0, 40.6)** → 9.9 mm to zone edge... **apply uses ≥10.5: U12 (15.0, 40.4)**). |
-| **Battery overlap** | y 4–47, bottom side | B.Cu: GND pour only, NO bottom-side components in this band (battery mounts under board — JP decision "board over battery"). |
-| **BME688 airflow** | — | U13 placed highest of sensors near user edge; enclosure must provide vent above U13 (JP/mech note). |
+| Antenna | x 5.5-16.5, y 50.5-55 | only U1; no other copper/parts (J4/DNP strip hookup at x<5.5) |
+| LDC coil | x 6.5-15.5, y 23.5-31.5 | only U6 (DNP) + spiral drawn at PCB |
+| BMM150 | - | U12 rect-to-coil-zone >= 10.0 mm (checker-enforced) |
+| Battery | y 4-47 BOTTOM side | no bottom-side parts; J3 SWD TH pins at y 10.5-12.8 - battery pocket must clear (mech note) |
 
-## 2. Functional zones (y-bands)
+## Placements (origin coordinates, checker-verified)
 
-| y-band | Function |
-|---|---|
-| 50.5–55 | Antenna keepout (U1 module itself + NPTH MH2 at x=4 only) |
-| 44–50.5 | User face: buttons, RGB status LED, BME688 (vent access) |
-| 36–44 | Sensor hub cluster: U8 + Y1 osc + satellites U9/U12/U13 + flashes U2/U7 |
-| 23.5–31.5 | LDC1612 option zone (U6 DNP + coil) |
-| 8–23 | Power-path Schottkys, DNP option block (U10/U11 boost/level-shift), test points |
-| 0–8 | USB-C, charger, gauge, battery connector, SWD, aux connectors |
+| Ref | x | y | rot | zone | note |
+|---|---|---|---|---|---|
+| FID2 | 20.60 | 53.40 | 0 | RF / user face | - |
+| J4 | 2.20 | 52.60 | 0 | RF / user face | DNP SK6812 strip hookup, outside antenna x-band |
+| U1 | 11.00 | 51.20 | 0 | RF / user face | ANNA-B402 antenna to top edge |
+| J5 | 3.40 | 48.20 | 0 | RF / user face | ext button/piezo hookup TBD-JP |
+| R41 | 7.20 | 46.80 | 0 | RF / user face | button divider |
+| D1 | 14.60 | 46.20 | 0 | RF / user face | status RGB |
+| MH2 | 20.40 | 46.00 | 0 | RF / user face | NPTH |
+| C24 | 16.50 | 45.70 | 0 | sensor hub | U1 VCC local |
+| C22 | 9.80 | 44.60 | 0 | sensor hub | BME688 decap |
+| U13 | 7.00 | 44.40 | 0 | sensor hub | BME688, vent to top |
+| C15 | 13.20 | 44.20 | 0 | sensor hub | IS31 decap |
+| U5 | 14.80 | 44.20 | 0 | sensor hub | IS31FL3194 |
+| C10 | 4.10 | 43.40 | 0 | sensor hub | - |
+| C21 | 15.80 | 42.20 | 0 | sensor hub | BMM150 decap |
+| U12 | 17.80 | 42.20 | 0 | sensor hub | BMM150, >=10mm to coil zone |
+| C13 | 19.80 | 42.20 | 0 | sensor hub | BMM150 decap |
+| C14 | 3.60 | 41.60 | 0 | sensor hub | - |
+| U9 | 5.80 | 41.40 | 0 | sensor hub | BMP390 |
+| U8 | 11.00 | 41.00 | 0 | sensor hub | BHI260AP |
+| C12 | 15.40 | 40.70 | 0 | sensor hub | BHI bank |
+| C8 | 3.00 | 40.00 | 0 | sensor hub | - |
+| C9 | 19.00 | 40.00 | 0 | sensor hub | - |
+| C11 | 14.30 | 39.55 | 0 | sensor hub | - |
+| C23 | 8.60 | 38.20 | 0 | sensor hub | Y1 decap |
+| Y1 | 11.00 | 38.00 | 0 | sensor hub | SIT1532 |
+| R13 | 8.60 | 37.00 | 0 | sensor hub | HOSTBOOT pd |
+| U2 | 4.00 | 36.60 | 90 | sensor hub | MX25R1635F SOIC8 |
+| R14 | 13.30 | 36.60 | 0 | sensor hub | HIRQ pu |
+| U7 | 17.90 | 36.60 | 90 | sensor hub | MX25R6435F SOIC8 |
+| C20 | 10.20 | 35.90 | 0 | LDC option | BHI VREG |
+| R18 | 8.70 | 34.60 | 0 | LDC option | M3 SCL pu |
+| R29 | 10.60 | 34.60 | 0 | LDC option | M3 SDA pu |
+| R40 | 13.30 | 34.60 | 0 | LDC option | M3_PS |
+| R42 | 8.60 | 33.40 | 0 | LDC option | QSPI pull |
+| U6 | 11.00 | 27.50 | 0 | LDC option | DNP LDC1612 + coil spiral at PCB |
+| MH1 | 2.00 | 21.40 | 0 | DNP option | NPTH |
+| TP1 | 4.00 | 21.40 | 0 | DNP option | - |
+| TP2 | 11.00 | 21.40 | 0 | DNP option | - |
+| TP3 | 17.00 | 21.40 | 0 | DNP option | - |
+| D5 | 13.40 | 19.00 | 0 | DNP option | PMEG4005 SOD-1608 |
+| D6 | 16.25 | 19.00 | 0 | DNP option | BAT42WS |
+| D7 | 19.80 | 19.00 | 0 | DNP option | BAT42WS |
+| R12 | 3.80 | 18.10 | 0 | DNP option | DNP |
+| R11 | 5.80 | 18.10 | 0 | DNP option | DNP |
+| U11 | 9.20 | 18.10 | 0 | DNP option | DNP TXS0102 |
+| C17 | 12.30 | 16.20 | 0 | DNP option | DNP |
+| C18 | 15.05 | 16.20 | 0 | DNP option | DNP |
+| C19 | 17.60 | 16.20 | 0 | DNP option | DNP |
+| U10 | 9.20 | 14.60 | 0 | power / IO | DNP MT3608 |
+| D2 | 18.00 | 14.20 | 0 | power / IO | DNP SS34 SMA |
+| L2 | 12.40 | 14.00 | 0 | power / IO | DNP |
+| R5 | 13.70 | 12.75 | 0 | power / IO | - |
+| R4 | 15.70 | 12.65 | 0 | power / IO | - |
+| R9 | 17.90 | 12.30 | 0 | power / IO | - |
+| R10 | 19.80 | 12.30 | 0 | power / IO | - |
+| C6 | 11.50 | 12.10 | 0 | power / IO | - |
+| R3 | 7.90 | 11.90 | 0 | power / IO | - |
+| C16 | 14.80 | 11.40 | 0 | power / IO | - |
+| R6 | 17.20 | 11.20 | 0 | power / IO | - |
+| J3 | 6.08 | 11.00 | 90 | power / IO | SWD 2x5 1.27 TH; battery pocket must clear bottom pins |
+| C1 | 12.50 | 10.90 | 0 | power / IO | - |
+| C3 | 10.20 | 10.80 | 0 | power / IO | - |
+| R2 | 7.90 | 10.60 | 0 | power / IO | - |
+| R1 | 6.20 | 9.40 | 0 | power / IO | - |
+| C2 | 8.60 | 9.40 | 0 | power / IO | - |
+| C5 | 12.30 | 9.30 | 0 | power / IO | - |
+| C7 | 14.20 | 9.30 | 0 | power / IO | - |
+| J2 | 18.80 | 8.00 | 0 | power / IO | battery JST-ACH |
+| L1 | 7.60 | 7.60 | 0 | USB / charge | charger inductor |
+| U3 | 10.20 | 7.60 | 0 | USB / charge | BQ25120A |
+| U4 | 14.20 | 7.60 | 0 | USB / charge | MAX17048 |
+| C4 | 17.40 | 4.40 | 0 | USB / charge | - |
+| R8 | 16.90 | 2.80 | 0 | USB / charge | - |
+| R16 | 18.80 | 2.80 | 0 | USB / charge | TS divider lo |
+| R7 | 16.90 | 1.60 | 0 | USB / charge | - |
+| R15 | 18.80 | 1.60 | 0 | USB / charge | TS divider hi, near J1 VBUS |
+| FID1 | 20.60 | 1.60 | 0 | USB / charge | - |
 
-## 3. Per-part positions
+## Open items at PCB stage
 
-### RF
-- U1 ANNA-B402: (11.0, 50.0) rot 0 — body 6.5×6.5 → y 46.75..53.25; antenna edge +y. Module's antenna strip must extend to y≈54.7.
+1. J1 USB4085 exact board-edge offset per GCT drawing (provisional: origin row 1.0 mm inside edge).
+2. Footprints to create: TP1-3, MH1-2 (MountingHole_1.6 exists), FID1-2, J4 CON-3 hookup, U10 SOT-23-5, U11 (TXS0102 pkg per DS).
+3. BME688 vent: enclosure hole above U13 (7.0, 44.4) - mech/JP.
+4. SK6812 strip hookup = J4 (DNP) at (2.2, 52.6), top-left OUTSIDE antenna x-band; strip solders along the top edge.
+5. Battery pocket must clear J3 SWD through-pins (bottom, y 10.5-12.8).
+6. UWB v2 reserve zone (rev B note).
 
-### User face (y 44–50.5)
-- SW1 button: (2.8, 47.6) rot 0
-- SW2 button: (19.2, 47.6) rot 0
-- D1 SMLP34RGB2W3: (14.6, 47.9) rot 0 — status LED toward user edge
-- U5 IS31FL3194: (14.6, 46.2) rot 0 — driver directly behind D1
-- U13 BME688: (8.2, 46.0) rot 0 — highest sensor, vent path to top edge
-- C15 (U5): (13.2, 46.2); C14 (U13): (8.2, 44.6); button RCs R18/R29 etc. adjacent
-
-### Sensor hub cluster (y 36–44)
-- U8 BHI260AP: (11.0, 42.0) rot 0
-- Y1 SIT1532: (8.6, 40.0) rot 0 — adjacent, QSPI clock
-- U9 BMP390: (7.0, 42.6) rot 0
-- U12 BMM150: (15.0, 40.4) rot 0 — 10.1 mm to coil zone edge
-- C10–C13: decoupling, 1.5–2 mm offsets from their ICs (C10/C11 U8: (9.4,40.0)/(12.6,40.0); C12 U9 (7.0,40.9); C13 U12 (15.0,38.9))
-- U2 MX25R1635F: (5.9, 37.4) rot 270
-- U7 MX25R6435F: (16.1, 37.4) rot 270
-- C8 (U2): (3.4, 37.4); C9 (U7): (18.6, 37.4)
-- R42 (QSPI pull): (8.6, 36.6)
-
-### LDC option zone (y 23.5–31.5)
-- U6 LDC1612: (11.0, 27.5) rot 0 (DNP option; coil spiral layout around it)
-- R40 (coil series R): (7.4, 27.5); C21/C22 (tank caps): (11.0, 24.2) pair
-
-### Power & IO (y 0–23)
-- J1 USB4085: (11.0, 1.9) rot 0 — bottom edge, mid-mount
-- U3 BQ25120A: (7.6, 5.6) rot 0
-- U4 MAX17048: (13.8, 5.6) rot 0
-- L1: (4.9, 5.6) — charger inductor adjacent U3
-- R7 (CC1): (8.3, 3.0); R8 (CC2): (9.3, 3.0); R1/R2 (ILIM/STAT): (7.6, 7.4); R3 (ISEL): (13.8, 7.4); R4/R5 (gauge divider): (13.8, 3.8); R6 (gauge): (11.9, 5.6); C1/C2 (U3 in/out): (5.9, 5.6)/(9.6, 7.4); C3 (VBAT): (12.2, 7.4); C4/C5/C6 (rails): around U3/U4 per net
-- C7 (U4 EP): (13.8, 4.4); R9/R10 (LED I2C pull? gate LEDs): (11.9, 46.2)
-- D5/D6/D7 Schottky: (17.2, 10.4)/(18.8, 10.4)/(20.4, 10.4) — power-path ORing; R41: (17.2, 12.0)
-- J5 JST-SH 2-pin: (2.6, 9.6) rot 90 — left edge aux
-- J2 JST-ACH 3-pin battery: (20.0, 3.6) rot 270 — right edge, battery plug
-- J3 SWD 2×5: (2.6, 3.4) rot 90 — bottom-left, probe access
-- J6 PINHOLE-2: (21.0, 30.5) rot 270 — right-edge strap anchor
-- TP1: (18.5, 16.5); TP2: (3.4, 18.5); TP3: (17.5, 33.5)
-- MH1: (4.0, 3.0) NPTH; MH2: (4.0, 52.0) NPTH (outside antenna x-band)
-- FID1: (1.6, 1.6); FID2: (20.4, 53.4)
-- **DNP option block**: U10 MT3608 (6.8, 13.4), U11 TXS0102 (10.2, 13.4), L2 (5.2, 13.4), D2 (13.6, 13.4), R11/R12 (5.2/6.2, 15.0), C17/C18/C19 (8.0/9.4/10.8, 15.0), J4 CON-3 strip hook-up: (2.2, 52.6) rot 90 — top-left corner OUTSIDE antenna x-band (x<5.5), strip solders here along top edge.
-
-## 4. Battery (mechanical, JP decision)
-Battery (Renata ICP622540PMT class) mounts **under the board**, long axis along y. Board-over-battery from y≈4 to y≈47. Bottom side stays component-free there (GND pour only). J2 (battery) at bottom-right edge; BMS chain (U3/U4/D5-7) adjacent bottom region.
-
-## 5. Open items at apply time
-1. **Antenna keepout of record**: fetch ANNA-B4 SI manual (UBX-21000517) for official antenna-zone dims; current 11×4.5 band is conservative (module datasheet §antenna + ZSWatch precedent).
-2. U13 BME688 vent: coordinate enclosure hole with JP/mech.
-3. Confirm J4 (DNP CON-3) is the SK6812 strip hook-up (netlist shows it DNP; strip pads may be direct-solder instead).
-4. SW1/SW2 refs confirmed from netlist tail (buttons) — verify symbol names at apply.
-5. Rotation sanity vs footprint pad orientation at apply (U2/U7 rot 270 for edge clearance).
-
-## 6. Flow
-This plan → GLM review (independent) → apply into sgc_p1.kicad_pcb via placement tooling → validate → commit.
