@@ -393,7 +393,7 @@ SYMBOL_PINS = {
     "USB4085": dict(
         prefix="J", value="USB4085-GF-A",
         fp="", ds="https://gct.co/connector/usb4085",
-        desc="GCT USB4085-GF-A USB-C 2.0 mid-mount, 16 SMD pins + 4 shell stakes",
+        desc="GCT USB4085 (Dip Type, PCB Top Mount): 16 TH legs + 4 shell stakes; shell face flush with board edge, tongue overhangs",
         hw=12.7,
         pins=[
             ("A1",  "GND",   "passive", "L"),

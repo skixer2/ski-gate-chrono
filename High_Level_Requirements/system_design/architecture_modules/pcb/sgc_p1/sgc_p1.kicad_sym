@@ -1333,7 +1333,7 @@
     (property "Datasheet" "https://gct.co/connector/usb4085" (at 0 0 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Description" "GCT USB4085-GF-A USB-C 2.0 mid-mount, 16 SMD pins + 4 shell stakes" (at 0 0 0)
+    (property "Description" "GCT USB4085 (Dip Type, PCB Top Mount): 16 TH legs + 4 shell stakes; shell face flush with board edge, tongue overhangs" (at 0 0 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (symbol "USB4085_0_1"

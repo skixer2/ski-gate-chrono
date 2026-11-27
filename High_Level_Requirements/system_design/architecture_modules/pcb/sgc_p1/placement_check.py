@@ -15,7 +15,7 @@ COIL = (6.5, 23.5, 15.5, 31.5)
 P = {
  # ref: (x, y, rot, ext(x0,y0,x1,y1), exempt_edge, note)
  "U1":  (11.0, 51.2, 0,  (-3.05, -3.05, 3.05, 3.05), set(), "ANNA-B402 antenna to top edge"),
- "J1":  (8.03, 6.1, 0, (-1.8, -0.35, 7.75, 5.21), set(), "USB-C mid-mount TH (official fp); PCB Edge marker lands at plan (11.0, 0) = board bottom edge"),
+ "J1":  (13.975, 0.5, 180, (-1.8, -0.35, 7.75, 5.21), set(), "USB-C TH top-mount (official GCT fp); shell face flush with bottom edge, tongue overhangs"),
  "J3":  (6.08, 14.0, 90, (-0.5, -0.5, 1.77, 5.58),   set(), "SWD 2x5 1.27 TH; battery pocket must clear bottom pins"),
  "J2":  (18.8, 8.0,  0,  (-2.7, -2.3, 2.7, 2.3),     set(), "battery JST-ACH"),
  "J5":  (2.9,  47.5, 0,  (-2.6, -1.75, 2.6, 1.75),   set(), "ext button/piezo hookup TBD-JP"),
