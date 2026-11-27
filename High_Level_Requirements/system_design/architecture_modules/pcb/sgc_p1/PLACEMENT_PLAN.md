@@ -16,7 +16,7 @@ positions (not body centers); the checker uses true pad extents rotated about th
 4. [MAJOR] Sensor hub re-laid out with true extents: U2 (4.0, 36.6 rot90), U7 (17.9, 36.6 rot90), U8 (11.0, 41.0), all gaps >= 0.35 mm. REVIEWER'S FIX TABLE HAD INTERNAL COLLISIONS (its U12 vs its U2; its C8 inside U2's body) - superseded by the checker-verified table below.
 5. [MAJOR] U1 at (11.0, 51.2): module antenna edge ~0.05 mm from board top edge (correct RF placement); user-face parts D1/U5/U13/C24/C15 all clear U1 body (starts y 47.95).
 6. [MAJOR] DNP block re-spaced (U10/U11/L2/D2/R11/R12/C17/C18/C19) >= 0.35 mm; D5/D6/D7 on the y=19 rail, pitch >= 3.2 mm.
-7. [MINOR] v1 miscalled C21/C22 an 'LDC tank pair' - netlist truth: C21 = BMM150 decap, C22 = BME688 decap (now at their ICs). LDC tank caps are NOT in the netlist (open item for U6 activation build). Same-coordinate bug fixed.
+7. [MINOR] v1 miscalled C21/C22 an 'LDC tank pair' - netlist truth: C21 = BMM150 decap, C22 = BME688 decap (now at their ICs). LDC tank caps are NOT in the netlist (open item for the U6 activation build). Same-coordinate bug fixed.
 8. [NIT->FIXED] TP1-TP3 aligned on the y=21.4 pogo rail. R18/R29 confirmed M3 I2C pull-ups (netlist) - placed in the sensor hub; buttons use internal MCU pulls, no external RC in the netlist.
 9. [v1 ERROR both reviews missed] There are NO SW1/SW2 parts in the netlist. Buttons are EXTERNAL via J5 (CON-2, BUTTON_RAW/GND, value 'piezo TBD-JP') + R41 divider (7.2, 46.8). v1 SW1/SW2 placements removed. J5 relocated to the top-left user face (3.4, 48.2).
 10. [NIT] UWB v2 reserve: 8x8 mm keepout noted at x 14-22, y 4-12 (document only, rev B).
@@ -34,6 +34,7 @@ positions (not body centers); the checker uses true pad extents rotated about th
 
 | Ref | x | y | rot | zone | note |
 |---|---|---|---|---|---|
+
 | FID2 | 20.60 | 53.40 | 0 | RF / user face | - |
 | J4 | 2.20 | 52.60 | 0 | RF / user face | DNP SK6812 strip hookup, outside antenna x-band |
 | U1 | 11.00 | 51.20 | 0 | RF / user face | ANNA-B402 antenna to top edge |
@@ -68,6 +69,7 @@ positions (not body centers); the checker uses true pad extents rotated about th
 | R29 | 10.60 | 34.60 | 0 | LDC option | M3 SDA pu |
 | R40 | 13.30 | 34.60 | 0 | LDC option | M3_PS |
 | R42 | 8.60 | 33.40 | 0 | LDC option | QSPI pull |
+| J6 | 22.00 | 31.60 | 270 | LDC option | castellated pinholes straddle right edge BY DESIGN |
 | U6 | 11.00 | 27.50 | 0 | LDC option | DNP LDC1612 + coil spiral at PCB |
 | MH1 | 2.00 | 21.40 | 0 | DNP option | NPTH |
 | TP1 | 4.00 | 21.40 | 0 | DNP option | - |
@@ -111,6 +113,7 @@ positions (not body centers); the checker uses true pad extents rotated about th
 | R7 | 16.90 | 1.60 | 0 | USB / charge | - |
 | R15 | 18.80 | 1.60 | 0 | USB / charge | TS divider hi, near J1 VBUS |
 | FID1 | 20.60 | 1.60 | 0 | USB / charge | - |
+| J1 | 8.03 | 1.00 | 0 | USB / charge | USB-C mid-mount; GCT edge offset TBD at PCB |
 
 ## Open items at PCB stage
 
@@ -120,4 +123,3 @@ positions (not body centers); the checker uses true pad extents rotated about th
 4. SK6812 strip hookup = J4 (DNP) at (2.2, 52.6), top-left OUTSIDE antenna x-band; strip solders along the top edge.
 5. Battery pocket must clear J3 SWD through-pins (bottom, y 10.5-12.8).
 6. UWB v2 reserve zone (rev B note).
-
