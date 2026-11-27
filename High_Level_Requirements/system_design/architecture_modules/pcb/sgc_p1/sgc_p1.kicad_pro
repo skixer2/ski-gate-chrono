@@ -56,7 +56,14 @@
   },
   "schematic": {
     "legacy_lib_dir": "",
-    "legacy_lib_list": []
+    "legacy_lib_list": [],
+    "top_level_sheets": [
+      {
+        "filename": "sgc_p1.kicad_sch",
+        "name": "sgc_p1",
+        "uuid": "f404f08d-6c62-4ff5-98a1-9af1efaf34d5"
+      }
+    ]
   },
   "sheets": [
     [
