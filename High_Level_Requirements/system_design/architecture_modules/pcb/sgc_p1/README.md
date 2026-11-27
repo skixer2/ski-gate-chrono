@@ -28,9 +28,16 @@ everything the spec marks TBD-JP appears as a **text note**, never as a guessed 
 **Regenerate after edits - THREE steps, in this order (order matters):**
 
 ```
+python3 preserve_layout.py preserve   # 0. capture JP's manual symbol moves (ALWAYS first!)
 python3 gen_symbols.py       # 1. regenerate sgc_p1.kicad_sym from SYMBOL_PINS
-python3 gen_schematic.py     # 2. write root (hierarchy) + the 6 child sch_*.kicad_sch sheets
+python3 gen_schematic.py     # 2. write root + child sheets; AUTO re-applies JP's placements
 python3 validate_sgc_p1.py   # 3. mandatory validation (all sheets round-trip + union)
+
+JP placement preservation (since 2026-11-27): JP moves symbols in KiCad and saves;
+'preserve' harvests his positions into layout_positions.json (committed), and
+gen_schematic.py translates each part + its labels/stubs/props accordingly.
+Translation moves are fully preserved. Symbol ROTATION is not preserved yet
+(warned at generation; validator catches label/pin mismatch).
 ```
 
 **Structure (N1 7-page split, JP GO 2026-11-04):** "sgc_p1.kicad_sch" is a hierarchy-only

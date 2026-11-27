@@ -96,6 +96,7 @@ class SheetCtx:
     def __init__(self):
         self.wires, self.labels, self.ncs, self.symbols, self.boxes = [], [], [], [], []
         self.pwr_n = 0
+        self.parts_layout = {}   # ref -> emitted objects (for JP-placement preservation)
 
     def wire(self, p1, p2):
         self.wires.append(Connection(points=[p1, p2], stroke=Stroke(width=0.0, type="default"),
@@ -125,6 +126,9 @@ class SheetCtx:
         s.instances = [SymbolProjectInstance(name=PROJECT,
                        paths=[SymbolProjectPath(sheetInstancePath=root_path, reference=ref, unit=1)])]
         self.symbols.append(s)
+        self.parts_layout[ref] = {"sym": s, "props": s.properties, "at": (at[0], at[1]),
+                                  "wires": [], "labels": [], "ncs": [],
+                                  "prop_offsets": [(pp.position.X - at[0], pp.position.Y - at[1]) for pp in s.properties]}
 
     def note(self, nx, ny, nw, nh, text):
         self.boxes.append(TextBox(text=esc_text(text), position=Position(X=nx, Y=ny, angle=0),
@@ -155,6 +159,7 @@ class SheetCtx:
                        paths=[SymbolProjectPath(sheetInstancePath=root_path, reference=part["ref"], unit=1)])]
         self.symbols.append(s)
 
+        w0, l0, c0 = len(self.wires), len(self.labels), len(self.ncs)
         side_of = {p[0]: p[3] for p in spec["pins"]}
         for pin_num, net in part["nets"].items():
             sd = side_of[pin_num]
@@ -174,6 +179,11 @@ class SheetCtx:
                 self.wire(p, Position(p.X - OFF, p.Y))
                 self.wire(Position(p.X - OFF, p.Y), Position(p.X - OFF, p.Y + OFF))
                 self.glabel(net, (p.X - OFF, p.Y + OFF), "left")
+        self.parts_layout[part["ref"]] = {
+            "sym": s, "props": s.properties, "at": (x, y),
+            "wires": self.wires[w0:], "labels": self.labels[l0:], "ncs": self.ncs[c0:],
+            "prop_offsets": [(pp.position.X - x, pp.position.Y - y) for pp in s.properties],
+        }
 
     def emit_power_anchors(self, nets, root_path, x_off=0.0):
         """One anchor per power net used on this sheet, left margin column."""
@@ -181,14 +191,22 @@ class SheetCtx:
         y = 25.0
         for n in rails:
             self.power_sym(n, (18.0 + x_off, y), root_path)
+            pref = "#PWR%02d" % SheetCtx._pwr_seq
+            w0, l0 = len(self.wires), len(self.labels)
             self.wire(Position(18.0 + x_off, y), Position(18.0 + x_off, y + OFF))
             self.glabel(n, (18.0 + x_off, y + OFF), "left")
+            self.parts_layout[pref]["wires"] = self.wires[w0:]
+            self.parts_layout[pref]["labels"] = self.labels[l0:]
             y += 10.16
         y = 25.0
         if "GND" in nets:
             self.power_sym("GND", (8.0 + x_off, y), root_path)
+            pref = "#PWR%02d" % SheetCtx._pwr_seq
+            w0, l0 = len(self.wires), len(self.labels)
             self.wire(Position(8.0 + x_off, y), Position(8.0 + x_off, y - OFF))
             self.glabel("GND", (8.0 + x_off, y - OFF), "left")
+            self.parts_layout[pref]["wires"] = self.wires[w0:]
+            self.parts_layout[pref]["labels"] = self.labels[l0:]
 
 
 def _quote_uuids(path):
@@ -241,6 +259,45 @@ def _ensure_embedded_fonts(path):
     with io.open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
     return True
+
+
+def apply_saved_positions(ctx, sheet_key, saved):
+    """Shift each emitted part + its labels/wires/props to the position JP saved
+    in layout_positions.json (harvested from his KiCad edits). Translation only:
+    symbol rotation is warned about and NOT applied to labels (validator will
+    catch any label/pin mismatch)."""
+    moved = 0
+    for ref, rec in ctx.parts_layout.items():
+        sv = saved["symbols"].get(sheet_key + ":" + ref)
+        if not sv:
+            continue
+        pp = sv["at"].split()
+        nx, ny = float(pp[0]), float(pp[1])
+        ang = float(pp[2]) if len(pp) > 2 else 0.0
+        x0, y0 = rec["at"]
+        dx, dy = nx - x0, ny - y0
+        if abs(dx) < 0.01 and abs(dy) < 0.01:
+            continue
+        if ang:
+            print("  [layout] WARNING %s: saved rotation %g deg - translations preserved, rotation is NOT (move labels manually or ask ZioClaw)" % (ref, ang))
+        rec["sym"].position.X += dx
+        rec["sym"].position.Y += dy
+        for prop_i, off in zip(rec["props"], rec["prop_offsets"]):
+            prop_i.position.X = nx + off[0]
+            prop_i.position.Y = ny + off[1]
+        for lb in rec["labels"]:
+            lb.position.X += dx
+            lb.position.Y += dy
+        for w in rec["wires"]:
+            for pt in w.points:
+                pt.X += dx
+                pt.Y += dy
+        for nc in rec["ncs"]:
+            nc.position.X += dx
+            nc.position.Y += dy
+        moved += 1
+    if moved:
+        print("  [layout] %s: %d placements restored from JP edits" % (sheet_key, moved))
 
 
 def make_sheet_file(title, page_no, ctx, libsyms, uuid_str):
@@ -327,6 +384,13 @@ def main():
                     bd, best = d, fn
         notes_by_file[best].append((nx, ny, nw, nh, text))
 
+    # ---- JP placement preservation (layout_positions.json harvested from his edits) ----
+    _lay_path = os.path.join(HERE, "layout_positions.json")
+    if os.path.exists(_lay_path):
+        saved_layout = json.load(open(_lay_path, encoding="utf-8"))
+        print("  [layout] preserving %d saved placements" % len(saved_layout["symbols"]))
+    else:
+        saved_layout = {"symbols": {}, "sheets": {}}
     # ---- emit child sheets ----
     total_syms = total_pwr = total_w = total_l = total_nc = 0
     sheet_boxes = []
@@ -355,6 +419,7 @@ def main():
         ctx.emit_power_anchors(nets, sheet_path, x_off=12.0 * i)
         for (nx, ny, nw, nh, text) in notes_by_file[fname]:
             ctx.note(nx, ny, nw, nh, text)
+        apply_saved_positions(ctx, fname[4:-10], saved_layout)
         s_uuid = det_uuid(fname)
         sch = make_sheet_file(f"SGC P1 - {title}", i + 2, ctx, all_libsymbols, s_uuid)
         _out = os.path.join(HERE, fname)
@@ -388,6 +453,19 @@ def main():
             name="sgc_p1",
             paths=[HierarchicalSheetProjectPath(
                 sheetInstancePath="/" + root_uuid, page=str(i + 2))])])
+        _sv = saved_layout["sheets"].get(title.split(":")[0].strip())
+        if _sv:
+            _a = _sv["at"].split()
+            _s = _sv["size"].split()
+            _dx = float(_a[0]) - box.position.X
+            _dy = float(_a[1]) - box.position.Y
+            box.position.X = float(_a[0])
+            box.position.Y = float(_a[1])
+            box.width = float(_s[0])
+            box.height = float(_s[1])
+            for _p in (box.sheetName, box.fileName):
+                _p.position.X += _dx
+                _p.position.Y += _dy
         sheet_boxes.append(box)
         bx += 85.0
         if bx > 330.0:

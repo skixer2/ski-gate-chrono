@@ -1,0 +1,535 @@
+{
+ "sheets": {
+  "5V boost + LED strip reserve (v2 DNP)": {
+   "at": "30.0 85.0",
+   "size": "70.0 30.0"
+  },
+  "Connectors": {
+   "at": "115.0 85.0",
+   "size": "70.0 30.0"
+  },
+  "MCU": {
+   "at": "115.0 40.0",
+   "size": "70.0 30.0"
+  },
+  "Power": {
+   "at": "30.0 40.0",
+   "size": "70.0 30.0"
+  },
+  "Sensors": {
+   "at": "200.0 40.0",
+   "size": "70.0 30.0"
+  },
+  "Storage": {
+   "at": "285.0 40.0",
+   "size": "70.0 30.0"
+  }
+ },
+ "symbols": {
+  "boost_led:#PWR13": {
+   "at": "66.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:#PWR14": {
+   "at": "66.0 35.16 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:#PWR15": {
+   "at": "66.0 45.31999999999999 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:#PWR16": {
+   "at": "56.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:C17": {
+   "at": "222 276 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:C18": {
+   "at": "238 276 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:C19": {
+   "at": "254 276 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:D2": {
+   "at": "272 240 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:L2": {
+   "at": "270 258 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:R11": {
+   "at": "190 276 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:R12": {
+   "at": "206 276 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:U10": {
+   "at": "238 258 0",
+   "mx": false,
+   "my": false
+  },
+  "boost_led:U11": {
+   "at": "198 258 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:#PWR17": {
+   "at": "78.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:#PWR18": {
+   "at": "78.0 35.16 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:#PWR19": {
+   "at": "78.0 45.31999999999999 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:#PWR20": {
+   "at": "78.0 55.47999999999999 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:#PWR21": {
+   "at": "78.0 65.63999999999999 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:#PWR22": {
+   "at": "68.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:C16": {
+   "at": "60 80 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:C24": {
+   "at": "232 118 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:D5": {
+   "at": "100 40 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:D6": {
+   "at": "118 232 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:D7": {
+   "at": "118 240 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:FID1": {
+   "at": "82 248 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:FID2": {
+   "at": "118 246 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:J1": {
+   "at": "52 55 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:J2": {
+   "at": "35 200 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:J3": {
+   "at": "60 258 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:J4": {
+   "at": "278 276 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:J5": {
+   "at": "109.22 246.38 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:J6": {
+   "at": "35 225 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:MH1": {
+   "at": "88 258 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:MH2": {
+   "at": "118 258 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:R15": {
+   "at": "190 62 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:R16": {
+   "at": "190 72 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:R41": {
+   "at": "109.22 236 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:R42": {
+   "at": "55 225 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:R7": {
+   "at": "75 25 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:R8": {
+   "at": "85 25 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:TP1": {
+   "at": "95 258 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:TP2": {
+   "at": "105 258 0",
+   "mx": false,
+   "my": false
+  },
+  "connectors:TP3": {
+   "at": "115 258 0",
+   "mx": false,
+   "my": false
+  },
+  "mcu:#PWR06": {
+   "at": "30.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "mcu:#PWR07": {
+   "at": "20.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "mcu:C23": {
+   "at": "395 72 0",
+   "mx": false,
+   "my": false
+  },
+  "mcu:U1": {
+   "at": "225 132 0",
+   "mx": false,
+   "my": false
+  },
+  "mcu:Y1": {
+   "at": "395 60 0",
+   "mx": false,
+   "my": false
+  },
+  "power:#PWR01": {
+   "at": "18.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "power:#PWR02": {
+   "at": "18.0 35.16 0",
+   "mx": false,
+   "my": false
+  },
+  "power:#PWR03": {
+   "at": "18.0 45.31999999999999 0",
+   "mx": false,
+   "my": false
+  },
+  "power:#PWR04": {
+   "at": "18.0 55.47999999999999 0",
+   "mx": false,
+   "my": false
+  },
+  "power:#PWR05": {
+   "at": "8.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C1": {
+   "at": "152 42 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C2": {
+   "at": "152 52 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C3": {
+   "at": "152 62 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C4": {
+   "at": "152 72 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C5": {
+   "at": "152 82 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C6": {
+   "at": "152 92 0",
+   "mx": false,
+   "my": false
+  },
+  "power:C7": {
+   "at": "95 140 0",
+   "mx": false,
+   "my": false
+  },
+  "power:L1": {
+   "at": "150 30 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R1": {
+   "at": "168 48 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R10": {
+   "at": "184 60 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R2": {
+   "at": "168 58 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R3": {
+   "at": "168 68 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R4": {
+   "at": "168 80 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R5": {
+   "at": "168 92 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R6": {
+   "at": "84 164 0",
+   "mx": false,
+   "my": false
+  },
+  "power:R9": {
+   "at": "184 48 0",
+   "mx": false,
+   "my": false
+  },
+  "power:U3": {
+   "at": "120 58 0",
+   "mx": false,
+   "my": false
+  },
+  "power:U4": {
+   "at": "60 150 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:#PWR08": {
+   "at": "42.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:#PWR09": {
+   "at": "42.0 35.16 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:#PWR10": {
+   "at": "32.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C10": {
+   "at": "385 40 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C11": {
+   "at": "385 52 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C12": {
+   "at": "385 64 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C13": {
+   "at": "385 76 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C14": {
+   "at": "365 132 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C15": {
+   "at": "395 175 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C20": {
+   "at": "287.02 50.8 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C21": {
+   "at": "400 112 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:C22": {
+   "at": "400 152 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:D1": {
+   "at": "372 175 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:R13": {
+   "at": "287.02 40.64 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:R14": {
+   "at": "266.7 36.83 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:R18": {
+   "at": "372 100 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:R29": {
+   "at": "372 110 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:R40": {
+   "at": "400 120 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:U12": {
+   "at": "400 100 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:U13": {
+   "at": "400 140 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:U5": {
+   "at": "315 175 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:U6": {
+   "at": "160 245 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:U8": {
+   "at": "330 65 0",
+   "mx": false,
+   "my": false
+  },
+  "sensors:U9": {
+   "at": "330 130 0",
+   "mx": false,
+   "my": false
+  },
+  "storage:#PWR11": {
+   "at": "54.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "storage:#PWR12": {
+   "at": "44.0 25.0 0",
+   "mx": false,
+   "my": false
+  },
+  "storage:C8": {
+   "at": "348 217 0",
+   "mx": false,
+   "my": false
+  },
+  "storage:C9": {
+   "at": "348 250 0",
+   "mx": false,
+   "my": false
+  },
+  "storage:U2": {
+   "at": "300 258 0",
+   "mx": false,
+   "my": false
+  },
+  "storage:U7": {
+   "at": "300 225 0",
+   "mx": false,
+   "my": false
+  }
+ }
+}
