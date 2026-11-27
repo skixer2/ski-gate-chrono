@@ -350,7 +350,7 @@
 	)
 (footprint "MountingHole_1.6mm"
 	(layer "F.Cu")
-	(at 159.4 65.5 0)
+	(at 159.1 65.5 0)
 	(uuid "e3dc8b88-73d8-565d-bace-6827f18054f1")
 	(property "Reference" "MH2"
 		(at 0 -3.5 0)
@@ -2559,7 +2559,7 @@
 	)
 (footprint "JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal"
 	(layer "F.Cu")
-	(at 142.075 93.5 270)
+	(at 142.375 93.5 270)
 	(uuid "66cae4bc-1a5d-56db-91fe-adccb07bf54b")
 	(property "Reference" "J4"
 		(at 0 -3.5 0)
@@ -4437,7 +4437,7 @@
 	)
 (footprint "USB_C_Receptacle_GCT_USB4085"
 	(layer "F.Cu")
-	(at 152.975 111 180)
+	(at 152.975 110.85 180)
 	(uuid "4576b8d8-791a-5a6c-a368-9d10ff361f50")
 	(property "Reference" "J1"
 		(at 0 -3.5 0)

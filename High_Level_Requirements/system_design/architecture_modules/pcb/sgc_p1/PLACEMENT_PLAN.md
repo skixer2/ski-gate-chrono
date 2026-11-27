@@ -138,3 +138,10 @@ positions (not body centers); the checker uses true pad extents rotated about th
 - **D-USB**: USB-C (GCT USB4085, Dip Type top mount, shell flush with board edge, tongue overhangs) STAYS for rev A. Pogo-dock charging REJECTED (second product: dock design+fab+alignment for a benefit a silicone cap delivers). Waterproofing = enclosure gasket + silicone USB cap. Rev-B candidate: IP-rated USB-C receptacle swap (verify footprint compatibility then).
 - **D-MOUNT**: board glued into casing (PU adhesive or VHB) - battery swap = rework anyway, so removability adds no value; the 2x 1.6mm NPTH holes stay for the pogo-jig registration (programming fixture). Screw bosses = rev-B option only if field issues.
 - Note: JP's '3 holes off board' screenshot (13:41 UTC) showed the PRE-fix file (J1 at old provisional spot, B-row + back stakes off-board). Current v2.2 file has ALL TH holes inside (nearest 1.24mm from edge, fab-safe). Reload/revert in KiCad to see it.
+
+## v2.3 (2026-11-27, second KiCad pass - JP edge audit)
+
+- J1 nudged to origin y 0.65: A-row TH drills now 0.325mm inside the board edge (were 0.175 - looked half-off, fab-marginal). Shell face ~flush, tongue overhang 1.29mm (top-mount convention).
+- MH2 -> (20.1, 46.0): its F.CrtYd circle (r 0.925) poked 0.25mm past the right edge. The NPTH hole itself was always inside - only the keepout marking poked.
+- J4 -> (3.375, 18.0): courtyard poked 0.21mm past the left edge. Now inside.
+- REMAINING items outside the outline = intentional/harmless: J6 castellated pinholes (half-out BY DESIGN, strap anchor), J1 F.Cu shell-outline marking (shows the top-mount shell overhang; fab clips it), U1 F.Fab circle (documentation layer, not manufactured).
