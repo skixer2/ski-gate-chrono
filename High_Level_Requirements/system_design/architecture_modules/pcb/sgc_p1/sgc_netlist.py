@@ -601,7 +601,7 @@ PARTS = [
          nets={"1": "+1V8", "2": "BQ_MR"}),   # /MR active-low, 100k pull-up
 
     # --- ANNA-B402 (center) ---
-    dict(ref="U1", sym="ANNA-B402", x=225, y=132, fp=E, dnp=False, nets={
+    dict(ref="U1", sym="ANNA-B402", x=225, y=132, fp="sgc_p1:ANNA-B402_UBL", dnp=False, nets={
         "1": "GND",        # ANT_PCB -> GND pattern (corner placement, spec 4.9)
         "2": "NC", "3": "NC",
         "4": "GND", "5": "ANT", "6": "ANT", "7": "GND", "8": "GND",
