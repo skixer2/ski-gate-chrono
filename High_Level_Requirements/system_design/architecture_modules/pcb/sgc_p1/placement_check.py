@@ -15,13 +15,13 @@ COIL = (6.5, 23.5, 15.5, 31.5)
 P = {
  # ref: (x, y, rot, ext(x0,y0,x1,y1), exempt_edge, note)
  "U1":  (11.0, 51.2, 0,  (-3.05, -3.05, 3.05, 3.05), set(), "ANNA-B402 antenna to top edge"),
- "J1":  (8.03, 1.0,  0,  (-1.8, -0.35, 7.75, 5.21),  set(("ymin",)), "USB-C mid-mount; GCT edge offset TBD at PCB"),
+ "J1":  (8.03, 6.1, 0, (-1.8, -0.35, 7.75, 5.21), set(), "USB-C mid-mount TH (official fp); PCB Edge marker lands at plan (11.0, 0) = board bottom edge"),
  "J3":  (6.08, 14.0, 90, (-0.5, -0.5, 1.77, 5.58),   set(), "SWD 2x5 1.27 TH; battery pocket must clear bottom pins"),
  "J2":  (18.8, 8.0,  0,  (-2.7, -2.3, 2.7, 2.3),     set(), "battery JST-ACH"),
  "J5":  (2.9,  47.5, 0,  (-2.6, -1.75, 2.6, 1.75),   set(), "ext button/piezo hookup TBD-JP"),
  "J4":  (3.075, 18.0, 90,  (-1.6, -0.8, 1.6, 0.8),     set(), "DNP SK6812 strip hookup, outside antenna x-band"),
  "J6":  (22.0, 28.5, 270,(-1.1, -1.1, 3.64, 1.1),    set(("xmax",)), "castellated pinholes straddle right edge BY DESIGN"),
- "U3":  (10.2, 7.6,  0,  (-0.91, -0.91, 0.91, 0.91), set(), "BQ25120A"),
+ "U3":  (10.2, 7.7,  0,  (-0.91, -0.91, 0.91, 0.91), set(), "BQ25120A"),
  "U4":  (14.2, 7.6,  0,  (-1.35, -0.89, 1.35, 0.89), set(), "MAX17048"),
  "L1":  (7.6,  7.6,  0,  (-1.1, -0.5, 1.1, 0.5),     set(), "charger inductor"),
  "C1":  (12.5, 10.9,  0,  (-0.75, -0.35, 0.75, 0.35), set(), ""),

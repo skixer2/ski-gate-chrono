@@ -123,3 +123,11 @@ positions (not body centers); the checker uses true pad extents rotated about th
 4. SK6812 strip hookup = J4 (DNP) at (2.2, 52.6), top-left OUTSIDE antenna x-band; strip solders along the top edge.
 5. Battery pocket must clear J3 SWD through-pins (bottom, y 10.5-12.8).
 6. UWB v2 reserve zone (rev B note).
+
+## v2.1 (2026-11-27, after first KiCad inspection - JP screenshots)
+
+- Reference labels: emitted FOOTPRINT-LOCAL (0, -3.5) - they follow their part (v2 bug: global coords scattered labels across the sheet). Silk refs KEPT at 0.8 mm (assembly aid); JP can hide per-instance.
+- J1 USB-C: custom footprint REPLACED by official KiCad GCT USB4085 (TH mid-mount, 20 pads, PCB-Edge Dwgs.User marker at local +6.1). Placed rot 0 at (8.03, 6.1): marker lands exactly on the board bottom edge; pads plan y 0.9..6.45. U3 nudged (10.2, 7.7).
+- Real-pad corrections from verify_pcb: J4 -> (3.075, 18.0) rot90; J5 -> (2.9, 47.5); J6 -> (22.0, 28.5); U11 -> (10.4, 18.1); J3 -> (6.08, 14.0); C12 -> (15.7, 42.4); C21 -> (17.8, 43.9); R11 -> (7.0, 18.1); R12 -> (7.0, 16.6); R41 -> (6.5, 46.9); MH1 -> (2.0, 23.4); TP rail -> y 22.4; L2/C17/C18/C19/D2 DNP-block respaced.
+- Board centered on A4 sheet at (139, 56.5) - no manual move needed.
+- NOTE: placement_check.py P dict remains the single source of truth; this file's table above is the v2 baseline (superseded positions tracked in git).

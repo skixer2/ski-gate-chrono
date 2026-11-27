@@ -10,6 +10,7 @@ import os, sys, uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H = 22.0, 55.0
+OFF_X, OFF_Y = 139.0, 56.5   # A4 sheet placement of board origin
 NL, TB = chr(10), chr(9)
 Q = chr(34)
 
@@ -67,13 +68,13 @@ def emit_footprint(ref, part, spec, net_idx):
     name = fp[7:]
     txt = open(os.path.join(HERE, "sgc_p1.pretty", name + ".kicad_mod"), encoding="utf-8").read()
     x, y, rot = P[ref][0], P[ref][1], P[ref][2]
-    fx, fy, fr = x, H - y, (360 - rot) % 360
+    fx, fy, fr = OFF_X + x, OFF_Y + (H - y), (360 - rot) % 360
     body = ['(footprint "%s"' % name,
             TB + '(layer "F.Cu")',
             TB + "(at %g %g %g)" % (fx, fy, fr),
             TB + '(uuid "%s")' % det_uuid("fp:" + ref)]
     body.append(TB + '(property "Reference" "%s"' % ref)
-    body.append(TB * 2 + "(at %g %g 0)" % (fx, fy - 3.0))
+    body.append(TB * 2 + "(at 0 -3.5 0)")
     body.append(TB * 2 + '(layer "F.SilkS")')
     body.append(TB * 2 + '(uuid "%s")' % det_uuid("fpref:" + ref))
     body.append(TB * 2 + "(effects (font (size 0.8 0.8) (thickness 0.15)))")
@@ -124,6 +125,9 @@ def emit_footprint(ref, part, spec, net_idx):
                 prop_depth = line_delta(st)
                 if prop_depth > 0:
                     in_prop_skip = True
+                continue
+            if st.startswith("(fp_text") and "Dwgs.User" in st:
+                body.append(TB + st)
                 continue
             if st.startswith("(fp_text"):
                 ft_depth = line_delta(st)
@@ -235,7 +239,7 @@ def main():
     out = [HEADER]
     for i, n in enumerate(ordered):
         out.append('(net %d "%s")' % (i, n))
-    out.append('(gr_rect (start 0 0) (end 22 55) (stroke (width 0.05) (type solid)) (fill no) (layer "Edge.Cuts") (uuid "%s"))' % det_uuid("edge:outline"))
+    out.append('(gr_rect (start 139 56.5) (end 161 111.5) (stroke (width 0.05) (type solid)) (fill no) (layer "Edge.Cuts") (uuid "%s"))' % det_uuid("edge:outline"))
     total_un = {}
     for ref in sorted(P, key=lambda r: (-P[r][1], P[r][0])):
         part = by_ref[ref]

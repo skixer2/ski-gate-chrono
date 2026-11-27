@@ -8,6 +8,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from kiutils.board import Board
 from placement_check import P, W, H, ANT, COIL
+OFF_X, OFF_Y = 139.0, 56.5
 from sgc_netlist import PARTS
 
 b = Board.from_file(os.path.join(HERE, "sgc_p1.kicad_pcb"))
@@ -18,7 +19,7 @@ for f in b.footprints:
         fails.append("unknown ref: %s" % ref)
         continue
     px, py, prot = P[ref][0], P[ref][1], P[ref][2]
-    if abs(f.position.X - px) > 0.01 or abs((H - f.position.Y) - py) > 0.01:
+    if abs(f.position.X - (OFF_X + px)) > 0.01 or abs(f.position.Y - (OFF_Y + H - py)) > 0.01:
         fails.append("%s pos mismatch" % ref)
     brot = f.position.angle or 0
     if abs((brot - (360 - prot)) % 360) > 0.01:
@@ -34,7 +35,8 @@ for f in b.footprints:
         gx = cx + p.position.X * cos + p.position.Y * sn
         gy = cy - p.position.X * sn + p.position.Y * cos
         pts.append((gx - p.size.X / 2.0, gy - p.size.Y / 2.0, gx + p.size.X / 2.0, gy + p.size.Y / 2.0))
-    rects[ref] = (min(q[0] for q in pts), H - max(q[3] for q in pts), max(q[2] for q in pts), H - min(q[1] for q in pts))
+    top = OFF_Y + H
+    rects[ref] = (min(q[0] for q in pts) - OFF_X, top - max(q[3] for q in pts), max(q[2] for q in pts) - OFF_X, top - min(q[1] for q in pts))
 def gap(a, b2):
     dx = max(b2[0] - a[2], a[0] - b2[2], 0)
     dy = max(b2[1] - a[3], a[1] - b2[3], 0)
