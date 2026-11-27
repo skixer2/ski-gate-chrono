@@ -582,8 +582,8 @@ PARTS = [
     dict(ref="R10",sym="R", x=184, y=60, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="4.7k 1%",     nets={"1": "+1V8", "2": "I2C0_SCL"}),
 
     # --- Fuel gauge + battery (bottom-left) ---
-    dict(ref="U4", sym="MAX17048", x=60, y=150, fp=E, dnp=False, nets={
-        "1": "GND", "2": "GND", "3": "VBAT", "4": "GND", "5": "GAUGE_ALRT",
+    dict(ref="U4", sym="MAX17048", x=60, y=150, fp="sgc_p1:Maxim_TDFN-8-1EP_2x2mm_P0.5mm_EP0.8x1.38mm_MAX17048", dnp=False, nets={
+        "1": "GND", "2": "VBAT", "3": "VBAT", "4": "GND", "5": "GAUGE_ALRT",
         "6": "GND", "7": "I2C0_SCL", "8": "I2C0_SDA", "EP": "GND"}),
     dict(ref="C7", sym="C", x=95, y=140, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "VBAT", "2": "GND"}),   # gauge VDD bypass
     dict(ref="R6", sym="R", x=84, y=164, fp="Resistor_SMD:R_0402_1005Metric",  dnp=False, value="10k",    nets={"1": "+1V8", "2": "GAUGE_ALRT"}), # /ALRT PU
@@ -646,7 +646,7 @@ PARTS = [
     dict(ref="U5", sym="IS31FL3194", x=315, y=175, fp="sgc_p1:Lumissil_WLCSP-8_0.99x1.59mm_P0.4mm_IS31FL3194", dnp=False, nets={
         "A1": "V_PMID", "B1": "I2C0_SDA", "C1": "I2C0_SCL", "D1": "GND",
         "A2": "V_PMID", "B2": "LED_R", "C2": "LED_G", "D2": "LED_B"}),
-    dict(ref="D1", sym="LED_RGB", x=372, y=175, fp=E, dnp=False, value="SMLP34RGB2W3", nets={
+    dict(ref="D1", sym="LED_RGB", x=372, y=175, fp="sgc_p1:Rohm_PicoLEDF_1010_1x1mm_SMLP34RGB2W3", dnp=False, value="SMLP34RGB2W3", nets={
         "R": "LED_R", "G": "LED_G", "B": "LED_B", "COM": "V_PMID"}),
     dict(ref="C15", sym="C", x=395, y=175, fp="Capacitor_SMD:C_0402_1005Metric", dnp=False, value="0.1uF", nets={"1": "V_PMID", "2": "GND"}), # IS31 decap (value TBD-JP, OD-17)
 
